@@ -1,4 +1,4 @@
-use crate::attributes::{get_mode, VerifierAttrs};
+use crate::attributes::{VerifierAttrs, get_mode};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
@@ -8,9 +8,9 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::err_span;
 use air::ast_util::str_ident;
-use rustc_ast::Attribute;
+use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{GenericArgsRef, TyKind};
+use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind, TypingEnv, TypingMode};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -205,6 +205,7 @@ pub(crate) fn check_item_struct<'tcx>(
         mode,
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
+        sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -293,6 +294,7 @@ pub(crate) fn check_item_enum<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
         },
     ));
     Ok(())
@@ -392,9 +394,128 @@ pub(crate) fn check_item_union<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
         },
     ));
     Ok(())
+}
+
+fn get_sized_constraint<'tcx>(
+    span: Span,
+    ctxt: &Context<'tcx>,
+    adt_def: &AdtDef<'tcx>,
+) -> Result<Option<vir::ast::Typ>, VirErr> {
+    // This is where we get the 'sized_constraint', the type that is used to determine if
+    // a given type is sized. This is an optional value -- None means "always sized"
+    // whereas Some(T) means "The given type is Sized iff T is Sized".
+    //
+    // This is usually the type of the last field of the struct. For this:
+    //
+    // struct Pair<A, B: ?Sized> {
+    //     a: A,
+    //     b: B,
+    // }
+    //
+    // The sized_constraint would be `B` (i.e., `B: Sized` implies `Pair<A, B>: Sized`)
+    //
+    // It's important that we simplify this as much as possible to avoid introducing trait
+    // bounds with types that Verus doesn't know about.
+    //
+    // For example, suppose we have something like:
+    //
+    //    #[verifier::external_body]
+    //    struct X<T> {
+    //         last_field: SomeExternalType<T>
+    //    }
+    //
+    // which results in a trait bound
+    //
+    //    X<T>: Sized where SomeExternalType<T>: Sized
+    //
+    // This would then cause an error because Verus doesn't recognize `SomeExternalType`.
+    //
+    // However, the last trait bound will itself be simplified (e.g., to `T: Sized` or similiar).
+    // Even with more complicated situations like associated types, I think it's not possible
+    // to trigger this error, as long as we normalize completely.
+    //
+    // Unfortunately, `adt_def.sized_constraint` *doesn't* normalize completely, so we
+    // manually iterate the process.
+
+    use crate::rustc_infer::infer::TyCtxtInferExt;
+    use crate::rustc_middle::ty::inherent::AdtDef;
+    use crate::rustc_trait_selection::traits::NormalizeExt;
+    let tcx = ctxt.tcx;
+
+    let param_env = tcx.param_env(adt_def.def_id());
+    let typing_env = TypingEnv::post_analysis(tcx, adt_def.def_id());
+    if tcx.type_of(adt_def.def_id()).skip_binder().is_sized(tcx, typing_env) {
+        return Ok(None);
+    }
+
+    let sized_constraint_opt = adt_def.sized_constraint(tcx);
+    let Some(sized_constraint) = sized_constraint_opt else {
+        return Ok(None);
+    };
+    let mut sized_constraint = sized_constraint.skip_binder();
+
+    let mut idx = 0;
+    loop {
+        idx += 1;
+        if idx > 10000 {
+            crate::internal_err!(span, "get_sized_constraint exceeded iterations");
+        }
+
+        // Try normalizing (i.e., eliminating any projection types)
+
+        let infcx = tcx.infer_ctxt().ignoring_regions().build(TypingMode::PostAnalysis);
+        let cause = rustc_infer::traits::ObligationCause::dummy();
+        let at = infcx.at(&cause, param_env);
+        let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(
+            tcx,
+            sized_constraint,
+            adt_def.def_id(),
+        );
+        let norm = at.normalize(*ty);
+        if norm.value != *ty {
+            for arg in norm.value.walk().into_iter() {
+                if let GenericArgKind::Type(t) = arg.unpack() {
+                    assert!(!matches!(t.kind(), TyKind::Infer(..)));
+                }
+            }
+        }
+
+        let sc2 = norm.value;
+
+        // Try iterating the call to sized_constraint
+
+        let sc3 = match sc2.kind() {
+            TyKind::Adt(other_adt_def, args) => {
+                let opt = other_adt_def.sized_constraint(tcx);
+                let Some(sc3) = opt else {
+                    return Ok(None);
+                };
+                sc3.instantiate(tcx, args)
+            }
+            _ => sc2,
+        };
+
+        // If we've reached a fixed point, then stop; otherwise, repeat
+
+        if sized_constraint == sc3 {
+            break;
+        }
+
+        sized_constraint = sc3;
+    }
+
+    Ok(Some(mid_ty_to_vir(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        adt_def.def_id(),
+        span,
+        &sized_constraint,
+        false,
+    )?))
 }
 
 pub(crate) fn check_item_external<'tcx>(
@@ -522,7 +643,11 @@ pub(crate) fn check_item_external<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
-    if path.krate == Some(Arc::new("builtin".to_string())) {
+    let is_builtin_external = matches!(
+        ctxt.verus_items.id_to_name.get(&external_def_id),
+        Some(crate::verus_items::VerusItem::External(_))
+    );
+    if !is_builtin_external && path.krate == Some(Arc::new("builtin".to_string())) {
         return err_span(span, "cannot apply `external_type_specification` to Verus builtin types");
     }
 
@@ -553,6 +678,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -589,6 +715,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -638,6 +765,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }

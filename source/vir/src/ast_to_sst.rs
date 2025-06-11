@@ -6,11 +6,11 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
+use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
+use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -341,6 +341,13 @@ impl<'a> State<'a> {
         ctx.checking_spec_preconditions() && self.only_generate_pure_exp == 0
     }
 
+    // For either checking_spec_preconditions or checking_spec_decreases,
+    // we have to flatten expressions into statements so the statements can be checked
+    // for preconditions or termination
+    fn checking_spec_general(&self, ctx: &Ctx) -> bool {
+        ctx.checking_spec_general() && self.only_generate_pure_exp == 0
+    }
+
     fn checking_recommends(&self, ctx: &Ctx) -> bool {
         self.checking_spec_preconditions(ctx) && self.disable_recommends == 0
     }
@@ -570,6 +577,7 @@ fn expr_get_call(
                     {
                         match kind {
                             CallTargetKind::Static => None,
+                            CallTargetKind::ProofFn(..) => None,
                             CallTargetKind::Dynamic => Some(false),
                             CallTargetKind::DynamicResolved { is_trait_default, .. } => {
                                 Some(*is_trait_default)
@@ -622,7 +630,7 @@ pub(crate) fn check_pure_expr(
     state: &mut State,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
-    if state.checking_spec_preconditions(ctx) {
+    if state.checking_spec_general(ctx) {
         let (stms, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
         Ok(stms)
     } else {
@@ -639,7 +647,7 @@ fn check_pure_expr_bind(
     kind: LocalDeclKind,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
-    if state.checking_spec_preconditions(ctx) {
+    if state.checking_spec_general(ctx) {
         state.push_scope();
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
@@ -681,7 +689,7 @@ pub(crate) fn expr_to_pure_exp_check(
     state: &mut State,
     expr: &Expr,
 ) -> Result<(Vec<Stm>, Exp), VirErr> {
-    if state.checking_spec_preconditions(ctx) {
+    if state.checking_spec_general(ctx) {
         let (stms, exp) = expr_to_stm_or_error(ctx, state, expr)?;
         if stms.len() == 0 {
             return Ok((vec![], exp));
@@ -1516,7 +1524,15 @@ pub(crate) fn expr_to_stm_opt(
             state.disable_recommends -= 1;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
-        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes: _,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec,
+        } => {
             let mut all_stms = Vec::new();
 
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
@@ -2046,6 +2062,20 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
+            if decrease.len() == 0
+                && !ctx
+                    .fun
+                    .as_ref()
+                    .map(|c| {
+                        let function = &ctx.func_map[&c.current_fun];
+                        function.x.attrs.exec_assume_termination
+                            || function.x.attrs.exec_allows_no_decreases_clause
+                    })
+                    .unwrap_or(false)
+            {
+                return Err(error(&expr.span, "loop must have a decreases clause")
+                    .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+            }
 
             let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2258,6 +2288,16 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }
+        ExprX::ProofInSpec(e) => {
+            let stms = if state.checking_spec_general(ctx) {
+                let (stms, exp_opt) = expr_to_stm_opt(ctx, state, e)?;
+                assert!(crate::ast_util::is_unit(&exp_opt.expect_value().typ));
+                stms
+            } else {
+                vec![]
+            };
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut local_decls: Vec<LocalDecl> = Vec::new();
@@ -2283,7 +2323,9 @@ pub(crate) fn expr_to_stm_opt(
                     }
                     None => {
                         // the statement wasn't a Decl; it could have been anything
-                        is_pure_exp = false;
+                        if stms0.len() > 0 {
+                            is_pure_exp = false;
+                        }
                     }
                 }
                 stms.append(&mut stms0);
@@ -2342,6 +2384,12 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::AirStmt(s) => {
             let stmt = Spanned::new(expr.span.clone(), StmX::Air(s.clone()));
             return Ok((vec![stmt], ReturnValue::ImplicitUnit(expr.span.clone())));
+        }
+        ExprX::Nondeterministic => {
+            let (var_ident, exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::Nondeterministic);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+            Ok((vec![stm], ReturnValue::Some(exp)))
         }
     }
 }

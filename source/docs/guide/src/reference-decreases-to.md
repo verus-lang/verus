@@ -50,5 +50,5 @@ These axioms are triggered when the relevant expression (e.g., `x.f`, `x->f`, `s
 ### Examples
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:example_decreases_to}}
+{{#include ../../../../examples/guide/recursion.rs:example_decreases_to}}
 ```

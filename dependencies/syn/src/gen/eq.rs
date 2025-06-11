@@ -277,6 +277,14 @@ impl PartialEq for crate::Closed {
         true
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ClosureArg {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ClosureArg {
+    fn eq(&self, other: &Self) -> bool {
+        self.tracked_token == other.tracked_token && self.pat == other.pat
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::ConstParam {}
@@ -608,6 +616,7 @@ impl PartialEq for crate::ExprClosure {
         self.attrs == other.attrs && self.lifetimes == other.lifetimes
             && self.constness == other.constness && self.movability == other.movability
             && self.asyncness == other.asyncness && self.capture == other.capture
+            && self.proof_fn == other.proof_fn && self.options == other.options
             && self.inputs == other.inputs && self.output == other.output
             && self.requires == other.requires && self.ensures == other.ensures
             && self.inner_attrs == other.inner_attrs && self.body == other.body
@@ -1115,10 +1124,29 @@ impl PartialEq for crate::FnMode {
             (crate::FnMode::Proof(self0), crate::FnMode::Proof(other0)) => {
                 self0 == other0
             }
+            (crate::FnMode::ProofAxiom(self0), crate::FnMode::ProofAxiom(other0)) => {
+                self0 == other0
+            }
             (crate::FnMode::Exec(self0), crate::FnMode::Exec(other0)) => self0 == other0,
             (crate::FnMode::Default, crate::FnMode::Default) => true,
             _ => false,
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::FnProofArg {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::FnProofArg {
+    fn eq(&self, other: &Self) -> bool {
+        self.tracked_token == other.tracked_token && self.arg == other.arg
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::FnProofOptions {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::FnProofOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.options == other.options
     }
 }
 #[cfg(feature = "full")]
@@ -1342,7 +1370,9 @@ impl PartialEq for crate::ImplItemConst {
             && self.publish == other.publish && self.mode == other.mode
             && self.defaultness == other.defaultness && self.ident == other.ident
             && self.generics == other.generics && self.ty == other.ty
-            && self.expr == other.expr
+            && self.ensures == other.ensures && self.eq_token == other.eq_token
+            && self.block == other.block && self.expr == other.expr
+            && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]
@@ -1933,6 +1963,14 @@ impl PartialEq for crate::ModeProof {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ModeProofAxiom {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ModeProofAxiom {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::ModeSpec {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::ModeSpec {
@@ -2384,6 +2422,7 @@ impl PartialEq for crate::SignatureSpec {
             && self.recommends == other.recommends && self.ensures == other.ensures
             && self.returns == other.returns && self.decreases == other.decreases
             && self.invariants == other.invariants && self.unwind == other.unwind
+            && self.with == other.with
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2587,6 +2626,9 @@ impl PartialEq for crate::Type {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
             (crate::Type::FnSpec(self0), crate::Type::FnSpec(other0)) => self0 == other0,
+            (crate::Type::FnProof(self0), crate::Type::FnProof(other0)) => {
+                self0 == other0
+            }
             _ => false,
         }
     }
@@ -2611,6 +2653,15 @@ impl PartialEq for crate::TypeBareFn {
         self.lifetimes == other.lifetimes && self.unsafety == other.unsafety
             && self.abi == other.abi && self.inputs == other.inputs
             && self.variadic == other.variadic && self.output == other.output
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::TypeFnProof {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::TypeFnProof {
+    fn eq(&self, other: &Self) -> bool {
+        self.generics == other.generics && self.options == other.options
+            && self.inputs == other.inputs && self.output == other.output
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2974,5 +3025,22 @@ impl PartialEq for crate::WherePredicate {
             }
             _ => false,
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::WithSpecOnExpr {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::WithSpecOnExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.inputs == other.inputs && self.outputs == other.outputs
+            && self.follows == other.follows
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::WithSpecOnFn {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::WithSpecOnFn {
+    fn eq(&self, other: &Self) -> bool {
+        self.inputs == other.inputs && self.outputs == other.outputs
     }
 }

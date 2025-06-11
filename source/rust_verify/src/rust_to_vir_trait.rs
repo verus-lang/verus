@@ -4,20 +4,20 @@ use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
-use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
-use rustc_span::def_id::DefId;
 use rustc_span::Span;
+use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
-    Visibility,
+    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitId, TraitX, TypX,
+    VirErr, Visibility,
 };
-use vir::def::{trait_self_type_param, VERUS_SPEC};
+use vir::def::{VERUS_SPEC, trait_self_type_param};
 
 pub(crate) fn external_trait_specification_of<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -99,7 +99,7 @@ pub(crate) fn translate_trait<'tcx>(
         // Remove the Self: Trait bound introduced by rustc
         Arc::make_mut(&mut typ_bounds).retain(|gb| {
             match &**gb {
-                GenericBoundX::Trait(bnd, tp) => {
+                GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
                     if bnd == &trait_path {
                         let gp: Vec<_> = Some(trait_self_type_param())
                             .into_iter()
@@ -117,6 +117,7 @@ pub(crate) fn translate_trait<'tcx>(
                         return false;
                     }
                 }
+                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
                 GenericBoundX::TypEquality(..) => {}
                 GenericBoundX::ConstTyp(..) => {}
             }
@@ -144,14 +145,14 @@ pub(crate) fn translate_trait<'tcx>(
         let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
         );
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),

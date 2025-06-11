@@ -2,6 +2,7 @@ pub use air::messages::MessageLevel;
 use air::messages::{ArcDynMessage, ArcDynMessageLabel};
 use serde::{Deserialize, Serialize};
 use std::{any::Any, sync::Arc};
+use vir_macros::ToDebugSNode;
 
 fn empty_raw_span() -> RawSpan {
     Arc::new(())
@@ -31,7 +32,7 @@ impl std::fmt::Debug for Span {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
 pub struct MessageLabel {
     pub span: Span,
     pub note: String,
@@ -59,7 +60,7 @@ pub struct MessageLabel {
 /// Note that if you want to get a message that is rendered with ^^^^ AND has a label
 /// it needs to BOTH be in the primary spans list AND in the labels.
 
-#[derive(Debug, Clone, Serialize, Deserialize)] // for Debug, see ast_util
+#[derive(Debug, Clone, Serialize, Deserialize, ToDebugSNode)] // for Debug, see ast_util
 pub struct MessageX {
     pub level: MessageLevel,
     pub note: String,

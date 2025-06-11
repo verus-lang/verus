@@ -43,11 +43,17 @@ test_verify_one_file! {
         use vstd::prelude::*;
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
 
+            let b = m.is_empty();
+            assert(b);
+
             m.insert(3, 4);
+
+            let b = m.is_empty();
+            assert(!b);
+
             m.insert(6, -8);
             assert(m@[3] == 4);
 
@@ -81,13 +87,19 @@ test_verify_one_file! {
         use vstd::prelude::*;
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
+
+            let b = m.is_empty();
+            assert(b);
 
             let res = m.insert(3);
             assert(res);
             m.insert(6);
+
+            let b = m.is_empty();
+            assert(!b);
+
             let res = m.insert(3);
             assert(!res);
 
@@ -125,7 +137,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashMap::<Box<u32>, i8>::new();
             assert(m@ == Map::<Box<u32>, i8>::empty());
 
@@ -161,7 +172,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashSet::<Box<u32>>::new();
             assert(m@ == Set::<Box<u32>>::empty());
 
@@ -226,7 +236,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
             let mut m = HashMap::<MyStruct, u32>::new();
@@ -282,7 +291,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
 
             let mut m = HashSet::<MyStruct>::new();
@@ -348,7 +356,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             // Missing `assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());`
 
             let mut m = HashMap::<MyStruct, u32>::new();
@@ -388,7 +395,6 @@ test_verify_one_file! {
 
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             // Missing `assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());`
 
             let mut m = HashSet::<MyStruct>::new();
@@ -441,8 +447,15 @@ test_verify_one_file! {
 
             let mut m = HashMapWithView::<MyStruct, u32>::new();
             assert(m@ == Map::<(MyStruct, int), u32>::empty());
+
+            let b = m.is_empty();
+            assert(b);
+
             let s1 = MyStruct{ i: 3, j: 7 };
             m.insert(s1, 4);
+
+            let b = m.is_empty();
+            assert(!b);
 
             let s2 = MyStruct{ i: 3, j: 7 };
             let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
@@ -520,9 +533,17 @@ test_verify_one_file! {
 
             let mut m = HashSetWithView::<MyStruct>::new();
             assert(m@ == Set::<(MyStruct, int)>::empty());
+
+            let b = m.is_empty();
+            assert(b);
+
             let s1 = MyStruct{ i: 3, j: 7 };
             let res = m.insert(s1);
             assert(res);
+
+            let b = m.is_empty();
+            assert(!b);
+
             let res = m.insert(MyStruct{ i: 3, j: 7 });
             assert(!res);
 
@@ -666,9 +687,16 @@ test_verify_one_file! {
             let mut m = StringHashMap::<i8>::new();
             assert(m@ == Map::<Seq<char>, i8>::empty());
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let b = m.is_empty();
+            assert(b);
+
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
             m.insert(three.clone(), 4);
+
+            let b = m.is_empty();
+            assert(!b);
+
             m.insert(six.clone(), -8);
             assert(!(three@ =~= six@)) by {
                 reveal_strlit("three");
@@ -704,6 +732,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_deep_view verus_code! {
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+
+        fn test(m: HashMap<u64, Vec<bool>>, k: u64)
+            requires
+                m@.contains_key(k),
+                m[k]@ == seq![true],
+        {
+            broadcast use lemma_hashmap_deepview_properties;
+            assert(m.deep_view()[k] == seq![true]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_string_hash_set verus_code! {
         use vstd::hash_set::StringHashSet;
         use vstd::prelude::*;
@@ -712,15 +757,21 @@ test_verify_one_file! {
             let mut m = StringHashSet::new();
             assert(m@ == Set::<Seq<char>>::empty());
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let b = m.is_empty();
+            assert(b);
+
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
 
             let res = m.insert(three.clone());
             assert(res);
 
+            let b = m.is_empty();
+            assert(!b);
+
             m.insert(six.clone());
 
-            let res = m.insert("three".to_string());
+            let res = m.insert("three".to_owned());
             assert(!res);
 
             assert(!(three@ =~= six@)) by {
@@ -759,15 +810,14 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_hash_map_keys verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_hash_map_keys ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashMap;
         use std::collections::hash_map::Keys;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
 
@@ -798,15 +848,57 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_hash_set_iter verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_hash_map_values ["exec_allows_no_decreases_clause"] => verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::Values;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            assert(m@ == Map::<u32, i8>::empty());
+            assert(m@.values() =~= Set::<i8>::empty());
+
+            m.insert(3, 4);
+            m.insert(6, -8);
+            assert(m@.values() == set![4i8, -8i8]) by {
+                assert(m@.contains_key(3u32));
+                assert(m@.contains_key(6u32));
+                assert(m@.values() =~= set![4i8, -8i8]);
+            };
+            let m_values = m.values();
+            assert(m_values@.0 == 0);
+            assert(m_values@.1.to_set() == set![4i8, -8i8]);
+            let ghost g_values = m_values@.1;
+
+            let mut items = Vec::<i8>::new();
+            assert(items@ =~= g_values.take(0));
+
+            for v in iter: m_values
+                invariant
+                    iter.values == g_values,
+                    g_values.to_set() == set![4i8, -8i8],
+                    items@ == iter@,
+            {
+                assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
+                items.push(*v);
+            }
+            assert(items@.to_set() =~= set![4i8, -8i8]) by {
+                assert(g_values.take(g_values.len() as int) =~= g_values);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
         use vstd::prelude::*;
         use vstd::std_specs::hash::*;
         fn test()
         {
-            broadcast use vstd::std_specs::hash::group_hash_axioms;
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
 

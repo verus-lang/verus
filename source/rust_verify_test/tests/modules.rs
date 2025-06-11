@@ -404,5 +404,5 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] uninterp_open_fail verus_code! {
         pub uninterp open fn bar();
-    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+    } => Err(err) => assert_vir_error_msg(err, "expected `fn`")
 }

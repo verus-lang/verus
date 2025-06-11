@@ -1,6 +1,7 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, Quant, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
+    ArchWordBits, BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant,
+    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate,
+    Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -12,9 +13,14 @@ use crate::sst::{
     AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm, StmX,
 };
 use crate::sst::{FuncCheckSst, FunctionSst};
-use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
+use crate::sst_util::{
+    sst_and, sst_arch_word_bits, sst_conjoin, sst_equal, sst_equal_ext, sst_implies,
+    sst_int_literal, sst_int_literal_bigint, sst_le, sst_lt, sst_not, subst_typ_for_datatype,
+};
 use crate::sst_visitor::map_stm_prev_visitor;
 use air::ast::Quant::{Exists, Forall};
+use num_bigint::BigInt;
+use num_traits::FromPrimitive;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -635,6 +641,19 @@ fn expand_exp_rec(
             }
             _ => leaf(state, CanExpandFurther::No(None)),
         },
+        ExpX::UnaryOpr(UnaryOpr::HasType(t), e) if !negate => {
+            let t = undecorate_typ(t);
+            match &*t {
+                TypX::Int(int_range) => {
+                    let e = make_range_ineqs(*int_range, ctx.global.arch, e);
+                    match e {
+                        Some(e) => expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate),
+                        None => leaf(state, CanExpandFurther::No(None)),
+                    }
+                }
+                _ => leaf(state, CanExpandFurther::No(None)),
+            }
+        }
         ExpX::WithTriggers(_, e) | ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => {
             expand_exp_rec(ctx, ectx, state, e, did_split_yet, negate)
         }
@@ -1024,20 +1043,6 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     exps
 }
 
-#[allow(dead_code)]
-struct DiagnosticsVoid {}
-impl air::messages::Diagnostics for DiagnosticsVoid {
-    fn report_as(&self, _msg: &air::messages::ArcDynMessage, _level: air::messages::MessageLevel) {}
-    fn report(&self, _msg: &air::messages::ArcDynMessage) {}
-    fn report_now(&self, _msg: &air::messages::ArcDynMessage) {}
-    fn report_as_now(
-        &self,
-        _msg: &air::messages::ArcDynMessage,
-        _msg_as: air::messages::MessageLevel,
-    ) {
-    }
-}
-
 // This function is to
 // 1) inline a function body at a call site
 // 2) inline a function's requires expression at a call site
@@ -1067,4 +1072,42 @@ pub fn inline_expression(
     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
     let e = SpannedTyped::new(&body.span, &e.typ, e.x.clone());
     return e;
+}
+
+/// Expand HasType(int_type, e)
+/// e.g., into 0 <= e < 256 for u8
+fn make_range_ineqs(ir: IntRange, arch_word_bits: ArchWordBits, e: &Exp) -> Option<Exp> {
+    let span = &e.span;
+    let pow2 = |i| sst_int_literal_bigint(span, BigInt::from_usize(2).unwrap().pow(i));
+    let neg_pow2 = |i| sst_int_literal_bigint(span, -BigInt::from_usize(2).unwrap().pow(i));
+    match (ir, arch_word_bits) {
+        (IntRange::Int | IntRange::Char, _) => None,
+        (IntRange::Nat, _) => Some(sst_le(span, &sst_int_literal(span, 0), e)),
+        (IntRange::U(i), _) | (IntRange::USize, ArchWordBits::Exactly(i)) => Some(sst_and(
+            span,
+            &sst_le(span, &sst_int_literal(span, 0), e),
+            &sst_lt(span, e, &pow2(i)),
+        )),
+        (IntRange::I(i), _) | (IntRange::ISize, ArchWordBits::Exactly(i)) => {
+            assert!(i > 0);
+            Some(sst_and(span, &sst_le(span, &neg_pow2(i - 1), e), &sst_lt(span, e, &pow2(i - 1))))
+        }
+        (IntRange::USize | IntRange::ISize, ArchWordBits::Either32Or64) => {
+            let e32 = make_range_ineqs(ir, ArchWordBits::Exactly(32), e).unwrap();
+            let e64 = make_range_ineqs(ir, ArchWordBits::Exactly(64), e).unwrap();
+            Some(sst_and(
+                span,
+                &sst_implies(
+                    span,
+                    &sst_equal(span, &sst_arch_word_bits(span), &sst_int_literal(span, 32)),
+                    &e32,
+                ),
+                &sst_implies(
+                    span,
+                    &sst_equal(span, &sst_arch_word_bits(span), &sst_int_literal(span, 64)),
+                    &e64,
+                ),
+            ))
+        }
+    }
 }

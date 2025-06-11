@@ -13,57 +13,56 @@ The `bit_vector` prover mode can be invoked
 [similarly to `nonlinear_arith`](./nonlinear.md#1-invoking-a-specialized-solver-nonlinear_arith),
 with `by(bit_vector)` either on an `assert` or a `proof fn`.
 
-For example, we can shorts and context-free bit-manipulation properties:
+Using `by(bit_vector)` on an `assert` lets one assert a short and context-free
+bit-manipulation property, as in the following examples:
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_easy}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_easy}}
 ```
 
-Again, as with `nonlinear_arith`, assertions that use `by(bit_vector)`
-do not include any ambient facts from the surrounding context (e.g., from the surrounding function's `requires` clause or from previous variable assignments).
-
-Currently, assertions expressed via `assert(...) by(bit_vector)` do not include any ambient facts from the surrounding context (e.g., from the surrounding function's `requires` clause or from previous variable assignments).  For example, the following example will fail:
+As with `nonlinear_arith`, assertions expressed via `assert(...) by(bit_vector)` do not include any ambient facts from the surrounding context (e.g., from the surrounding function's `requires` clause or from previous variable assignments).  For example, the following example will fail:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_fail}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_fail}}
 ```
 
 But context can be imported explicitly with a `requires` clause:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_success}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_success}}
 ```
 
-And `by(bit_vector)` is also supported on proof functions:
-
+Attaching `by(bit_vector)` to a proof function `f` makes Verus use
+the `bit_vector` solver when verifying `f`. But note when another function
+calls `f`, Verus uses the _normal_ solver to verify that it satisfies all the
+preconditions of `f`. Here's an example of using `by(bit_vector)` on a proof
+function:
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:de_morgan}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:de_morgan}}
 ```
 
-Again, this will use the `bit_vector` solver to prove the lemma, but all calls to the lemma
-will use the normal solver to prove the precondition.
 
 ## How the `bit_vector` solver works and what it's good at
 
-The bitvector solver uses a different SMT encoding, though one where all arithmetic operations
+The `bit_vector` solver uses a different SMT encoding, though one where all arithmetic operations
 have the same semantic meaning.
 Specifically, it encodes all integers into the [Z3 `bv` type](https://microsoft.github.io/z3guide/docs/theories/Bitvectors/) and encodes arithmetic via the built-in bit-vector operations.
 Internally, the SMT solver uses a technique called "bit blasting".
 
-In order to implement this encoding, Verus needs to choose an appropriate bit width to represent
+To implement this encoding, Verus needs to choose an appropriate bit width to represent
 any given integer. For symbolic, fixed-width integer values (e.g., `u64`) it can just choose
 the appropriate bitwidth (e.g., 64 bits). For the results of arithmetic operations,
 Verus chooses an appropriate bitwidth automatically.
 However, for this reason, the bitvector solver cannot reason over _symbolic_ integer values.
 
-The bitvector solver is ideal for proofs about bitwise operations
-([`&`, `|`, `^`, `<<` and `>>`](./spec-bit-ops.md)).
+The `bit_vector` solver is ideal for proofs about [bitwise operations](./spec-bit-ops.md)
+(`&`, `|`, `^`, `<<`, and `>>`).
 However, it can also be decent at arithmetic (`+`, `-`, `*`, `/`, `%`) over bounded integers.
 
 ## Examples and tips
 
-### Functions vs macros
+### Functions vs. macros
 
-The bit-vector solver doesn't allow arbitrary functions. However, you can use _macros_.
+The `bit_vector` solver doesn't allow arbitrary functions. However, you can use _macros_.
 This is useful when certain operations need a common shorthand, like
 "get the <i>i<sup>th</sup></i> bit of an integer".
 
@@ -118,17 +117,17 @@ proof fn test_truncating_add(a: u64, b: u64) {
 
 ### Working with `usize` and `isize`
 
-If you use variables of type `usize` or `isize`, the bitvector solver (by default) assumes they
+If you use variables of type `usize` or `isize`, the `bit_vector` solver (by default) assumes they
 might be either 32-bit or 64-bit, which affects the encoding.
 In that case, the solver will generate 2 different queries and verify both.
 
 However, the solver can also be [configured to assume a particular platform size](./reference-global.md#with-usize-and-isize).
 
-### Bit-width dependence and independence
+### Bitwidth dependence and independence
 
-For many operations, their results are independent of the input bit-widths.
+For many operations, their results are independent of the input bitwidths.
 This is true of `&`, `|`, `^`, and `>>`.
-In fact, we don't even need the bit-vector to prove this; the normal solver mode is "aware"
+In fact, we don't even need the `bit_vector` solver to prove this; the normal solver mode is "aware"
 of this fact as well.
 
 ```rust
@@ -154,6 +153,6 @@ proof fn test_left_shift_u32_vs_u64(y: u32) {
 
 Some larger examples to browse:
 
- * [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_garbage_collection.rs)
- * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_equivalence.rs)
- * [miscellaneous](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs)
+ * [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_garbage_collection.rs)
+ * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_equivalence.rs)
+ * [miscellaneous](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_basic.rs)

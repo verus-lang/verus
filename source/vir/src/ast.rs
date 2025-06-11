@@ -11,7 +11,7 @@ pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vir_macros::{to_node_impl, ToDebugSNode};
+use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
@@ -303,7 +303,7 @@ pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
-    TraitBound(Path, Typs),
+    TraitBound(TraitId, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
@@ -692,6 +692,8 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
+    /// Call to a proof function with argument modes and return mode
+    ProofFn(Arc<Vec<Mode>>, Mode),
     /// Dynamically dispatched function
     Dynamic,
     /// Dynamically dispatched function with known resolved target
@@ -796,8 +798,10 @@ pub enum ExprX {
     /// Specification closure
     Closure(VarBinders<Typ>, Expr),
     /// Executable closure
-    ExecClosure {
+    NonSpecClosure {
         params: VarBinders<Typ>,
+        /// If this is a proof_fn, record the args/ret modes; otherwise, None
+        proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
@@ -864,12 +868,16 @@ pub enum ExprX {
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    /// Enter a proof block from inside spec-mode code
+    ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
     /// never-to-any conversion
     NeverToAny(Expr),
+    /// nondeterministic choice
+    Nondeterministic,
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -902,13 +910,19 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum TraitId {
+    Path(Path),
+    Sized,
+}
+
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
-    Trait(Path, Typs),
+    Trait(TraitId, Typs),
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
@@ -1001,6 +1015,10 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Whether to assume that this function terminates
+    pub exec_assume_termination: bool,
+    /// Whether to allow this function to not terminate
+    pub exec_allows_no_decreases_clause: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1228,6 +1246,11 @@ pub struct DatatypeX {
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
     pub user_defined_invariant_fn: Option<Fun>,
+    /// This is an optional value -- None means "always sized"
+    /// whereas Some(T) means "The given type is Sized iff T is Sized".
+    /// For structs, this is usually the last field of the struct, or is derived from it.
+    /// For enums, this is always None.
+    pub sized_constraint: Option<Typ>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

@@ -25,6 +25,7 @@ pub const SOLVER_LOG_DIR: &str = ".verus-solver-log";
 pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
+pub const VIR_SST_FILE_SUFFIX: &str = "-sst.vir";
 pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
@@ -44,6 +45,7 @@ pub struct LogArgs {
     pub log_vir: bool,
     pub log_vir_simple: bool,
     pub log_vir_poly: bool,
+    pub log_vir_sst: bool,
     pub vir_log_option: VirLogOption,
     pub log_lifetime: bool,
     pub log_interpreter: bool,
@@ -74,6 +76,7 @@ pub struct ArgsX {
     pub import: Vec<(String, String)>,
     pub verify_root: bool,
     pub verify_module: Vec<String>,
+    pub verify_only_module: Vec<String>,
     pub verify_function: Option<String>,
     pub no_external_by_default: bool,
     pub no_verify: bool,
@@ -108,7 +111,6 @@ pub struct ArgsX {
     pub report_long_running: bool,
     pub use_crate_name: bool,
     pub solver: SmtSolver,
-    #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
 }
@@ -120,6 +122,7 @@ impl ArgsX {
             import: Default::default(),
             verify_root: Default::default(),
             verify_module: Default::default(),
+            verify_only_module: Default::default(),
             verify_function: Default::default(),
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
@@ -154,7 +157,6 @@ impl ArgsX {
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
             solver: Default::default(),
-            #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
         }
@@ -290,6 +292,7 @@ pub fn parse_args_with_imports(
     const OPT_IMPORT: &str = "import";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_VERIFY_ONLY_MODULE: &str = "verify-only-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
@@ -314,6 +317,7 @@ pub fn parse_args_with_imports(
     const LOG_VIR: &str = "vir";
     const LOG_VIR_SIMPLE: &str = "vir-simple";
     const LOG_VIR_POLY: &str = "vir-poly";
+    const LOG_VIR_SST: &str = "vir-sst";
     const LOG_VIR_OPTION: &str = "vir-option";
     const LOG_LIFETIME: &str = "lifetime";
     const LOG_INTERPRETER: &str = "interpreter";
@@ -328,6 +332,7 @@ pub fn parse_args_with_imports(
         (LOG_VIR, "Log VIR"),
         (LOG_VIR_SIMPLE, "Log simplified VIR"),
         (LOG_VIR_POLY, "Log poly VIR"),
+        (LOG_VIR_SST, "Log SST"),
         (
             LOG_VIR_OPTION,
             "Set VIR logging option (e.g. `--log vir-option=no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
@@ -387,7 +392,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
-    #[cfg(feature = "axiom-usage-info")]
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
@@ -412,7 +416,6 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
         ),
-        #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
         (
             EXTENDED_CHECK_API_SAFETY,
@@ -436,7 +439,13 @@ pub fn parse_args_with_imports(
     opts.optmulti(
         "",
         OPT_VERIFY_MODULE,
-        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
+        "Verify just one submodule and its descendants within the crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
+        "MODULE",
+    );
+    opts.optmulti(
+        "",
+        OPT_VERIFY_ONLY_MODULE,
+        "Verify just one submodule (excluding its descendants) within the crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
         "MODULE",
     );
     opts.optopt(
@@ -626,7 +635,29 @@ pub fn parse_args_with_imports(
         export: matches.opt_str(OPT_EXPORT),
         import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
-        verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
+        verify_only_module: matches.opt_strs(OPT_VERIFY_ONLY_MODULE),
+        verify_function: {
+            if matches.opt_present(OPT_VERIFY_FUNCTION) {
+                if matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("When using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
+                }
+                if !matches.opt_present(OPT_VERIFY_ONLY_MODULE)
+                    && !matches.opt_present(OPT_VERIFY_ROOT)
+                {
+                    error(
+                        "--verify-function option requires --verify-only-module or --verify-root"
+                            .to_owned(),
+                    )
+                }
+                if matches.opt_count(OPT_VERIFY_ONLY_MODULE)
+                    + (if matches.opt_present(OPT_VERIFY_ROOT) { 1 } else { 0 })
+                    > 1
+                {
+                    error("Must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
+                }
+            }
+            matches.opt_str(OPT_VERIFY_FUNCTION)
+        },
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
@@ -668,6 +699,7 @@ pub fn parse_args_with_imports(
             log_vir: log.get(LOG_VIR).is_some(),
             log_vir_simple: log.get(LOG_VIR_SIMPLE).is_some(),
             log_vir_poly: log.get(LOG_VIR_POLY).is_some(),
+            log_vir_sst: log.get(LOG_VIR_SST).is_some(),
             vir_log_option: {
                 if let Some(oo) = log.get(LOG_VIR_OPTION) {
                     let Some(oo) = oo else {
@@ -727,9 +759,19 @@ pub fn parse_args_with_imports(
         },
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
-                if !(matches.opt_present(OPT_VERIFY_MODULE) || matches.opt_present(OPT_VERIFY_ROOT))
+                if !(matches.opt_present(OPT_VERIFY_ONLY_MODULE)
+                    || matches.opt_present(OPT_VERIFY_ROOT))
                 {
-                    error("Must pass --verify-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                    error("Must pass --verify-only-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                }
+                if matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("When using --profile-all, use --verify-only-module instead of --verify-module".to_string())
+                }
+                if matches.opt_count(OPT_VERIFY_ONLY_MODULE) > 1 {
+                    error(
+                        "Must pass at most one --verify-only-module when using profile-all"
+                            .to_string(),
+                    )
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
@@ -759,7 +801,6 @@ pub fn parse_args_with_imports(
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
-        #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
     };

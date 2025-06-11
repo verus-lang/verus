@@ -1,12 +1,22 @@
 use super::super::prelude::*;
 
-verus! {
+use verus as verus_;
+verus_! {
+
+#[verifier::external_trait_specification]
+pub trait ExDeref {
+    type ExternalTraitSpecificationFor: core::ops::Deref;
+
+    type Target: ?Sized;
+
+    fn deref(&self) -> &Self::Target;
+}
 
 #[verifier::external_trait_specification]
 pub trait ExIndex<Idx> where Idx: ?Sized {
-    type Output: ?Sized;
-
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+
+    type Output: ?Sized;
 }
 
 #[verifier::external_trait_specification]
@@ -37,6 +47,11 @@ pub trait ExFreeze {
 #[verifier::external_trait_specification]
 pub trait ExDebug {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExDisplay {
+    type ExternalTraitSpecificationFor: core::fmt::Display;
 }
 
 #[verifier::external_trait_specification]
@@ -216,6 +231,7 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
         old(container).spec_index_set_requires(index),
     ensures
         old(container).spec_index_set_ensures(container, index, val),
+    no_unwind
 {
     container[index] = val;
 }

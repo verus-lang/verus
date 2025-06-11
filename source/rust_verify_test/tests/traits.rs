@@ -444,8 +444,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_ok ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -461,7 +461,7 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -505,8 +505,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_fail_1c verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_fail_1c ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -1362,8 +1362,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_one_file! {
-    #[test] test_verify_loop verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_verify_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             spec fn f() -> bool;
         }
@@ -3823,14 +3823,14 @@ test_verify_one_file! {
 
             proof fn test1(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 200);
                 assert(QQ::e(&s) == 300);
             }
 
             proof fn test2(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 300); // FAILS
             }
         }
@@ -4272,4 +4272,29 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] static_resolution_to_blanket_impl_unsized_issue1657 verus_code! {
+        trait Tr {
+            fn stuff(&self);
+        }
+
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        impl<T: Tr + ?Sized> Blanket for T {
+            fn stuff2(&self)
+                ensures false
+            {
+                assume(false);
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T) {
+            t.stuff2();
+            assert(false);
+        }
+    } => Ok(())
 }

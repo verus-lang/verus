@@ -5,11 +5,12 @@ use crate::ast::{
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
-use crate::def::{unique_bound, user_local_name, Spanned};
+use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX, Stm, Trig,
+    Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -49,6 +50,17 @@ pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
         free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
     }
     vars
+}
+
+pub(crate) fn subst_local_decl(
+    typ_substs: &HashMap<Ident, Typ>,
+    local_decl: &LocalDecl,
+) -> LocalDecl {
+    Arc::new(LocalDeclX {
+        ident: local_decl.ident.clone(),
+        typ: subst_typ(typ_substs, &local_decl.typ),
+        kind: local_decl.kind.clone(),
+    })
 }
 
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
@@ -437,7 +449,10 @@ impl ExpX {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {
-                        (format!("{}.has_type({:?})", exp.x.to_user_string(global), t), 99)
+                        (format!("has_type({}, {:?})", exp.x.to_user_string(global), t), 99)
+                    }
+                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
+                        (format!("usize::BITS"), 99)
                     }
                     IntegerTypeBound(kind, mode) => {
                         (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
@@ -710,6 +725,11 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
 }
 
+pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::And;
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
 pub fn sst_implies(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Implies;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
@@ -762,6 +782,10 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     )
 }
 
+pub fn sst_int_literal_bigint(span: &Span, i: num_bigint::BigInt) -> Exp {
+    SpannedTyped::new(span, &Arc::new(TypX::Int(IntRange::Int)), ExpX::Const(Constant::Int(i)))
+}
+
 impl LocalDeclKind {
     pub fn is_mutable(&self) -> bool {
         match self {
@@ -781,6 +805,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureId => false,
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
+            LocalDeclKind::Nondeterministic => false,
         }
     }
 }

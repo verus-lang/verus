@@ -909,13 +909,20 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             mk_stm(StmX::OpenInvariant(s))
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
+            let typ_inv_vars = Arc::new(
+                typ_inv_vars
+                    .iter()
+                    .map(|(uid, typ)| (uid.clone(), coerce_typ_to_native(ctx, typ)))
+                    .collect::<Vec<_>>(),
+            );
+
             state.types.push_scope(true);
             for (name, typ) in typ_inv_vars.iter() {
                 let _ = state.types.insert(name.clone(), typ.clone());
             }
             let body = visit_stm(ctx, state, body);
             state.types.pop_scope();
-            mk_stm(StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars.clone() })
+            mk_stm(StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars })
         }
         StmX::Air(_) => stm.clone(),
         StmX::Block(stms) => mk_stm(StmX::Block(visit_stms(ctx, state, stms))),
@@ -1039,6 +1046,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::OpenInvariantBinder, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
+            | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()
@@ -1110,6 +1118,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         axioms,
         exec_proof_check,
         recommends_check,
+        safe_api_check,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1190,6 +1199,9 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let recommends_check = recommends_check.as_ref().map(|f| {
         Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
     });
+    let safe_api_check = safe_api_check.as_ref().map(|f| {
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
+    });
 
     state.types.pop_scope();
     assert_eq!(state.types.num_scopes(), 0);
@@ -1213,6 +1225,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         axioms,
         exec_proof_check,
         recommends_check,
+        safe_api_check,
     };
     Spanned::new(function.span.clone(), functionx)
 }

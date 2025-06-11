@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
@@ -51,6 +51,7 @@ enum App {
     BitOp(BitOpName),
     StaticVar(Fun),
     ExecFnByName(Fun),
+    ExtEq,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -85,6 +86,16 @@ impl std::fmt::Debug for TermX {
                     }
                     _ => unreachable!(),
                 }
+                for i in 0..es.len() {
+                    write!(f, "{:?}", es[i])?;
+                    if i < es.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            TermX::App(App::ExtEq, es) => {
+                write!(f, "ExtEq(")?;
                 for i in 0..es.len() {
                     write!(f, "{:?}", es[i])?;
                     if i < es.len() - 1 {
@@ -189,6 +200,8 @@ struct Ctxt {
     pure_best_scores: HashMap<Term, Score>,
     // used for Other
     next_id: u64,
+    // gather for all_triggers (include ExtEq)
+    gather_for_all_triggers: bool,
 }
 
 impl Ctxt {
@@ -290,6 +303,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         )
     };
 
+    fn append_typ_params_as_terms(typ: &Typ, all_terms: &mut Vec<Term>) {
+        let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
+            TypX::TypParam(x) => {
+                let x = crate::def::unique_bound(&crate::def::suffix_typ_param_id(x));
+                all_terms.push(Arc::new(TermX::Var(x)));
+                Ok(t.clone())
+            }
+            _ => Ok(t.clone()),
+        };
+        crate::ast_visitor::map_typ_visitor_env(typ, all_terms, &ft).unwrap();
+    }
+
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
@@ -311,15 +336,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let is_pure = is_pures.into_iter().all(|b| b);
             let mut all_terms: Vec<Term> = Vec::new();
             for typ in typs.iter() {
-                let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
-                    TypX::TypParam(x) => {
-                        let x = crate::def::unique_bound(&crate::def::suffix_typ_param_id(x));
-                        all_terms.push(Arc::new(TermX::Var(x)));
-                        Ok(t.clone())
-                    }
-                    _ => Ok(t.clone()),
-                };
-                crate::ast_visitor::map_typ_visitor_env(typ, &mut all_terms, &ft).unwrap();
+                append_typ_params_as_terms(typ, &mut all_terms);
             }
             all_terms.extend(terms);
             match x {
@@ -333,9 +350,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 CallFun::InternalFun(
                     InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
-                CallFun::InternalFun(_) => {
-                    (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
-                }
+                CallFun::InternalFun(
+                    InternalFun::CheckDecreaseInt
+                    | InternalFun::CheckDecreaseHeight
+                    | InternalFun::OpenInvariantMask(..),
+                ) => (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms)))),
             }
         }
         ExpX::CallLambda(e0, es) => {
@@ -442,10 +461,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
             }
         }
-        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
+        ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), e1, e2) => {
             let (_, term1) = gather_terms(ctxt, ctx, e1, 0);
             let (_, term2) = gather_terms(ctxt, ctx, e2, 0);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))))
+            let mut terms = vec![term1, term2];
+            if ctxt.gather_for_all_triggers {
+                append_typ_params_as_terms(typ, &mut terms);
+            }
+            if !ctxt.gather_for_all_triggers {
+                (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
+            } else {
+                (true, Arc::new(TermX::App(App::ExtEq, Arc::new(terms))))
+            }
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
@@ -692,6 +719,7 @@ pub(crate) fn build_triggers(
         pure_terms_by_var: HashMap::new(),
         pure_best_scores: HashMap::new(),
         next_id: 0,
+        gather_for_all_triggers: auto_trigger == AutoType::All,
     };
     for x in vars {
         ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());

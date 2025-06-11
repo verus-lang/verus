@@ -3,7 +3,7 @@ use std::collections::HashMap;
 #[cfg(verus_keep_ghost)]
 use syn_verus::parse_macro_input;
 
-use syn_verus::{spanned::Spanned, Ident, Item, ItemEnum};
+use syn_verus::{Ident, Item, ItemEnum, spanned::Spanned};
 
 use crate::EraseGhost;
 

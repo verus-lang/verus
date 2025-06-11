@@ -9,7 +9,7 @@ Suppose our goal is to compute values in the [Fibonacci sequence](https://en.wik
 We use a `spec` function `fib` to mathematically define our specification using `nat`s
 and a recursive description:
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_spec}}
+{{#include ../../../../examples/guide/invariants.rs:fib_spec}}
 ```
 
 Our goal is to write a more efficient iterative implementation as the `exec`
@@ -18,7 +18,7 @@ function `fib_impl`.  To keep things simple, we'll add a precondition to
 We connect the correctness of `fib_impl`'s return value
 to our mathematical specification in `fib_impl`'s `ensures` clause.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_impl_no_proof}}
+{{#include ../../../../examples/guide/invariants.rs:fib_impl_no_proof}}
 ```
 However, if we ask Verus to verify this code, it reports two errors:
 ```
@@ -85,14 +85,14 @@ it suffices to make our proof go through.  Here's the Verus version of the
 informal property we want.  We write it as a `proof` mode function, since its
 only purpose is to establish this property.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_mono_no_proof}}
+{{#include ../../../../examples/guide/invariants.rs:fib_mono_no_proof}}
 ```
 Verus can't yet prove this, but let's try invoking it in our while loop.
 To call this lemma in our `exec` implementation, we employ
 a `proof {}` block and pass in the relevant arguments.  At the call site, Verus checks
 that the preconditions for `lemma_fib_is_monotonic` hold and then assumes that the postconditions hold.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_final}}
+{{#include ../../../../examples/guide/invariants.rs:fib_final}}
 ```
 We put the lemma invocation after the increment of `i`, so that it establishes that
 `fib(i as nat) <= fib(n as nat)` for the new value of `i` that we're about to compute
@@ -102,29 +102,19 @@ We're not done yet, however.  We still need to prove `lemma_fib_is_monotonic`.  
 construct our inductive proof, we need to lay out the base cases, and then help
 Verus with the inductive step(s).  Here's the basic skeleton:
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_mono_skeleton}}
+{{#include ../../../../examples/guide/invariants.rs:fib_mono_skeleton}}
 ```
-Notice that we've added `assume(false)` to the two trickier cases (following the approach
+Notice that we've added `assume(false)` to the final tricky case (following the approach
 of [using assert and assume](assert_assume.md) to build our proof).  When we run
 Verus, it succeeds, indicating that Verus doesn't need any help with our base cases.
-However, if we remove the first `assume(false)`, Verus reports that the postcondition
-is not satisfied, confirming that Verus needs help here.  We can help Verus by (essentially)
-telling it to unfold the definition of `fib(j)` one level, i.e., by writing:
-```rust
-assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
-```
-In this case, that's enough to complete this branch of the proof, since Verus knows that
-`fib((j - 1) as nat) == fib(i as nat)`, and the assertion shows that `fib(j)` cannot be
-less than `fib(i as nat)` (since `fib` returns non-negative values).
-
 The final portion of the proof, however, needs more help (you can confirm this by
-adding the same assertion we used above; the assertion passes, but the postcondition still fails).
+by removing the `assume(false)` and observing that the proof fails).
 The key idea here is to use our induction hypothesis to show that `fib(i)`
 is smaller than both `fib(j - 1)` and `fib(j - 2)`.  We do this via two recursive invocations
 of `lemma_fib_is_monotonic`.  Note that adding recursive calls means we need to add a decreases clause.
 In this case, we're decreasing the distance between `j` and `i`, so `j - i` works.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:fib_is_mono}}
+{{#include ../../../../examples/guide/invariants.rs:fib_is_mono}}
 ```
 With these additions, the proof succeeds, meaning that our entire program now verifies successfully!
 
@@ -136,13 +126,13 @@ withdrawals from a bank account.  The goal is to determine whether the account's
 drops below 0. We formalize this requirement with the spec function `always_non_negative`,
 which is itself defined in terms of computing a sum of the first `i` elements in a sequence of `i64` values.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:bank_spec}}
+{{#include ../../../../examples/guide/invariants.rs:bank_spec}}
 ```
 
 In our implementation, as usual, we tie the concrete result `r` to our spec
 in the ensures clause.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:bank_no_proof}}
+{{#include ../../../../examples/guide/invariants.rs:bank_no_proof}}
 ```
 Note that we use an `i128` to compute the account's running 
 sum since it allows us to have sufficiently large numbers without overflowing.
@@ -236,6 +226,6 @@ the sums are equal, which completes the proof.
 
 Here's the full version of the verifying implementation.
 ```rust
-{{#include ../../../rust_verify/example/guide/invariants.rs:bank_final}}
+{{#include ../../../../examples/guide/invariants.rs:bank_final}}
 ```
 

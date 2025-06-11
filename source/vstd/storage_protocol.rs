@@ -3,7 +3,7 @@ use super::prelude::*;
 
 verus! {
 
-broadcast use super::set::group_set_axioms, super::map::group_map_axioms;
+broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -133,29 +133,22 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     pub uninterp spec fn loc(self) -> Loc;
 
-    #[verifier::external_body]
-    pub proof fn alloc(p: P, tracked s: Map<K, V>) -> (tracked out: Self)
+    pub axiom fn alloc(p: P, tracked s: Map<K, V>) -> (tracked out: Self)
         requires
             P::rel(p, s),
         ensures
             out.value() == p,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
+    pub axiom fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
         requires
             a.loc() == b.loc(),
         ensures
             out.loc() == a.loc(),
             out.value() == P::op(a.value(), b.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
+    pub axiom fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(a_value, b_value),
         ensures
@@ -163,24 +156,19 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1.loc() == self.loc(),
             out.0.value() == a_value,
             out.1.value() == b_value,
-    {
-        unimplemented!();
-    }
+    ;
 
     /// Since `inv` isn't closed under inclusion, validity for an element
     /// is defined as the inclusion-closure of invariant, i.e., an element
     /// is valid if there exists another element `x` that, added to it,
     /// meets the invariant.
-    #[verifier::external_body]
-    pub proof fn validate(tracked a: &Self) -> (out: (P, Map<K, V>))
+    pub axiom fn validate(tracked self: &Self) -> (out: (P, Map<K, V>))
         ensures
             ({
                 let (q, t) = out;
-                P::rel(P::op(a.value(), q), t)
+                P::rel(P::op(self.value(), q), t)
             }),
-    {
-        unimplemented!();
-    }
+    ;
 
     // Updates and guards
     /// Most general kind of update, potentially depositing and withdrawing
@@ -267,19 +255,15 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
     }
 
-    #[verifier::external_body]
-    pub proof fn guard(tracked p: &Self, s_value: Map<K, V>) -> (tracked s: &Map<K, V>)
+    pub axiom fn guard(tracked p: &Self, s_value: Map<K, V>) -> (tracked s: &Map<K, V>)
         requires
             guards(p.value(), s_value),
         ensures
             s == s_value,
-    {
-        unimplemented!();
-    }
+    ;
 
     // Operations with shared references
-    #[verifier::external_body]
-    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -287,37 +271,29 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn validate_with_shared(tracked p: &mut Self, tracked x: &Self) -> (res: (
+    pub axiom fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
         P,
         Map<K, V>,
     ))
         requires
-            old(p).loc() == x.loc(),
+            old(self).loc() == x.loc(),
         ensures
-            *p == *old(p),
+            *self == *old(self),
             ({
                 let (q, t) = res;
-                { P::rel(P::op(P::op(p.value(), x.value()), q), t) }
+                { P::rel(P::op(P::op(self.value(), x.value()), q), t) }
             }),
-    {
-        unimplemented!();
-    }
+    ;
 
     // See `logic_exchange_with_extra_guard`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L720
@@ -343,8 +319,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     // See `logic_exchange_with_extra_guard_nondeterministic`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L834
     /// Most general kind of update, potentially depositing and withdrawing
-    #[verifier::external_body]
-    pub proof fn exchange_nondeterministic_with_shared(
+    pub axiom fn exchange_nondeterministic_with_shared(
         tracked p: Self,
         tracked x: &Self,
         tracked s: Map<K, V>,
@@ -362,9 +337,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 let (new_p, new_s) = out;
                 new_p.loc() == p.loc() && new_values.contains((new_p.value(), new_s))
             }),
-    {
-        unimplemented!();
-    }
+    ;
 }
 
 } // verus!

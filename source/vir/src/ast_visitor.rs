@@ -366,7 +366,15 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
-                ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+                ExprX::NonSpecClosure {
+                    params,
+                    proof_fn_modes: _,
+                    ret,
+                    requires,
+                    ensures,
+                    body,
+                    external_spec,
+                } => {
                     map.push_scope(true);
                     for binder in params.iter() {
                         let _ = map
@@ -503,6 +511,9 @@ where
                 ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
                 }
+                ExprX::ProofInSpec(e1) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
+                }
                 ExprX::Block(ss, e1) => {
                     for stmt in ss.iter() {
                         expr_visitor_control_flow!(stmt_visitor_dfs(stmt, map, mf));
@@ -521,6 +532,7 @@ where
                 ExprX::NeverToAny(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
                 }
+                ExprX::Nondeterministic => {}
             }
             VisitorControlFlow::Recurse
         }
@@ -741,7 +753,9 @@ where
                 CallTarget::Fun(kind, x, typs, impl_paths, autospec_usage) => {
                     use crate::ast::CallTargetKind;
                     let kind = match kind {
-                        CallTargetKind::Static | CallTargetKind::Dynamic => kind.clone(),
+                        CallTargetKind::Static
+                        | CallTargetKind::ProofFn(..)
+                        | CallTargetKind::Dynamic => kind.clone(),
                         CallTargetKind::DynamicResolved {
                             resolved,
                             typs,
@@ -878,7 +892,15 @@ where
             map.pop_scope();
             ExprX::Closure(Arc::new(params), body)
         }
-        ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes,
+            ret,
+            requires,
+            ensures,
+            body,
+            external_spec,
+        } => {
             let params =
                 vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             let ret = ret.map_result(|t| map_typ_visitor_env(t, env, ft))?;
@@ -909,8 +931,9 @@ where
                 }
             };
 
-            ExprX::ExecClosure {
+            ExprX::NonSpecClosure {
                 params: Arc::new(params),
+                proof_fn_modes: proof_fn_modes.clone(),
                 ret,
                 requires: Arc::new(requires),
                 ensures: Arc::new(ensures),
@@ -1047,6 +1070,10 @@ where
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr }
         }
+        ExprX::ProofInSpec(e1) => {
+            let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::ProofInSpec(expr)
+        }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
@@ -1082,6 +1109,7 @@ where
             let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             ExprX::NeverToAny(expr)
         }
+        ExprX::Nondeterministic => ExprX::Nondeterministic,
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)

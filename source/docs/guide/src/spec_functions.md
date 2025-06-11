@@ -3,7 +3,7 @@
 Let's start with a simple `spec` function that computes the minimum of two integers:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun1}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun1}}
 ```
 
 Unlike `exec` functions,
@@ -17,7 +17,7 @@ The body is public if the function is marked `open`,
 allowing assertions about the function's body to succeed in other modules:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun_mod1}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun_mod1}}
 ```
 
 By contrast, if the function is marked `closed`,
@@ -30,7 +30,7 @@ All `pub` `spec` functions must be marked either `open` or `closed`;
 Verus will complain if the function lacks this annotation.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun_mod2}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun_mod2}}
 ```
 
 In the example above with `min` being `closed`,
@@ -65,7 +65,7 @@ the minimum of 3 numbers,
 and defines its postcondition in terms of the `spec` function `min3`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun3}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun3}}
 ```
 
 The difference between `min3` and `compute_min3` highlights some differences

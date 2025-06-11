@@ -134,6 +134,9 @@ pub trait Fold {
     fn fold_closed(&mut self, i: crate::Closed) -> crate::Closed {
         fold_closed(self, i)
     }
+    fn fold_closure_arg(&mut self, i: crate::ClosureArg) -> crate::ClosureArg {
+        fold_closure_arg(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn fold_const_param(&mut self, i: crate::ConstParam) -> crate::ConstParam {
@@ -454,6 +457,15 @@ pub trait Fold {
     }
     fn fold_fn_mode(&mut self, i: crate::FnMode) -> crate::FnMode {
         fold_fn_mode(self, i)
+    }
+    fn fold_fn_proof_arg(&mut self, i: crate::FnProofArg) -> crate::FnProofArg {
+        fold_fn_proof_arg(self, i)
+    }
+    fn fold_fn_proof_options(
+        &mut self,
+        i: crate::FnProofOptions,
+    ) -> crate::FnProofOptions {
+        fold_fn_proof_options(self, i)
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -807,6 +819,12 @@ pub trait Fold {
     fn fold_mode_proof(&mut self, i: crate::ModeProof) -> crate::ModeProof {
         fold_mode_proof(self, i)
     }
+    fn fold_mode_proof_axiom(
+        &mut self,
+        i: crate::ModeProofAxiom,
+    ) -> crate::ModeProofAxiom {
+        fold_mode_proof_axiom(self, i)
+    }
     fn fold_mode_spec(&mut self, i: crate::ModeSpec) -> crate::ModeSpec {
         fold_mode_spec(self, i)
     }
@@ -1096,6 +1114,9 @@ pub trait Fold {
     fn fold_type_bare_fn(&mut self, i: crate::TypeBareFn) -> crate::TypeBareFn {
         fold_type_bare_fn(self, i)
     }
+    fn fold_type_fn_proof(&mut self, i: crate::TypeFnProof) -> crate::TypeFnProof {
+        fold_type_fn_proof(self, i)
+    }
     fn fold_type_fn_spec(&mut self, i: crate::TypeFnSpec) -> crate::TypeFnSpec {
         fold_type_fn_spec(self, i)
     }
@@ -1248,6 +1269,15 @@ pub trait Fold {
         i: crate::WherePredicate,
     ) -> crate::WherePredicate {
         fold_where_predicate(self, i)
+    }
+    fn fold_with_spec_on_expr(
+        &mut self,
+        i: crate::WithSpecOnExpr,
+    ) -> crate::WithSpecOnExpr {
+        fold_with_spec_on_expr(self, i)
+    }
+    fn fold_with_spec_on_fn(&mut self, i: crate::WithSpecOnFn) -> crate::WithSpecOnFn {
+        fold_with_spec_on_fn(self, i)
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1580,6 +1610,15 @@ where
     F: Fold + ?Sized,
 {
     crate::Closed { token: node.token }
+}
+pub fn fold_closure_arg<F>(f: &mut F, node: crate::ClosureArg) -> crate::ClosureArg
+where
+    F: Fold + ?Sized,
+{
+    crate::ClosureArg {
+        tracked_token: node.tracked_token,
+        pat: full!(f.fold_pat(node.pat)),
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1984,8 +2023,10 @@ where
         movability: node.movability,
         asyncness: node.asyncness,
         capture: node.capture,
+        proof_fn: node.proof_fn,
+        options: (node.options).map(|it| f.fold_fn_proof_options(it)),
         or1_token: node.or1_token,
-        inputs: crate::punctuated::fold(node.inputs, f, F::fold_pat),
+        inputs: crate::punctuated::fold(node.inputs, f, F::fold_closure_arg),
         or2_token: node.or2_token,
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
@@ -2614,10 +2655,34 @@ where
         crate::FnMode::Proof(_binding_0) => {
             crate::FnMode::Proof(f.fold_mode_proof(_binding_0))
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            crate::FnMode::ProofAxiom(f.fold_mode_proof_axiom(_binding_0))
+        }
         crate::FnMode::Exec(_binding_0) => {
             crate::FnMode::Exec(f.fold_mode_exec(_binding_0))
         }
         crate::FnMode::Default => crate::FnMode::Default,
+    }
+}
+pub fn fold_fn_proof_arg<F>(f: &mut F, node: crate::FnProofArg) -> crate::FnProofArg
+where
+    F: Fold + ?Sized,
+{
+    crate::FnProofArg {
+        tracked_token: node.tracked_token,
+        arg: f.fold_bare_fn_arg(node.arg),
+    }
+}
+pub fn fold_fn_proof_options<F>(
+    f: &mut F,
+    node: crate::FnProofOptions,
+) -> crate::FnProofOptions
+where
+    F: Fold + ?Sized,
+{
+    crate::FnProofOptions {
+        bracket_token: node.bracket_token,
+        options: crate::punctuated::fold(node.options, f, F::fold_path_segment),
     }
 }
 #[cfg(feature = "full")]
@@ -2883,8 +2948,10 @@ where
         generics: f.fold_generics(node.generics),
         colon_token: node.colon_token,
         ty: f.fold_type(node.ty),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         eq_token: node.eq_token,
-        expr: f.fold_expr(node.expr),
+        block: (node.block).map(|it| Box::new(f.fold_block(*it))),
+        expr: (node.expr).map(|it| Box::new(f.fold_expr(*it))),
         semi_token: node.semi_token,
     }
 }
@@ -3725,6 +3792,17 @@ where
         proof_token: node.proof_token,
     }
 }
+pub fn fold_mode_proof_axiom<F>(
+    f: &mut F,
+    node: crate::ModeProofAxiom,
+) -> crate::ModeProofAxiom
+where
+    F: Fold + ?Sized,
+{
+    crate::ModeProofAxiom {
+        axiom_token: node.axiom_token,
+    }
+}
 pub fn fold_mode_spec<F>(f: &mut F, node: crate::ModeSpec) -> crate::ModeSpec
 where
     F: Fold + ?Sized,
@@ -4270,6 +4348,7 @@ where
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
+        with: (node.with).map(|it| f.fold_with_spec_on_fn(it)),
     }
 }
 pub fn fold_signature_spec_attr<F>(
@@ -4528,6 +4607,9 @@ where
         crate::Type::FnSpec(_binding_0) => {
             crate::Type::FnSpec(f.fold_type_fn_spec(_binding_0))
         }
+        crate::Type::FnProof(_binding_0) => {
+            crate::Type::FnProof(f.fold_type_fn_proof(_binding_0))
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4557,6 +4639,19 @@ where
         paren_token: node.paren_token,
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_bare_fn_arg),
         variadic: (node.variadic).map(|it| f.fold_bare_variadic(it)),
+        output: f.fold_return_type(node.output),
+    }
+}
+pub fn fold_type_fn_proof<F>(f: &mut F, node: crate::TypeFnProof) -> crate::TypeFnProof
+where
+    F: Fold + ?Sized,
+{
+    crate::TypeFnProof {
+        proof_fn_token: node.proof_fn_token,
+        generics: (node.generics).map(|it| f.fold_angle_bracketed_generic_arguments(it)),
+        options: (node.options).map(|it| f.fold_fn_proof_options(it)),
+        paren_token: node.paren_token,
+        inputs: crate::punctuated::fold(node.inputs, f, F::fold_fn_proof_arg),
         output: f.fold_return_type(node.output),
     }
 }
@@ -4951,6 +5046,34 @@ where
         crate::WherePredicate::Type(_binding_0) => {
             crate::WherePredicate::Type(f.fold_predicate_type(_binding_0))
         }
+    }
+}
+pub fn fold_with_spec_on_expr<F>(
+    f: &mut F,
+    node: crate::WithSpecOnExpr,
+) -> crate::WithSpecOnExpr
+where
+    F: Fold + ?Sized,
+{
+    crate::WithSpecOnExpr {
+        with: node.with,
+        inputs: crate::punctuated::fold(node.inputs, f, F::fold_expr),
+        outputs: (node.outputs).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
+        follows: (node.follows).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
+    }
+}
+pub fn fold_with_spec_on_fn<F>(
+    f: &mut F,
+    node: crate::WithSpecOnFn,
+) -> crate::WithSpecOnFn
+where
+    F: Fold + ?Sized,
+{
+    crate::WithSpecOnFn {
+        with: node.with,
+        inputs: crate::punctuated::fold(node.inputs, f, F::fold_fn_arg),
+        outputs: (node.outputs)
+            .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_pat_type))),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

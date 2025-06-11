@@ -11,7 +11,7 @@ use crate::ast_util::{
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
-use crate::messages::{error, error_with_label, Message, Span};
+use crate::messages::{Message, Span, error, error_with_label};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -327,6 +327,7 @@ fn check_one_expr(
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}
+                CallTargetKind::ProofFn(..) => {}
                 CallTargetKind::Dynamic => {}
                 CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
                     check_path_and_get_function(
@@ -485,13 +486,13 @@ fn check_one_expr(
             }
             _ => {}
         },
-        ExprX::ExecClosure { params, ret, .. } => {
+        ExprX::NonSpecClosure { params, ret, proof_fn_modes, .. } => {
             for p in params.iter() {
                 check_typ(ctxt, &p.a, &expr.span)?;
             }
             check_typ(ctxt, &ret.a, &expr.span)?;
 
-            crate::closures::check_closure_well_formed(expr)?;
+            crate::closures::check_closure_well_formed(expr, proof_fn_modes.is_some())?;
         }
         ExprX::Fuel(f, fuel, is_broadcast_use) => {
             if ctxt.reveal_groups.contains(f) && *fuel == 1 {
@@ -564,6 +565,23 @@ fn check_one_expr(
 
             check_typ(ctxt, &expr.typ, &expr.span)?;
         }
+        ExprX::ProofInSpec(_) => {
+            // At the moment, spec termination checking is the only place set up to handle
+            // proofs properly.
+            // Recommendation checks could also handle proof blocks in the future,
+            // but they are not ready yet since ast_to_sst doesn't generate,
+            // for example, assertions for "assert" for recommends.
+            // (see https://github.com/verus-lang/verus/issues/692 )
+            match (place, function.x.mode, function.x.decrease.len()) {
+                (Place::Body, Mode::Spec, dec) if dec > 0 => {}
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "proof blocks inside spec code is currently supported only for spec functions with decreases",
+                    ));
+                }
+            }
+        }
         ExprX::Header(header) => {
             return Err(error(
                 &expr.span,
@@ -581,7 +599,8 @@ fn check_one_expr(
 #[derive(Clone, Copy)]
 enum Place {
     PreState(&'static str),
-    BodyOrPostState,
+    PostState,
+    Body,
 }
 
 fn check_expr(
@@ -635,6 +654,14 @@ fn check_function(
             .secondary_span(&orig_decl.span));
         }
     } else {
+    }
+    if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &function.x.kind {
+        if function.x.attrs.exec_allows_no_decreases_clause {
+            return Err(error(
+                &function.span,
+                "trait method declaration cannot declare exec_allows_no_decreases_clause",
+            ));
+        }
     }
 
     if function.x.attrs.is_decrease_by {
@@ -824,6 +851,13 @@ fn check_function(
         ));
     }
 
+    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
+        return Err(error(
+            &function.span,
+            "#[verifier::assume_termination] not allowed with --no-cheating",
+        ));
+    }
+
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
@@ -965,7 +999,7 @@ fn check_function(
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -1070,9 +1104,11 @@ fn check_function(
 
     if function.x.mode == Mode::Exec
         && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+        && (function.x.attrs.exec_assume_termination
+            || function.x.attrs.exec_allows_no_decreases_clause)
     {
         diags.push(VirErrAs::Warning(
-            error(&function.span, "decreases checks in exec functions do not guarantee termination of functions with loops or of their callers"),
+            error(&function.span, "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops"),
         ));
     }
 
@@ -1087,7 +1123,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::Body, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1159,6 +1195,30 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
                         "#[verifier::type_invariant]: a struct with a type invariant cannot have any fields public to the crate",
                     ));
                 }
+            }
+        }
+    }
+
+    // I actually think it's impossible to trigger this, at least when the datatype's public
+    // signature is well-formed (i.e., Verus recognizes all trait bounds, etc.)
+    // See the notes in `get_sized_constraint` in rust_to_vir_adts.rs.
+    if let Some(sized_constraint) = &dt.x.sized_constraint {
+        match check_typ(ctxt, sized_constraint, &dt.span) {
+            Ok(()) => {}
+            Err(e) => {
+                let typ_args = Arc::new(
+                    dt.x.typ_params
+                        .iter()
+                        .map(|(id, _)| Arc::new(TypX::TypParam(id.clone())))
+                        .collect::<Vec<_>>(),
+                );
+                let t = Arc::new(TypX::Datatype(dt.x.name.clone(), typ_args, Arc::new(vec![])));
+                let e = e.help(format!(
+                    "this type appears in the implicit trait bound, `{:}: Sized where {:}: Sized`",
+                    typ_to_diagnostic_str(&t),
+                    typ_to_diagnostic_str(sized_constraint)
+                ));
+                return Err(e);
             }
         }
     }

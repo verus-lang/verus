@@ -60,7 +60,7 @@ pub proof fn lemma_mul_basics(x: int)
 }
 
 /// Proof of basic properties of multiplication by `x`, specifically
-/// what happens when multiplying by 0 or 1
+/// what happens when multiplying by 0 or 1.
 pub broadcast proof fn lemma_mul_basics_1(x: int)
     ensures
         #[trigger] (0 * x) == 0,
@@ -68,7 +68,7 @@ pub broadcast proof fn lemma_mul_basics_1(x: int)
 }
 
 /// Proof of basic properties of multiplication by `x`, specifically
-/// what happens when multiplying by 0 or 1
+/// what happens when multiplying by 0 or 1.
 pub broadcast proof fn lemma_mul_basics_2(x: int)
     ensures
         #[trigger] (x * 0) == 0,
@@ -76,7 +76,7 @@ pub broadcast proof fn lemma_mul_basics_2(x: int)
 }
 
 /// Proof of basic properties of multiplication by `x`, specifically
-/// what happens when multiplying by 0 or 1
+/// what happens when multiplying by 0 or 1.
 pub broadcast proof fn lemma_mul_basics_3(x: int)
     ensures
         #[trigger] (x * 1) == x,
@@ -84,7 +84,7 @@ pub broadcast proof fn lemma_mul_basics_3(x: int)
 }
 
 /// Proof of basic properties of multiplication by `x`, specifically
-/// what happens when multiplying by 0 or 1
+/// what happens when multiplying by 0 or 1.
 pub broadcast proof fn lemma_mul_basics_4(x: int)
     ensures
         #[trigger] (1 * x) == x,
@@ -98,7 +98,7 @@ pub broadcast group group_mul_basics {
     lemma_mul_basics_4,
 }
 
-/// Proof that `x * y` is nonzero if and only if both `x` and `y` are nonzero
+/// Proof that `x * y` is nonzero if and only if both `x` and `y` are nonzero.
 pub broadcast proof fn lemma_mul_nonzero(x: int, y: int)
     ensures
         #[trigger] (x * y) != 0 <==> x != 0 && y != 0,
@@ -106,7 +106,7 @@ pub broadcast proof fn lemma_mul_nonzero(x: int, y: int)
     MulINL::lemma_mul_nonzero(x, y);
 }
 
-/// Proof that any integer multiplied by 0 results in a product of 0
+/// Proof that any integer multiplied by 0 results in a product of 0.
 pub broadcast proof fn lemma_mul_by_zero_is_zero(x: int)
     ensures
         #![trigger x * 0]
@@ -160,7 +160,7 @@ pub broadcast proof fn lemma_mul_ordering(x: int, y: int)
     applied to equal arguments.
 */
 
-/// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`
+/// Proof that, since `x <= y` and `z >= 0`, `x * z <= y * z`.
 pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
     requires
         x <= y,
@@ -184,7 +184,7 @@ pub broadcast proof fn lemma_mul_strict_inequality(x: int, y: int, z: int)
 
 /// Proof that since `x` is bounded above by `xbound` and `y` is
 /// bounded above by `ybound`, the product of `x` and `y` is bounded
-/// above by the product of the bounds
+/// above by the product of the bounds.
 pub broadcast proof fn lemma_mul_upper_bound(x: int, xbound: int, y: int, ybound: int)
     requires
         x <= xbound,
@@ -230,7 +230,7 @@ pub broadcast proof fn lemma_mul_left_inequality(x: int, y: int, z: int)
 }
 
 /// Proof that if `x` and `y` have equal results when multiplied by
-/// nonzero `m`, then they're equal
+/// nonzero `m`, then they're equal.
 pub broadcast proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
     requires
         m != 0,
@@ -244,7 +244,7 @@ pub broadcast proof fn lemma_mul_equality_converse(m: int, x: int, y: int)
     lemma_mul_induction_auto(m, |u: int| x < y && 0 > u ==> x * u > y * u);
 }
 
-/// Proof that since `x * z <= y * z` and `z > 0`, that `x <= y`
+/// Proof that since `x * z <= y * z` and `z > 0`, that `x <= y`.
 pub broadcast proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
     requires
         #[trigger] (x * z) <= #[trigger] (y * z),
@@ -255,7 +255,7 @@ pub broadcast proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
     lemma_mul_induction_auto(z, |u: int| x * u <= y * u && u > 0 ==> x <= y);
 }
 
-/// Proof that since `x * z < y * z` and `z >= 0`, we know `x < y`
+/// Proof that since `x * z < y * z` and `z >= 0`, we know `x < y`.
 pub broadcast proof fn lemma_mul_strict_inequality_converse(x: int, y: int, z: int)
     requires
         #[trigger] (x * z) < #[trigger] (y * z),
@@ -267,7 +267,7 @@ pub broadcast proof fn lemma_mul_strict_inequality_converse(x: int, y: int, z: i
 }
 
 /// Proof that multiplication distributes over addition, specifically that
-/// `x * (y + z) == x * y + x * z`
+/// `x * (y + z) == x * y + x * z`.
 pub broadcast proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
     ensures
         #[trigger] (x * (y + z)) == x * y + x * z,
@@ -276,7 +276,7 @@ pub broadcast proof fn lemma_mul_is_distributive_add(x: int, y: int, z: int)
 }
 
 /// Proof that multiplication distributes over addition, specifically that
-/// `(y + z) * x == y * x + z * x`
+/// `(y + z) * x == y * x + z * x`.
 pub broadcast proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z: int)
     ensures
         #[trigger] ((y + z) * x) == y * x + z * x,
@@ -286,7 +286,7 @@ pub broadcast proof fn lemma_mul_is_distributive_add_other_way(x: int, y: int, z
 }
 
 /// Proof that multiplication distributes over subtraction, specifically that
-/// `x * (y - z) == x * y - x * z`
+/// `x * (y - z) == x * y - x * z`.
 pub broadcast proof fn lemma_mul_is_distributive_sub(x: int, y: int, z: int)
     ensures
         #[trigger] (x * (y - z)) == x * y - x * z,
@@ -323,7 +323,7 @@ pub broadcast group group_mul_is_commutative_and_distributive {
 /// Proof that multiplication is commutative, distributes over
 /// addition, and distributes over subtraction, in the specific cases
 /// where one of the arguments to the multiplication is `x` and the
-/// other arguments are `y` and `z`
+/// other arguments are `y` and `z`.
 proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
     ensures
         x * (y + z) == x * y + x * z,
@@ -341,7 +341,7 @@ proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
 
 /// Proof that multiplication distributes over addition and
 /// subtraction, whether the addition or subtraction happens in the
-/// first or the second argument to the multiplication
+/// first or the second argument to the multiplication.
 // pub broadcast proof fn lemma_mul_is_distributive_plus(x: int, y: int, z: int)
 //     ensures
 //         forall|x: int, y: int, z: int| #[trigger] (x * (y + z)) == x * y + x * z,
@@ -354,7 +354,7 @@ proof fn lemma_mul_is_distributive(x: int, y: int, z: int)
 //     broadcast use lemma_mul_is_commutative;
 // }
 /// Proof that if `x` and `y` are both positive, then their product is
-/// also positive
+/// also positive.
 pub broadcast proof fn lemma_mul_strictly_positive(x: int, y: int)
     ensures
         (0 < x && 0 < y) ==> (0 < #[trigger] (x * y)),
@@ -362,7 +362,7 @@ pub broadcast proof fn lemma_mul_strictly_positive(x: int, y: int)
     MulINL::lemma_mul_strictly_positive(x, y);
 }
 
-/// Proof that since `x > 1` and `y > 0`, `y < x * y`
+/// Proof that since `x > 1` and `y > 0`, `y < x * y`.
 pub broadcast proof fn lemma_mul_strictly_increases(x: int, y: int)
     requires
         1 < x,
@@ -374,7 +374,7 @@ pub broadcast proof fn lemma_mul_strictly_increases(x: int, y: int)
 }
 
 /// Proof that since `x` and `y` are both positive, their product is
-/// greater than or equal to `y`
+/// greater than or equal to `y`.
 pub broadcast proof fn lemma_mul_increases(x: int, y: int)
     requires
         0 < x,
@@ -386,7 +386,7 @@ pub broadcast proof fn lemma_mul_increases(x: int, y: int)
 }
 
 /// Proof that since `x` and `y` are non-negative, their product is
-/// non-negative
+/// non-negative.
 pub broadcast proof fn lemma_mul_nonnegative(x: int, y: int)
     requires
         0 <= x,
@@ -398,7 +398,7 @@ pub broadcast proof fn lemma_mul_nonnegative(x: int, y: int)
 }
 
 /// Proof that negating `x` or `y` before multiplying them together
-/// produces the negation of the product of `x` and `y`
+/// produces the negation of the product of `x` and `y`.
 pub broadcast proof fn lemma_mul_unary_negation(x: int, y: int)
     ensures
         #![trigger (-x) * y]
@@ -409,7 +409,7 @@ pub broadcast proof fn lemma_mul_unary_negation(x: int, y: int)
 }
 
 /// Proof that multiplying `-x` and `-y` produces the same product as
-/// multiplying `x` and `y`
+/// multiplying `x` and `y`.
 pub broadcast proof fn lemma_mul_cancels_negatives(x: int, y: int)
     ensures
         #[trigger] (x * y) == (-x) * (-y),

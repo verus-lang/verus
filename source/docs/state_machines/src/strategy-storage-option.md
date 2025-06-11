@@ -181,23 +181,24 @@ by {
 
 ### Operations that manipulate optional tokens
 
-You can also write versions of the above operations that operate on optional tokens.
+You can also write versions of the above operations that operate on an optional token
+`opt_tok:` <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>.
 The operations below are equivalent to the above versions whenever `opt_tok == Some(tok)`,
 and they are all no-ops when `opt_tok == None`.
 
-To deposit an <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
+To deposit `opt_tok:` <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
 
 ```rust
 deposit field += (opt_tok);
 ```
 
-To withdraw an <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
+To withdraw `opt_tok:` <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
 
 ```rust
 remove field -= (opt_tok);
 ```
 
-To obtain an <code>&amp;Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
+To obtain `opt_tok:` <code>&amp;Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>:
 
 ```rust
 guard field >= (opt_v);

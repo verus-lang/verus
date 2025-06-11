@@ -71,12 +71,10 @@ pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
 // (the axiom also shows that slice@.len() is in-bounds for usize)
-pub broadcast proof fn axiom_spec_len<T>(slice: &[T])
+pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
     ensures
         #[trigger] spec_slice_len(slice) == slice@.len(),
-{
-    admit();
-}
+;
 
 #[verifier::when_used_as_spec(spec_slice_len)]
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
@@ -122,13 +120,19 @@ pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
     idx: I,
 ) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;
 
-pub broadcast proof fn axiom_slice_get_usize<T>(v: &[T], i: usize)
+pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
         i < v.len() ==> #[trigger] spec_slice_get(v, i) === Some(&v[i as int]),
         i >= v.len() ==> spec_slice_get(v, i).is_none(),
-{
-    admit();
-}
+;
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExIter<'a, T: 'a>(core::slice::Iter<'a, T>);
+
+pub assume_specification<T>[ <[T]>::iter ](slice: &[T]) -> (r: core::slice::Iter<'_, T>)
+;
 
 pub broadcast group group_slice_axioms {
     axiom_spec_len,

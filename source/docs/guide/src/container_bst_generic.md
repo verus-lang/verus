@@ -15,7 +15,7 @@ We can define the concept of ["total order"](https://en.wikipedia.org/wiki/Total
 generically by creating a trait.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:trait}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:trait}}
 ```
 
 This trait simultaneously:
@@ -38,14 +38,14 @@ spec equality.
 We'll start by updating the structs to take a generic parameter `K: TotalOrdered`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:structs}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:structs}}
 ```
 
 We'll also update the well-formedness condition to use the generic `K::le` instead of integer `<=`.
 Where the original definition used `a < b`, we now use `a.le(b) && a != b`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:well_formed}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:well_formed}}
 ```
 
 Meanwhile, the definition of `as_map` doesn't rely on the ordering function,
@@ -72,7 +72,7 @@ But we already established that `key < self.key`. Contradiction.
 (Formally, this contradiction can be obtained by invoking antisymmetry.)
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:node_get}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:node_get}}
 ```
 
 We can update `insert` and `delete` similarly, manually inserting lemma calls to invoke

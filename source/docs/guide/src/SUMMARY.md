@@ -5,9 +5,12 @@
 # Getting started
 
 - [Getting started](./getting_started.md)
+  - [... on the command line](./getting_started_cmd_line.md)
+  - [... with VSCode](./getting_started_vscode.md)
 
 # Tutorial: Fundamentals
 
+- [Using Verus within Rust](./verus_macro_intro.md)
 - [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
     - [Expressions and operators for specifications](./operators.md)
@@ -23,6 +26,7 @@
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
+        - [Lightweight termination checking](exec_termination.md)
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
         - [For Loops](for.md)
@@ -59,7 +63,7 @@
 - [Managing proof performance and why it's critical](smt_perf_overview.md)
     - [Measuring verification performance](performance.md)
     - [Quantifier profiling](profiling.md)
-    - [Modules, hiding, opaque, reveal]() <!--- Chris --->
+    - [Modules, hiding, opaque, reveal](opaque.md)
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
@@ -69,9 +73,9 @@
 
 # Tutorial: Verification and Rust
 
-- [Mutation, references, and borrowing]() <!--- Andrea --->
-    - [Requires and ensures with mutable references]() <!--- Andrea --->
-    - [Assertions containing mutable references]() <!--- Andrea --->
+- [Mutation, references, and borrowing](mutation-references-borrowing.md) <!--- Andrea --->
+    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md) <!--- Andrea --->
+    - [Assertions containing mutable references](assert-mut-ref.md) <!--- Andrea --->
 - [Traits]()
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
