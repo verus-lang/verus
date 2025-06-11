@@ -495,7 +495,7 @@ fn get_initializer_expr(f: &Ident, op: &SpecialOp) -> Expr {
     let cur = get_cur(f);
     match &op.elt {
         MonoidElt::OptionSome(None) => Expr::Verbatim(quote! {
-            #cur.get_Some_0()
+            #cur.arrow_0()
         }),
         MonoidElt::SingletonKV(key, None) => Expr::Verbatim(quote! {
             #cur.index(#key)
@@ -548,7 +548,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             MonoidElt::OptionSome(e) => Some(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::imply(
                     (#cur) is Some,
-                    #vstd::prelude::equal((#cur).get_Some_0(), #e),
+                    #vstd::prelude::equal((#cur).arrow_0(), #e),
                 )
             })),
             MonoidElt::SingletonMultiset(_) => None,
@@ -739,7 +739,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
         MonoidElt::OptionSome(None) => {
             let pat = pat_opt.as_ref().unwrap();
             if !is_definitely_irrefutable(pat) {
-                let e = expr_matches(&Expr::Verbatim(quote! { (#cur).get_Some_0() }), pat);
+                let e = expr_matches(&Expr::Verbatim(quote! { (#cur).arrow_0() }), pat);
                 Expr::Verbatim(quote! { (#cur) is Some && (#e) })
             } else {
                 Expr::Verbatim(quote! { (#cur) is Some })

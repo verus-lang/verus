@@ -18,7 +18,7 @@ tokenized_state_machine!{ State {
 
     #[invariant]
     pub fn token_exists_correct(&self) -> bool {
-        self.token_exists <==> self.field.is_Some()
+        self.token_exists <==> self.field is Some
     }
 
     init!{

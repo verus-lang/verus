@@ -102,7 +102,7 @@ tokenized_state_machine!{
                 require(!pre.exc_locked);
                 remove shared_pending -= {r};
 
-                birds_eye let t = pre.storage.get_Some_0();
+                birds_eye let t = pre.storage->0;
                 add shared_guard += {(r, t)};
             }
         }
@@ -142,11 +142,11 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn exc_inv(&self) -> bool {
-            &&& self.exc_locked <==> (self.exc_pending.is_Some() || self.exc_guard.is_Some())
-            &&& self.storage.is_Some() <==> self.exc_guard.is_None()
+            &&& self.exc_locked <==> (self.exc_pending is Some || self.exc_guard is Some)
+            &&& self.storage is Some <==> self.exc_guard is None
             &&& if let Option::Some(cur_r) = self.exc_pending {
                 &&& 0 <= cur_r <= self.rc_width
-                &&& self.exc_guard.is_None()
+                &&& self.exc_guard is None
                 &&& forall |x| self.shared_guard.count(x) > 0 ==> !(0 <= x.0 < cur_r)
             } else {
                 true
@@ -206,7 +206,7 @@ tokenized_state_machine!{
 
         #[inductive(exc_check_count)]
         fn exc_check_count_inductive(pre: Self, post: Self) {
-            let prev_r = pre.exc_pending.get_Some_0();
+            let prev_r = pre.exc_pending->0;
             assert forall |x| #[trigger] post.shared_guard.count(x) > 0
                 && x.0 == prev_r implies false
             by {
@@ -228,7 +228,7 @@ tokenized_state_machine!{
 
         #[inductive(shared_finish)]
         fn shared_finish_inductive(pre: Self, post: Self, r: int) {
-            let t = pre.storage.get_Some_0();
+            let t = pre.storage->0;
 
             assert forall |r0| 0 <= r0 < post.rc_width implies
                 #[trigger] post.ref_counts.index(r0) ==
