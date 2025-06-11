@@ -164,7 +164,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed {:?}", typ),
+                    None => {
+                        // this probably means you forgot to call coerce_typ_to_poly
+                        // or coerce_typ_to_native for this type during the poly pass
+                        panic!("abstract datatype should be boxed {:?}", typ)
+                    }
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -499,6 +503,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             } else {
                 if typ_as_mono(typ).is_none() {
+                    // this probably means you forgot to call coerce_typ_to_poly
+                    // or coerce_typ_to_native for this type during the poly pass
                     panic!("abstract datatype should be boxed")
                 } else {
                     None
