@@ -197,7 +197,6 @@ pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
                         _ => (),
                     }
                     _ => {}
-                _ => (),
             }
         }
     }
