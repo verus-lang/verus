@@ -143,6 +143,26 @@ pub assume_specification<T: core::fmt::Debug, E>[ Result::<T, E>::unwrap_err ](
         e == result->Err_0,
 ;
 
+// expect
+#[verifier::inline]
+pub open spec fn spec_expect<T, E: core::fmt::Debug>(result: Result<T, E>, msg: &str) -> T
+    recommends
+        result is Ok,
+{
+    result->Ok_0
+}
+
+#[verifier::when_used_as_spec(spec_expect)]
+pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
+    result: Result<T, E>,
+    msg: &str,
+) -> (t: T)
+    requires
+        result is Ok,
+    ensures
+        t == result->Ok_0,
+;
+
 // map
 pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
     result: Result<T, E>,

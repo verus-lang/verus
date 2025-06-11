@@ -53,4 +53,13 @@ fn err_test() {
     runtime_assert(r4.err().is_none());
 }
 
+fn expect_test() {
+    let r1: Result<i32, i32> = Ok(7);
+    runtime_assert(r1.ok().is_some());
+    runtime_assert(r1.ok().expect("is ok") == 7);
+    let r2: Result<bool, i32> = Ok(false);
+    runtime_assert(r2.ok().is_some());
+    runtime_assert(r2.ok().expect("is ok") == false);
+}
+
 } // verus!
