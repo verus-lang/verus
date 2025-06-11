@@ -56,6 +56,13 @@ pub trait OptionAdditionalFns<T>: Sized {
             t == self->0,
     ;
 
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
+        requires
+            self.tracked_is_some(),
+        ensures
+            t == self->0,
+    ;
+
     proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
         requires
             self.tracked_is_some(),
@@ -103,6 +110,13 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
+        match self {
+            Option::Some(t) => t,
+            Option::None => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T) {
         match self {
             Option::Some(t) => t,
             Option::None => proof_from_false(),
@@ -188,12 +202,31 @@ pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default
         t == spec_unwrap_or(option, default),
 ;
 
+// expect
+#[verifier::inline]
+pub open spec fn spec_expect<T>(option: Option<T>, msg: &str) -> T
+    recommends
+        option is Some,
+{
+    option->0
+}
+
+#[verifier::when_used_as_spec(spec_expect)]
+pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str) -> (t: T)
+    requires
+        option is Some,
+    ensures
+        t == spec_expect(option, msg),
+;
+
+// take
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == old(option),
         *option is None,
 ;
 
+// map
 pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<T>, f: F) -> (ret:
     Option<U>)
     requires
@@ -203,6 +236,7 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// clone
 pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T>) -> (res: Option<
     T,
 >)
