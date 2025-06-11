@@ -1450,3 +1450,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] param_boxing_issue1725 verus_code! {
+        mod a {
+            use vstd::prelude::*;
+
+            fn write<'a, T, C>(t: &'a T) {
+                let j = |s: &crate::foo::Context<'a, T>| true;
+            }
+        }
+
+        mod foo {
+            use vstd::prelude::*;
+
+            pub struct Context<'a, T> {
+                t: &'a T,
+            }
+        }
+    } => Ok(())
+}
