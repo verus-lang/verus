@@ -23,6 +23,8 @@ pub(crate) trait ExToOwned {
 #[verifier::reject_recursive_types(B)]
 pub struct ExCow<'a, B: 'a + ?Sized + ToOwned>(Cow<'a, B>);
 
+// We are using `T: Clone` as a more restrictive bound than what's in std (where
+// T: ToOwned), since ToOwned::Owned may be a different type than `T`.
 #[cfg(feature = "alloc")]
 impl<'a, T: View + Clone> View for Cow<'a, T> {
     type V = T::V;
@@ -35,6 +37,8 @@ impl<'a, T: View + Clone> View for Cow<'a, T> {
     }
 }
 
+// We are using `T: Clone` as a more restrictive bound than what's in std (where
+// T: ToOwned), since ToOwned::Owned may be a different type than `T`.
 #[cfg(feature = "alloc")]
 impl<'a, T: DeepView + Clone> DeepView for Cow<'a, T> {
     type V = T::V;
