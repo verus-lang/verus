@@ -1,6 +1,6 @@
 # Modules, hiding, opaque, reveal
 
-One possibility of Z3 timing out is that it's trying to unwrap a function definition too aggressively. This especially happens when a spec function is complex, or contains problematic quantifiers.
+One possible cause for verification timeouts is unfolding a function definition that is especially complex, or contains problematic quantifiers.
 
 To alleviate this, you can use `opaque` to hide the body of the function from the verifier. You can then use `reveal` to selectively reveal the body of the function in places where you want the verifier to unfold its definition.
 
