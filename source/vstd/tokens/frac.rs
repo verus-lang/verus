@@ -6,7 +6,7 @@ use super::*;
 
 verus! {
 
-broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_axioms};
+broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_lemmas};
 // Too bad that `nat` and `int` are forbidden as the type of a const generic parameter
 
 enum FractionalCarrier<T, const TOTAL: u64> {
