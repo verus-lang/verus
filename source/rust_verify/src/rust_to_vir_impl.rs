@@ -547,8 +547,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     all_trait_ids.extend(external_info.local_trait_ids.iter().cloned());
     external_info.trait_id_set.extend(all_trait_ids.iter().cloned());
 
-    // let trait_map: HashMap<Path, Trait> =
-    //     krate.traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect();
     let mut trait_map: HashMap<Path, Vec<Trait>> =
         krate.traits.iter().map(|t| (t.x.name.clone(), vec![t.clone()])).collect();
     for k in imported {
