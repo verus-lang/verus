@@ -12,6 +12,6 @@ Here's a small example of how to use `opaque` and `reveal`:
 
 This is very similar to `closed spec` functions discussed in the [previous section](spec_functions.md)! The main difference is that `opaque` and `reveal` are more flexible. `opaque` hides the function body even in the current module, so you can use reveal to selectively expose the function body in specific proof blocks.
 
-In general, you want to use `closed spec` if you want to have the function body available in the current module, and you build proof function about this specification in the same module. So you all you need outside the module is the public proof functions related to this `spec` function. Therefore `open` and `closed` spec function are well suited for abstraction.
+In general, you want to use `closed spec` if you want to have the function body available in the current module, and you build proof functions about this specification in the same module. So you all you need outside the module is the public proof functions related to this `spec` function. Therefore `open` and `closed` spec function are well suited for abstraction, whereas `opaque` is a mechanism for controlling automation and verification performance, rather than modularity.
 
 You can see more advanced use of hiding a function body in the [reference](reference-reveal-hide.md).
