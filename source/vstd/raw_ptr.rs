@@ -814,6 +814,7 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
         pt.0.addr() as int % align as int == 0,
         pt.0@.metadata == Metadata::Thin,
         pt.0@.provenance == pt.1@.provenance(),
+        pt.1@.provenance().alloc_len() == size,
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition
