@@ -4806,7 +4806,7 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
-        s1.source_file() == s2.source_file() && l1.eq(&l2)
+        s1.source().file() == s2.source().file() && l1.eq(&l2)
     };
     fn mk_joint_punct(t: Option<(char, proc_macro::Spacing, Span)>) -> TokenTree {
         let (op, _, span) = t.unwrap();

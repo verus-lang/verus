@@ -24,12 +24,12 @@ use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::{CtorKind, DefKind, Res};
-use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::{
-    BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt, Lit,
-    LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind, StructTailExpr,
-    UnOp,
+    AssignOpKind, BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr,
+    LetStmt, Lit, LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind,
+    StructTailExpr, UnOp,
 };
+use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
@@ -526,6 +526,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
         PatKind::Err(_) => unsupported_err!(pat.span, "err patterns", pat),
+        PatKind::Missing => unsupported_err!(pat.span, "missing patterns", pat),
     };
     let pattern = bctx.spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -682,10 +683,7 @@ pub(crate) fn invariant_block_open<'a>(
                     ..
                 }),
             els: None,
-            ty: _,
-            hir_id: _,
-            span: _,
-            source: _,
+            ..
         }) if dot_dot_pos.as_opt_usize().is_none() => {
             let verus_item = verus_items.id_to_name.get(fun_id);
             let atomicity = match verus_item {
@@ -2210,7 +2208,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
-            if matches!(op.node, BinOpKind::Div | BinOpKind::Rem) {
+            if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
                 let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
                 if matches!(range, IntRange::I(_) | IntRange::ISize) {
                     // Non-Euclidean division, which will need more encoding
@@ -2270,15 +2268,37 @@ fn lit_to_vir<'tcx>(
     }
 }
 
-fn binopkind_to_binaryop<'tcx>(
+fn assignop_kind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    op: &Spanned<BinOpKind>,
+    op: &Spanned<AssignOpKind>,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
     mode_for_ghostness: Mode,
 ) -> Result<BinaryOp, VirErr> {
-    let vop = match op.node {
+    let bop: BinOpKind = match op.node {
+        AssignOpKind::AddAssign => BinOpKind::Add,
+        AssignOpKind::SubAssign => BinOpKind::Sub,
+        AssignOpKind::MulAssign => BinOpKind::Mul,
+        AssignOpKind::DivAssign => BinOpKind::Div,
+        AssignOpKind::RemAssign => BinOpKind::Rem,
+        AssignOpKind::BitXorAssign => BinOpKind::BitXor,
+        AssignOpKind::BitAndAssign => BinOpKind::BitAnd,
+        AssignOpKind::BitOrAssign => BinOpKind::BitOr,
+        AssignOpKind::ShlAssign => BinOpKind::Shl,
+        AssignOpKind::ShrAssign => BinOpKind::Shr,
+    };
+    binopkind_to_binaryop_inner(bctx, bop, tc, lhs, rhs, mode_for_ghostness)
+}
+fn binopkind_to_binaryop_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    op: BinOpKind,
+    tc: &rustc_middle::ty::TypeckResults,
+    lhs: &Expr,
+    rhs: &Expr,
+    mode_for_ghostness: Mode,
+) -> Result<BinaryOp, VirErr> {
+    let vop = match op {
         BinOpKind::And => BinaryOp::And,
         BinOpKind::Or => BinaryOp::Or,
         BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
@@ -2358,6 +2378,17 @@ fn binopkind_to_binaryop<'tcx>(
     Ok(vop)
 }
 
+fn binopkind_to_binaryop<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    op: &Spanned<BinOpKind>,
+    tc: &rustc_middle::ty::TypeckResults,
+    lhs: &Expr,
+    rhs: &Expr,
+    mode_for_ghostness: Mode,
+) -> Result<BinaryOp, VirErr> {
+    binopkind_to_binaryop_inner(bctx, op.node, tc, lhs, rhs, mode_for_ghostness)
+}
+
 fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     tc: &rustc_middle::ty::TypeckResults,
@@ -2365,7 +2396,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
     mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
-    op_kind: Option<&Spanned<BinOpKind>>,
+    op_kind: Option<&Spanned<AssignOpKind>>,
 ) -> Result<vir::ast::Expr, vir::messages::Message> {
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
@@ -2426,7 +2457,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
     }
     let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
     let op = match op_kind {
-        Some(op) => Some(binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
+        Some(op) => Some(assignop_kind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
         None => None,
     };
 
@@ -2565,9 +2596,7 @@ fn unwrap_parameter_to_vir<'tcx>(
         ty: None,
         init: None,
         els: None,
-        hir_id: _,
-        span: _,
-        source: _,
+        ..
     }) = &stmt1.kind
     {
         Some((pat.hir_id, local_to_var(x, hir_id.local_id)))
@@ -2710,7 +2739,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id: _, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
             let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
     }

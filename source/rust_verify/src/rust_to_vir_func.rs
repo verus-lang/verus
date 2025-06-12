@@ -341,7 +341,7 @@ fn compare_external_ty_or_true<'tcx>(
             if k1 != k2 {
                 return false;
             }
-            if tcx.associated_item(t1.def_id).name != tcx.associated_item(t2.def_id).name {
+            if tcx.associated_item(t1.def_id).name() != tcx.associated_item(t2.def_id).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
@@ -1456,7 +1456,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
 fn has_self_parameter<'tcx>(ctxt: &Context<'tcx>, id: DefId) -> bool {
     if let Some(assoc_item) = ctxt.tcx.opt_associated_item(id) {
-        assoc_item.fn_has_self_parameter
+        assoc_item.is_method()
     } else {
         false
     }

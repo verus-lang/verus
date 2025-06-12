@@ -44,7 +44,7 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(Some(symbol)) => {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
                 segments.push(Arc::new(symbol.to_string()));
             }
             DefPathData::Ctor => {
@@ -315,11 +315,11 @@ where
     }
 
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
-        match *r {
+        match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
             rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(debruijn1, br) = *region {
+                if let rustc_middle::ty::ReBound(debruijn1, br) = region.kind() {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -706,7 +706,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Never => false,
 
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
         TyKind::Float(..) => false,
         TyKind::Foreign(..) => false,
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
@@ -741,7 +741,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 
 pub(crate) fn mid_arg_filter_for_external_impls<'tcx>(
     ctxt: &Context<'tcx>,
-    type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
+    type_walker: rustc_middle::ty::walk::TypeWalker<TyCtxt<'tcx>>,
     external_info: &mut ExternalInfo,
 ) -> bool {
     let mut all_types_supported = true;
@@ -1031,7 +1031,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
-            let name = Arc::new(assoc_item.name.to_string());
+            let name = Arc::new(assoc_item.name().to_string());
             // Note: this looks like it would work, but trait_item_def_id is sometimes None:
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
@@ -1077,7 +1077,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => {
             unsupported_err!(span, "opaque type")
         }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => {
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
@@ -1571,7 +1571,7 @@ where
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
-                let name = Arc::new(assoc_item.name.to_string());
+                let name = Arc::new(assoc_item.name().to_string());
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,

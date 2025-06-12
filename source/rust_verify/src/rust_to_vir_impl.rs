@@ -608,7 +608,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
             for assoc_item in tcx.associated_items(impl_def_id).in_definition_order() {
                 match assoc_item.kind {
-                    rustc_middle::ty::AssocKind::Type => {
+                    rustc_middle::ty::AssocKind::Type { .. } => {
                         let name = Arc::new(assoc_item.ident(tcx).to_string());
                         if !trait_map[&trait_path].iter().any(|t| t.x.assoc_typs.contains(&name)) {
                             continue;
