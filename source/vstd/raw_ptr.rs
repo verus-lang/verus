@@ -529,7 +529,7 @@ pub broadcast group group_raw_ptr_axioms {
     ptrs_mut_eq,
 }
 
-/// Mechanism for exposing provenance.
+/// Tracked object that indicates a given provenance has been exposed.
 #[verifier::external_body]
 pub tracked struct IsExposed {}
 
@@ -614,12 +614,12 @@ impl PointsToRaw {
     /// This set may be split apart and/or recombined, in order to create permissions to smaller pieces of the allocation.
     pub uninterp spec fn dom(self) -> Set<int>;
 
-    /// Returns `true` if the range `[start, start + len)` is the same as the domain of this permission.
+    /// Returns `true` if the domain of this permission is exactly the range `[start, start + len)`.
     pub open spec fn is_range(self, start: int, len: int) -> bool {
         super::set_lib::set_int_range(start, start + len) =~= self.dom()
     }
 
-    /// Returns `true` if the range `[start, start + len)` is contained in the domain of this permission.
+    /// Returns `true` if the domain of this permission contains the range `[start, start + len)`.
     pub open spec fn contains_range(self, start: int, len: int) -> bool {
         super::set_lib::set_int_range(start, start + len) <= self.dom()
     }
@@ -772,10 +772,11 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
 }
 
 /// Deallocate with the global allocator.
-/// As per the [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc),
-/// the [`PointsToRaw`] permission ensures that `ptr` denotes a block of memory which is currently allocated
-/// (and that it will not be accessed or deallocated again afterward),
-/// while the [`Dealloc`] permission ensures that the layout is the same as the layout used to allocate this memory.
+///
+/// The [`Dealloc`] permission ensures that the
+/// [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc)
+/// are satisfied; by also giving up permission of the [`PointsToRaw`] permission,
+/// we ensure there can be no use-after-free bug as a result of this deallocation.
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
