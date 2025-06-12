@@ -4,16 +4,16 @@ use crate::ast::{
     VirErr,
 };
 use crate::ast_to_sst::{
-    expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
+    State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
     expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
-    stms_to_one_stm, State,
+    stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, Message};
+use crate::messages::{Message, error};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
@@ -74,6 +74,7 @@ pub fn mk_fun_ctx_dec<F: FunctionCommon>(
     checking_spec_preconditions: bool,
     checking_spec_decreases: bool,
 ) -> Option<FunctionCtx> {
+    assert!(!(checking_spec_preconditions && checking_spec_decreases));
     Some(FunctionCtx {
         checking_spec_preconditions,
         checking_spec_preconditions_for_non_spec: checking_spec_preconditions
@@ -232,6 +233,14 @@ fn func_body_to_sst(
             };
             Some(termination_check)
         } else {
+            if function.x.decrease.len() > 0 {
+                let msg = "proof blocks inside spec code is currently supported only for recursion";
+                // TODO: remove this restriction when we generalize ProofInSpec beyond termination
+                ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
+                    ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
+                    _ => Ok(()),
+                })?;
+            }
             None
         };
 
@@ -692,13 +701,9 @@ pub fn func_def_to_sst(
 
     // For most kinds of specs (requires, unwind, mask), we always use the trait method
     // if it exists and otherwise use the original method.
-    // This macro returns the appropriate Lowerer object.
-    macro_rules! lo_specs {
-        () => {
-            if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current }
-        };
-    }
-    let specs_function = lo_specs!().function.clone();
+    // The `lo_specs` is the appropriate Lowerer object for this case.
+    let lo_specs = if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current };
+    let specs_function = lo_specs.function.clone();
 
     // These are used for the normal case (no recommends-checking)
     let mut reqs: Vec<Exp> = Vec::new();
@@ -711,7 +716,7 @@ pub fn func_def_to_sst(
     // Requires: take from trait method if it exists
     let requires = specs_function.x.require.clone();
     for r in requires.iter() {
-        let r = lo_specs!().lower_pure(ctx, &mut state, r, &mut req_stms)?;
+        let r = lo_specs.lower_pure(ctx, &mut state, r, &mut req_stms)?;
         if ctx.checking_spec_preconditions() {
             req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
         } else {
@@ -722,13 +727,13 @@ pub fn func_def_to_sst(
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
     let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
     state.mask = Some(mask_sst);
 
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
 
     // Decreases: add recommends if necessary; otherwise nothing to do
     if ctx.checking_spec_preconditions() {
@@ -849,7 +854,7 @@ pub fn function_to_sst(
     let func_decl_sst = crate::ast_to_sst_func::func_decl_to_sst(ctx, diagnostics, function)?;
     ctx.fun = None;
 
-    ctx.fun = mk_fun_ctx_dec(&function, true, true);
+    ctx.fun = mk_fun_ctx_dec(&function, false, true);
     let func_axioms_sst = crate::ast_to_sst_func::func_axioms_to_sst(
         ctx,
         diagnostics,

@@ -831,10 +831,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
@@ -865,10 +865,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
@@ -1447,6 +1447,26 @@ test_verify_one_file! {
             };
 
             proof { consume_x(x); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] param_boxing_issue1725 verus_code! {
+        mod a {
+            use vstd::prelude::*;
+
+            fn write<'a, T, C>(t: &'a T) {
+                let j = |s: &crate::foo::Context<'a, T>| true;
+            }
+        }
+
+        mod foo {
+            use vstd::prelude::*;
+
+            pub struct Context<'a, T> {
+                t: &'a T,
+            }
         }
     } => Ok(())
 }

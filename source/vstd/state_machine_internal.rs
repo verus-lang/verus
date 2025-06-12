@@ -287,19 +287,19 @@ impl<K, V> Map<K, V> {
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_is_none<V>(a: Option<V>) -> bool {
-    a.is_None()
+    a is None
 }
 
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_ge<V>(a: Option<V>, b: Option<V>) -> bool {
-    b.is_Some() ==> a === b
+    b is Some ==> a === b
 }
 
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_add<V>(a: Option<V>, b: Option<V>) -> Option<V> {
-    if b.is_Some() {
+    if b is Some {
         b
     } else {
         a
@@ -309,13 +309,13 @@ pub open spec fn opt_add<V>(a: Option<V>, b: Option<V>) -> Option<V> {
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_agree<V>(a: Option<V>, b: Option<V>) -> bool {
-    a.is_Some() && b.is_Some() ==> a.get_Some_0() === b.get_Some_0()
+    a is Some && b is Some ==> a->0 === b->0
 }
 
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn opt_sub<V>(a: Option<V>, b: Option<V>) -> Option<V> {
-    if b.is_Some() {
+    if b is Some {
         Option::None
     } else {
         a

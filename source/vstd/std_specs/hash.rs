@@ -1,10 +1,10 @@
-/// This code adds specifications for the standard-library type
-/// `std::collections::HashMap`.
+/// This code adds specifications for the standard-library types
+/// `std::collections::HashMap` and `std::collections::HashSet`.
 ///
 /// Most of the specification only applies if you use `HashMap<Key,
-/// Value>`. If you use some custom build hasher, e.g.,
-/// with`HashMap<Key, Value, CustomBuildHasher>`, the specification
-/// won't specify much.
+/// Value>` or `HashSet<Key>`. If you use some custom build hasher,
+/// e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+/// specification won't specify much.
 ///
 /// Likewise, the specification is only meaningful when the `Key`
 /// obeys our hash table model, i.e., (1) `Key::hash` is
@@ -17,20 +17,17 @@
 /// In the future, we plan to devise a way for you to prove that it
 /// does so, so that you don't have to make such an assumption.
 ///
-/// To make most use of the specification, you should use `broadcast
-/// use vstd::std_specs::hash::group_hash_axioms;`. This will bring
-/// various useful axioms about the behavior of a `HashMap` into the
-/// ambient reasoning context. In the future, if we find that having
-/// these axioms in scope doesn't impact performance, we may put them
-/// into the global ambient context so you don't have to explicitly
-/// `broadcast use` them.
+/// By default, the Verus standard library brings useful axioms
+/// about the behavior of `HashMap` and `HashSet` into the ambient
+/// reasoning context by broadcasting the group
+/// `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
-use std::collections::hash_map::{DefaultHasher, Keys, RandomState};
+use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
 use std::collections::hash_set::Iter;
 use std::collections::{HashMap, HashSet};
 
@@ -346,6 +343,115 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
     }
 }
 
+// The `values` method of a `HashMap` returns an iterator of type `Values`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
+
+pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+    spec fn view(self: &Self) -> (int, Seq<Value>);
+}
+
+impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
+    uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
+}
+
+pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
+    values: &mut Values<'a, Key, Value>,
+) -> (r: Option<&'a Value>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(values)@;
+            match r {
+                None => {
+                    &&& values@ == old(values)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(v) => {
+                    let (new_index, new_seq) = values@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& v == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+pub struct ValuesGhostIterator<'a, Key, Value> {
+    pub pos: int,
+    pub values: Seq<Value>,
+    pub phantom: Option<&'a Key>,
+}
+
+impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Values<'a, Key, Value> {
+    type GhostIter = ValuesGhostIterator<'a, Key, Value>;
+
+    open spec fn ghost_iter(&self) -> ValuesGhostIterator<'a, Key, Value> {
+        ValuesGhostIterator { pos: self@.0, values: self@.1, phantom: None }
+    }
+}
+
+impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for ValuesGhostIterator<
+    'a,
+    Key,
+    Value,
+> {
+    type ExecIter = Values<'a, Key, Value>;
+
+    type Item = Value;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &Values<'a, Key, Value>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.values == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.values == self.values
+            &&& 0 <= self.pos <= self.values.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.values.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.values.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<Value> {
+        if 0 <= self.pos < self.values.len() {
+            Some(self.values[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &Values<'a, Key, Value>) -> ValuesGhostIterator<
+        'a,
+        Key,
+        Value,
+    > {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
+    type V = Seq<Value>;
+
+    open spec fn view(&self) -> Seq<Value> {
+        self.values.take(self.pos)
+    }
+}
+
 // We now specify the behavior of `HashMap`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -374,6 +480,123 @@ impl<Key, Value, S> View for HashMap<Key, Value, S> {
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
+impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
+    type V = Map<Key::V, Value::V>;
+
+    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
+        hash_map_deep_view_impl(*self)
+    }
+}
+
+/// The actual definition of `HashMap::deep_view`.
+///
+/// This is a separate function since it introduces a lot of quantifiers and revealing an opaque trait
+/// method is not supported. In most cases, it's easier to use one of the lemmas below instead
+/// of revealing this function directly.
+#[verifier::opaque]
+pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
+    m: HashMap<Key, Value, S>,
+) -> Map<Key::V, Value::V> {
+    Map::new(
+        |k: Key::V|
+            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        |dk: Key::V|
+            {
+                let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
+                m@[k].deep_view()
+            },
+    )
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_dom<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use crate::vstd::group_vstd_default;
+
+    assert(m.deep_view().dom() =~= m@.dom().map(|k: K| k.deep_view()));
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    requires
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #![trigger m.deep_view()]
+        // all elements in m.view() are present in m.deep_view()
+        forall|k: K| #[trigger]
+            m@.contains_key(k) ==> m.deep_view().contains_key(k.deep_view())
+                && m.deep_view()[k.deep_view()] == m@[k].deep_view(),
+        // all elements in m.deep_view() are present in m.view()
+        forall|dk: <K as DeepView>::V| #[trigger]
+            m.deep_view().contains_key(dk) ==> exists|k: K|
+                k.deep_view() == dk && #[trigger] m@.contains_key(k),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use crate::vstd::group_vstd_default;
+
+    assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
+    assert forall|k: K| #[trigger] m@.contains_key(k) implies m.deep_view().contains_key(
+        k.deep_view(),
+    ) && m.deep_view()[k.deep_view()] == m@[k].deep_view() by {
+        assert forall|k1: K, k2: K| #[trigger]
+            k1.deep_view() == #[trigger] k2.deep_view() implies k1 == k2 by {
+            let ghost k_deepview = |k: K| k.deep_view();
+            assert(crate::relations::injective(k_deepview));
+            assert(k_deepview(k1) == k_deepview(k2));
+        }
+    }
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    requires
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #[trigger] m.deep_view().values() =~= m@.values().map(|v: V| v.deep_view()),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use lemma_hashmap_deepview_properties;
+    broadcast use crate::vstd::group_vstd_default;
+
+    let lhs = m.deep_view().values();
+    let rhs = m@.values().map(|v: V| v.deep_view());
+    assert forall|v: V::V| #[trigger] lhs.contains(v) implies rhs.contains(v) by {
+        let dk = choose|dk: K::V| #[trigger]
+            m.deep_view().contains_key(dk) && m.deep_view()[dk] == v;
+        let k = choose|k: K| #[trigger] m@.contains_key(k) && k.deep_view() == dk;
+        let ov = choose|ov: V| #[trigger] m@.contains_key(k) && m@[k] == ov && ov.deep_view() == v;
+        assert(v == ov.deep_view());
+        assert(m@.values().contains(ov));
+    }
+}
+
+/// Borrowing a key works the same way on deep_view as on view,
+/// if deep_view is injective; see `axiom_contains_deref_key`.
+pub broadcast proof fn axiom_hashmap_deepview_borrow<
+    K: DeepView + Borrow<Q>,
+    V: DeepView,
+    Q: View<V = <K as DeepView>::V> + Hash + Eq + ?Sized,
+>(m: HashMap<K, V>, k: &Q)
+    requires
+        obeys_key_model::<K>(),
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
+{
+    admit();
+}
+
+/// A `Map` constructed from a `HashMap` is always finite.
+pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m@.dom().finite(),
+{
+    admit();
+}
+
 pub uninterp spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
@@ -390,6 +613,20 @@ pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::len ](
 ) -> (len: usize)
     ensures
         len == spec_hash_map_len(m),
+;
+
+pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::is_empty ](
+    m: &HashMap<Key, Value, S>,
+) -> (res: bool)
+    ensures
+        res == m@.is_empty(),
+;
+
+pub assume_specification<K: Clone, V: Clone, S: Clone>[ <HashMap::<K, V, S> as Clone>::clone ](
+    this: &HashMap<K, V, S>,
+) -> (other: HashMap<K, V, S>)
+    ensures
+        other@ == this@,
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -619,6 +856,17 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
         },
 ;
 
+pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
+    m: &'a HashMap<Key, Value, S>,
+) -> (values: Values<'a, Key, Value>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            let (index, s) = values@;
+            &&& index == 0
+            &&& s.to_set() == m@.values()
+        },
+;
+
 // The `iter` method of a `HashSet` returns an iterator of type `Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -745,6 +993,11 @@ pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
 pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) -> (len: usize)
     ensures
         len == spec_hash_set_len(m),
+;
+
+pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key, S>) -> (res: bool)
+    ensures
+        res == m@.is_empty(),
 ;
 
 pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
@@ -940,6 +1193,8 @@ pub broadcast group group_hash_axioms {
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
+    axiom_hashmap_deepview_borrow,
+    axiom_hashmap_view_finite_dom,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,

@@ -6,8 +6,8 @@
 //!  * #[cfg_attr(verus_keep_ghost, verifier::proof)] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
-    Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
-    Transition, TransitionKind, TransitionStmt, SM,
+    Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind,
+    Transition, TransitionKind, TransitionStmt,
 };
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;

@@ -1908,6 +1908,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decreases_in_pure_exp verus_code! {
+        spec fn f(n: int) -> bool
+            decreases n
+        {
+            (|b: bool| b)(f(n)) // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] decreases_checks_assert_by verus_code! {
+        // https://github.com/verus-lang/verus/issues/1624
+        #[via_fn]
+        proof fn test_decr(i: nat) {
+            assert(false) by {} // FAILS
+        }
+
+        spec fn test(i: nat) -> bool
+            decreases i
+            via test_decr
+        {
+            test(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] decreases_checks_preconditions verus_code! {
+        proof fn p() requires false ensures false { }
+
+        #[via_fn]
+        proof fn ff(i: int) {
+            p(); // FAILS
+        }
+
+        spec fn f(i: int) -> int
+            decreases i
+            via ff
+        {
+            f(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] lemma_not_proved_by_impossible_fun verus_code! {
         spec fn impossible_fun() -> bool
             decreases 0int
@@ -2070,6 +2115,40 @@ test_verify_one_file! {
                 0
             } else {
                 test_rec(t.get_lt()) + 1
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] has_type_for_recursive_call verus_code! {
+        // https://verus-lang.zulipchat.com/#narrow/channel/399078-help/topic/missing.20recursive.20expansion/with/517201560
+        use vstd::prelude::*;
+        struct Link<K>(Option<Box<Node<K>>>);
+
+        struct Node<K> {
+            key: K,
+            left: Link<K>,
+            right: Link<K>,
+        }
+
+        proof fn right_mem<K>(node: Node<K>, key: K)
+            requires
+                node.right.as_set().contains(key),
+                node.key != key,
+            ensures
+                Link(Some(Box::new(node))).as_set().contains(key),
+        {
+        }
+
+        impl<K> Link<K> {
+            spec fn as_set(self) -> Set<K>
+                decreases self,
+            {
+                match self.0 {
+                    None => Set::empty(),
+                    Some(node) => node.left.as_set().union(node.right.as_set()).insert(node.key),
+                }
             }
         }
     } => Ok(())

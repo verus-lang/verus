@@ -5,33 +5,23 @@ use crate::ast::{
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ, undecorate_typ,
-    LowerUniqueVar,
+    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
+    undecorate_typ,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
-    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
-    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_typ_param_ids, unique_local, variant_field_ident,
-    variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_INT,
-    PROPH_INT_CUR, PROPH_INT_FUT, PROPH_BOOL_CUR, PROPH_BOOL_FUT, SNAPSHOT_CALL, SNAPSHOT_PRE, 
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, 
-    SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_BOOL_CUR, PROPH_BOOL_FUT, PROPH_INT, PROPH_INT_CUR, PROPH_INT_FUT, SNAPSHOT_CALL, SNAPSHOT_CALL_MUT_REF, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI
 };
-use crate::messages::{error, error_with_label, Span};
-use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX, MonoTyps};
+use crate::messages::{Span, error, error_with_label};
+use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_util::subst_typ_for_datatype;
-use crate::sst_vars::{get_loc_var, AssignMap};
+use crate::sst_vars::{AssignMap, get_loc_var};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
@@ -169,7 +159,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed {:?}", typ),
+                    None => {
+                        // this probably means you forgot to call coerce_typ_to_poly
+                        // or coerce_typ_to_native for this type during the poly pass
+                        panic!("abstract datatype should be boxed {:?}", typ)
+                    }
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -525,6 +519,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             } else {
                 if typ_as_mono(typ).is_none() {
+                    // this probably means you forgot to call coerce_typ_to_poly
+                    // or coerce_typ_to_native for this type during the poly pass
                     panic!("abstract datatype should be boxed")
                 } else {
                     None
@@ -1719,7 +1715,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
                 // don't check recommends during decreases checking; these are separate passes:
-                && !ctx.checking_spec_decreases()
+                && (!ctx.checking_spec_decreases() || *mode != Mode::Spec)
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
 
@@ -1775,13 +1771,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
                         "cannot show this call will not unwind, in function marked 'no_unwind'",
-                        "this call might unwind",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
                         error_with_label(
                             &stm.span,
                             "cannot show this call will not unwind",
-                            "this call might unwind",
+                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                         )
                         .secondary_label(span, "unwinding is not allowed in this invariant block")
                     }
@@ -2193,9 +2189,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             // TODO(andrea) move this to poly.rs once we have general support for mutable references
-            if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+            let boxed = if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
                 value = try_box(ctx, value, &value_typ).expect("box field update");
-            }
+                true
+            } else {
+                false
+            };
             
             if let TypX::MutRef(typ) = &*base_typ {
                 let acc = ty_to_proph_accessor(typ, false);
@@ -2205,6 +2204,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
             stmts.push(a);
+            if fields.len() > 0 {
+                let mut var_exp = ident_var(&suffix_local_unique_id(&base_var));
+                if boxed {
+                    var_exp = try_unbox(ctx, var_exp, &value_typ).expect("assign try_unbox");
+                }
+                let typ_inv = typ_invariant(ctx, &value_typ, &var_exp);
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
+            }
 
             stmts
         }

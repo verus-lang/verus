@@ -3823,14 +3823,14 @@ test_verify_one_file! {
 
             proof fn test1(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 200);
                 assert(QQ::e(&s) == 300);
             }
 
             proof fn test2(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 300); // FAILS
             }
         }
@@ -4272,4 +4272,29 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] static_resolution_to_blanket_impl_unsized_issue1657 verus_code! {
+        trait Tr {
+            fn stuff(&self);
+        }
+
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        impl<T: Tr + ?Sized> Blanket for T {
+            fn stuff2(&self)
+                ensures false
+            {
+                assume(false);
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T) {
+            t.stuff2();
+            assert(false);
+        }
+    } => Ok(())
 }

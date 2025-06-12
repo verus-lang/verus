@@ -1,11 +1,14 @@
-use crate::rustdoc::env_rustdoc;
 use crate::EraseGhost;
+use crate::rustdoc::env_rustdoc;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
-use quote::format_ident;
 use quote::ToTokens;
+use quote::format_ident;
 use quote::{quote, quote_spanned};
+use syn_verus::BroadcastUse;
+use syn_verus::ExprBlock;
+use syn_verus::ExprForLoop;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
@@ -13,25 +16,22 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
-    visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut,
-    visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut,
-    visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
+    VisitMut, visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut,
+    visit_field_mut, visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut,
+    visit_item_enum_mut, visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut,
+    visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
-use syn_verus::BroadcastUse;
-use syn_verus::ExprBlock;
-use syn_verus::ExprForLoop;
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, Attribute, BareFnArg,
-    BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
-    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, Global, Ident,
-    ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
-    MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
-    Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
-    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
-    TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
+    AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
+    ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
+    FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
+    InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
+    ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
+    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked,
+    Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType, Returns, Signature,
+    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
+    Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -722,6 +722,8 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
+        let has_body = semi_token.is_none();
+
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
             attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
@@ -779,8 +781,10 @@ impl Visitor {
             _ => {}
         }
 
-        if matches!(sig.mode, FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_))
-            && !matches!(sig.publish, Publish::Default)
+        if matches!(
+            sig.mode,
+            FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
+        ) && !matches!(sig.publish, Publish::Default)
         {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
@@ -789,11 +793,33 @@ impl Visitor {
             ));
         }
 
-        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_)) {
+        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_) | FnMode::ProofAxiom(_))
+        {
             let broadcast_span = sig.broadcast.span();
             stmts.push(stmt_with_semi!(
                 broadcast_span =>
                 compile_error!("only `proof` functions can be marked `broadcast`")
+            ));
+        }
+
+        if !is_trait && matches!(sig.mode, FnMode::Proof(_)) && !has_body {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("a `proof` function must have a body (if you intentionally want to omit the body, use the `axiom` keyword)")
+            ));
+        }
+
+        if matches!(sig.mode, FnMode::ProofAxiom(_)) && has_body && !self.erase_ghost.erase() {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("an `axiom` should not have a body")
+            ));
+        }
+
+        if is_trait && matches!(sig.mode, FnMode::ProofAxiom(_)) {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("`axiom` keyword unexpected in trait declarations")
             ));
         }
 
@@ -821,6 +847,13 @@ impl Visitor {
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
+            (FnMode::ProofAxiom(_), Some(semi), false) => {
+                let unimpl = vec![Stmt::Expr(
+                    Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
+                    None,
+                )];
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
                 // uninterpreted function
                 let unimpl = vec![Stmt::Expr(
@@ -853,6 +886,9 @@ impl Visitor {
             ),
             FnMode::Proof(token) => {
                 (1, vec![mk_verus_attr(token.proof_token.span, quote! { proof })])
+            }
+            FnMode::ProofAxiom(token) => {
+                (1, vec![mk_verus_attr(token.axiom_token.span, quote! { proof })])
             }
             FnMode::Exec(token) => (0, vec![mk_verus_attr(token.exec_token.span, quote! { exec })]),
         };
@@ -962,7 +998,7 @@ impl Visitor {
         }
 
         let publish_attrs = match (&mode, vis, &publish) {
-            (FnMode::Exec(_) | FnMode::Proof(_), _, _) => vec![],
+            (FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_), _, _) => vec![],
             (_, Some(Visibility::Inherited), _) => vec![],
             (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
             (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
@@ -985,6 +1021,9 @@ impl Visitor {
             ),
             FnMode::Proof(token) => {
                 (1, vec![mk_verus_attr(token.proof_token.span, quote! { proof })])
+            }
+            FnMode::ProofAxiom(_) => {
+                unimplemented!("axiom should only be used with functions")
             }
             FnMode::Exec(token) => (0, vec![mk_verus_attr(token.exec_token.span, quote! { exec })]),
         };
@@ -1146,7 +1185,10 @@ fn split_trait_method(spec_items: &mut Vec<TraitItem>, fun: &mut TraitItemFn, er
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
         match (&mut fun.default, &fun.sig.mode) {
-            (Some(default), FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => {
+            (
+                Some(default),
+                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
+            ) => {
                 // replace body with panic!()
                 let span = default.span();
                 let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1166,7 +1208,7 @@ pub(crate) fn split_trait_method_syn(
     fun: &syn::TraitItemFn,
     erase_ghost: bool,
 ) -> Option<syn::TraitItemFn> {
-    use syn::{token::Brace, Block, Expr, Stmt};
+    use syn::{Block, Expr, Stmt, token::Brace};
     if !erase_ghost && fun.default.is_none() {
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
@@ -1285,7 +1327,7 @@ impl Visitor {
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
             Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
-                let BroadcastUse { attrs, broadcast_use_tokens: _, paths, semi: _ } = broadcast_use;
+                let BroadcastUse { attrs, paths, .. } = broadcast_use;
                 if self.erase_ghost.erase() {
                     (true, vec![])
                 } else {
@@ -1324,11 +1366,17 @@ impl Visitor {
             // Erase ghost functions and constants
             items.retain(|item| match item {
                 Item::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 Item::Const(c) => match c.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,
@@ -1352,7 +1400,10 @@ impl Visitor {
                 Item::Fn(fun) => match (&fun.vis, &fun.sig.mode) {
                     (
                         Visibility::Public(_),
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1369,18 +1420,25 @@ impl Visitor {
             }
             let erase_fn = match item {
                 Item::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) if erase_ghost => {
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_)
+                        if erase_ghost =>
+                    {
                         Some((fun.sig.ident.clone(), fun.vis.clone()))
                     }
                     _ => None,
                 },
                 Item::Const(c) => match (&c.vis, &c.mode) {
                     (Visibility::Public(_), _) => None,
-                    (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_))
-                        if erase_ghost =>
-                    {
-                        Some((c.ident.clone(), c.vis.clone()))
-                    }
+                    (
+                        _,
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
+                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone())),
                     _ => None,
                 },
                 /*
@@ -1494,6 +1552,16 @@ impl Visitor {
                     let span = item.span();
                     let paths = &item_broadcast_use.paths;
                     if self.erase_ghost.erase() {
+                        if item_broadcast_use.warning {
+                            #[cfg(verus_keep_ghost)]
+                            proc_macro::Diagnostic::spanned(
+                                span.unwrap(),
+                                proc_macro::Level::Warning,
+                                "Outdated syntax for broadcast use.\n\
+                                         Use curly braces for multiple uses.",
+                            )
+                            .emit();
+                        }
                         *item = Item::Verbatim(quote! { const _: () = (); });
                     } else {
                         let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
@@ -1733,11 +1801,17 @@ impl Visitor {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 ImplItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 ImplItem::Const(c) => match c.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,
@@ -1750,14 +1824,29 @@ impl Visitor {
             ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                 (
                     (Visibility::Public(_), _) | (_, true),
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
                 ) => true,
-                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => !erase_ghost,
+                (
+                    _,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
+                ) => !erase_ghost,
                 (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
             ImplItem::Const(c) => match (&c.vis, &c.mode) {
                 (Visibility::Public(_), _) => true,
-                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => !erase_ghost,
+                (
+                    _,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
+                ) => !erase_ghost,
                 (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
             _ => true,
@@ -1768,7 +1857,10 @@ impl Visitor {
                 ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                     (
                         (Visibility::Public(_), _) | (_, true),
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1805,7 +1897,10 @@ impl Visitor {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 TraitItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,
@@ -2813,8 +2908,8 @@ impl Visitor {
             }
         } else if let Expr::Unary(unary) = expr {
             let span = unary.span();
-            match (is_inside_ghost, mode_block, &*unary.expr) {
-                (false, (false, _), Expr::Block(..)) => {
+            match (mode_block, &*unary.expr) {
+                ((false, _), Expr::Block(..)) => {
                     // proof { ... }
                     let mut inner = take_expr(&mut *unary.expr);
                     if self.inside_const {
@@ -2822,12 +2917,12 @@ impl Visitor {
                             quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
                         );
                     }
-                    *expr = self.maybe_erase_expr(
-                        span,
-                        Expr::Verbatim(
-                            quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
-                        ),
-                    );
+                    let e = if is_inside_ghost {
+                        quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
+                    } else {
+                        quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner)
+                    };
+                    *expr = self.maybe_erase_expr(span, Expr::Verbatim(e));
                 }
                 _ => {
                     *expr = Expr::Verbatim(
@@ -4425,6 +4520,13 @@ pub(crate) fn rewrite_proof_decl(
                     visitor.visit_stmt_mut(&mut ss);
                     ss.to_tokens(&mut new_stream);
                 }
+            }
+            Stmt::Macro(mut mac) => {
+                // Due to the difference between function-like macro vs proceudure macro,
+                // Macros used inside proof block need to explicitly call proof or proof_decl.
+                // We should avoid entering proof mode if calling a macro.
+                visitor.visit_macro_mut(&mut mac.mac);
+                mac.to_tokens(&mut new_stream);
             }
             _ => {
                 let span = ss.span();

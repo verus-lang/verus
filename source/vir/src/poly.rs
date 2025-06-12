@@ -933,13 +933,20 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             mk_stm(StmX::OpenInvariant(s))
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
+            let typ_inv_vars = Arc::new(
+                typ_inv_vars
+                    .iter()
+                    .map(|(uid, typ)| (uid.clone(), coerce_typ_to_native(ctx, typ)))
+                    .collect::<Vec<_>>(),
+            );
+
             state.types.push_scope(true);
             for (name, typ) in typ_inv_vars.iter() {
                 let _ = state.types.insert(name.clone(), typ.clone());
             }
             let body = visit_stm(ctx, state, body);
             state.types.pop_scope();
-            mk_stm(StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars.clone() })
+            mk_stm(StmX::ClosureInner { body, typ_inv_vars: typ_inv_vars })
         }
         StmX::Air(_) => stm.clone(),
         StmX::Block(stms) => mk_stm(StmX::Block(visit_stms(ctx, state, stms))),

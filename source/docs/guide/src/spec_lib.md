@@ -23,7 +23,7 @@ The `seq!`, `set!`, and `map!` macros construct values of type `Seq`, `Set`, and
 with particular contents:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:macro}}
+{{#include ../../../../examples/guide/lib_examples.rs:macro}}
 ```
 
 The macros above can only construct finite sequences, sets, and maps.
@@ -31,7 +31,7 @@ There are also functions `Seq::new`, `Set::new`, and `Map::new`,
 which can allocate both finite values and (for sets and maps) infinite values:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:new}}
+{{#include ../../../../examples/guide/lib_examples.rs:new}}
 ```
 
 Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
@@ -71,7 +71,7 @@ For example, the following 3 sequences are equal,
 but asserting equality fails:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:test_eq_fail}}
+{{#include ../../../../examples/guide/lib_examples.rs:test_eq_fail}}
 ```
 
 To convince the SMT solver that `s1`, `s2`, and `s3` are equal,
@@ -84,7 +84,7 @@ Once we've explicitly proven equality via extensionality,
 we can then successfully assert `==`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:test_eq}}
+{{#include ../../../../examples/guide/lib_examples.rs:test_eq}}
 ```
 
 (See the [Equality via extensionality](extensional_equality.md) section for more details.)
@@ -118,7 +118,7 @@ Based on this, we expect an inductive proof to look something like the following
 where the inductive step removes `s1.choose()`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_fail}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_fail}}
 ```
 
 Unfortunately, Verus fails to verify this proof.
@@ -127,7 +127,7 @@ Before adding this detail to the code,
 let's think about what a fully explicit proof might look like if we wrote it out by hand:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_sketch}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_sketch}}
 ```
 
 For such a simple property, this is a surprisingly long proof!
@@ -141,7 +141,7 @@ The two crucial steps requiring equality via extensionality are:
 For these, we need to explicitly invoke `=~=`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect}}
 ```
 
 With this, Verus and the SMT solver successfully complete the proof.
@@ -154,7 +154,7 @@ it's probably polite to wrap the assertions in `assert...by` to indicate
 the purpose of the `=~=`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_commented}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_commented}}
 ```
 
 ---

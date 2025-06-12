@@ -515,6 +515,9 @@ where
                 ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
                 }
+                ExprX::ProofInSpec(e1) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
+                }
                 ExprX::Block(ss, e1) => {
                     for stmt in ss.iter() {
                         expr_visitor_control_flow!(stmt_visitor_dfs(stmt, map, mf));
@@ -1075,6 +1078,10 @@ where
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr }
+        }
+        ExprX::ProofInSpec(e1) => {
+            let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::ProofInSpec(expr)
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();

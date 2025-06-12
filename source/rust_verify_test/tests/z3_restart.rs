@@ -61,7 +61,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// From https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs
+// From https://github.com/verus-lang/verus/blob/main/examples/bitvector_basic.rs
 test_verify_one_file! {
     #[test] test_with_bv verus_code! {
         #[verifier(bit_vector)] /* vattr */

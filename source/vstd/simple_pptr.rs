@@ -166,10 +166,10 @@ pub tracked struct PointsTo<V> {
 }
 
 #[verusfmt::skip]
-broadcast use
+broadcast use {
     super::raw_ptr::group_raw_ptr_axioms,
     super::set_lib::group_set_lib_default,
-    super::set::group_set_axioms;
+    super::set::group_set_axioms};
 
 impl<V> PPtr<V> {
     /// Use `addr()` instead

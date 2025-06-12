@@ -9,9 +9,9 @@ use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, rename_rec_param, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
+    FUEL_PARAM, FUEL_TYPE, Spanned, decrease_at_entry, rename_rec_param, unique_bound, unique_local,
 };
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::scc::Graph;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,

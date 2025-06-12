@@ -82,29 +82,22 @@ impl<P: PCM> Resource<P> {
 
     pub uninterp spec fn loc(self) -> Loc;
 
-    #[verifier::external_body]
-    pub proof fn alloc(value: P) -> (tracked out: Self)
+    pub axiom fn alloc(value: P) -> (tracked out: Self)
         requires
             value.valid(),
         ensures
             out.value() == value,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
             out.value() == P::op(self.value(), other.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
+    pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(left, right),
         ensures
@@ -112,52 +105,37 @@ impl<P: PCM> Resource<P> {
             out.1.loc() == self.loc(),
             out.0.value() == left,
             out.1.value() == right,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
+    pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
             out.loc() == loc,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn validate(tracked &self)
+    pub axiom fn validate(tracked &self)
         ensures
             self.value().valid(),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
+    pub axiom fn update(tracked self, new_value: P) -> (tracked out: Self)
         requires
             frame_preserving_update(self.value(), new_value),
         ensures
             out.loc() == self.loc(),
             out.value() == new_value,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
     // Operations with shared references
-    #[verifier::external_body]
-    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -165,9 +143,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
     pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
@@ -186,30 +162,23 @@ impl<P: PCM> Resource<P> {
         j.weaken(target)
     }
 
-    #[verifier::external_body]
-    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
+    pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
             *self == *old(self),
             P::op(self.value(), other.value()).valid(),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn update_with_shared(
+    pub axiom fn update_with_shared(
         tracked self,
         tracked other: &Self,
         new_value: P,
@@ -223,12 +192,9 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             out.value() == new_value,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn update_nondeterministic_with_shared(
+    pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
         new_values: Set<P>,
@@ -242,9 +208,7 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 }
 
 } // verus!

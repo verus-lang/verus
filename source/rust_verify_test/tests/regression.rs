@@ -1421,7 +1421,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] field_update_regression_1591 verus_code! {
+    #[test] field_update_regression_1591 verus_code! {
         use vstd::map::*;
 
         struct PCB {

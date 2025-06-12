@@ -14,4 +14,4 @@ docker run --platform=linux/amd64 \
     -v verus-veritas-rustup:/root/.rustup \
     -v $(pwd)/output:/root/output \
     --rm \
-    ghcr.io/utaal/verus-lang/veritas:rust-1.82.0 $@
+    ghcr.io/utaal/verus-lang/veritas:rust-1.85.1 $@

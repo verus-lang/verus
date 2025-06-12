@@ -4,13 +4,13 @@ Recall our specifications from the previous chapter:
 
 ```rust
 impl<V> TreeMap<V> {
-{{#include ../../../rust_verify/example/guide/bst_map.rs:new_signature}}
+{{#include ../../../../examples/guide/bst_map.rs:new_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map.rs:insert_signature}}
+{{#include ../../../../examples/guide/bst_map.rs:insert_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map.rs:delete_signature}}
+{{#include ../../../../examples/guide/bst_map.rs:delete_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map.rs:get_signature}}
+{{#include ../../../../examples/guide/bst_map.rs:get_signature}}
 }
 ```
 
@@ -21,7 +21,7 @@ the client needs to work with this `tree_map.well_formed()` predicate all throug
 their own code. For example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:test_callee}}
+{{#include ../../../../examples/guide/bst_map.rs:test_callee}}
 ```
 
 Without the `requires` clause, the above snippet would fail to verify.
@@ -40,7 +40,7 @@ In order to tell Verus that we want the `well_formed()` predicate to be inferred
 automatically, we can mark it with the `#[verifier::type_invariant]` attribute:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:well_formed_with_attr}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:well_formed_with_attr}}
 ```
 
 This has two effects:
@@ -65,7 +65,7 @@ various `pub` methods.
 Let's start with an easy one: `new`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:new}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:new}}
 ```
 
 All we've done here is remove the `s.well_formed()` postcondition, which as discussed,
@@ -82,7 +82,7 @@ Now let's take a look at `get`. The first thing to notice is that we remove
 the `requires self.well_formed()` clause.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:get}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:get}}
 ```
 
 Given that we no longer have the precondition, how _do_ we deduce `self.well_formed()`
@@ -96,7 +96,7 @@ this feature guarantees that the provided object satisfies its type invariants.
 Now let's check `TreeMap::insert`, which if you recall, has to modify the tree.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:insert}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:insert}}
 ```
 
 As before, we use `use_type_invariant` to establish that `self.well_formed()` holds at the
@@ -130,7 +130,7 @@ the limitations of the `type_invariant` feature.
 This is pretty much the same as `insert`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:delete}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete}}
 ```
 
 ### The new signatures and specifications
@@ -139,13 +139,13 @@ Putting it all together, we end up with the following specifications for our pub
 
 ```rust
 impl<V> TreeMap<V> {
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:new_signature}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:new_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:insert_signature}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:insert_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:delete_signature}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:delete_signature}}
 
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:get_signature}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:get_signature}}
 }
 ```
 
@@ -164,7 +164,7 @@ As before, the client code gets to reason about the `TreeMap` as if it were just
 Now, however, it's a bit simpler because we don't have to reason about `tree_map.well_formed()`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:example_use}}
+{{#include ../../../../examples/guide/bst_map_type_invariant.rs:example_use}}
 ```
 
 ## Full source

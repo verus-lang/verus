@@ -11,7 +11,7 @@ pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vir_macros::{to_node_impl, ToDebugSNode};
+use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
@@ -863,6 +863,8 @@ pub enum ExprX {
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    /// Enter a proof block from inside spec-mode code
+    ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement

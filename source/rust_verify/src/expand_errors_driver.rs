@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::context::Ctx;
 use vir::expand_errors::{
-    cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
+    CanExpandFurther, ExpansionContext, ExpansionTree, Introduction, cons_id,
 };
 use vir::sst::FuncCheckSst;
 use vir::sst::{AssertId, Exp};

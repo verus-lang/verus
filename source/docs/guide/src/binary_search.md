@@ -5,7 +5,7 @@ The following code searches for a value `k` in a sorted sequence
 and returns the index `r` where `k` resides.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:binary_search}}
+{{#include ../../../../examples/guide/quants.rs:binary_search}}
 ```
 
 The precondition `exists|i: int| 0 <= i < v.len() && k == v[i]`

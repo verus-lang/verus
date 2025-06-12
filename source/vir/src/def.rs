@@ -34,7 +34,7 @@ For VIR -> AIR, we use these suffixes:
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
-const SUFFIX_PARAM: &str = "!";
+pub const SUFFIX_PARAM: &str = "!";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
@@ -103,6 +103,8 @@ pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
+
+pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -1065,4 +1067,10 @@ pub(crate) fn dummy_param_name() -> VarIdent {
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
     v.0.to_string() == DUMMY_PARAM
+}
+
+pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    Arc::new(FunX { path: p })
 }

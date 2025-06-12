@@ -1,11 +1,14 @@
 use super::super::modes::*;
 use super::super::pcm::*;
 use super::super::prelude::*;
+use super::super::storage_protocol::*;
 use super::*;
 
 verus! {
 
+broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_axioms};
 // Too bad that `nat` and `int` are forbidden as the type of a const generic parameter
+
 enum FractionalCarrier<T, const TOTAL: u64> {
     Value { v: T, n: int },
     Empty,
@@ -407,6 +410,323 @@ impl<T> GhostVarAuth<T> {
         let tracked mut ns = Self { frac: msfrac };
         tracked_swap(self, &mut ns);
         tracked_swap(v, &mut nv);
+    }
+}
+
+/////// Fractional tokens that allow borrowing of resources
+enum FractionalCarrierOpt<T, const TOTAL: u64> {
+    Value { v: Option<T>, n: int },
+    Empty,
+    Invalid,
+}
+
+impl<T, const TOTAL: u64> Protocol<(), T> for FractionalCarrierOpt<T, TOTAL> {
+    closed spec fn op(self, other: Self) -> Self {
+        match self {
+            FractionalCarrierOpt::Invalid => FractionalCarrierOpt::Invalid,
+            FractionalCarrierOpt::Empty => other,
+            FractionalCarrierOpt::Value { v: sv, n: sn } => match other {
+                FractionalCarrierOpt::Invalid => FractionalCarrierOpt::Invalid,
+                FractionalCarrierOpt::Empty => self,
+                FractionalCarrierOpt::Value { v: ov, n: on } => {
+                    if sv != ov {
+                        FractionalCarrierOpt::Invalid
+                    } else if sn <= 0 || on <= 0 {
+                        FractionalCarrierOpt::Invalid
+                    } else {
+                        FractionalCarrierOpt::Value { v: sv, n: sn + on }
+                    }
+                },
+            },
+        }
+    }
+
+    closed spec fn rel(self, s: Map<(), T>) -> bool {
+        match self {
+            FractionalCarrierOpt::Value { v, n } => {
+                (match v {
+                    Some(v0) => s.dom().contains(()) && s[()] == v0,
+                    None => s =~= map![],
+                }) && n == TOTAL && n != 0
+            },
+            FractionalCarrierOpt::Empty => false,
+            FractionalCarrierOpt::Invalid => false,
+        }
+    }
+
+    closed spec fn unit() -> Self {
+        FractionalCarrierOpt::Empty
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+
+    proof fn op_unit(a: Self) {
+    }
+}
+
+/// Token that maintains fractional access to some resource.
+/// This allows multiple clients to obtain shared references to some resource
+/// via `borrow`.
+pub struct Frac<T, const TOTAL: u64 = 2> {
+    r: StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
+}
+
+/// Token that represents the "empty" state of a fractional resource system.
+/// See [`Frac`] for more information.
+pub struct Empty<T, const TOTAL: u64 = 2> {
+    r: StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
+}
+
+impl<T, const TOTAL: u64> Frac<T, TOTAL> {
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        self.r.value() matches FractionalCarrierOpt::Value { v: Some(_), .. }
+    }
+
+    pub closed spec fn id(self) -> Loc {
+        self.r.loc()
+    }
+
+    pub closed spec fn resource(self) -> T {
+        self.r.value()->v.unwrap()
+    }
+
+    pub closed spec fn frac(self) -> int {
+        self.r.value()->n
+    }
+
+    pub open spec fn valid(self, id: Loc, frac: int) -> bool {
+        &&& self.id() == id
+        &&& self.frac() == frac
+    }
+
+    /// Create a fractional token that maintains shared access to the input resource.
+    pub proof fn new(tracked v: T) -> (tracked result: Self)
+        requires
+            TOTAL > 0,
+        ensures
+            result.frac() == TOTAL as int,
+            result.resource() == v,
+    {
+        let f = FractionalCarrierOpt::<T, TOTAL>::Value { v: Some(v), n: TOTAL as int };
+        let tracked mut m = Map::<(), T>::tracked_empty();
+        m.tracked_insert((), v);
+        let tracked r = StorageResource::alloc(f, m);
+        Self { r }
+    }
+
+    /// Two tokens agree on values of the underlying resource.
+    pub proof fn agree(tracked self: &Self, tracked other: &Self)
+        requires
+            self.id() == other.id(),
+        ensures
+            self.resource() == other.resource(),
+    {
+        use_type_invariant(self);
+        use_type_invariant(other);
+        let tracked joined = self.r.join_shared(&other.r);
+        joined.validate();
+    }
+
+    /// Split one token into two tokens whose quantities sum to the original.
+    /// The returned token has quantity `n`; the new value of the input token has
+    /// quantity `old(self).frac() - n`.
+    pub proof fn split(tracked &mut self, n: int) -> (tracked result: Self)
+        requires
+            0 < n < old(self).frac(),
+        ensures
+            result.id() == self.id() == old(self).id(),
+            self.resource() == old(self).resource(),
+            result.resource() == old(self).resource(),
+            self.frac() + result.frac() == old(self).frac(),
+            result.frac() == n,
+    {
+        use_type_invariant(&*self);
+        Self::split_helper(&mut self.r, n)
+    }
+
+    proof fn split_helper(
+        tracked r: &mut StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
+        n: int,
+    ) -> (tracked result: Self)
+        requires
+            0 < n < old(r).value()->n,
+            old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+        ensures
+            result.id() == r.loc() == old(r).loc(),
+            r.value()->v.unwrap() == old(r).value()->v.unwrap(),
+            result.resource() == old(r).value()->v.unwrap(),
+            r.value()->n + result.frac() == old(r).value()->n,
+            result.frac() == n,
+            r.value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+    {
+        r.validate();
+        let tracked mut r1 = StorageResource::alloc(
+            FractionalCarrierOpt::Value { v: None, n: TOTAL as int },
+            Map::tracked_empty(),
+        );
+        tracked_swap(r, &mut r1);
+        let tracked (r1, r2) = r1.split(
+            FractionalCarrierOpt::Value { v: r1.value()->v, n: r1.value()->n - n },
+            FractionalCarrierOpt::Value { v: r1.value()->v, n: n },
+        );
+        *r = r1;
+        Self { r: r2 }
+    }
+
+    /// Combine two tokens, summing their quantities.
+    pub proof fn combine(tracked &mut self, tracked other: Self)
+        requires
+            old(self).id() == other.id(),
+        ensures
+            self.id() == old(self).id(),
+            self.resource() == old(self).resource(),
+            self.resource() == other.resource(),
+            self.frac() == old(self).frac() + other.frac(),
+    {
+        use_type_invariant(&*self);
+        Self::combine_helper(&mut self.r, other)
+    }
+
+    proof fn combine_helper(
+        tracked r: &mut StorageResource<(), T, FractionalCarrierOpt<T, TOTAL>>,
+        tracked other: Self,
+    )
+        requires
+            old(r).loc() == other.id(),
+            old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+        ensures
+            r.loc() == old(r).loc(),
+            r.value()->v.unwrap() == old(r).value()->v.unwrap(),
+            r.value()->v.unwrap() == other.resource(),
+            r.value()->n == old(r).value()->n + other.frac(),
+            r.value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
+    {
+        r.validate();
+        use_type_invariant(&other);
+        let tracked mut r1 = StorageResource::alloc(
+            FractionalCarrierOpt::Value { v: None, n: TOTAL as int },
+            Map::tracked_empty(),
+        );
+        tracked_swap(r, &mut r1);
+        r1.validate_with_shared(&other.r);
+        *r = StorageResource::join(r1, other.r);
+    }
+
+    /// Allowed values for a token's quantity.
+    pub proof fn bounded(tracked &self)
+        ensures
+            0 < self.frac() <= TOTAL,
+    {
+        use_type_invariant(self);
+        let (x, _) = self.r.validate();
+    }
+
+    /// Obtain shared access to the underlying resource.
+    pub proof fn borrow(tracked &self) -> (tracked ret: &T)
+        ensures
+            ret == self.resource(),
+    {
+        use_type_invariant(self);
+        StorageResource::guard(&self.r, map![() => self.resource()]).tracked_borrow(())
+    }
+
+    /// Reclaim full ownership of the underlying resource.
+    pub proof fn take_resource(tracked self) -> (tracked pair: (T, Empty<T, TOTAL>))
+        requires
+            self.frac() == TOTAL,
+        ensures
+            pair.0 == self.resource(),
+            pair.1.id() == self.id(),
+    {
+        use_type_invariant(&self);
+        self.r.validate();
+
+        let p1 = self.r.value();
+        let p2 = FractionalCarrierOpt::Value { v: None, n: TOTAL as int };
+        let b2 = map![() => self.resource()];
+        assert forall|q: FractionalCarrierOpt<T, TOTAL>, t1: Map<(), T>|
+            #![all_triggers]
+            FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p1, q), t1) implies exists|
+            t2: Map<(), T>,
+        |
+            #![all_triggers]
+            FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2) && t2.dom().disjoint(
+                b2.dom(),
+            ) && t1 =~= t2.union_prefer_right(b2) by {
+            let t2 = map![];
+            assert(FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2));
+            assert(t2.dom().disjoint(b2.dom()));
+            assert(t1 =~= t2.union_prefer_right(b2));
+        }
+
+        let tracked Self { r } = self;
+        let tracked (new_r, mut m) = r.withdraw(p2, b2);
+        let tracked emp = Empty { r: new_r };
+        let tracked resource = m.tracked_remove(());
+        (resource, emp)
+    }
+}
+
+impl<T, const TOTAL: u64> Empty<T, TOTAL> {
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        &&& self.r.value() matches FractionalCarrierOpt::Value { v: None, n }
+        &&& n == TOTAL
+    }
+
+    pub closed spec fn id(self) -> Loc {
+        self.r.loc()
+    }
+
+    pub proof fn new(tracked v: T) -> (tracked result: Self)
+        requires
+            TOTAL > 0,
+    {
+        let f = FractionalCarrierOpt::<T, TOTAL>::Value { v: None, n: TOTAL as int };
+        let tracked mut m = Map::<(), T>::tracked_empty();
+        let tracked r = StorageResource::alloc(f, m);
+        Self { r }
+    }
+
+    /// Give up ownership of a resource and obtain a [`Frac`] token.
+    pub proof fn put_resource(tracked self, tracked resource: T) -> (tracked frac: Frac<T, TOTAL>)
+        ensures
+            frac.id() == self.id(),
+            frac.resource() == resource,
+            frac.frac() == TOTAL,
+    {
+        use_type_invariant(&self);
+        self.r.validate();
+
+        let p1 = self.r.value();
+        let b1 = map![() => resource];
+        let p2 = FractionalCarrierOpt::Value { v: Some(resource), n: TOTAL as int };
+
+        assert forall|q: FractionalCarrierOpt<T, TOTAL>, t1: Map<(), T>|
+            #![all_triggers]
+            FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p1, q), t1) implies exists|
+            t2: Map<(), T>,
+        |
+            #![all_triggers]
+            FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2) && t1.dom().disjoint(
+                b1.dom(),
+            ) && t1.union_prefer_right(b1) =~= t2 by {
+            let t2 = map![() => resource];
+            assert(FractionalCarrierOpt::rel(FractionalCarrierOpt::op(p2, q), t2)
+                && t1.dom().disjoint(b1.dom()) && t1.union_prefer_right(b1) =~= t2);
+        }
+
+        let tracked mut m = Map::tracked_empty();
+        m.tracked_insert((), resource);
+        let tracked Self { r } = self;
+        let tracked new_r = r.deposit(m, p2);
+        let tracked f = Frac { r: new_r };
+        f
     }
 }
 

@@ -11,7 +11,7 @@ use crate::ast_util::{
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
-use crate::messages::{error, error_with_label, Message, Span};
+use crate::messages::{Message, Span, error, error_with_label};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -568,6 +568,23 @@ fn check_one_expr(
 
             check_typ(ctxt, &expr.typ, &expr.span)?;
         }
+        ExprX::ProofInSpec(_) => {
+            // At the moment, spec termination checking is the only place set up to handle
+            // proofs properly.
+            // Recommendation checks could also handle proof blocks in the future,
+            // but they are not ready yet since ast_to_sst doesn't generate,
+            // for example, assertions for "assert" for recommends.
+            // (see https://github.com/verus-lang/verus/issues/692 )
+            match (place, function.x.mode, function.x.decrease.len()) {
+                (Place::Body, Mode::Spec, dec) if dec > 0 => {}
+                _ => {
+                    return Err(error(
+                        &expr.span,
+                        "proof blocks inside spec code is currently supported only for spec functions with decreases",
+                    ));
+                }
+            }
+        }
         ExprX::Header(header) => {
             return Err(error(
                 &expr.span,
@@ -585,7 +602,8 @@ fn check_one_expr(
 #[derive(Clone, Copy)]
 enum Place {
     PreState(&'static str),
-    BodyOrPostState,
+    PostState,
+    Body,
 }
 
 fn check_expr(
@@ -984,7 +1002,7 @@ fn check_function(
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -1108,7 +1126,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::Body, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {

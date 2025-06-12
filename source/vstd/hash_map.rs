@@ -57,6 +57,14 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
+    #[verifier::external_body]
+    pub fn is_empty(&self) -> (result: bool)
+        ensures
+            result == self@.is_empty(),
+    {
+        self.m.is_empty()
+    }
+
     pub uninterp spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
@@ -120,14 +128,12 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     }
 }
 
-pub broadcast proof fn axiom_hash_map_with_view_spec_len<Key, Value>(
+pub broadcast axiom fn axiom_hash_map_with_view_spec_len<Key, Value>(
     m: &HashMapWithView<Key, Value>,
 ) where Key: View + Eq + Hash
     ensures
         #[trigger] m.spec_len() == m@.len(),
-{
-    admit();
-}
+;
 
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(Value)]
@@ -164,6 +170,14 @@ impl<Value> StringHashMap<Value> {
             self@ == old(self)@,
     {
         self.m.reserve(additional);
+    }
+
+    #[verifier::external_body]
+    pub fn is_empty(&self) -> (result: bool)
+        ensures
+            result == self@.is_empty(),
+    {
+        self.m.is_empty()
     }
 
     pub uninterp spec fn spec_len(&self) -> usize;
@@ -229,12 +243,10 @@ impl<Value> StringHashMap<Value> {
     }
 }
 
-pub broadcast proof fn axiom_string_hash_map_spec_len<Value>(m: &StringHashMap<Value>)
+pub broadcast axiom fn axiom_string_hash_map_spec_len<Value>(m: &StringHashMap<Value>)
     ensures
         #[trigger] m.spec_len() == m@.len(),
-{
-    admit();
-}
+;
 
 pub broadcast group group_hash_map_axioms {
     axiom_hash_map_with_view_spec_len,
