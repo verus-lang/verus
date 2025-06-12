@@ -16,7 +16,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
             match inner_owner.node() {
                 OwnerNode::Item(item) => {
                     match &item.kind {
-                        rustc_hir::ItemKind::Fn { body: body_id, .. }  => {
+                        rustc_hir::ItemKind::Fn { body: body_id, .. } => {
                             if item.ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
                                 assert_eq!(inner_owner.nodes.bodies.len(), 1);
                                 let mut bodies = inner_owner.nodes.bodies.clone();
