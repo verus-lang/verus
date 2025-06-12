@@ -649,7 +649,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                                         use rustc_hir::definitions::DefPathData;
                                         match &seg.data {
                                             DefPathData::ValueNs(symbol)
-                                            | DefPathData::TypeNs(Some(symbol)) => {
+                                            | DefPathData::TypeNs(symbol) => {
                                                 symbol.to_string().contains(d)
                                             }
                                             _ => true,

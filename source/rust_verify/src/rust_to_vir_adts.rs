@@ -442,13 +442,12 @@ fn get_sized_constraint<'tcx>(
     // manually iterate the process.
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
-    use crate::rustc_middle::ty::inherent::AdtDef;
     use crate::rustc_trait_selection::traits::NormalizeExt;
     let tcx = ctxt.tcx;
 
-    let param_env = tcx.param_env(adt_def.def_id());
-    let typing_env = TypingEnv::post_analysis(tcx, adt_def.def_id());
-    if tcx.type_of(adt_def.def_id()).skip_binder().is_sized(tcx, typing_env) {
+    let param_env = tcx.param_env(adt_def.did());
+    let typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
+    if tcx.type_of(adt_def.did()).skip_binder().is_sized(tcx, typing_env) {
         return Ok(None);
     }
 
@@ -473,7 +472,7 @@ fn get_sized_constraint<'tcx>(
         let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(
             tcx,
             sized_constraint,
-            adt_def.def_id(),
+            adt_def.did(),
         );
         let norm = at.normalize(*ty);
         if norm.value != *ty {
@@ -511,7 +510,7 @@ fn get_sized_constraint<'tcx>(
     Ok(Some(mid_ty_to_vir(
         ctxt.tcx,
         &ctxt.verus_items,
-        adt_def.def_id(),
+        adt_def.did(),
         span,
         &sized_constraint,
         false,

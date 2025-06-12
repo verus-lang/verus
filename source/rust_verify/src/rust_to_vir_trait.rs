@@ -227,8 +227,12 @@ pub(crate) fn translate_trait<'tcx>(
             }
             let assoc_item = tcx.associated_item(owner_id.to_def_id());
             let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
-            let ex_assoc_item =
-                ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
+            let ex_assoc_item = ex_assoc_items.find_by_ident_and_kind(
+                tcx,
+                *ident,
+                assoc_item.as_tag(),
+                ex_trait_id_for,
+            );
             if is_verus_spec {
                 None
             } else if let Some(ex_assoc_item) = ex_assoc_item {
