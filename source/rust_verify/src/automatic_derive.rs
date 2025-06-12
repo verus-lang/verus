@@ -1,6 +1,5 @@
 use crate::context::Context;
 use crate::verus_items::RustItem;
-use rustc_attr_data_structures::AttributeKind;
 use rustc_hir::HirId;
 use rustc_span::Span;
 use std::sync::Arc;

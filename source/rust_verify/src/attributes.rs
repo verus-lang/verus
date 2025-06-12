@@ -1,7 +1,6 @@
 use crate::util::{err_span, vir_err_span_str};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_attr_data_structures::AttributeKind;
 use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};

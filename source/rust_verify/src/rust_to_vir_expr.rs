@@ -2231,6 +2231,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::UnsafeBinderCast(..) => {
             unsupported_err!(expr.span, format!("unsafe binder cast"))
         }
+        ExprKind::Use(..) => unsupported_err!(expr.span, "use expressions"),
     }
 }
 

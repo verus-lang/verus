@@ -246,6 +246,9 @@ pub(crate) fn translate_trait<'tcx>(
 
         match kind {
             TraitItemKind::Fn(sig, fun) => {
+                // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
+                #[allow(unused_assignments)]
+                let mut param_names = None;
                 let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(
@@ -254,8 +257,10 @@ pub(crate) fn translate_trait<'tcx>(
                         );
                     }
                     TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
-                    TraitFn::Required(param_names) => {
-                        (CheckItemFnEither::ParamNames(*param_names), false)
+                    TraitFn::Required(opt_param_names) => {
+                        // REVIEW: Is filtering out `None`s the right thing to do here?
+                        param_names = Some(opt_param_names.into_iter().flatten().cloned().collect::<Vec<_>>());
+                        (CheckItemFnEither::ParamNames(param_names.as_ref().unwrap().as_slice()), false)
                     }
                 };
                 let attrs = tcx.hir_attrs(trait_item.hir_id());

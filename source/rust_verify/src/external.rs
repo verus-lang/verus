@@ -195,14 +195,7 @@ struct VisitMod<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
     // Configure the visitor for nested visits
-    // TODO(1.87.0): is this needed?
-    // type Map = rustc_middle::hir::map::Map<'tcx>;
     type NestedFilter = rustc_middle::hir::nested_filter::All;
-
-    // TODO(1.87.0): is this needed?
-    // fn nested_visit_map(&mut self) -> Self::Map {
-    //     self.ctxt.tcx.hir()
-    // }
 
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         self.visit_general(GeneralItem::Item(item), item.hir_id(), item.span);
@@ -218,6 +211,10 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
 
     fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
         self.visit_general(GeneralItem::TraitItem(item), item.hir_id(), item.span);
+    }
+
+    fn maybe_tcx(&mut self) -> rustc_middle::ty::TyCtxt<'tcx> {
+        self.ctxt.tcx
     }
 }
 
