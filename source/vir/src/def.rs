@@ -56,6 +56,8 @@ pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
+const PREFIX_BOX_PROPH: &str = "Poly%Proph%";
+const PREFIX_UNBOX_PROPH: &str = "%Poly%Proph%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
@@ -499,6 +501,14 @@ pub fn prefix_box(ident: &Path) -> Ident {
 
 pub fn prefix_unbox(ident: &Path) -> Ident {
     Arc::new(PREFIX_UNBOX.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_proph_box(ident: &Path) -> Ident {
+    Arc::new(PREFIX_BOX_PROPH.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_proph_unbox(ident: &Path) -> Ident {
+    Arc::new(PREFIX_UNBOX_PROPH.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
