@@ -26,7 +26,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, kind, span, .. } = trait_item;
         match kind {
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -192,7 +192,7 @@ pub(crate) fn translate_trait<'tcx>(
     }
 
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
             trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
@@ -258,7 +258,7 @@ pub(crate) fn translate_trait<'tcx>(
                         (CheckItemFnEither::ParamNames(*param_names), false)
                     }
                 };
-                let attrs = tcx.hir().attrs(trait_item.hir_id());
+                let attrs = tcx.hir_attrs(trait_item.hir_id());
                 let fun = check_item_fn(
                     ctxt,
                     &mut methods,

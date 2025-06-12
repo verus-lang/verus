@@ -1006,7 +1006,7 @@ pub(crate) fn check_item_fn<'tcx>(
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
-            get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
+            get_var_mode(mode, ctxt.tcx.hir_attrs(hir_id))
         } else {
             assert!(matches!(kind, FunctionKind::TraitMethodDecl { .. }));
             // This case is for a trait method declaration,
@@ -2029,7 +2029,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
         let first_stmt = block.stmts.iter().next();
         if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
-            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let attrs = ctxt.tcx.hir_attrs(item.hir_id());
             let vattrs = ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_const_body {
                 let body_id = ctxt
@@ -2154,7 +2154,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     decl: &'tcx FnDecl<'tcx>,
-    idents: &[Ident],
+    idents: &[&Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let vattrs = ctxt.get_verifier_attrs(attrs)?;

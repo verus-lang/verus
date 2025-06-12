@@ -92,7 +92,7 @@ where
             false,
         )?;
         let mode = match hir_field_def_opt {
-            Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id)),
+            Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
         };
         let vis = mk_visibility_from_vis(ctxt, field_def.vis);
@@ -328,7 +328,7 @@ pub(crate) fn check_item_union<'tcx>(
         return err_span(span, "check_item_union: wrong VariantData");
     };
     for hir_field_def in hir_fields.iter() {
-        let mode = get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id));
+        let mode = get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id));
         if mode != Mode::Exec {
             return err_span(span, "a union field can only be exec-mode");
         }

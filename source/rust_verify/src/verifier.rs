@@ -2631,16 +2631,14 @@ impl Verifier {
             return Ok(false);
         }
 
-        let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure_ok().check_match(def_id));
+        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id));
         tcx.ensure_ok().check_private_in_public(());
-        hir.par_for_each_module(|module| {
+        tcx.hir_for_each_module(|module| {
             tcx.ensure_ok().check_mod_privacy(module);
         });
 
         self.air_no_span = {
-            let no_span = hir
-                .krate()
+            let no_span = tcx.hir_crate(())
                 .owners
                 .iter()
                 .filter_map(|oi| {
@@ -2686,7 +2684,7 @@ impl Verifier {
         let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
             tcx,
-            krate: hir.krate(),
+            krate: tcx.hir_crate(()),
             erasure_info,
             spans: spans.clone(),
             verus_items,

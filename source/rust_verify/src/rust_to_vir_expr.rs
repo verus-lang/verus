@@ -232,7 +232,7 @@ pub(crate) fn expr_to_vir<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr, modifier)?;
-    let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
     }
@@ -714,7 +714,7 @@ pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
 
 /// Check for the #[verifier(invariant_block)] attribute on a block
 fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
-    let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     attrs_is_invariant_block(attrs)
 }
 
@@ -1407,7 +1407,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         mk_expr(ExprX::Const(c))
     };
 
-    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
     if expr_vattrs.truncate {
         if !match &expr.kind {
@@ -1450,7 +1450,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
-            } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id))
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, current_modifier);
@@ -1467,7 +1467,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? })
             } else {
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier);
-                if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
+                if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block?))
                 } else {
                     block
@@ -2596,7 +2596,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     panic!("assignment to non-local");
                 };
                 if not_mut {
-                    let mut parent = bctx.ctxt.tcx.hir().parent_iter(*id);
+                    let mut parent = bctx.ctxt.tcx.hir_parent_iter(*id);
                     let (_, parent) = parent.next().expect("one parent for local");
                     match parent {
                         Node::Param(_) => err_span(lhs.span, "cannot assign to non-mut parameter")?,
@@ -2793,7 +2793,7 @@ fn unwrap_parameter_to_vir<'tcx>(
         None
     };
     // match #[verifier(proof_block)]
-    let ghost = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(stmt2.hir_id));
+    let ghost = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(stmt2.hir_id));
     // match { x = y.get() } or { x = y.view() }
     let xy_mode = if let StmtKind::Semi(Expr {
         kind:
@@ -2889,7 +2889,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Item(item_id) => {
-            let attrs = bctx.ctxt.tcx.hir().attrs(item_id.hir_id());
+            let attrs = bctx.ctxt.tcx.hir_attrs(item_id.hir_id());
             let vattrs = bctx.ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_reveal_fn {
                 dbg!(&item_id.hir_id());
@@ -2898,7 +2898,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 dbg!(&item_id.hir_id());
                 unreachable!();
             } else if vattrs.open_visibility_qualifier {
-                let item = bctx.ctxt.tcx.hir().item(*item_id);
+                let item = bctx.ctxt.tcx.hir_item(*item_id);
                 if !matches!(&item.kind, ItemKind::Use(..)) {
                     crate::internal_err!(
                         item.span,
@@ -2921,7 +2921,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
 
                 Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
-                let item = bctx.ctxt.tcx.hir().item(*item_id);
+                let item = bctx.ctxt.tcx.hir_item(*item_id);
                 if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
                     return Ok(vec![]);
                 }
@@ -2929,7 +2929,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id: _, span: _, source: _ }) => {
-            let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
+            let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
     }
 }
@@ -2940,7 +2940,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
 ) -> Result<Option<Vec<vir::ast::Stmt>>, VirErr> {
     if let Some(stmt) = stmts.next() {
         let attrs =
-            crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir().attrs(stmt.hir_id), None);
+            crate::attributes::parse_attrs_opt(bctx.ctxt.tcx.hir_attrs(stmt.hir_id), None);
         if let [Attr::UnwrapParameter] = attrs[..] {
             if let Some(stmt2) = stmts.next() {
                 return Ok(Some(unwrap_parameter_to_vir(bctx, stmt, stmt2)?));
@@ -2969,7 +2969,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             closure_expr.span,
             "implicit_self in closure"
         );
-        let body = bctx.ctxt.tcx.hir().body(*body_id);
+        let body = bctx.ctxt.tcx.hir_body(*body_id);
 
         let typs = closure_param_typs(bctx, closure_expr)?;
         assert!(typs.len() == body.params.len());
@@ -2978,7 +2978,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             .iter()
             .zip(typs.clone())
             .map(|(x, t)| {
-                let attrs = bctx.ctxt.tcx.hir().attrs(x.hir_id);
+                let attrs = bctx.ctxt.tcx.hir_attrs(x.hir_id);
                 let mode = crate::attributes::get_mode(Mode::Exec, attrs);
                 if mode != Mode::Exec {
                     return err_span(x.span, "closures only accept exec-mode parameters");
@@ -3162,7 +3162,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
             let expr_typ = typ_of_node(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
 
             if clip {
-                let expr_attrs = bctx.ctxt.tcx.hir().attrs(dst_expr.hir_id);
+                let expr_attrs = bctx.ctxt.tcx.hir_attrs(dst_expr.hir_id);
                 let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
 
                 let expr =
