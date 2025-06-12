@@ -11,7 +11,7 @@ use crate::ast_util::{
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_BOOL_CUR, PROPH_BOOL_FUT, PROPH_INT, PROPH_INT_CUR, PROPH_INT_FUT, SNAPSHOT_CALL, SNAPSHOT_CALL_MUT_REF, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI
+    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_BOOL_CUR, PROPH_BOOL_FUT, PROPH_INT, PROPH_INT_CUR, PROPH_INT_FUT, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -715,6 +715,7 @@ fn exp_get_custom_err(exp: &Exp) -> Option<Arc<String>> {
 pub(crate) enum ExprMode {
     Spec,
     Body,
+    BodyProph,
     BodyPre,
 }
 
@@ -855,6 +856,10 @@ pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprC
             } else {
                 Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
+        },
+        ExprMode::BodyProph => {
+            assert!(matches!(var_at, None));
+            string_var(&suffix_local_unique_id(x))
         },
         ExprMode::BodyPre =>
             if pre {
@@ -1703,7 +1708,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let func = &ctx.func_map[fun];
 
             let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            for arg in args.iter() {
+            for (param, arg) in func.x.params.iter().zip(args.iter()) {
                 // match &arg.x {
                 //     ExpX::Loc(x) => match &x.x {
                 //         ExpX::VarLoc(x) => {
@@ -1714,15 +1719,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 //     },
                 //     _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
                 // };
-                req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?);
+                req_args.push(if let TypX::MutRef(_) = &*param.x.typ {
+                    let mut expr_ctxt_proph = expr_ctxt.clone();
+                    expr_ctxt_proph.mode = ExprMode::BodyProph;
+                    exp_to_expr(ctx, &arg, &expr_ctxt_proph)?
+                } else {
+                    exp_to_expr(ctx, &arg, expr_ctxt)?
+                });
             }
             let req_args = Arc::new(req_args);
 
             let mut call_snapshot = false;
-            let mut prophecy_snapshot = false;
             let mut ens_args_wo_typ = Vec::new();
-            let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
-            let mut mut_ref_stmts = Vec::new();
+            // let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
+            // let mut mut_ref_stmts = Vec::new();
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
                 let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
                     let var = get_loc_var(dest);
@@ -1742,54 +1752,54 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 };
 
                 // TODO(prophecy): this is where the changes at the call sites will need to be made
-                if let TypX::MutRef(proph_t) = &*param.x.typ {
-                    dbg!(&arg);
-                    call_snapshot = true;
-                    prophecy_snapshot = true;
-                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_update_data(arg);
+                // if let TypX::MutRef(proph_t) = &*param.x.typ {
+                    // dbg!(&arg);
+                    // call_snapshot = true;
+                    // prophecy_snapshot = true;
+                    // let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
+                    //     loc_to_field_update_data(arg);
 
-                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
-                    let second_eq = Arc::new(ExprX::Binary(
-                        air::ast::BinaryOp::Eq,
-                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
-                        second_apply,
-                    ));
-                    mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
-                    mut_ref_stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
-                    let first_eq = Arc::new(ExprX::Binary(
-                        air::ast::BinaryOp::Eq,
-                        first_apply,
-                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
-                    ));
-                    mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
+                    // let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
+                    // let second_eq = Arc::new(ExprX::Binary(
+                    //     air::ast::BinaryOp::Eq,
+                    //     Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                    //     second_apply,
+                    // ));
+                    // mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
+                    // mut_ref_stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
+                    // let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
+                    // let first_eq = Arc::new(ExprX::Binary(
+                    //     air::ast::BinaryOp::Eq,
+                    //     first_apply,
+                    //     Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                    // ));
+                    // mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
 
-                    mutated_fields
-                        .entry(base_var)
-                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                        .a
-                        .push(fields.iter().map(|o| o.opr.clone()).collect());
-                    //let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    match &arg_x.x {
-                        ExpX::Loc(x) => match &x.x {
-                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
-                                &&suffix_local_unique_id(x),
-                            )),
-                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
-                        },
-                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
-                    };
+                    // mutated_fields
+                    //     .entry(base_var)
+                    //     .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
+                    //     .a
+                    //     .push(fields.iter().map(|o| o.opr.clone()).collect());
+                    // //let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
+                    // //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+                    // match &arg_x.x {
+                    //     ExpX::Loc(x) => match &x.x {
+                    //         ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
+                    //             &&suffix_local_unique_id(x),
+                    //         )),
+                    //         _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
+                    //     },
+                    //     _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
+                    // };
+                // } else {
+                ens_args_wo_typ.push(if let TypX::MutRef(_) = &*param.x.typ {
+                    let mut expr_ctxt_proph = expr_ctxt.clone();
+                    expr_ctxt_proph.mode = ExprMode::BodyProph;
+                    exp_to_expr(ctx, &arg_x, &expr_ctxt_proph)?
                 } else {
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
-                };
-            }
-
-            if prophecy_snapshot {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL_MUT_REF))));
-            } else {
-                assert!(mut_ref_stmts.len() == 0);
+                    exp_to_expr(ctx, &arg_x, expr_ctxt)?
+                });
+                // };
             }
 
             if func.x.require.len() > 0
@@ -1892,45 +1902,44 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             //let havoc_stmts = mutated_fields
             //    .keys()
             //    .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
-            stmts.extend(mut_ref_stmts.into_iter());
+            // stmts.extend(mut_ref_stmts.into_iter());
 
-            let unchaged_stmts = mutated_fields
-                .iter()
-                .map(|(base, mutated_fields)| {
-                    let LocFieldInfo { base_typ, base_span: _, a: _ } = mutated_fields;
-                    match assume_other_fields_unchanged(
-                        ctx,
-                        SNAPSHOT_CALL,
-                        &stm.span,
-                        base,
-                        mutated_fields,
-                        expr_ctxt,
-                    ) {
-                        Ok(stmt) => {
-                            let typ_inv_stmts = typ_invariant(
-                                ctx,
-                                base_typ,
-                                &string_var(&suffix_local_unique_id(base)),
-                            )
-                            .into_iter()
-                            .map(|e| Arc::new(StmtX::Assume(e)));
-                            let unchanged_and_typ_inv: Vec<Stmt> =
-                                stmt.into_iter().chain(typ_inv_stmts).collect();
-                            Ok(unchanged_and_typ_inv)
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    }
-                })
-                .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
-                .into_iter()
-                .flatten();
-            let mut_stmts: Vec<_> = unchaged_stmts.collect::<Vec<_>>();
+            // let unchaged_stmts = mutated_fields
+            //     .iter()
+            //     .map(|(base, mutated_fields)| {
+            //         let LocFieldInfo { base_typ, base_span: _, a: _ } = mutated_fields;
+            //         match assume_other_fields_unchanged(
+            //             ctx,
+            //             SNAPSHOT_CALL,
+            //             &stm.span,
+            //             base,
+            //             mutated_fields,
+            //             expr_ctxt,
+            //         ) {
+            //             Ok(stmt) => {
+            //                 let typ_inv_stmts = typ_invariant(
+            //                     ctx,
+            //                     base_typ,
+            //                     &string_var(&suffix_local_unique_id(base)),
+            //                 )
+            //                 .into_iter()
+            //                 .map(|e| Arc::new(StmtX::Assume(e)));
+            //                 let unchanged_and_typ_inv: Vec<Stmt> =
+            //                     stmt.into_iter().chain(typ_inv_stmts).collect();
+            //                 Ok(unchanged_and_typ_inv)
+            //             }
+            //             Err(vir_err) => Err(vir_err.clone()),
+            //         }
+            //     })
+            //     .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
+            //     .into_iter()
+            //     .flatten();
+            // let mut_stmts: Vec<_> = unchaged_stmts.collect::<Vec<_>>();
 
             if call_snapshot {
                 stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-                stmts.extend(mut_stmts.into_iter());
+                // stmts.extend(mut_stmts.into_iter());
             } else {
-                assert_eq!(mut_stmts.len(), 0);
                 if ctx.debug {
                     state.map_span(&stm, SpanKind::Full);
                 }
