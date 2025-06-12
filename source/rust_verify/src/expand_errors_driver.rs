@@ -556,10 +556,10 @@ impl ExpandErrorsDriver {
         use rustc_session::config::ErrorOutputType;
 
         let (in_fancy_note, in_msg) = match error_format {
-            Some(ErrorOutputType::HumanReadable(HumanReadableErrorType::Short, _)) => {
+            Some(ErrorOutputType::HumanReadable { kind: HumanReadableErrorType::Short, .. }) => {
                 (false, false)
             }
-            Some(ErrorOutputType::HumanReadable(_, _)) => (true, false),
+            Some(ErrorOutputType::HumanReadable { .. }) => (true, false),
             Some(rustc_session::config::ErrorOutputType::Json { .. }) => (false, true),
             None => (true, false),
         };

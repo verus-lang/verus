@@ -923,13 +923,13 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             unsupported_err_unless!(args_len == 1, expr.span, "expected Ghost/Tracked", &args);
             let arg = &args[0];
-            if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            if get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id))
                 == Some(GhostBlockAttr::Wrapper)
             {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
                 let vir_arg = vir_args[0].clone();
-                match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
+                match (compilable_opr, get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(arg.hir_id))) {
                     (CompilableOprItem::GhostExec, Some(GhostBlockAttr::GhostWrapped)) => {
                         let exprx = ExprX::Ghost {
                             alloc_wrapper: true,
@@ -1045,7 +1045,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let ensures = header.ensure.0;
                     let proof = vir_expr;
 
-                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     if expr_vattrs.spinoff_prover {
                         return err_span(
@@ -1179,7 +1179,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     Ok(mk_ty_clip(&to_ty, &source_vir, true))
                 }
                 ((TypX::Int(_), _), TypX::Int(_)) => {
-                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
@@ -1194,7 +1194,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ((_, true), TypX::Int(IntRange::Nat)) => {
                     let cast_to_integer =
                         mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))?;
-                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
@@ -1202,7 +1202,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
                         bctx, args[0], source_vir, mk_expr,
                     )?;
-                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
                 }
@@ -1633,7 +1633,7 @@ fn extract_ensures<'tcx>(
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
-            let body = tcx.hir().body(closure.body);
+            let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
@@ -1666,7 +1666,7 @@ fn extract_quant<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            let body = tcx.hir().body(closure.body);
+            let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
@@ -1723,7 +1723,7 @@ fn extract_assert_forall_by<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            let body = tcx.hir().body(closure.body);
+            let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
             let mut binders: Vec<VarBinder<Typ>> = Vec::new();
@@ -1777,7 +1777,7 @@ fn extract_choose<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
-            let closure_body = tcx.hir().body(closure.body);
+            let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
             let typs = closure_param_typs(bctx, expr)?;
