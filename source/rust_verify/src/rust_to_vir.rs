@@ -434,7 +434,9 @@ pub fn crate_to_vir<'a, 'tcx>(
     for (_owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
-                OwnerNode::Item(item @ Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. }) => {
+                OwnerNode::Item(
+                    item @ Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. },
+                ) => {
                     let path =
                         def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
                     if used_modules.contains(&path) {
