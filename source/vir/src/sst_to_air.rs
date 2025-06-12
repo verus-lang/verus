@@ -1702,15 +1702,93 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
-                match &arg.x {
-                    ExpX::Loc(x) => match &x.x {
-                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_id(x))),
-                        _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
-                    },
-                    _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
-                };
+                // match &arg.x {
+                //     ExpX::Loc(x) => match &x.x {
+                //         ExpX::VarLoc(x) => {
+                //             dbg!(&arg.x);
+                //             req_args.push(string_var(&suffix_local_unique_id(x)));
+                //         },
+                //         _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
+                //     },
+                //     _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
+                // };
+                req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?);
             }
             let req_args = Arc::new(req_args);
+
+            let mut call_snapshot = false;
+            let mut prophecy_snapshot = false;
+            let mut ens_args_wo_typ = Vec::new();
+            let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
+            let mut mut_ref_stmts = Vec::new();
+            for (param, arg) in func.x.params.iter().zip(args.iter()) {
+                let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
+                    let var = get_loc_var(dest);
+                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                        ExpX::Var(x) if *x == var => {
+                            call_snapshot = true;
+                            SpannedTyped::new(
+                                &e.span,
+                                &e.typ,
+                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
+                            )
+                        }
+                        _ => e.clone(),
+                    })
+                } else {
+                    arg.clone()
+                };
+
+                // TODO(prophecy): this is where the changes at the call sites will need to be made
+                if let TypX::MutRef(proph_t) = &*param.x.typ {
+                    dbg!(&arg);
+                    call_snapshot = true;
+                    prophecy_snapshot = true;
+                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
+                        loc_to_field_update_data(arg);
+
+                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
+                    let second_eq = Arc::new(ExprX::Binary(
+                        air::ast::BinaryOp::Eq,
+                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                        second_apply,
+                    ));
+                    mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
+                    mut_ref_stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
+                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
+                    let first_eq = Arc::new(ExprX::Binary(
+                        air::ast::BinaryOp::Eq,
+                        first_apply,
+                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                    ));
+                    mut_ref_stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
+
+                    mutated_fields
+                        .entry(base_var)
+                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
+                        .a
+                        .push(fields.iter().map(|o| o.opr.clone()).collect());
+                    //let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
+                    //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+                    match &arg_x.x {
+                        ExpX::Loc(x) => match &x.x {
+                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
+                                &&suffix_local_unique_id(x),
+                            )),
+                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
+                        },
+                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
+                    };
+                } else {
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+                };
+            }
+
+            if prophecy_snapshot {
+                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL_MUT_REF))));
+            } else {
+                assert!(mut_ref_stmts.len() == 0);
+            }
 
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
@@ -1809,72 +1887,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             {
                 unimplemented!("&mut args are unsupported in debugger mode");
             }
-            let mut call_snapshot = false;
-            let mut ens_args_wo_typ = Vec::new();
-            let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
-            for (param, arg) in func.x.params.iter().zip(args.iter()) {
-                let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-                    let var = get_loc_var(dest);
-                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                        ExpX::Var(x) if *x == var => {
-                            call_snapshot = true;
-                            SpannedTyped::new(
-                                &e.span,
-                                &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
-                            )
-                        }
-                        _ => e.clone(),
-                    })
-                } else {
-                    arg.clone()
-                };
-
-                // TODO(prophecy): this is where the changes at the call sites will need to be made
-                if let TypX::MutRef(proph_t) = &*param.x.typ {
-                    call_snapshot = true;
-                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_update_data(arg);
-
-                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
-                    let second_eq = Arc::new(ExprX::Binary(
-                        air::ast::BinaryOp::Eq,
-                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
-                        second_apply,
-                    ));
-                    stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
-                    stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
-                    let first_eq = Arc::new(ExprX::Binary(
-                        air::ast::BinaryOp::Eq,
-                        first_apply,
-                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
-                    ));
-                    stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
-
-                    mutated_fields
-                        .entry(base_var)
-                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                        .a
-                        .push(fields.iter().map(|o| o.opr.clone()).collect());
-                    //let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    match &arg_x.x {
-                        ExpX::Loc(x) => match &x.x {
-                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
-                                &&suffix_local_unique_id(x),
-                            )),
-                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
-                        },
-                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
-                    };
-                } else {
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
-                };
-            }
             //let havoc_stmts = mutated_fields
             //    .keys()
             //    .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
+            stmts.extend(mut_ref_stmts.into_iter());
 
             let unchaged_stmts = mutated_fields
                 .iter()
@@ -1909,8 +1925,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut_stmts: Vec<_> = unchaged_stmts.collect::<Vec<_>>();
 
             if call_snapshot {
-                //stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-                //stmts.extend(mut_stmts.into_iter());
+                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+                stmts.extend(mut_stmts.into_iter());
             } else {
                 assert_eq!(mut_stmts.len(), 0);
                 if ctx.debug {
@@ -2155,10 +2171,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
-            stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
+            let x_var = var_to_expr(ctx, x, &dest.typ, expr_ctxt, None);
+            let value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
+            let eqx = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, x_var, value));
+            vec![Arc::new(StmtX::Assume(eqx))]
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
-            dbg!(&dest);
             let mut stmts: Vec<Stmt> = Vec::new();
             if ctx.debug {
                 unimplemented!("assignments are unsupported in debugger mode");
@@ -2996,7 +3014,7 @@ pub(crate) fn body_stm_to_air(
             }
         }
     }
-
+    
     for req in reqs.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre);
         let e = exp_to_expr(ctx, &req, expr_ctxt)?;

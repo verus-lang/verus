@@ -1070,7 +1070,8 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
-            | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            | (LocalDeclKind::ExecClosureRet, _, _)
+            | (LocalDeclKind::MutRef, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()
             }

@@ -155,6 +155,12 @@ impl<'a> State<'a> {
         (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(x.clone())))
     }
 
+    fn next_loc_temp(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
+        self.next_var += 1;
+        let x = crate::def::new_temp_var(self.next_var);
+        (x.clone(), SpannedTyped::new(span, typ, ExpX::VarLoc(x.clone())))
+    }
+
     pub(crate) fn push_scope(&mut self) {
         self.rename_map.push_scope(true);
         self.rename_exp_idents.push_scope(true);
@@ -290,6 +296,17 @@ impl<'a> State<'a> {
         kind: LocalDeclKind,
     ) -> (VarIdent, Exp) {
         let (temp, temp_var) = self.next_temp(span, typ);
+        let temp_id = self.declare_var_stm(&temp, typ, kind, false);
+        (temp_id, temp_var)
+    }
+
+    fn declare_temp_var_loc_stm(
+        &mut self,
+        span: &Span,
+        typ: &Typ,
+        kind: LocalDeclKind,
+    ) -> (VarIdent, Exp) {
+        let (temp, temp_var) = self.next_loc_temp(span, typ);
         let temp_id = self.declare_var_stm(&temp, typ, kind, false);
         (temp_id, temp_var)
     }
@@ -1052,9 +1069,12 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Loc(expr1) => {
-            let (stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
+            let (temp_ident, e1) = state.declare_temp_var_loc_stm(&expr.span, &expr.typ, LocalDeclKind::MutRef);
+            let (mut stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
+            stms.push(init_var(&expr.span, &temp_ident, &e0));
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e1)))))
+            // Ok((stms, ReturnValue::Some(e1)))
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {

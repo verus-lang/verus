@@ -136,6 +136,7 @@ pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
 pub const SNAPSHOT_CALL: &str = "CALL";
+pub const SNAPSHOT_CALL_MUT_REF: &str = "CALL_EARLY";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
 pub const T_HEIGHT: &str = "Height";

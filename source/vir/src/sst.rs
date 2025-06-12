@@ -219,6 +219,7 @@ pub enum LocalDeclKind {
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
+    MutRef,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
