@@ -2638,7 +2638,8 @@ impl Verifier {
         });
 
         self.air_no_span = {
-            let no_span = tcx.hir_crate(())
+            let no_span = tcx
+                .hir_crate(())
                 .owners
                 .iter()
                 .filter_map(|oi| {

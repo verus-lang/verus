@@ -259,8 +259,13 @@ pub(crate) fn translate_trait<'tcx>(
                     TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
                     TraitFn::Required(opt_param_names) => {
                         // REVIEW: Is filtering out `None`s the right thing to do here?
-                        param_names = Some(opt_param_names.into_iter().flatten().cloned().collect::<Vec<_>>());
-                        (CheckItemFnEither::ParamNames(param_names.as_ref().unwrap().as_slice()), false)
+                        param_names = Some(
+                            opt_param_names.into_iter().flatten().cloned().collect::<Vec<_>>(),
+                        );
+                        (
+                            CheckItemFnEither::ParamNames(param_names.as_ref().unwrap().as_slice()),
+                            false,
+                        )
                     }
                 };
                 let attrs = tcx.hir_attrs(trait_item.hir_id());

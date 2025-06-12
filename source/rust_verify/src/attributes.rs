@@ -129,9 +129,9 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     "internal" => match &item.args {
                         AttrArgs::Delimited(delim) => {
                             let trees: Box<[AttrTree]> =
-                                token_stream_to_trees(attr.span(), &delim.tokens).map_err(|_| {
-                                    vir_err_span_str(attr.span(), "invalid verus attribute")
-                                })?;
+                                token_stream_to_trees(attr.span(), &delim.tokens).map_err(
+                                    |_| vir_err_span_str(attr.span(), "invalid verus attribute"),
+                                )?;
                             if trees.len() != 1 {
                                 return err_span(attr.span(), "invalid verus attribute");
                             }

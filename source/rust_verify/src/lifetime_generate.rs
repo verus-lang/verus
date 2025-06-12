@@ -2630,8 +2630,7 @@ fn erase_trait_item<'tcx>(
                     .as_local()
                     .expect("erase_trait_item only called on locals");
                 let hir_id = tcx.local_def_id_to_hir_id(local_id);
-                trait_item =
-                    tcx.hir_trait_item(rustc_hir::TraitItemId { owner_id: hir_id.owner });
+                trait_item = tcx.hir_trait_item(rustc_hir::TraitItemId { owner_id: hir_id.owner });
             } else {
                 continue;
             }
@@ -3064,7 +3063,8 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Union(_ident, _e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Const(_ident, _ty, _, body_id) | ItemKind::Static(_ident, _ty, _, body_id) => {
+                        ItemKind::Const(_ident, _ty, _, body_id)
+                        | ItemKind::Static(_ident, _ty, _, body_id) => {
                             if vattrs.size_of_global || vattrs.item_broadcast_use {
                                 continue;
                             }
