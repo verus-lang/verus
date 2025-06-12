@@ -1067,12 +1067,23 @@ pub(crate) fn expr_to_stm_opt(
                 ReturnValue::Some(mk_exp(ExpX::VarAt(state.get_var_unique_id(&x), VarAt::Pre))),
             ))
         }
+        ExprX::VarAt(x, VarAt::Post) => {
+            unreachable!("VarAt::Post for {:?} is introduced by the lowering, not expected here", x);
+        }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Loc(expr1) => {
             let (temp_ident, e1) = state.declare_temp_var_loc_stm(&expr.span, &expr.typ, LocalDeclKind::MutRef);
             let (mut stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
             stms.push(init_var(&expr.span, &temp_ident, &e0));
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assign {
+                lhs: Dest { dest: e0, is_init: false },
+                rhs: SpannedTyped::new(
+                    &expr.span,
+                    &expr1.typ,
+                    ExpX::VarAt(temp_ident, VarAt::Post),
+                ),
+            }));
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e1)))))
             // Ok((stms, ReturnValue::Some(e1)))
         }

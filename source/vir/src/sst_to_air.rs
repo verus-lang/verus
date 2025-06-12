@@ -829,6 +829,7 @@ pub(crate) fn ty_to_proph_accessor(typ: &Typ, future: bool) -> Ident {
 pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprCtxt, var_at: Option<VarAt>) -> Expr {
     let pre = match var_at {
         Some(VarAt::Pre) => true,
+        Some(VarAt::Post) => false,
         None => false,
     };
     match expr_ctxt.mode {
@@ -843,7 +844,7 @@ pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprC
         ExprMode::Body => match &**typ {
             TypX::MutRef(t) => 
                 if !pre {
-                    ident_apply(&ty_to_proph_accessor(t, false), &vec![string_var(&suffix_local_unique_id(x))])
+                    ident_apply(&ty_to_proph_accessor(t, matches!(var_at, Some(VarAt::Post))), &vec![string_var(&suffix_local_unique_id(x))])
                 } else {
                     ident_apply(&ty_to_proph_accessor(t, false), &vec![
                         Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
@@ -879,6 +880,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Var(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
         ExpX::VarLoc(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
         ExpX::VarAt(x, VarAt::Pre) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre)),
+        ExpX::VarAt(x, VarAt::Post) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Post)),
         ExpX::StaticVar(f) => string_var(&static_name(f)),
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),

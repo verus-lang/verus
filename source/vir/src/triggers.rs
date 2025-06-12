@@ -223,6 +223,7 @@ fn check_trigger_expr(
                 Ok(())
             }
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
+            ExpX::VarAt(_, VarAt::Post) => panic!("internal error: VarAt::Post in trigger"),
             ExpX::Old(_, _) => panic!("internal error: Old"),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_typ)) => Ok(()),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
