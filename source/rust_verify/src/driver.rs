@@ -199,8 +199,7 @@ pub fn run(
     mut rustc_args: Vec<String>,
     verus_root: Option<VerusRoot>,
     build_test_mode: bool,
-) -> (Verifier, Stats, Result<(), ()>)
-{
+) -> (Verifier, Stats, Result<(), ()>) {
     if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
@@ -242,12 +241,7 @@ pub fn run(
         rustc_args: rustc_args.clone(),
         verus_externs,
     };
-    let status = run_compiler(
-        rustc_args_verify.clone(),
-        true,
-        false,
-        &mut verifier_callbacks,
-    );
+    let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
         verifier,
         rust_start_time,
@@ -283,11 +277,7 @@ pub fn run(
     let compile_status = if !verifier.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(
-            rustc_args,
-            verifier.compile,
-            verifier.args.vstd,
-        )
+        run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
     };
 
     let time2 = Instant::now();
