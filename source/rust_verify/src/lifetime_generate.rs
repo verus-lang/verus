@@ -10,9 +10,9 @@ use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node,
-    OwnerNode, Pat, PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, UnOp,
+    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode, Pat,
+    PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
@@ -612,11 +612,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
     let mk_pat = |p: PatternX| Box::new((pat.span, p));
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
-        PatKind::Expr(PatExpr {
-            kind: PatExprKind::Path(qpath),
-            hir_id,
-            ..
-        }) => {
+        PatKind::Expr(PatExpr { kind: PatExprKind::Path(qpath), hir_id, .. }) => {
             let res = ctxt.types().qpath_res(qpath, *hir_id);
             match res {
                 Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),

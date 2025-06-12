@@ -171,32 +171,32 @@ macro_rules! ldbg {
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
-        let hir = tcx.hir();
-        let krate = hir.krate();
-        rustc_hir_analysis::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return;
-        }
-        for owner in &krate.owners {
-            if let MaybeOwner::Owner(owner) = owner {
-                match owner.node() {
-                    OwnerNode::Item(item) => match &item.kind {
-                        rustc_hir::ItemKind::Fn { .. } => {
-                            tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                        }
-                        ItemKind::Impl(impll) => {
-                            for item in impll.items {
-                                match item.kind {
-                                    AssocItemKind::Fn { .. } => {
-                                        tcx.ensure_ok().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
-                                    }
-                                    _ => {}
+    let hir = tcx.hir();
+    let krate = hir.krate();
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn { .. } => {
+                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item in impll.items {
+                            match item.kind {
+                                AssocItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
                                 }
+                                _ => {}
                             }
                         }
-                        _ => (),
                     }
-                    _ => {}
+                    _ => (),
+                },
+                _ => {}
             }
         }
     }
@@ -361,16 +361,13 @@ fn emit_check_tracked_lifetimes<'tcx>(
 }
 
 struct LifetimeCallbacks {
-    code: String
+    code: String,
 }
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
     // note: we only need to call into config here,
     // to change the file_loader
-    fn config<'tcx>(
-        &mut self,
-        cfg: &mut rustc_interface::interface::Config
-    ) {
+    fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
         cfg.file_loader = Some(Box::new(LifetimeFileLoader { rust_code: self.code.clone() }));
     }
 

@@ -13,8 +13,8 @@ use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value
+    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    TypeVisitableExt, TypingMode, ValTreeKind, Value,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -1181,8 +1181,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 
     match cnst.kind() {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(Value { ty, valtree }) =>
-        {
+        ConstKind::Value(Value { ty, valtree }) => {
             let ValTreeKind::Leaf(i) = *valtree else {
                 unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
             };
@@ -1192,7 +1191,9 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                     Ok(Arc::new(TypX::ConstInt(c)))
                 }
                 TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
-                _ => unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                _ => {
+                    unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                }
             }
         }
         _ => {

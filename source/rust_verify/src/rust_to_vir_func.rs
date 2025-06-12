@@ -12,12 +12,12 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety, HirId, MaybeOwner, Param,
-    Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TypingEnv, TyCtxt, TyKind, ValTreeKind, Value
+    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
