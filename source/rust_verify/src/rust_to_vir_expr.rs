@@ -25,8 +25,9 @@ use rustc_ast::LitKind;
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::{
-    BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt,
-    LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind, StructTailExpr, UnOp,
+    BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt, Lit,
+    LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind, StructTailExpr,
+    UnOp,
 };
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
@@ -250,35 +251,9 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     pat_expr: &PatExpr<'tcx>,
 ) -> Result<PatternX, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let mk_expr = move |x: ExprX| bctx.spanned_typed_new(pat.span, pat_typ, x);
     match pat_expr.kind {
-        // TODO(1.86.0): this duplicates the Lit case in expr_to_vir_innermost
-        PatExprKind::Lit {
-            lit, negated
-        } => match lit.node {
-            LitKind::Bool(b) => {
-                let c = vir::ast::Constant::Bool(if negated { !b } else { b });
-                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
-            }
-            LitKind::Int(i, _) => {
-                check_lit_int(&bctx.ctxt, pat.span, negated, i.get(), pat_typ)?;
-                let mut big_int = num_bigint::BigInt::from(i.get());
-                if negated {
-                    big_int = -1 * big_int;
-                }
-                Ok(PatternX::Expr(mk_expr(ExprX::Const(Constant::Int(big_int)))))
-            }
-            LitKind::Char(c) => {
-                let c = vir::ast::Constant::Char(c);
-                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
-            }
-            LitKind::Str(s, _str_style) => {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
-            }
-            _ => {
-                return err_span(span, "Unsupported constant type");
-            }
+        PatExprKind::Lit { lit, negated } => {
+            Ok(PatternX::Expr(lit_to_vir(bctx, span, &lit, negated, pat_typ)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
@@ -297,9 +272,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
 
                     Ok(PatternX::Expr(expr))
                 }
-                Res::Err => {
-                    err_span(span, format!("Couldn't resolve {qpath:#?}"))
-                }
+                Res::Err => err_span(span, format!("Couldn't resolve {qpath:#?}")),
                 _ => {
                     let (adt_def_id, variant_def, _is_enum) =
                         get_adt_res_struct_enum(tcx, res, pat.span, true)?;
@@ -309,7 +282,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     Ok(PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(vec![])))
                 }
             }
-        },
+        }
         PatExprKind::ConstBlock(_) => err_span(span, "PatExprKind::ConstBlock"),
     }
 }
@@ -458,7 +431,10 @@ fn get_adt_res<'tcx>(
             (struct_did, variant_def, false, adt_def.is_union())
         }
         _ => {
-            crate::internal_err!(span, format!("got unexpected Res trying to resolve constructor {res:#?}"))
+            crate::internal_err!(
+                span,
+                format!("got unexpected Res trying to resolve constructor {res:#?}")
+            )
         }
     };
 
@@ -552,9 +528,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 }
             }
         }
-        PatKind::Expr(expr) => {
-            patexpr_to_vir(bctx, expr.span, pat, &pat_typ, expr)?
-        }
+        PatKind::Expr(expr) => patexpr_to_vir(bctx, expr.span, pat, &pat_typ, expr)?,
         PatKind::Tuple(pats, dot_dot_pos) => {
             let n = match &*pat_typ {
                 TypX::Datatype(Dt::Tuple(n), typs, ..) => {
@@ -1787,26 +1761,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, format!("array-fill expresion with non-copy type"))
             }
         }
-        ExprKind::Lit(lit) => match lit.node {
-            LitKind::Bool(b) => {
-                let c = vir::ast::Constant::Bool(b);
-                mk_expr(ExprX::Const(c))
-            }
-            LitKind::Int(i, _) => {
-                mk_lit_int(false, i.get(), typ_of_node(bctx, expr.span, &expr.hir_id, false)?)
-            }
-            LitKind::Char(c) => {
-                let c = vir::ast::Constant::Char(c);
-                mk_expr(ExprX::Const(c))
-            }
-            LitKind::Str(s, _str_style) => {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-                mk_expr(ExprX::Const(c))
-            }
-            _ => {
-                return err_span(expr.span, "Unsupported constant type");
-            }
-        },
+        ExprKind::Lit(lit) => lit_to_vir(
+            bctx,
+            expr.span,
+            lit,
+            false,
+            &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ),
         ExprKind::Cast(source, _) => {
             let source_vir = expr_to_vir(bctx, source, modifier)?;
 
@@ -2487,6 +2448,42 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
         ExprKind::UnsafeBinderCast(..) => {
             unsupported_err!(expr.span, format!("unsafe binder cast"))
+        }
+    }
+}
+
+fn lit_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    lit: &Lit,
+    negated: bool,
+    typ: &Typ,
+) -> Result<vir::ast::Expr, VirErr> {
+    let mk_expr = move |x: ExprX| Ok(bctx.spanned_typed_new(span, &typ, x));
+    let mk_lit_int = |in_negative_literal: bool, i: u128, typ: &Typ| {
+        check_lit_int(&bctx.ctxt, span, in_negative_literal, i, typ)?;
+        let mut big_int = num_bigint::BigInt::from(i);
+        if negated {
+            big_int = -1 * big_int;
+        }
+        mk_expr(ExprX::Const(Constant::Int(big_int)))
+    };
+    match lit.node {
+        LitKind::Bool(b) => {
+            let c = vir::ast::Constant::Bool(b);
+            mk_expr(ExprX::Const(c))
+        }
+        LitKind::Int(i, _) => mk_lit_int(false, i.get(), typ),
+        LitKind::Char(c) => {
+            let c = vir::ast::Constant::Char(c);
+            mk_expr(ExprX::Const(c))
+        }
+        LitKind::Str(s, _str_style) => {
+            let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+            mk_expr(ExprX::Const(c))
+        }
+        _ => {
+            return err_span(span, "Unsupported constant type");
         }
     }
 }
