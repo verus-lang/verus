@@ -254,11 +254,9 @@ pub broadcast proof fn axiom_vec_dequeue_index_decreases<A>(v: VecDeque<A>, i: i
 #[verifier::accept_recursive_types(T)]
 pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 
-pub trait IterAdditionalSpecFns<'a, T: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<T>);
-}
+impl<'a, T: 'a> View for Iter<'a, T> {
+    type V = (int, Seq<T>);
 
-impl<'a, T: 'a> IterAdditionalSpecFns<'a, T> for Iter<'a, T> {
     uninterp spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
 }
 
