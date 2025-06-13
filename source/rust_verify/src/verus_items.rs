@@ -63,7 +63,7 @@ pub(crate) fn def_id_to_stable_rust_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId)
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(Some(symbol)) => {
                 segments.push(symbol.to_string())
             }
             DefPathData::Ctor => segments.push(vir::def::RUST_DEF_CTOR.to_string()),

@@ -8,13 +8,10 @@ use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::Visibility;
-use rustc_middle::ty::fold::BoundVarReplacerDelegate;
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTree,
+    AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
+    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -46,7 +43,7 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
     for d in def_path.data.iter() {
         use rustc_hir::definitions::DefPathData;
         match &d.data {
-            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(symbol) => {
+            DefPathData::ValueNs(symbol) | DefPathData::TypeNs(Some(symbol)) => {
                 segments.push(Arc::new(symbol.to_string()));
             }
             DefPathData::Ctor => {
@@ -89,7 +86,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
     if !is_impl_item_fn {
         return;
     }
-    let mut parent_node = tcx.hir().parent_iter(hir_id);
+    let mut parent_node = tcx.hir_parent_iter(hir_id);
     let (_, parent_node) = parent_node.next().expect("unexpected empty impl path");
     let friendly_self_ty = match parent_node {
         rustc_hir::Node::Item(rustc_hir::Item {
@@ -230,7 +227,7 @@ pub(crate) fn clean_all_escaping_bound_vars<
     param_env_src: DefId,
 ) -> T {
     let mut regions = HashMap::new();
-    let delegate = rustc_middle::ty::fold::FnMutDelegate {
+    let delegate = rustc_middle::ty::FnMutDelegate {
         regions: &mut |br| {
             *regions.entry(br).or_insert(rustc_middle::ty::Region::new_late_param(
                 tcx,
@@ -309,7 +306,7 @@ where
             rustc_middle::ty::Bound(debruijn, bound_ty) if debruijn == self.current_index => {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
-                rustc_middle::ty::fold::shift_vars(self.tcx, ty, self.current_index.as_u32())
+                rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
             }
             _ if t.has_vars_bound_at_or_above(self.current_index) => t.super_fold_with(self),
             _ => t,
@@ -337,7 +334,7 @@ where
             ConstKind::Bound(debruijn, bound_const) if debruijn == self.current_index => {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
-                rustc_middle::ty::fold::shift_vars(self.tcx, ct, self.current_index.as_u32())
+                rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
             }
             _ => ct.super_fold_with(self),
         }
@@ -1181,14 +1178,20 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 
     match cnst.kind() {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(ty, ValTree::Leaf(i))
-            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
-        {
-            let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-            Ok(Arc::new(TypX::ConstInt(c)))
-        }
-        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+        ConstKind::Value(Value { ty, valtree }) => {
+            let ValTreeKind::Leaf(i) = *valtree else {
+                unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
+            };
+            match ty.kind() {
+                TyKind::Uint(_) | TyKind::Int(_) => {
+                    let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                    Ok(Arc::new(TypX::ConstInt(c)))
+                }
+                TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
+                _ => {
+                    unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                }
+            }
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1623,10 +1626,14 @@ pub(crate) fn check_item_external_generics<'tcx>(
     let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
     substs_ref.retain(|arg| match arg.unpack() {
         GenericArgKind::Const(cnst) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if let ValTreeKind::Leaf(ScalarInt::TRUE) = *valtree {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    true
                 }
             } else {
                 true
@@ -1740,7 +1747,7 @@ fn check_generics_bounds_main<'tcx>(
             } = hir_param;
 
             let vattrs = get_verifier_attrs(
-                tcx.hir().attrs(hir_param.hir_id),
+                tcx.hir_attrs(hir_param.hir_id),
                 if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
             )?;
             if vattrs.reject_recursive_types
