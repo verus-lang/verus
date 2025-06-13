@@ -237,37 +237,6 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
         },
 ;
 
-// To allow reasoning about the ghost iterator when the executable
-// function `into_iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter);
-
-pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
-    ensures
-        (#[trigger] spec_into_iter(v))@ == (0int, v@),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_into_iter)]
-pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter)
-    ensures
-        ({
-            let (index, s) = iter@;
-            &&& index == 0
-            &&& s == vec@
-        }),
-;
-
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
     requires
         0 <= i < v.len(),
@@ -299,11 +268,9 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-pub trait IntoIterAdditionalSpecFns<T> {
-    spec fn view(self: &Self) -> (int, Seq<T>);
-}
+impl<T, A: Allocator> View for IntoIter<T, A> {
+    type V = (int, Seq<T>);
 
-impl<T, A: Allocator> IntoIterAdditionalSpecFns<T> for IntoIter<T, A> {
     uninterp spec fn view(self: &IntoIter<T, A>) -> (int, Seq<T>);
 }
 
@@ -394,6 +361,33 @@ impl<T, A: Allocator> View for IntoIterGhostIterator<T, A> {
         self.elements.take(self.pos)
     }
 }
+
+// To allow reasoning about the ghost iterator when the executable
+// function `into_iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
+
+pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
+    ensures
+        (#[trigger] spec_into_iter(v))@ == (0int, v@),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_into_iter)]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter)
+    ensures
+        iter@ == (0int, vec@),
+;
 
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
