@@ -12,12 +12,12 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner,
-    Param, Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv,
+    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -331,7 +331,7 @@ fn compare_external_ty_or_true<'tcx>(
             if k1 != k2 {
                 return false;
             }
-            if tcx.associated_item(t1.def_id).name != tcx.associated_item(t2.def_id).name {
+            if tcx.associated_item(t1.def_id).name() != tcx.associated_item(t2.def_id).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
@@ -930,7 +930,11 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        (this_path.clone(), None, visibility, kind, has_self_param, sig.header.safety)
+        let safety = match sig.header.safety {
+            HeaderSafety::Normal(s) => s,
+            _ => Safety::Unsafe,
+        };
+        (this_path.clone(), None, visibility, kind, has_self_param, safety)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -959,7 +963,7 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            if mode != Mode::Exec && safety == &Safety::Unsafe {
+            if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
@@ -1002,7 +1006,7 @@ pub(crate) fn check_item_fn<'tcx>(
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
-            get_var_mode(mode, ctxt.tcx.hir().attrs(hir_id))
+            get_var_mode(mode, ctxt.tcx.hir_attrs(hir_id))
         } else {
             assert!(matches!(kind, FunctionKind::TraitMethodDecl { .. }));
             // This case is for a trait method declaration,
@@ -1437,7 +1441,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
 fn has_self_parameter<'tcx>(ctxt: &Context<'tcx>, id: DefId) -> bool {
     if let Some(assoc_item) = ctxt.tcx.opt_associated_item(id) {
-        assoc_item.fn_has_self_parameter
+        assoc_item.is_method()
     } else {
         false
     }
@@ -1707,7 +1711,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     preds: &mut Vec<Clause<'tcx>>,
 ) {
     use rustc_middle::ty;
-    use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
+    use rustc_middle::ty::{ConstKind, ScalarInt};
     let tcx = ctxt.tcx;
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
@@ -1744,10 +1748,14 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
             }
         }
         rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if *valtree == &ValTreeKind::Leaf(ScalarInt::TRUE) {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    false
                 }
             } else {
                 false
@@ -2021,7 +2029,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
         let first_stmt = block.stmts.iter().next();
         if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
-            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let attrs = ctxt.tcx.hir_attrs(item.hir_id());
             let vattrs = ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_const_body {
                 let body_id = ctxt
@@ -2146,7 +2154,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     decl: &'tcx FnDecl<'tcx>,
-    idents: &[Ident],
+    idents: &[&Ident],
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
