@@ -74,28 +74,18 @@ impl Provenance {
 /// Metadata
 ///
 /// For thin pointers (i.e., when T: Sized), the metadata is `()`.
-/// For slices, `str`, and `dyn` types this is nontrivial.
-/// See: <https://doc.rust-lang.org/std/ptr/trait.Pointee.html>
+/// For slices (`[T]`) and `str`, the metadata is `usize`.
+/// For `dyn` types (not supported by Verus at the time of writing), this type is also nontrivial.
 ///
-/// TODO: This will eventually be replaced with `<T as Pointee>::Metadata`.
-pub ghost enum Metadata {
-    Thin,
-    /// Length in bytes for a `str`; length in items for a slice
-    Length(usize),
-    /// For 'dyn' types (not yet supported)
-    Dyn(DynMetadata),
-}
-
-/// Metadata for `dyn` types (not yet supported)
-#[verifier::external_body]
-pub ghost struct DynMetadata {}
+/// See: <https://doc.rust-lang.org/std/ptr/trait.Pointee.html>
+pub type Metadata<T> = <T as core::ptr::Pointee>::Metadata;
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
-pub ghost struct PtrData {
+pub ghost struct PtrData<T: ?Sized> {
     pub addr: usize,
     pub provenance: Provenance,
-    pub metadata: Metadata,
+    pub metadata: Metadata<T>,
 }
 
 /// Permission to access possibly-initialized, _typed_ memory.
@@ -151,13 +141,13 @@ pub ghost struct PointsToData<T> {
 }
 
 impl<T: ?Sized> View for *mut T {
-    type V = PtrData;
+    type V = PtrData<T>;
 
     uninterp spec fn view(&self) -> Self::V;
 }
 
 impl<T: ?Sized> View for *const T {
-    type V = PtrData;
+    type V = PtrData<T>;
 
     #[verifier::inline]
     open spec fn view(&self) -> Self::V {
@@ -270,18 +260,18 @@ impl<T> MemContents<T> {
 // Inverse functions:
 // Pointers are equivalent to their model
 /// Constructs a pointer from its underlying model.
-pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData<T>) -> *mut T;
 
 /// Constructs a pointer from its underlying model.
 /// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),
 /// we can define this operation in terms of the operation on `*mut T`.
 #[verifier::inline]
-pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
+pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData<T>) -> *const T {
     ptr_mut_from_data(data) as *const T
 }
 
 /// The view of a pointer constructed from `data: PtrData` should be exactly that data.
-pub broadcast axiom fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
+pub broadcast axiom fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData<T>)
     ensures
         (#[trigger] ptr_mut_from_data::<T>(data))@ == data,
 ;
@@ -289,7 +279,7 @@ pub broadcast axiom fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
 // Equiv to ptr_mut_from_data, but named differently to avoid trigger issues
 // Only use for ptrs_mut_eq
 #[doc(hidden)]
-pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData<T>) -> *mut T;
 
 /// Implies that `a@ == b@ ==> a == b`.
 pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
@@ -303,7 +293,7 @@ pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
 /// so we use `Pointee<Metadata = ()>` instead of `core::ptr::Thin` here
 #[verifier::inline]
 pub open spec fn ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *const T {
-    ptr_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
+    ptr_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -322,7 +312,7 @@ pub assume_specification<
 /// so we use `Pointee<Metadata = ()>` instead of `core::ptr::Thin` here
 #[verifier::inline]
 pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *mut T {
-    ptr_mut_from_data(PtrData { addr: 0, provenance: Provenance::null(), metadata: Metadata::Thin })
+    ptr_mut_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -343,7 +333,7 @@ pub assume_specification<
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
 pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
     ptr_mut_from_data(
-        PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: Metadata::Thin },
+        PtrData::<U> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
     )
 }
 
@@ -366,7 +356,7 @@ pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U
 /// Address and provenance are preserved; metadata has length `N`.
 pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> *mut [T] {
     ptr_mut_from_data(
-        PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: Metadata::Length(N) },
+        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: N },
     )
 }
 
@@ -506,7 +496,7 @@ macro_rules! pointer_specs {
                 no_unwind;
 
             pub open spec fn spec_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> *$mu T {
-                $ptr_from_data(PtrData { addr: addr, .. p@ })
+                $ptr_from_data(PtrData::<T> { addr: addr, .. p@ })
             }
 
             #[verifier::when_used_as_spec(spec_with_addr)]
@@ -584,7 +574,7 @@ pub fn with_exposed_provenance<T: Sized>(
 ) -> (p: *mut T)
     ensures
         p == ptr_mut_from_data::<T>(
-            PtrData { addr: addr, provenance: provenance@, metadata: Metadata::Thin },
+            PtrData::<T> { addr: addr, provenance: provenance@, metadata: () },
         ),
     opens_invariants none
     no_unwind
@@ -671,7 +661,7 @@ impl PointsToRaw {
             self.is_range(start as int, size_of::<V>() as int),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: Metadata::Thin },
+                PtrData { addr: start, provenance: self.provenance(), metadata: () },
             ),
             points_to.is_uninit(),
     ;
@@ -757,7 +747,6 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
             provenance: pt.1@.provenance(),
         }),
         pt.0.addr() as int % align as int == 0,
-        pt.0@.metadata == Metadata::Thin,
         pt.0@.provenance == pt.1@.provenance(),
     opens_invariants none
 {

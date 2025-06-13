@@ -1059,9 +1059,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                     }
 
-                    let trait_typ_args = Arc::new(trait_typ_args);
-                    let proj = TypX::Projection { trait_typ_args, trait_path, name };
-                    return Ok((Arc::new(proj), false));
+                    if Some(trait_def) == tcx.lang_items().pointee_trait() && name.as_str() == "Metadata"
+                    {
+                        assert!(trait_typ_args.len() == 1);
+                        let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());
+                        return Ok((Arc::new(proj), false));
+                    } else {
+                        let trait_typ_args = Arc::new(trait_typ_args);
+                        let proj = TypX::Projection { trait_typ_args, trait_path, name };
+                        return Ok((Arc::new(proj), false));
+                    }
                 }
                 _ => {
                     unsupported_err!(span, "projection type")

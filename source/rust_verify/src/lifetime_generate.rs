@@ -542,6 +542,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 let n = t.args.len() - projection_generics.own_params.len();
                 let (trait_typ_args, self_typ) =
                     erase_generic_args(ctxt, state, &t.args[..n], true);
+
+                if Some(trait_def) == ctxt.tcx.lang_items().pointee_trait() && assoc_item.name.as_str() == "Metadata" {
+                    return Box::new(TypX::PointeeMetadata(self_typ.clone().unwrap()));
+                }
+
                 let (assoc_typ_args, _) = erase_generic_args(ctxt, state, &t.args[n..], false);
                 let assoc_typ_args = assoc_typ_args.into_iter().map(|a| a.as_lifetime()).collect();
                 let self_typ = self_typ.expect("self_typ");

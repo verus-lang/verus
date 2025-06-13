@@ -87,6 +87,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
+        TypX::PointeeMetadata(_) => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::ConstBool(_) => false,
@@ -135,8 +136,11 @@ fn datatype_or_fun_to_air_commands(
     let x_var = ident_var(&x.lower());
     let apolytyp = str_typ(crate::def::POLY);
 
-    if dtyp_id.is_none() {
+    if dtyp_id.is_none()
+        && !matches!(kind, EncodedDtKind::Dt(Dt::Tuple(0)))
+    {
         // datatype TYPE identifiers
+        // We skip this for Dt::Tuple(0) because the prelude already emits the identifier
         let mut args: Vec<air::ast::Typ> = Vec::new();
         for _ in tparams.iter() {
             args.extend(crate::def::types().iter().map(|s| str_typ(s)));

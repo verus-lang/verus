@@ -65,6 +65,8 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
+pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 pub(crate) const SIZED_BOUND: &str = "sized";
@@ -461,6 +463,14 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn projection_pointee_metadata(decoration: bool) -> Ident {
+    if decoration {
+        Arc::new(PROJECT_POINTEE_METADATA_DECORATION.to_string())
+    } else {
+        Arc::new(PROJECT_POINTEE_METADATA.to_string())
+    }
 }
 
 pub fn proj_param(i: usize) -> Ident {
