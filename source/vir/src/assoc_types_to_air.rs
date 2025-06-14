@@ -78,14 +78,8 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
             let typ_id = typ_to_ids(ctx, typ)[index].clone();
             let eq = mk_eq(&projection, &typ_id);
             let qname = format!("{}_{}_{}", projector, QID_ASSOC_TYPE_IMPL, decoration);
-            let bind = func_bind_trig(
-                ctx,
-                qname,
-                &typ_params,
-                &Arc::new(vec![]),
-                &vec![projection],
-                false,
-            );
+            let bind =
+                func_bind_trig(ctx, qname, &typ_params, &Arc::new(vec![]), &vec![projection], None);
             let imply = air::ast_util::mk_implies(&eqs, &eq);
             let forall = mk_bind_expr(&bind, &imply);
             commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));

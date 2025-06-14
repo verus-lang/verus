@@ -72,7 +72,7 @@ fn demote_one_expr(
             // Calls to external trait default functions are considered to be calls
             // to the trait declaration (since we have a spec for the declaration)
             let ct = CallTarget::Fun(
-                CallTargetKind::Dynamic,
+                CallTargetKind::ExternalTraitDefault,
                 fun.clone(),
                 typs.clone(),
                 impl_paths.clone(),
@@ -426,7 +426,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     ret,
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
-                    ensure: Arc::new(vec![]),
+                    ensure: (Arc::new(vec![]), Arc::new(vec![])),
                     returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
@@ -713,7 +713,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
                 &Arc::new(typ_params),
                 &Arc::new(vec![]),
                 &trigs,
-                false,
+                None,
             );
             let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
             let forall = mk_bind_expr(&bind, &imply);
@@ -785,7 +785,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
         &typ_params,
         &Arc::new(vec![]),
         &trigs,
-        false,
+        None,
     );
     let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
     req_bounds.extend(eqs);

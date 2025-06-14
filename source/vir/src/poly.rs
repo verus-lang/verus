@@ -464,7 +464,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
-            CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
+            CallFun::InternalFun(
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+            ) => {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
@@ -738,7 +740,17 @@ fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
 fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
     let mk_stm = |s: StmX| Spanned::new(stm.span.clone(), s);
     match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             let function = &ctx.func_sst_map[fun].x;
             let is_spec = function.mode == Mode::Spec;
             let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -768,6 +780,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let callx = StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
+                is_trait_default: *is_trait_default,
                 mode: *mode,
                 typ_args: typ_args.clone(),
                 args: Arc::new(new_args),
@@ -935,7 +948,7 @@ fn visit_func_decl_sst(
         ens_pars,
         post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -951,7 +964,8 @@ fn visit_func_decl_sst(
 
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
-    let enss = visit_exps_native(ctx, state, enss);
+    let enss0 = visit_exps_native(ctx, state, enss0);
+    let enss1 = visit_exps_native(ctx, state, enss1);
     state.types.pop_scope();
 
     state.types.push_scope(true);
@@ -964,7 +978,7 @@ fn visit_func_decl_sst(
         ens_pars,
         post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,
