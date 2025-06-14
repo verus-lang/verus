@@ -156,7 +156,7 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     let span = &function.span;
     let mut stmts = vec![];
     for param in function.x.params.iter() {
-        if param.x.is_mut {
+        if matches!(&*param.x.typ, TypX::MutRef(_)) {
             stmts.push(Spanned::new(
                 span.clone(),
                 StmtX::Expr(SpannedTyped::new(

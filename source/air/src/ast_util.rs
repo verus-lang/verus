@@ -106,6 +106,18 @@ pub fn str_typ(x: &str) -> Typ {
     Arc::new(TypX::Named(Arc::new(x.to_string())))
 }
 
+pub fn proph_typ(x: &Ident) -> Typ {
+    Arc::new(TypX::Named(Arc::new("Proph%".to_string() + x)))
+}
+
+pub fn proph_ident_cur(x: &Ident) -> Ident {
+    Arc::new("Proph%cur%".to_string() + x)
+}
+
+pub fn proph_ident_fut(x: &Ident) -> Ident {
+    Arc::new("Proph%future%".to_string() + x)
+}
+
 pub fn bv_typ(width: u32) -> Typ {
     Arc::new(TypX::BitVec(width))
 }

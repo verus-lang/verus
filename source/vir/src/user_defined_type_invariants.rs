@@ -60,7 +60,7 @@ pub(crate) fn annotate_user_defined_invariants(
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
-                        if param.x.is_mut {
+                        if matches!(&*param.x.typ, TypX::MutRef(_)) {
                             let mut new_asserts =
                                 asserts_for_lhs(info, functions, datatypes, module, arg)?;
                             all_asserts.append(&mut new_asserts);
@@ -285,7 +285,7 @@ pub fn check_typ_ok_for_use_typ_invariant(span: &Span, t: &Typ) -> Result<(), Vi
             use crate::ast::TypDecoration::*;
             match dec {
                 Ref | Box | Rc | Arc | Tracked => check_typ_ok_for_use_typ_invariant(span, t),
-                MutRef | Never | ConstPtr => Err(error(span, "this type is not a datatype")),
+                Never | ConstPtr => Err(error(span, "this type is not a datatype")),
                 Ghost => Err(error(span, "cannot apply use_type_invariant for Ghost<_>")),
             }
         }

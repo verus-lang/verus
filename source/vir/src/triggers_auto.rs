@@ -116,6 +116,9 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::VarAt(x, VarAt::Pre), _) => {
                 write!(f, "old({})", x)
             }
+            TermX::App(App::VarAt(x, VarAt::Post), _) => {
+                unreachable!("internal error: VarAt::Post should not be used in quantifiers")
+            }
             TermX::App(App::BitOp(bop), _) => {
                 write!(f, "BitOp: {:?}", bop)
             }

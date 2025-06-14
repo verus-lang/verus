@@ -94,13 +94,6 @@ pub enum ExpX {
     FuelConst(usize),
 }
 
-#[derive(Debug, Clone, Copy, ToDebugSNode)]
-pub enum ParPurpose {
-    MutPre,
-    MutPost,
-    Regular,
-}
-
 /// Function parameter
 pub type Par = Arc<Spanned<ParX>>;
 pub type Pars = Arc<Vec<Par>>;
@@ -109,8 +102,6 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    pub is_mut: bool,
-    pub purpose: ParPurpose,
 }
 
 #[derive(Clone, Debug, ToDebugSNode)]
@@ -228,6 +219,7 @@ pub enum LocalDeclKind {
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
+    MutRef,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

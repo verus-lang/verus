@@ -104,6 +104,7 @@ pub enum MonoTypX {
     Decorate(crate::ast::TypDecoration, MonoTyp),
     Decorate2(crate::ast::TypDecoration, MonoTyps),
     Primitive(Primitive, MonoTyps),
+    MutRef(MonoTyp),
 }
 
 struct State {
@@ -139,6 +140,12 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let m1 = typ_as_mono(allocator_typ)?;
             let m2 = typ_as_mono(t)?;
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
+        }
+        TypX::MutRef(t) => {
+            let monotyp = typ_as_mono(t)?;
+            // TODO(prophecy) defenssive check
+            assert!(!matches!(&*monotyp, MonoTypX::MutRef(_)));
+            Some(Arc::new(MonoTypX::MutRef(monotyp)))
         }
         TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
@@ -176,6 +183,11 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
             let typ = monotyp_to_typ(&typs[1]);
             Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
         }
+        MonoTypX::MutRef(typ) => {
+            let new_typ = monotyp_to_typ(typ);
+            assert!(!matches!(&*new_typ, TypX::MutRef(_)));
+            Arc::new(TypX::MutRef(new_typ))
+        },
     }
 }
 
@@ -194,6 +206,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             }
         }
         TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
+        TypX::MutRef(t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
@@ -228,6 +241,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
+        TypX::MutRef(t) => {
+            Arc::new(TypX::MutRef(coerce_typ_to_native(ctx, t)))
+        }
         TypX::Boxed(_) => panic!("Boxed unexpected here"),
         TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::Primitive(_, _) => {
@@ -256,6 +272,11 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
+        TypX::MutRef(t) => {
+            let new_typ = coerce_typ_to_poly(_ctx, t);
+            assert!(!matches!(&*new_typ, TypX::MutRef(_)));
+            Arc::new(TypX::MutRef(new_typ))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
@@ -265,6 +286,20 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 }
 
 pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
+    if let TypX::MutRef(typ) = &*exp.typ {
+        let mut exp_i = exp.clone();
+        Arc::make_mut(&mut exp_i).typ = typ.clone();
+        // Maintain the mutable reference wrapper, but unbox the inner type
+        let mut res = coerce_exp_to_native_handle_mut_ref(ctx, &exp_i);
+        assert!(!matches!(&*res.typ, TypX::MutRef(_)));
+        Arc::make_mut(&mut res).typ = Arc::new(TypX::MutRef(res.typ.clone()));
+        res
+    } else {
+        coerce_exp_to_native_handle_mut_ref(ctx, exp)
+    }
+}
+
+pub fn coerce_exp_to_native_handle_mut_ref(ctx: &Ctx, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
@@ -277,6 +312,9 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         }
         TypX::Decorate(..) => {
             panic!("internal error: Decorate should be removed by undecorate_typ")
+        }
+        TypX::MutRef(_) => {
+            panic!("internal error: MutRef should be removed by coerce_exp_to_native")
         }
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {
@@ -355,7 +393,7 @@ fn visit_and_insert_pars(
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_pars: Vec<Par> = Vec::new();
     for par in pars.iter() {
-        let ParX { name, typ, mode, is_mut, purpose } = &par.x;
+        let ParX { name, typ, mode } = &par.x;
         let is_poly = match poly {
             InsertPars::Native => false,
             InsertPars::Poly => true,
@@ -364,8 +402,7 @@ fn visit_and_insert_pars(
         let typ =
             if is_poly { coerce_typ_to_poly(ctx, typ) } else { coerce_typ_to_native(ctx, typ) };
         let _ = types.insert(name.clone(), typ.clone());
-        let parx =
-            ParX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut, purpose: *purpose };
+        let parx = ParX { name: name.clone(), typ, mode: *mode };
         new_pars.push(Spanned::new(par.span.clone(), parx));
     }
     Arc::new(new_pars)
@@ -1033,7 +1070,8 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
-            | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            | (LocalDeclKind::ExecClosureRet, _, _)
+            | (LocalDeclKind::MutRef, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()
             }

@@ -171,6 +171,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -187,6 +188,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::MutRef(_), _) => false,
     }
 }
 
@@ -214,14 +216,9 @@ pub fn params_equal_opt(
 ) -> bool {
     // Note: unwrapped_info is internal to the function and is not part of comparing
     // the publicly visible parameters.
-    let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1, unwrapped_info: _ } =
-        &param1.x;
-    let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2, unwrapped_info: _ } =
-        &param2.x;
-    (!check_names || name1 == name2)
-        && types_equal(typ1, typ2)
-        && (!check_modes || mode1 == mode2)
-        && is_mut1 == is_mut2
+    let ParamX { name: name1, typ: typ1, mode: mode1, unwrapped_info: _ } = &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, unwrapped_info: _ } = &param2.x;
+    (!check_names || name1 == name2) && types_equal(typ1, typ2) && (!check_modes || mode1 == mode2)
 }
 
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
@@ -251,8 +248,16 @@ pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
+pub fn undecorate_typ_incl_mut_ref(typ: &Typ) -> Typ {
+    match &** typ {
+        TypX::MutRef(t) => undecorate_typ_incl_mut_ref(t),
+        TypX::Decorate(_, _, t) => undecorate_typ_incl_mut_ref(t),
+        _ => typ.clone(),
+    }
+}
+
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
+    match &*undecorate_typ_incl_mut_ref(typ) {
         TypX::Bool => true,
         TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
@@ -261,7 +266,7 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
 }
 
 pub fn is_integer_type_signed(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
+    match &*undecorate_typ_incl_mut_ref(typ) {
         TypX::Int(IntRange::U(_) | IntRange::USize | IntRange::Nat) => false,
         TypX::Int(IntRange::I(_) | IntRange::ISize | IntRange::Int) => true,
         TypX::Boxed(typ) => is_integer_type_signed(typ),
@@ -270,7 +275,7 @@ pub fn is_integer_type_signed(typ: &Typ) -> bool {
 }
 
 pub fn is_integer_type(typ: &Typ) -> bool {
-    match &*undecorate_typ(typ) {
+    match &*undecorate_typ_incl_mut_ref(typ) {
         TypX::Int(_) => true,
         TypX::Boxed(typ) => is_integer_type(typ),
         _ => false,
@@ -278,7 +283,7 @@ pub fn is_integer_type(typ: &Typ) -> bool {
 }
 
 pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
-    match &*undecorate_typ(typ) {
+    match &*undecorate_typ_incl_mut_ref(typ) {
         TypX::Int(range) => Some(*range),
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
@@ -286,7 +291,7 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
 }
 
 pub(crate) fn const_generic_to_primitive(typ: &Typ) -> &'static str {
-    match &*undecorate_typ(typ) {
+    match &*undecorate_typ_incl_mut_ref(typ) {
         TypX::Int(_) => crate::def::CONST_INT,
         TypX::Bool => crate::def::CONST_BOOL,
         _ => panic!("unexpected const generic type"),
@@ -322,7 +327,7 @@ pub fn bitwidth_from_int_range(int_range: &IntRange) -> Option<IntegerTypeBitwid
 }
 
 pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
-    match &*undecorate_typ(et) {
+    match &*undecorate_typ_incl_mut_ref(et) {
         TypX::Int(int_range) => bitwidth_from_int_range(int_range),
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
@@ -851,9 +856,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
-        }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
                 format!("*const {}", typ_to_diagnostic_str(&typs[0]))
@@ -908,6 +910,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::MutRef(typ) => format!("&mut {}", typ_to_diagnostic_str(typ)),
     }
 }
 
@@ -1111,7 +1114,7 @@ macro_rules! fun {
 /// ```
 /// Therefore, we substitute out the name here so it be safely elided.
 pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
-    match &*undecorate_typ(&ret.x.typ) {
+    match &*undecorate_typ_incl_mut_ref(&ret.x.typ) {
         TypX::Datatype(Dt::Tuple(0), ..) => {
             if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
                 (ensure.clone(), false)
@@ -1120,7 +1123,7 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
                 for e in ensure.iter() {
                     let e1 = crate::ast_visitor::map_expr_visitor(e, &|expr| match &expr.x {
                         ExprX::Var(ident) if ident == &ret.x.name => {
-                            assert!(is_unit(&undecorate_typ(&expr.typ)));
+                            assert!(is_unit(&undecorate_typ_incl_mut_ref(&expr.typ)));
                             Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
                         }
                         _ => Ok(expr.clone()),

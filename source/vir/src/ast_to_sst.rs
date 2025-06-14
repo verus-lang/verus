@@ -13,7 +13,7 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
@@ -155,6 +155,12 @@ impl<'a> State<'a> {
         (x.clone(), SpannedTyped::new(span, typ, ExpX::Var(x.clone())))
     }
 
+    fn next_loc_temp(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
+        self.next_var += 1;
+        let x = crate::def::new_temp_var(self.next_var);
+        (x.clone(), SpannedTyped::new(span, typ, ExpX::VarLoc(x.clone())))
+    }
+
     pub(crate) fn push_scope(&mut self) {
         self.rename_map.push_scope(true);
         self.rename_exp_idents.push_scope(true);
@@ -294,23 +300,34 @@ impl<'a> State<'a> {
         (temp_id, temp_var)
     }
 
+    fn declare_temp_var_loc_stm(
+        &mut self,
+        span: &Span,
+        typ: &Typ,
+        kind: LocalDeclKind,
+    ) -> (VarIdent, Exp) {
+        let (temp, temp_var) = self.next_loc_temp(span, typ);
+        let temp_id = self.declare_var_stm(&temp, typ, kind, false);
+        (temp_id, temp_var)
+    }
+
     fn declare_temp_assign(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
         self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign)
     }
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            // TODO(prophecy) if !matches!(param.x.purpose, ParPurpose::MutPost) {
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
+            // }
         }
     }
 
@@ -559,6 +576,7 @@ fn expr_get_call(
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
+                    // TODO(prophecy): declare temporary prophecy var for arg
                     let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                     stms.append(&mut stms0);
                     let e0 = match e0.to_value() {
@@ -1049,11 +1067,25 @@ pub(crate) fn expr_to_stm_opt(
                 ReturnValue::Some(mk_exp(ExpX::VarAt(state.get_var_unique_id(&x), VarAt::Pre))),
             ))
         }
+        ExprX::VarAt(x, VarAt::Post) => {
+            unreachable!("VarAt::Post for {:?} is introduced by the lowering, not expected here", x);
+        }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Loc(expr1) => {
-            let (stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
+            let (temp_ident, e1) = state.declare_temp_var_loc_stm(&expr.span, &expr.typ, LocalDeclKind::MutRef);
+            let (mut stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
+            stms.push(init_var(&expr.span, &temp_ident, &e0));
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assign {
+                lhs: Dest { dest: e0, is_init: false },
+                rhs: SpannedTyped::new(
+                    &expr.span,
+                    &expr1.typ,
+                    ExpX::VarAt(temp_ident, VarAt::Post),
+                ),
+            }));
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e1)))))
+            // Ok((stms, ReturnValue::Some(e1)))
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {

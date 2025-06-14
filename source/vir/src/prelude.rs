@@ -82,6 +82,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FnDefSingleton = str_to_node(FNDEF_SINGLETON);
 
+    let proph_int = str_to_node(PROPH_INT);
+    let proph_construct_int = str_to_node(PROPH_CONSTRUCT_INT);
+    let proph_int_cur = str_to_node(PROPH_INT_CUR);
+    let proph_int_fut = str_to_node(PROPH_INT_FUT);
+    let proph_bool = str_to_node(PROPH_BOOL);
+    let proph_construct_bool = str_to_node(PROPH_CONSTRUCT_BOOL);
+    let proph_bool_cur = str_to_node(PROPH_BOOL_CUR);
+    let proph_bool_fut = str_to_node(PROPH_BOOL_FUT);
+
     let char_lo_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MIN));
     let char_hi_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MAX));
     let char_lo_2 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_2_MIN));
@@ -97,11 +106,11 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     let type_id_const_bool = str_to_node(TYPE_ID_CONST_BOOL);
     let sized = str_to_node(SIZED_BOUND);
+    let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
     let decoration = str_to_node(DECORATION);
     let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
     let decorate_ref = str_to_node(DECORATE_REF);
-    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
     let decorate_rc = str_to_node(DECORATE_RC);
     let decorate_arc = str_to_node(DECORATE_ARC);
@@ -152,6 +161,14 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         // FnDef
         (declare-datatypes (([FnDef] 0)) ((([FnDefSingleton]))))
 
+        // Prophetic variables
+        (declare-datatypes (
+            ([proph_int] 0) ([proph_bool] 0)
+        )(
+            (([proph_construct_int] ([proph_int_cur] Int) ([proph_int_fut] Int)))
+            (([proph_construct_bool] ([proph_bool_cur] Bool) ([proph_bool_fut] Bool)))
+        ))
+
         // Polymorphism
         (declare-sort [Poly] 0)
         (declare-sort [Height] 0)
@@ -166,6 +183,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_char] [typ])
+        (declare-const [type_id_mut_ref] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
@@ -175,7 +193,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [decorate_nil_slice] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
-        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_rc] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_arc] ([decoration] [typ] [decoration]) [decoration])
@@ -218,12 +235,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([sized] ([decorate_ref] d)))
             :qid prelude_sized_decorate_ref
             :skolemid skolem_prelude_sized_decorate_ref
-        )))
-        (axiom (forall ((d [decoration])) (!
-            ([sized] ([decorate_mut_ref] d))
-            :pattern (([sized] ([decorate_mut_ref] d)))
-            :qid prelude_sized_decorate_mut_ref
-            :skolemid skolem_prelude_sized_decorate_mut_ref
         )))
         (axiom (forall ((d [decoration]) (t [typ]) (d2 [decoration])) (!
             ([sized] ([decorate_box] d t d2))

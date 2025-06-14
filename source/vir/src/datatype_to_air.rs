@@ -12,7 +12,7 @@ use crate::def::{
     prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::Span;
-use crate::sst::{Par, ParPurpose, ParX};
+use crate::sst::{Par, ParX};
 use crate::sst_to_air::{
     datatype_id, dt_to_air_ident, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant,
     typ_to_air,
@@ -58,8 +58,6 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
             name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
-            is_mut: false,
-            purpose: ParPurpose::Regular,
         },
     )
 }
@@ -84,6 +82,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
         TypX::Decorate(_, _, t) => uses_ext_equal(ctx, t),
+        TypX::MutRef(t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
@@ -118,6 +117,7 @@ fn datatype_or_fun_to_air_commands(
     token_commands: &mut Vec<Command>,
     box_commands: &mut Vec<Command>,
     axiom_commands: &mut Vec<Command>,
+    sorts_for_prophecies: &mut Vec<Ident>,
     span: &Span,
     kind: EncodedDtKind,
     dpath: &Path, // encoded path
@@ -164,18 +164,11 @@ fn datatype_or_fun_to_air_commands(
         box_commands.push(Arc::new(CommandX::Global(decl_unbox)));
     }
 
+    sorts_for_prophecies.push(path_to_air_ident(dpath));
+
     // datatype axioms
     let var_param = |x: VarIdent, typ: &Typ| {
-        Spanned::new(
-            span.clone(),
-            ParX {
-                name: x.clone(),
-                typ: typ.clone(),
-                mode: Mode::Exec,
-                is_mut: false,
-                purpose: ParPurpose::Regular,
-            },
-        )
+        Spanned::new(span.clone(), ParX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec })
     };
     let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
@@ -226,13 +219,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(inv);
             }
             args.push(arg);
-            let parx = ParX {
-                name,
-                typ: vpolytyp.clone(),
-                mode: Mode::Exec,
-                is_mut: false,
-                purpose: ParPurpose::Regular,
-            };
+            let parx = ParX { name, typ: vpolytyp.clone(), mode: Mode::Exec };
             params.push(Spanned::new(span.clone(), parx));
         }
         let args = Arc::new(args);
@@ -665,6 +652,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     let mut box_commands: Vec<Command> = Vec::new();
     let mut field_commands: Vec<Command> = Vec::new();
     let mut axiom_commands: Vec<Command> = Vec::new();
+    let mut sorts_for_prophecies: Vec<Ident> = Vec::new();
 
     for spec_fn_n_params in &ctx.spec_fn_types {
         let tparams: Vec<Ident> =
@@ -675,6 +663,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
+            &mut sorts_for_prophecies,
             &ctx.global.no_span,
             EncodedDtKind::FnSpec,
             &prefix_spec_fn_type(*spec_fn_n_params),
@@ -696,6 +685,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
+            &mut sorts_for_prophecies,
             &ctx.global.no_span,
             EncodedDtKind::Array,
             &crate::def::array_type(),
@@ -710,6 +700,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
+    dbg!(&ctx.mono_types);
     for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
@@ -722,6 +713,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
+            &mut sorts_for_prophecies,
             &ctx.global.no_span,
             EncodedDtKind::Monotyp,
             &dpath,
@@ -761,6 +753,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
+            &mut sorts_for_prophecies,
             &datatype.span,
             EncodedDtKind::Dt(dt.clone()),
             &encode_dt_as_path(dt),
@@ -824,6 +817,38 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut token_commands);
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);
+
+    dbg!(&sorts_for_prophecies);
+    commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
+        sorts_for_prophecies
+            .into_iter()
+            .map(|s_id| {
+                let mut variants: Vec<air::ast::Variant> = Vec::new();
+                let mut fields: Vec<air::ast::Field> = Vec::new();
+                fields.push(ident_binder(
+                    &str_ident(&format!("Proph%cur%{}", &s_id)),
+                    &Arc::new(air::ast::TypX::Named(s_id.clone())),
+                ));
+                fields.push(ident_binder(
+                    &str_ident(&format!("Proph%future%{}", &s_id)),
+                    &Arc::new(air::ast::TypX::Named(s_id.clone())),
+                ));
+                variants.push(ident_binder(
+                    &str_ident(&format!("Proph%{}%", &s_id)),
+                    &Arc::new(fields),
+                ));
+                Arc::new(air::ast::BinderX {
+                    name: str_ident(&format!("Proph%{}", s_id)),
+                    a: Arc::new(variants),
+                })
+            })
+            .collect::<Vec<_>>(),
+    ))))));
+    // commands.extend(sorts_for_prophecies.into_iter().map(|sid| {
+    //     // let sort = Arc::new(air::ast::DeclX::Sort(sid));
+    //     // Arc::new(CommandX::Global(sort))
+    // }));
+
     commands.extend(array_commands);
     commands.extend(strslice_commands);
     Arc::new(commands)

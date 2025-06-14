@@ -56,6 +56,8 @@ pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
+const PREFIX_BOX_PROPH: &str = "Poly%Proph%";
+const PREFIX_UNBOX_PROPH: &str = "%Poly%Proph%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
@@ -90,6 +92,7 @@ const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const MONOTYPE_DECORATE: &str = "$%";
+const MONOTYPE_MUT_REF: &str = "$%mutref";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
@@ -159,7 +162,6 @@ pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice";
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
-pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
 pub const DECORATE_RC: &str = "RC";
 pub const DECORATE_ARC: &str = "ARC";
@@ -167,6 +169,7 @@ pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
 pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
+pub const TYPE_ID_MUT_REF: &str = "MUT_REF";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
@@ -196,6 +199,16 @@ pub const SINGULAR_MOD: &str = "singular_mod";
 
 pub const ARRAY_NEW: &str = "array_new";
 pub const ARRAY_INDEX: &str = "array_index";
+
+// TODO: use a const fn to genereate these names
+pub const PROPH_INT: &str = "Proph%I";
+pub const PROPH_CONSTRUCT_INT: &str = "Proph%I%";
+pub const PROPH_INT_CUR: &str = "Proph%cur%I";
+pub const PROPH_INT_FUT: &str = "Proph%future%I";
+pub const PROPH_BOOL: &str = "Proph%B";
+pub const PROPH_CONSTRUCT_BOOL: &str = "Proph%B%";
+pub const PROPH_BOOL_CUR: &str = "Proph%cur%B";
+pub const PROPH_BOOL_FUT: &str = "Proph%future%B";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -332,6 +345,11 @@ pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
     use crate::ast_util::LowerUniqueVar;
     ident.lower()
 }
+
+// TODO(prophecy)
+// pub fn suffix_local_unique_proph(ident: &Ident) -> Ident {
+//     Arc::new(ident.to_string() + PROPH_INT_SUFFIX)
+// }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
     let dis = crate::ast::VarIdentDisambiguate::VirSubst(n);
@@ -485,6 +503,14 @@ pub fn prefix_unbox(ident: &Path) -> Ident {
     Arc::new(PREFIX_UNBOX.to_string() + &path_to_string(ident))
 }
 
+pub fn prefix_proph_box(ident: &Path) -> Ident {
+    Arc::new(PREFIX_BOX_PROPH.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_proph_unbox(ident: &Path) -> Ident {
+    Arc::new(PREFIX_UNBOX_PROPH.to_string() + &path_to_string(ident))
+}
+
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
     Arc::new(PREFIX_FUEL_ID.to_string() + ident)
 }
@@ -603,6 +629,17 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
         *last = ident;
         Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
     }
+}
+
+pub fn monotyp_mut_ref(path: &Path) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}",
+        MONOTYPE_MUT_REF,
+        MONOTYPE_APP_BEGIN,
+        path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
 
 pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {

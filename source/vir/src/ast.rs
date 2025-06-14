@@ -173,8 +173,6 @@ pub enum IntRange {
 pub enum TypDecoration {
     /// &T
     Ref,
-    /// &mut T
-    MutRef,
     /// Box<T>
     Box,
     /// Rc<T>
@@ -270,6 +268,8 @@ pub enum TypX {
     ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    /// Mutable reference
+    MutRef(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -710,6 +710,7 @@ pub enum CallTarget {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]
 pub enum VarAt {
     Pre,
+    Post,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]
@@ -897,8 +898,6 @@ pub struct ParamX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    /// An &mut parameter
-    pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
     /// We also save a copy of the original wrapped name for lifetime_generate

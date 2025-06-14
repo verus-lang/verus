@@ -2,7 +2,7 @@ use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
-    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
+    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::util::vec_map_result;
@@ -83,6 +83,10 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::Boxed(t) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::Boxed(R::get(t))))
+            }
+            TypX::MutRef(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::MutRef(R::get(t))))
             }
             TypX::Projection { trait_typ_args, trait_path, name } => {
                 let trait_typ_args = self.visit_typs(trait_typ_args)?;
@@ -651,8 +655,14 @@ where
 
     map.push_scope(true);
     for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
+        let _ = map.insert(
+            p.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(
+                &p.x.typ,
+                matches!(&*p.x.typ, TypX::MutRef(_)),
+                true,
+            ),
+        );
     }
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
@@ -1168,7 +1178,6 @@ where
         name: param.x.name.clone(),
         typ,
         mode: param.x.mode,
-        is_mut: param.x.is_mut,
         unwrapped_info: param.x.unwrapped_info.clone(),
     };
     Ok(Spanned::new(param.span.clone(), paramx))
@@ -1300,8 +1309,14 @@ where
     map.push_scope(true);
     let params = map_params_visitor(params, env, ft)?;
     for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
+        let _ = map.insert(
+            p.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(
+                &p.x.typ,
+                matches!(&*p.x.typ, TypX::MutRef(_)),
+                true,
+            ),
+        );
     }
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
