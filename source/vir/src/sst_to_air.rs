@@ -197,12 +197,10 @@ pub fn range_to_id(range: &IntRange) -> Expr {
         IntRange::Int => str_var(crate::def::TYPE_ID_INT),
         IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
         IntRange::Char => str_var(crate::def::TYPE_ID_CHAR),
-        IntRange::U(_) | IntRange::USize => {
-            apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
-        }
-        IntRange::I(_) | IntRange::ISize => {
-            apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
-        }
+        IntRange::USize => str_var(crate::def::TYPE_ID_USIZE),
+        IntRange::ISize => str_var(crate::def::TYPE_ID_ISIZE),
+        IntRange::U(_) => apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![]),
+        IntRange::I(_) => apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![]),
     }
 }
 

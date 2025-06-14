@@ -90,8 +90,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
     let type_id_int = str_to_node(TYPE_ID_INT);
-    let type_id_char = str_to_node(TYPE_ID_CHAR);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
+    let type_id_char = str_to_node(TYPE_ID_CHAR);
+    let type_id_usize = str_to_node(TYPE_ID_USIZE);
+    let type_id_isize = str_to_node(TYPE_ID_ISIZE);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
@@ -166,6 +168,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_char] [typ])
+        (declare-const [type_id_usize] [typ])
+        (declare-const [type_id_isize] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
@@ -344,6 +348,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_box_unbox_nat
             :skolemid skolem_prelude_box_unbox_nat
         )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_usize])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_usize]))
+            :qid prelude_box_unbox_usize
+            :skolemid skolem_prelude_box_unbox_usize
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_isize])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_isize]))
+            :qid prelude_box_unbox_isize
+            :skolemid skolem_prelude_box_unbox_isize
+        )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
                 ([has_type] x ([type_id_uint] bits))
@@ -513,6 +535,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_nat
             :skolemid skolem_prelude_has_type_nat
         )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                ([u_inv] [arch_size] x)
+                ([has_type] ([box_int] x) [type_id_usize])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_usize]))
+            :qid prelude_has_type_usize
+            :skolemid skolem_prelude_has_type_usize
+        )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                ([i_inv] [arch_size] x)
+                ([has_type] ([box_int] x) [type_id_isize])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_isize]))
+            :qid prelude_has_type_isize
+            :skolemid skolem_prelude_has_type_isize
+        )))
         (axiom (forall ((bits Int) (x Int)) (!
             (=>
                 ([u_inv] bits x)
@@ -548,6 +588,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] x [type_id_nat]))
             :qid prelude_unbox_int
             :skolemid skolem_prelude_unbox_int
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_usize])
+                ([u_inv] [arch_size] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_usize]))
+            :qid prelude_unbox_usize
+            :skolemid skolem_prelude_unbox_usize
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_isize])
+                ([i_inv] [arch_size] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_isize]))
+            :qid prelude_unbox_isize
+            :skolemid skolem_prelude_unbox_isize
         )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
