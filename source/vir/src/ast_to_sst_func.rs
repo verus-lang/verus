@@ -583,6 +583,12 @@ where
                     let expr = map_expr_rename_vars(expr, &inh.param_renames)?;
                     let (stms0, exp) = expr_to_pure_exp_check(ctx, state, &expr)?;
 
+                    let exp = state.finalize_exp(ctx, &exp)?;
+                    let stms0 = stms0
+                        .into_iter()
+                        .map(|s| state.finalize_stm(&ctx, &s))
+                        .collect::<Result<Vec<_>, _>>()?;
+
                     let exp = subst_exp(&inh.trait_typ_substs, &HashMap::new(), &exp);
                     let mut stms0: Vec<_> = stms0
                         .iter()
