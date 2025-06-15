@@ -4316,3 +4316,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] trait_ensure_recommends_check verus_code! {
+        use vstd::prelude::*;
+
+        struct A {
+            a: bool,
+        }
+
+        struct B;
+
+        trait TraitA {
+            proof fn prop(chain: Seq<Option<A>>)
+                ensures
+                    forall |i| #![trigger chain[i]]
+                        0 <= i < chain.len() ==>
+                        (chain[i] matches Some(MISSING_KEY) ==> MISSING_KEY.a || !MISSING_KEY.a);
+        }
+
+        impl TraitA for B {
+            proof fn prop(chain: Seq<Option<A>>) {}
+        }
+    } => Ok(())
+}
