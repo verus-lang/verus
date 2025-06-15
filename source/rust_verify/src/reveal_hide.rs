@@ -32,7 +32,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
         unsupported_err!(expr.span, "invalid reveal", &args);
     };
     let is_broadcast_use = {
-        let expr_attrs = ctxt.tcx.hir().attrs(block_expr.hir_id);
+        let expr_attrs = ctxt.tcx.hir_attrs(block_expr.hir_id);
         let expr_vattrs = ctxt.get_verifier_attrs(expr_attrs)?;
         expr_vattrs.broadcast_use_reveal
     };
