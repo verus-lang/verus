@@ -102,3 +102,26 @@ test_verify_one_file! {
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive position")
 }
+
+test_verify_one_file! {
+    #[test] test_slice_iter verus_code! {
+        use vstd::std_specs::slice::*;
+        use vstd::seq;
+
+        fn test() {
+            let sl = &[0u32, 2u32, 4u32];
+
+            let mut i: usize = 0;
+            let iter = sl.iter();
+            for x in it: iter
+                invariant
+                    i == it.pos,
+                    it.elements == seq![0u32, 2u32, 4u32],
+            {
+                assert(x < 5);
+                assert(x % 2 == 0);
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
