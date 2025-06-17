@@ -543,7 +543,9 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 let (trait_typ_args, self_typ) =
                     erase_generic_args(ctxt, state, &t.args[..n], true);
 
-                if Some(trait_def) == ctxt.tcx.lang_items().pointee_trait() && assoc_item.name.as_str() == "Metadata" {
+                if Some(trait_def) == ctxt.tcx.lang_items().pointee_trait()
+                    && assoc_item.name.as_str() == "Metadata"
+                {
                     return Box::new(TypX::PointeeMetadata(self_typ.clone().unwrap()));
                 }
 

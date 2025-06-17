@@ -198,7 +198,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => true,
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            true
+        }
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -257,7 +259,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => typ.clone(),
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            typ.clone()
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),

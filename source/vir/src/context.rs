@@ -173,7 +173,10 @@ fn datatypes_invs(
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
-                        TypX::Int(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+                        TypX::Int(_)
+                        | TypX::TypParam(_)
+                        | TypX::Projection { .. }
+                        | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
                         TypX::SpecFn(..) => {

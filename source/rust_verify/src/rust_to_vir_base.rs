@@ -1059,7 +1059,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                     }
 
-                    if Some(trait_def) == tcx.lang_items().pointee_trait() && name.as_str() == "Metadata"
+                    if Some(trait_def) == tcx.lang_items().pointee_trait()
+                        && name.as_str() == "Metadata"
                     {
                         assert!(trait_typ_args.len() == 1);
                         let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());

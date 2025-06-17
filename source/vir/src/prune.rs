@@ -259,7 +259,12 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) | TypX::PointeeMetadata(_) => {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::SpecFn(..)
+        | TypX::Datatype(..)
+        | TypX::Primitive(..)
+        | TypX::PointeeMetadata(_) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::AnonymousClosure(..) => {}

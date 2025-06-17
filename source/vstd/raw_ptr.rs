@@ -284,20 +284,16 @@ pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData<T>) -> *mut T;
 /// Implies that `a@ == b@ ==> a == b`.
 pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
-        view_reverse_for_eq::<T>(#[trigger] a@) == a;
+        view_reverse_for_eq::<T>(#[trigger] a@) == a,
+;
 
 // We do the same trick again, but specialized for Sized types. This improves automation.
 // Specifically, this makes it easier to prove `a == b` without having to explicitly write
 // `a@.metadata == b@.metadata`, since this condition is trivial; both values are always unit.
 // (See the test_extensionality_sized test case.)
-
 #[doc(hidden)]
 pub closed spec fn view_reverse_for_eq_sized<T>(addr: usize, provenance: Provenance) -> *mut T {
-    view_reverse_for_eq(PtrData {
-        addr: addr,
-        provenance: provenance,
-        metadata: (),
-    })
+    view_reverse_for_eq(PtrData { addr: addr, provenance: provenance, metadata: () })
 }
 
 pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
@@ -352,9 +348,7 @@ pub assume_specification<
 // (including casts that involve *const ptrs)
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
 pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
-    ptr_mut_from_data(
-        PtrData::<U> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () },
-    )
+    ptr_mut_from_data(PtrData::<U> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: () })
 }
 
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
@@ -375,9 +369,7 @@ pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U
 /// Cast a pointer to an array of length `N` to a slice pointer.
 /// Address and provenance are preserved; metadata has length `N`.
 pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> *mut [T] {
-    ptr_mut_from_data(
-        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: N },
-    )
+    ptr_mut_from_data(PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: N })
 }
 
 /// Cast a pointer to an array of length `N` to a slice pointer.

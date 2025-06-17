@@ -123,10 +123,7 @@ impl ToString for TypX {
                 )
             }
             TypX::PointeeMetadata(t) => {
-                format!(
-                    "<{} as std::ptr::Pointee>::Metadata",
-                    t.to_string()
-                )
+                format!("<{} as std::ptr::Pointee>::Metadata", t.to_string())
             }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
