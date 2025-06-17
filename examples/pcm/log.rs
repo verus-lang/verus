@@ -253,9 +253,8 @@ impl<T> LogResource<T> {
 
     pub proof fn deduce_prefix_relation(tracked &mut self, tracked other: &Self)
         requires
-            old(self).id() == other.id(),
+            self.id() == other.id(),
         ensures
-            self@ == old(self)@,
             is_prefix(self@.log(), other@.log()) || is_prefix(other@.log(), self@.log()),
             self@ is HalfAuthority ==> is_prefix(other@.log(), self@.log()),
             self@ is FullAuthority ==> is_prefix(other@.log(), self@.log()),

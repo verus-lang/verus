@@ -170,11 +170,10 @@ impl<P: PCM> Resource<P> {
             out.value() == target,
     ;
 
-    pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
+    pub axiom fn validate_2(tracked &self, tracked other: &Self)
         requires
-            old(self).loc() == other.loc(),
+            self.loc() == other.loc(),
         ensures
-            *self == *old(self),
             P::op(self.value(), other.value()).valid(),
     ;
 

@@ -139,16 +139,14 @@ impl<T> AgreementResource<T> {
     }
 
     pub proof fn lemma_agreement(
-        tracked self: &mut AgreementResource<T>,
+        tracked self: &AgreementResource<T>,
         tracked other: &AgreementResource<T>,
     )
         requires
-            old(self).inv(),
+            self.inv(),
             other.inv(),
-            old(self).id() == other.id(),
+            self.id() == other.id(),
         ensures
-            self.id() == old(self).id(),
-            self@ == old(self)@,
             self@ == other@,
     {
         self.r.validate_2(&other.r);
