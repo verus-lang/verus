@@ -300,6 +300,7 @@ pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
     ensures
         view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance) == a,
 {
+    assert(a@.metadata == ());
     ptrs_mut_eq(a);
 }
 
