@@ -640,6 +640,21 @@ impl<'a> ParseBuffer<'a> {
         peek3(self, T::Token::peek)
     }
 
+    /// Looks at the 4th-next token in the parse stream.
+    pub fn peek4<T: Peek>(&self, token: T) -> bool {
+        fn peek4(buffer: &ParseBuffer, peek: fn(Cursor) -> bool) -> bool {
+            buffer
+                .cursor()
+                .skip()
+                .and_then(Cursor::skip)
+                .and_then(Cursor::skip)
+                .map_or(false, peek)
+        }
+
+        let _ = token;
+        peek4(self, T::Token::peek)
+    }
+
     /// Parses zero or more occurrences of `T` separated by punctuation of type
     /// `P`, with optional trailing punctuation.
     ///

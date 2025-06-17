@@ -4298,3 +4298,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] usize_isize_type_id verus_code! {
+        // https://github.com/verus-lang/verus/issues/1743
+        use vstd::prelude::*;
+        global size_of usize == 8;
+
+        uninterp spec fn foo<T>() -> int;
+
+        proof fn testu() {
+            assert(foo::<usize>() == foo::<u64>()); // FAILS
+        }
+
+        proof fn testi() {
+            assert(foo::<isize>() == foo::<i64>()); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
