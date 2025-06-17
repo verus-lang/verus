@@ -78,7 +78,16 @@ impl Provenance {
 /// For `dyn` types (not supported by Verus at the time of writing), this type is also nontrivial.
 ///
 /// See: <https://doc.rust-lang.org/std/ptr/trait.Pointee.html>
+#[cfg(verus_keep_ghost)]
 pub type Metadata<T> = <T as core::ptr::Pointee>::Metadata;
+
+#[cfg(not(verus_keep_ghost))]
+pub struct FakeMetadata<T: ?Sized> {
+    t: *mut T,
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub type Metadata<T> = FakeMetadata<T>;
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
