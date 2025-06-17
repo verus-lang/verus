@@ -177,7 +177,17 @@ test_verify_one_file! {
             assert(b@.metadata == a@.metadata);
         }
 
-    } => Err(err) => assert_fails(err, 8)
+        fn test_extensionality_sized<T>(a: *const T, b: *const T) {
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assert(a == b);
+        }
+
+        fn test_extensionality_unsized<T: ?Sized>(a: *const T, b: *const T) {
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assert(a == b); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 9)
 }
 
 test_verify_one_file! {

@@ -284,8 +284,28 @@ pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData<T>) -> *mut T;
 /// Implies that `a@ == b@ ==> a == b`.
 pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
-        view_reverse_for_eq::<T>(#[trigger] a@) == a,
-;
+        view_reverse_for_eq::<T>(#[trigger] a@) == a;
+
+// We do the same trick again, but specialized for Sized types. This improves automation.
+// Specifically, this makes it easier to prove `a == b` without having to explicitly write
+// `a@.metadata == b@.metadata`, since this condition is trivial; both values are always unit.
+// (See the test_extensionality_sized test case.)
+
+#[doc(hidden)]
+pub closed spec fn view_reverse_for_eq_sized<T>(addr: usize, provenance: Provenance) -> *mut T {
+    view_reverse_for_eq(PtrData {
+        addr: addr,
+        provenance: provenance,
+        metadata: (),
+    })
+}
+
+pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
+    ensures
+        view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance) == a,
+{
+    ptrs_mut_eq(a);
+}
 
 //////////////////////////////////////
 /// Constructs a null pointer.
@@ -517,6 +537,7 @@ pointer_specs!(ptr_const_specs, ptr_from_data, const);
 pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
+    ptrs_mut_eq_sized,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
