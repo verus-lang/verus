@@ -4316,4 +4316,3 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
-
