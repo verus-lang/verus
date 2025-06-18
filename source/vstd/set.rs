@@ -28,7 +28,7 @@ verus! {
 /// operator `=~=`.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
-pub struct GSet<A, const FINITE:bool = true> {
+pub struct GSet<A, const FINITE:bool> {
     set: spec_fn(A) -> bool,
 }
 
@@ -272,9 +272,8 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
 
     /// The "empty" set.
     #[rustc_diagnostic_item = "verus::vstd::set::GSet::empty"]
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]    // TODO(jonh) deleteme
-    pub closed spec fn empty() -> Set<A> {
-        Set { set: |a| false }
+    pub closed spec fn empty() -> GSet<A, FINITE> {
+        Self { set: |a| false }
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
@@ -355,23 +354,6 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
     /// `difference`; this generic version is mostly useful for writing generic libraries.
     pub closed spec fn generic_difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
         GSet { set: |a| (self.set)(a) && !(s2.set)(a) }
-    }
-
-    /// `-` operator, synonymous with `difference`
-    #[verifier::inline]
-    pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
-        self.difference(s2)
-    }
-
-    /// Set complement (within the space of all possible elements in `A`).
-    pub closed spec fn complement(self) -> Set<A> {
-        Set { set: |a| !(self.set)(a) }
-    }
-
-    // TODO(jonh): why is this valid? Self::new isn't defined for GSet
-    /// Set of all elements in the given set which satisfy the predicate `f`.
-    pub open spec fn filter(self, f: spec_fn(A) -> bool) -> Set<A> {
-        self.intersect(Self::new(f))
     }
 
     /// Set complement (within the space of all possible elements in `A`).
@@ -1340,7 +1322,7 @@ pub broadcast proof fn lemma_set_remove_len<A, const FINITE: bool>(s: GSet<A, FI
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
-pub broadcast proof fn lemma_set_contains_len<A>(s: GSet<A>, a: A)
+pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
     requires
         #[trigger] s.contains(a),
     ensures
