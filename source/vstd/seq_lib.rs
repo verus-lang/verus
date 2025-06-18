@@ -118,7 +118,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     pub open spec fn all(self, pred: spec_fn(A) -> bool) -> bool {
-        forall|elt: A| #[trigger] self.contains(elt) ==> pred(elt)
+        forall|i: int| 0 <= i < self.len() ==> #[trigger] pred(self[i])
     }
 
     /// Tests if any element in the sequence satisfies the predicate.
@@ -132,7 +132,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     pub open spec fn any(self, pred: spec_fn(A) -> bool) -> bool {
-        exists|elt: A| #[trigger] self.contains(elt) && pred(elt)
+        exists|i: int| 0 <= i < self.len() && #[trigger] pred(self[i])
     }
 
     /// Checks that exactly one element in the sequence satisfies the given predicate.
@@ -1173,11 +1173,11 @@ impl<A> Seq<A> {
     ///     let is_even = |x| x % 2 == 0;
     ///     assert(is_even(s[0]));
     ///     assert(s.skip(1).all(is_even));
-    ///     s.lemma_from_head_tail(is_even);
+    ///     s.lemma_all_from_head_tail(is_even);
     ///     assert(s.all(is_even));
     /// }
     /// ```
-    pub proof fn lemma_from_head_tail(self, pred: spec_fn(A) -> bool)
+    pub proof fn lemma_all_from_head_tail(self, pred: spec_fn(A) -> bool)
         requires
             self.len() > 0,
             pred(self[0]) && self.skip(1).all(|x| pred(x)),
@@ -1212,11 +1212,6 @@ impl<A> Seq<A> {
     {
         broadcast use group_seq_properties;
 
-        let x = choose|x: A| self.contains(x) && pred(x);
-        if !pred(self[0]) {
-            assert(x != self[0]);
-            assert(self.skip(1).contains(x));
-        }
     }
 
     /// Removes duplicate elements from a sequence, maintaining the order of first appearance.
@@ -1419,13 +1414,10 @@ impl<A> Seq<A> {
         reveal(Seq::filter);
         if self.len() != 0 {
             let rest = self.drop_last();
-            assert forall|x: A| rest.contains(x) implies !pred(x) by {
-                assert(self.contains(x));
-            }
             rest.lemma_all_neg_filter_empty(pred);
-            assert(self.contains(self.last()));
             rest.lemma_filter_len_push(pred, self.last());
-            assert(self.filter(pred).len() == 0);
+            let neg_pred = |x| !pred(x);
+            assert(neg_pred(self.last()));
         }
     }
 
@@ -1951,28 +1943,19 @@ impl<A> Seq<A> {
         requires
             self.len() == b.len(),
         ensures
-            self.zip_with(b).all(
-                |p|
-                    {
-                        let (a, b) = p;
-                        f(a, b)
-                    },
-            ) <==> forall|i: int| 0 <= i < self.len() ==> f(self[i], b[i]),
+            self.zip_with(b).all(|p: (A, B)| f(p.0, p.1)) <==> forall|i: int|
+                0 <= i < self.len() ==> f(self[i], b[i]),
     {
         broadcast use group_seq_properties;
 
         let zipped = self.zip_with(b);
-        let lhs = zipped.all(
-            |p|
-                {
-                    let (a, b) = p;
-                    f(a, b)
-                },
-        );
+        let f_uncurr = |p: (A, B)| f(p.0, p.1);
+        let lhs = zipped.all(f_uncurr);
         let rhs = (forall|i: int| 0 <= i < self.len() ==> f(self[i], b[i]));
         if lhs {
             assert forall|i: int| 0 <= i < self.len() implies f(self[i], b[i]) by {
                 self.lemma_zip_with_contains_index(b, i);
+                assert(forall|j| 0 <= j < zipped.len() ==> f_uncurr(zipped[j]));
             }
         }
     }
@@ -1996,7 +1979,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use group_seq_properties;
-        broadcast use Seq::flatten_push;
+        broadcast use Seq::lemma_flatten_push;
         broadcast use Seq::lemma_push_map_commute;
 
     }
@@ -2036,7 +2019,7 @@ impl<A> Seq<A> {
         ensures
             #[trigger] self.flat_map(f) == f(self[0]),
     {
-        broadcast use Seq::flatten_singleton;
+        broadcast use Seq::lemma_flatten_singleton;
 
     }
 
@@ -2445,7 +2428,7 @@ impl<A> Seq<Seq<A>> {
 
     /// Flattening a sequence of sequences after pushing a new sequence is equivalent to
     /// concatenating that sequence to the original flattened result.
-    pub broadcast proof fn flatten_push(self, elem: Seq<A>)
+    pub broadcast proof fn lemma_flatten_push(self, elem: Seq<A>)
         ensures
             #[trigger] self.push(elem).flatten() =~= self.flatten() + elem,
         decreases self.len(),
@@ -2468,7 +2451,7 @@ impl<A> Seq<Seq<A>> {
     }
 
     /// Flattening a sequence containing a single sequence yields that inner sequence.
-    pub broadcast proof fn flatten_singleton(self)
+    pub broadcast proof fn lemma_flatten_singleton(self)
         requires
             #[trigger] self.len() == 1,
         ensures
@@ -2479,8 +2462,8 @@ impl<A> Seq<Seq<A>> {
     }
 
     pub broadcast group group_seq_flatten {
-        Seq<_>::flatten_push,
-        Seq<_>::flatten_singleton,
+        Seq::<_>::lemma_flatten_push,
+        Seq::<_>::lemma_flatten_singleton,
     }
 }
 
