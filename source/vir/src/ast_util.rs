@@ -171,7 +171,14 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
-        // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
+        (
+            TypX::Opaque { trait_bounds: trait_bounds1, .. },
+            TypX::Opaque { trait_bounds: trait_bounds2, .. },
+        ) => {
+            // Not so sure about this. If two variables are returned from the same opaque function with the same type prams,
+            // it is sound to compare them.
+            *trait_bounds1 == *trait_bounds2
+        }
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
@@ -187,6 +194,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::Opaque { .. }, _) => false,
     }
 }
 
@@ -908,6 +916,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::Opaque { .. } => format!("opaquety"),
     }
 }
 

@@ -129,6 +129,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
+        TypX::Opaque { .. } => ReachedType::None,
     }
 }
 
@@ -261,6 +262,9 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
+        TypX::Opaque { .. } => {
+            reach_type(ctxt, state, &typ_to_reached_type(typ));
+        }
         TypX::AnonymousClosure(..) => {}
         TypX::Air(_) => {
             panic!("unexpected TypX")
@@ -325,6 +329,9 @@ fn traverse_typ(ctxt: &Ctxt, state: &mut State, t: &Typ) {
                     mono_abstract_datatypes.insert(monotyp);
                 }
             }
+        }
+        TypX::Opaque { trait_bounds, .. } => {
+            traverse_generic_bounds(ctxt, state, trait_bounds, true);
         }
         _ => {}
     }

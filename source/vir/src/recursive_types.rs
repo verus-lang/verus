@@ -126,6 +126,9 @@ fn check_well_founded_typ(
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
     }
 }
 
@@ -175,6 +178,9 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
         TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative

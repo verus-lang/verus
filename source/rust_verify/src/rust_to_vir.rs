@@ -515,7 +515,6 @@ pub fn crate_to_vir<'a, 'tcx>(
             VerifOrExternal::External { path: None, path_string: _, explicit: _ } => {}
         }
     }
-
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
 
     crate::rust_to_vir_impl::collect_external_trait_impls(

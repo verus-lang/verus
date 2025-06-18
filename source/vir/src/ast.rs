@@ -217,7 +217,7 @@ pub enum Primitive {
     Global,
 }
 
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, PartialEq)]
 pub struct TypDecorationArg {
     pub allocator_typ: Typ,
 }
@@ -227,7 +227,7 @@ pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
 // Because of ImplPaths in TypX::Datatype, TypX should not implement PartialEq, Eq
 // See ast_util::types_equal instead
-#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -246,6 +246,12 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    Opaque {
+        /// an id generated from its def_id and type prams.
+        id: Ident,
+        /// the trait bounds of the opaque type
+        trait_bounds: GenericBounds,
+    },
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -913,7 +919,7 @@ pub enum TraitId {
 
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
