@@ -167,10 +167,7 @@ impl<A> Set<A> {
             assert forall|min_poss: A|
                 self.is_minimal(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
                 assert(self.remove(x).is_minimal(r, min_poss) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r))) by {
-                    // TODO(jonh): this was flaking when I introduced another unrelated group set lemma
-                    assume( false );
-                }
+                assert(r(min_poss, self.find_unique_minimal(r))) by { }
             }
         }
     }
@@ -756,48 +753,21 @@ impl<A> ISet<A> {
     }
 }
 
+proof fn lemma_to_seq_to_set_ix_recursive<A>(set: Set<A>, elem: A)
+requires set.finite()
+ensures set.contains(elem) <==> set.to_seq().contains(elem)
+decreases set.len()
+{
+    broadcast use {super::seq::group_seq_axioms, super::seq_lib::group_seq_properties};
+    let c = set.choose();
+    if elem != c {
+        if set.contains(elem) || set.to_seq().contains(elem) {
+            lemma_to_seq_to_set_ix_recursive(set.remove(c), elem);
+        }
+    }
+}
+
 impl<A> Set<A> {
-    pub proof fn lemma_to_seq_to_set_ix_inner_recursive(self: Set<A>, elem: A)
-    requires self.finite()
-    ensures self.contains(elem) <==> self.to_seq().contains(elem)
-    decreases self.len()
-    {
-        broadcast use {super::seq::group_seq_axioms, super::seq_lib::group_seq_properties};
-        if self.contains(elem) {
-            let c = self.choose();
-            if elem == c {
-//                 assert( self.to_seq() == Seq::<A>::empty().push(c) + self.remove(c).to_seq() );
-//                 assert( Seq::<A>::empty().push(c).contains(elem) );
-//                 assert( self.to_seq().contains(elem) );
-            } else {
-                // recurse here
-                let sub = self.remove(c);
-                sub.lemma_to_seq_to_set_ix_inner_recursive(elem);
-//                 assert( self.to_seq() == Seq::<A>::empty().push(c) + self.remove(c).to_seq() );
-//                 assert( self.remove(c).finite() );
-//                 assert( sub.contains(elem) <==> sub.to_seq().contains(elem) );
-//                 assert( sub.contains(elem) );
-//                 assert( self.remove(c).contains(elem) );
-//                 assert( sub.contains(elem) );
-//                 assert( self.remove(c).contains(elem) );
-//                 assert( self.remove(c).to_seq().contains(elem) );
-//                 assert( self.to_seq().contains(elem) );
-            }
-        }
-        if self.to_seq().contains(elem) {
-            assume( false );
-            assert( self.contains(elem) );
-        }
-    }
-
-    pub proof fn lemma_to_seq_to_set_ix_inner()
-    ensures forall |set: Set<A>, elem: A| #![auto] set.finite() ==> (set.contains(elem) <==> set.to_seq().contains(elem))
-    {
-        assert forall |set: Set<A>, elem: A| #![auto] set.finite() implies (set.contains(elem) <==> set.to_seq().contains(elem)) by {
-            set.lemma_to_seq_to_set_ix_inner_recursive(elem);
-        }
-    }
-
     /// Conversion to a sequence and back to a set is the identity function.
     pub broadcast proof fn lemma_to_seq_to_set_id(self)
         requires
@@ -813,44 +783,20 @@ impl<A> Set<A> {
         broadcast use lemma_set_empty_len;
 
         if self.len() == 0 {
-//             assert(self.to_seq() == Seq::<A>::empty());
             assert(self.to_seq().to_set() =~= Set::<A>::empty());
         } else {
             let elem = self.choose();
             self.remove(elem).lemma_to_seq_to_set_id();
-            assert( self.remove(elem).to_seq().to_set() == self.remove(elem) );
-            assert(self =~= self.remove(elem).insert(elem));
+            let outer = self.to_seq().to_set();
+            let inner = self.remove(elem).to_seq().to_set().insert(elem);
 
-            assert( self.to_seq() == Seq::<A>::empty().push(elem) + self.remove(elem).to_seq() );
-            assert( self.to_seq().to_set() == (Seq::<A>::empty().push(elem) + self.remove(elem).to_seq()).to_set() );
-
-            Self::lemma_to_seq_to_set_ix_inner();
-//             assert forall |x| #![auto]
-//                 self.to_seq().to_set().contains(x)
-//                 implies
-//                 self.remove(elem).to_seq().to_set().insert(elem).contains(x)
-//             by {
-// //                 if x == elem {
-// //                     assert( self.remove(elem).to_seq().to_set().insert(elem).contains(x) );
-// //                 } else {
-// // //                     assert( self.to_seq().contains(x) );
-// // //                     assert( self.remove(elem).contains(x) );
-// // //                     assert( self.remove(elem).to_seq().to_set().contains(x) );
-// // //                     assert( self.remove(elem).to_seq().contains(x) );
-// // //                     assert( self.remove(elem).contains(x) );
-// // //                     assert( self.remove(elem).to_seq().contains(x) );
-// // //                     assert( self.remove(elem).to_seq().to_set().contains(x) );
-// //                     assert( self.remove(elem).to_seq().to_set().insert(elem).contains(x) );
-// //                 }
-//             }
-            assert forall |x| #![auto]
-                self.remove(elem).to_seq().to_set().insert(elem).contains(x)
-                implies
-                self.to_seq().to_set().contains(x)
-            by {
-                assert( exists |i| #![auto] set_int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]==x );
+            assert forall |x| #![auto] outer.contains(x) implies inner.contains(x) by {
+                lemma_to_seq_to_set_ix_recursive(self.remove(elem), x);
             }
-
+            assert forall |x| #![auto] inner.contains(x) implies outer.contains(x) by {
+                lemma_to_seq_to_set_ix_recursive(self, x);
+                assert( exists |i| #![auto] set_int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]==x ); // witness
+            }
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
         }
     }
