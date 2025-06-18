@@ -89,12 +89,15 @@ pub fn subst_typ_for_datatype(
 
 struct SubstCtxt<'a> {
     typ_substs: &'a HashMap<Ident, Typ>,
+    // free variables in the Exps in SubstState.substs:
     allow_unfinalized: bool,
 }
 
 struct SubstState {
     substs: ScopeMap<UniqueIdent, Exp>,
     free_vars: ScopeMap<UniqueIdent, ()>,
+    // variables already in scope, which we therefore cannot use when picking a fresh variable name:
+    fresh_var_blacklist: ScopeMap<UniqueIdent, ()>,
 }
 
 fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
@@ -107,10 +110,10 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
 ) -> VarBinders<A> {
     state.substs.push_scope(false);
     state.free_vars.push_scope(true);
+    state.fresh_var_blacklist.push_scope(true);
     let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
-        state.free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
         let name = if state.free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
@@ -118,11 +121,15 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
             loop {
                 let name = crate::def::subst_rename_ident(&b.name, n);
                 let rename = unique_bound(&name);
-                if !state.free_vars.contains_key(&rename) {
+                if !state.fresh_var_blacklist.contains_key(&rename) {
                     state
                         .free_vars
                         .insert(rename.clone(), ())
                         .expect("subst_rename_binders free_vars");
+                    state
+                        .fresh_var_blacklist
+                        .insert(rename.clone(), ())
+                        .expect("subst_rename_binders fresh_var_blacklist");
                     let typ = f_typ(&b.a);
                     let var = SpannedTyped::new(span, &typ, ExpX::Var(rename.clone()));
                     state.substs.insert(unique, var).expect("subst_rename_binders substs");
@@ -131,6 +138,10 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
                 n += 1;
             }
         } else {
+            state
+                .fresh_var_blacklist
+                .insert(unique.clone(), ())
+                .expect("subst_rename_binders fresh_var_blacklist");
             b.name.clone()
         };
         binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
@@ -139,6 +150,9 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
 }
 
 fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
+    // If we're not finalized, substitutions are only allowed for type variables:
+    assert!(!ctxt.allow_unfinalized || state.substs.map().len() == 0);
+
     let typ = subst_typ(&ctxt.typ_substs, &exp.typ);
     let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
     let ft = |t: &Typ| subst_typ(&ctxt.typ_substs, t);
@@ -171,7 +185,7 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
         )
         .expect("map_shallow_exp for subst_exp_rec"),
         ExpX::Var(x) => {
-            assert!(state.free_vars.contains_key(x));
+            assert!(state.fresh_var_blacklist.contains_key(x));
             match state.substs.get(x) {
                 None => mk_exp(ExpX::Var(x.clone())),
                 Some(e) => e.clone(),
@@ -231,6 +245,7 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
             let e1 = subst_exp_rec(ctxt, state, e1);
             state.substs.pop_scope();
             state.free_vars.pop_scope();
+            state.fresh_var_blacklist.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
         }
         ExpX::ArrayLiteral(exprs) => {
@@ -254,35 +269,40 @@ pub(crate) fn subst_exp(
     if typ_substs.len() == 0 && substs.len() == 0 {
         return exp.clone();
     }
+    let allow_unfinalized = substs.len() == 0;
 
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
+    let mut fresh_var_blacklist: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(true);
-    let mut free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
+    fresh_var_blacklist.push_scope(true);
+    let mut exp_free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
     free_vars_exp_scope(
         exp,
         &mut crate::sst_visitor::VisitorScopeMap::new(),
-        &mut free_vars_map,
-        substs.len() == 0,
+        &mut exp_free_vars_map,
+        allow_unfinalized,
     );
-    for (y, _) in free_vars_map {
-        let _ = free_vars.insert(y.clone(), ());
+    for (y, _) in exp_free_vars_map {
+        let _ = fresh_var_blacklist.insert(y.clone(), ());
     }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
             let _ = free_vars.insert(y.clone(), ());
+            let _ = fresh_var_blacklist.insert(y.clone(), ());
         }
     }
-    let allow_unfinalized = substs.len() == 0;
     let ctxt = SubstCtxt { typ_substs, allow_unfinalized };
-    let mut state = SubstState { substs: scope_substs, free_vars };
+    let mut state = SubstState { substs: scope_substs, free_vars, fresh_var_blacklist };
     let e = subst_exp_rec(&ctxt, &mut state, exp);
     state.substs.pop_scope();
     state.free_vars.pop_scope();
+    state.fresh_var_blacklist.pop_scope();
     assert_eq!(state.substs.num_scopes(), 0);
     assert_eq!(state.free_vars.num_scopes(), 0);
+    assert_eq!(state.fresh_var_blacklist.num_scopes(), 0);
     e
 }
 
