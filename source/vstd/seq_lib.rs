@@ -2205,6 +2205,28 @@ impl<A> Seq<A> {
 
         assert((self + s1).skip(self.len() as int) == s1);
     }
+
+    pub broadcast group group_seq_extra {
+        Seq::<_>::lemma_seq_skip_skip,
+        Seq::<_>::lemma_remove_duplicates_properties,
+        Seq::<_>::lemma_filter_contains_rev,
+        Seq::<_>::lemma_filter_map_take_succ,
+        Seq::<_>::lemma_filter_prepend,
+        Seq::<_>::lemma_filter_len_push,
+        Seq::<_>::lemma_take_len,
+        Seq::<_>::lemma_take_any_succ,
+        Seq::<_>::lemma_push_map_commute,
+        Seq::<_>::lemma_push_to_set_commute,
+        Seq::<_>::lemma_filter_push,
+        Seq::<_>::lemma_flat_map_take_append,
+        Seq::<_>::lemma_flat_map_singleton,
+        Seq::<_>::lemma_map_take_succ,
+        Seq::<_>::lemma_prefix_index_eq,
+        Seq::<_>::lemma_prefix_concat,
+        Seq::<_>::lemma_prefix_chain_contains,
+        Seq::<_>::lemma_prefix_append_unique,
+        Seq::<_>::lemma_all_push,
+    }
 }
 
 /// Filtering a sequence and then viewing its elements produces the same result as
@@ -2454,6 +2476,11 @@ impl<A> Seq<Seq<A>> {
     {
         assert(self.flatten() == self[0] + self.drop_first().flatten());
         assert(self.flatten() == self[0]);
+    }
+
+    pub broadcast group group_seq_flatten {
+        Seq<_>::flatten_push,
+        Seq<_>::flatten_singleton,
     }
 }
 
