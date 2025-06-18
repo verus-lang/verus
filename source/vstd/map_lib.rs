@@ -714,6 +714,15 @@ pub broadcast group group_map_properties {
     lemma_map_new_values,
 }
 
+pub broadcast group group_map_extra {
+    Map::lemma_map_remove_keys_insert,
+    Map::lemma_filter_keys_insert,
+    Map::lemma_prefixed_entries_get,
+    Map::lemma_prefixed_entries_contains,
+    Map::lemma_prefixed_entries_insert,
+    Map::lemma_prefixed_entries_union,
+}
+
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
     requires
         m.dom().finite(),
