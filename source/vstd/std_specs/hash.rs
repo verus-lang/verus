@@ -692,8 +692,7 @@ pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
     m: HashMap<Key, Value, S>,
 ) -> Map<Key::V, Value::V> {
     Map::new(
-        |k: Key::V|
-            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        m@.dom().map(|orig_k: Key| orig_k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;

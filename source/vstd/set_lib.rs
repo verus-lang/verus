@@ -19,7 +19,7 @@ use super::set::*;
 
 verus! {
 
-broadcast use super::set::group_set_lemmas;
+broadcast use {super::set::group_set_lemmas, super::set::GSet::congruent_infiniteness, super::set::GSet::congruent_len};
 
 //////////////////////////////////////////////////////////////////////////////
 // Some general set properties
@@ -474,13 +474,13 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
             !s.contains(elt),
             self.finite(),
         ensures
-            #[trigger] self.difference(s.insert(elt)).len() < self.difference(s).len(),
+            #[trigger] self.generic_difference(s.insert(elt)).len() < self.generic_difference(s).len(),
     {
-        self.difference(s.insert(elt)).lemma_subset_not_in_lt(self.difference(s), elt);
+        self.generic_difference(s.insert(elt)).lemma_subset_not_in_lt(self.generic_difference(s), elt);
     }
 
     /// If there is an element not present in a subset, its length is stricly smaller.
-    pub proof fn lemma_subset_not_in_lt(self: Set<A>, s2: Set<A>, elt: A)
+    pub proof fn lemma_subset_not_in_lt(self: GSet<A, FINITE>, s2: GSet<A, FINITE>, elt: A)
         requires
             self.subset_of(s2),
             s2.finite(),
@@ -515,21 +515,21 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
     /// `map` and `union` commute
     pub proof fn lemma_map_union_commute<B>(self, t: Set<A>, f: spec_fn(A) -> B)
         ensures
-            (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
+            (self.generic_union(t)).map(f) =~= self.map(f).generic_union(t.map(f)),
     {
         broadcast use group_set_lemmas;
 
-        let lhs = self.union(t).map(f);
-        let rhs = self.map(f).union(t.map(f));
+        let lhs = self.generic_union(t).map(f);
+        let rhs = self.map(f).generic_union(t.map(f));
 
         assert forall|elem: B| rhs.contains(elem) implies lhs.contains(elem) by {
             if self.map(f).contains(elem) {
                 let preimage = choose|preimage: A| self.contains(preimage) && f(preimage) == elem;
-                assert(self.union(t).contains(preimage));
+                assert(self.generic_union(t).contains(preimage));
             } else {
                 assert(t.map(f).contains(elem));
                 let preimage = choose|preimage: A| t.contains(preimage) && f(preimage) == elem;
-                assert(self.union(t).contains(preimage));
+                assert(self.generic_union(t).contains(preimage));
             }
         }
     }
@@ -560,21 +560,54 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
         let x = choose|x: A| self.contains(x) && p(x);
         assert(self.map(f).contains(f(x)));
     }
+}
 
+// TODO: Right now, flatten and filter_map is only defined for ISets. It should work just fine on Sets,
+// too, but it doesn't translate simply into a single generic implementation. That's because
+// TODO(jonh): try defining flatten with a single FINITE arg that agrees and preserves finiteness.
+impl<A> ISet<ISet<A>> {
+    pub open spec fn flatten(self) -> ISet<A> {
+        ISet::new(
+            |elem| exists|elem_s: ISet<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
+        )
+    }
+
+    pub broadcast proof fn flatten_insert_union_commute(self, other: ISet<A>)
+        ensures
+            self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
+    {
+        broadcast use group_set_lemmas;
+
+        let lhs = self.flatten().union(other);
+        let rhs = self.insert(other).flatten();
+
+        assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
+            if exists|s: ISet<A>| self.contains(s) && s.contains(elem) {
+                let s = choose|s: ISet<A>| self.contains(s) && s.contains(elem);
+                assert(self.insert(other).contains(s));
+                assert(s.contains(elem));
+            } else {
+                assert(self.insert(other).contains(other));
+            }
+        }
+    }
+}
+
+impl<A> ISet<A> {
     /// Collecting all elements `b` where `f` returns `Some(b)`
-    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> Set<B> {
+    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> ISet<B> {
         self.map(
             |elem: A|
                 match f(elem) {
-                    Option::Some(r) => set!{r},
-                    Option::None => set!{},
+                    Option::Some(r) => iset!{r},
+                    Option::None => iset!{},
                 },
         ).flatten()
     }
 
     /// Inserting commutes with `filter_map`
     pub broadcast proof fn lemma_filter_map_insert<B>(
-        s: Set<A>,
+        s: ISet<A>,
         f: spec_fn(A) -> Option<B>,
         elem: A,
     )
@@ -585,7 +618,7 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
             }),
     {
         broadcast use group_set_lemmas;
-        broadcast use Set::lemma_set_map_insert_commute;
+        broadcast use GSet::lemma_set_map_insert_commute;
 
         let lhs = s.insert(elem).filter_map(f);
         let rhs = match f(elem) {
@@ -594,20 +627,21 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
         };
         let to_set = |elem: A|
             match f(elem) {
-                Option::Some(r) => set!{r},
-                Option::None => set!{},
+                Option::Some(r) => iset!{r},
+                Option::None => iset!{},
             };
         assert forall|r: B| #[trigger] lhs.contains(r) implies rhs.contains(r) by {
             if f(elem) != Some(r) {
                 let orig = choose|orig: A| #[trigger]
                     s.contains(orig) && f(orig) == Option::Some(r);
-                assert(to_set(orig) == set!{r});
+                assert(to_set(orig) == iset!{r});
                 assert(s.map(to_set).contains(to_set(orig)));
             }
         }
         assert forall|r: B| #[trigger] rhs.contains(r) implies lhs.contains(r) by {
             if Some(r) == f(elem) {
                 assert(s.insert(elem).map(to_set).contains(to_set(elem)));
+                assert( lhs.contains(r) );
             } else {
                 let orig = choose|orig: A| #[trigger]
                     s.contains(orig) && f(orig) == Option::Some(r);
@@ -618,7 +652,7 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
     }
 
     /// `filter_map` and `union` commute.
-    pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Set<A>)
+    pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: ISet<A>)
         ensures
             #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(t.filter_map(f)),
     {
@@ -627,6 +661,11 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
         let lhs = self.union(t).filter_map(f);
         let rhs = self.filter_map(f).union(t.filter_map(f));
         let to_set = |elem: A|
+            match f(elem) {
+                Option::Some(r) => iset!{r},
+                Option::None => iset!{},
+            };
+        let to_fset = |elem: A|
             match f(elem) {
                 Option::Some(r) => set!{r},
                 Option::None => set!{},
@@ -704,15 +743,58 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
         decreases self.len(),
     {
         broadcast use group_set_lemmas;
-        broadcast use Set::lemma_filter_map_insert;
+        broadcast use GSet::lemma_filter_map_insert;
 
         let mapped = self.filter_map(f);
         if self.len() == 0 {
-            assert(self.filter_map(f) =~= Set::<B>::empty());
+            assert(self.filter_map(f) =~= ISet::<B>::empty());
         } else {
             let elem = self.choose();
             self.remove(elem).lemma_filter_map_finite(f);
             assert(self =~= self.remove(elem).insert(elem));
+        }
+    }
+}
+
+impl<A> Set<A> {
+    pub proof fn lemma_to_seq_to_set_ix_inner_recursive(self: Set<A>, elem: A)
+    requires self.finite()
+    ensures self.contains(elem) <==> self.to_seq().contains(elem)
+    decreases self.len()
+    {
+        broadcast use {super::seq::group_seq_axioms, super::seq_lib::group_seq_properties};
+        if self.contains(elem) {
+            let c = self.choose();
+            if elem == c {
+//                 assert( self.to_seq() == Seq::<A>::empty().push(c) + self.remove(c).to_seq() );
+//                 assert( Seq::<A>::empty().push(c).contains(elem) );
+//                 assert( self.to_seq().contains(elem) );
+            } else {
+                // recurse here
+                let sub = self.remove(c);
+                sub.lemma_to_seq_to_set_ix_inner_recursive(elem);
+//                 assert( self.to_seq() == Seq::<A>::empty().push(c) + self.remove(c).to_seq() );
+//                 assert( self.remove(c).finite() );
+//                 assert( sub.contains(elem) <==> sub.to_seq().contains(elem) );
+//                 assert( sub.contains(elem) );
+//                 assert( self.remove(c).contains(elem) );
+//                 assert( sub.contains(elem) );
+//                 assert( self.remove(c).contains(elem) );
+//                 assert( self.remove(c).to_seq().contains(elem) );
+//                 assert( self.to_seq().contains(elem) );
+            }
+        }
+        if self.to_seq().contains(elem) {
+            assume( false );
+            assert( self.contains(elem) );
+        }
+    }
+
+    pub proof fn lemma_to_seq_to_set_ix_inner()
+    ensures forall |set: Set<A>, elem: A| #![auto] set.finite() ==> (set.contains(elem) <==> set.to_seq().contains(elem))
+    {
+        assert forall |set: Set<A>, elem: A| #![auto] set.finite() implies (set.contains(elem) <==> set.to_seq().contains(elem)) by {
+            set.lemma_to_seq_to_set_ix_inner_recursive(elem);
         }
     }
 
@@ -726,43 +808,50 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
     {
         broadcast use group_set_lemmas;
         broadcast use lemma_set_empty_equivalency_len;
+        broadcast use super::seq::group_seq_axioms;
         broadcast use super::seq_lib::group_seq_properties;
+        broadcast use lemma_set_empty_len;
 
         if self.len() == 0 {
+//             assert(self.to_seq() == Seq::<A>::empty());
             assert(self.to_seq().to_set() =~= Set::<A>::empty());
         } else {
             let elem = self.choose();
             self.remove(elem).lemma_to_seq_to_set_id();
+            assert( self.remove(elem).to_seq().to_set() == self.remove(elem) );
             assert(self =~= self.remove(elem).insert(elem));
-            assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
-        }
-    }
-}
 
-impl<A> Set<Set<A>> {
-    pub open spec fn flatten(self) -> Set<A> {
-        Set::new(
-            |elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
-        )
-    }
+            assert( self.to_seq() == Seq::<A>::empty().push(elem) + self.remove(elem).to_seq() );
+            assert( self.to_seq().to_set() == (Seq::<A>::empty().push(elem) + self.remove(elem).to_seq()).to_set() );
 
-    pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
-        ensures
-            self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
-    {
-        broadcast use group_set_lemmas;
-
-        let lhs = self.flatten().union(other);
-        let rhs = self.insert(other).flatten();
-
-        assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
-            if exists|s: Set<A>| self.contains(s) && s.contains(elem) {
-                let s = choose|s: Set<A>| self.contains(s) && s.contains(elem);
-                assert(self.insert(other).contains(s));
-                assert(s.contains(elem));
-            } else {
-                assert(self.insert(other).contains(other));
+            Self::lemma_to_seq_to_set_ix_inner();
+//             assert forall |x| #![auto]
+//                 self.to_seq().to_set().contains(x)
+//                 implies
+//                 self.remove(elem).to_seq().to_set().insert(elem).contains(x)
+//             by {
+// //                 if x == elem {
+// //                     assert( self.remove(elem).to_seq().to_set().insert(elem).contains(x) );
+// //                 } else {
+// // //                     assert( self.to_seq().contains(x) );
+// // //                     assert( self.remove(elem).contains(x) );
+// // //                     assert( self.remove(elem).to_seq().to_set().contains(x) );
+// // //                     assert( self.remove(elem).to_seq().contains(x) );
+// // //                     assert( self.remove(elem).contains(x) );
+// // //                     assert( self.remove(elem).to_seq().contains(x) );
+// // //                     assert( self.remove(elem).to_seq().to_set().contains(x) );
+// //                     assert( self.remove(elem).to_seq().to_set().insert(elem).contains(x) );
+// //                 }
+//             }
+            assert forall |x| #![auto]
+                self.remove(elem).to_seq().to_set().insert(elem).contains(x)
+                implies
+                self.to_seq().to_set().contains(x)
+            by {
+                assert( exists |i| #![auto] set_int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]==x );
             }
+
+            assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
         }
     }
 }
@@ -911,7 +1000,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
 }
 
 /// The size of the intersection of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
-pub proof fn lemma_len_intersect<A>(s1: ISet<A>, s2: ISet<A>)
+pub proof fn lemma_len_intersect<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>)
     requires
         s1.finite(),
     ensures
@@ -919,17 +1008,18 @@ pub proof fn lemma_len_intersect<A>(s1: ISet<A>, s2: ISet<A>)
     decreases s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.generic_intersect(s2) =~= s1);
+        assert(s1.generic_intersect(s2).congruent(s1));
     } else {
         let a = s1.choose();
         assert(s1.generic_intersect(s2).remove(a) =~= s1.remove(a).generic_intersect(s2));
-        lemma_len_intersect::<A>(s1.remove(a), s2);
+        lemma_len_intersect::<A, FINITE, FINITE2>(s1.remove(a), s2);
+        assert( s1.generic_intersect(s2).len() <= s1.len() );
     }
 }
 
 /// If `s1` is a subset of finite set `s2`, then the size of `s1` is less than or equal to
 /// the size of `s2` and `s1` must be finite.
-pub proof fn lemma_len_subset<A>(s1: ISet<A>, s2: ISet<A>)
+pub proof fn lemma_len_subset<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>)
     requires
         s2.finite(),
         s1.subset_of(s2),
@@ -937,8 +1027,8 @@ pub proof fn lemma_len_subset<A>(s1: ISet<A>, s2: ISet<A>)
         s1.len() <= s2.len(),
         s1.finite(),
 {
-    lemma_len_intersect::<A>(s2, s1);
-    assert(s2.generic_intersect(s1) =~= s1);
+    lemma_len_intersect::<A, FINITE2, FINITE>(s2, s1);
+    assert(s2.generic_intersect(s1).congruent(s1));
 }
 
 /// A subset of a finite set `s` is finite.
