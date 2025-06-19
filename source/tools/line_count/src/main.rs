@@ -126,7 +126,7 @@ impl ToCodeKind for syn_verus::FnMode {
     fn to_code_kind(&self) -> CodeKind {
         match self {
             syn_verus::FnMode::Spec(_) | syn_verus::FnMode::SpecChecked(_) => CodeKind::Spec,
-            syn_verus::FnMode::Proof(_) => CodeKind::Proof,
+            syn_verus::FnMode::Proof(_) | syn_verus::FnMode::ProofAxiom(_) => CodeKind::Proof,
             syn_verus::FnMode::Exec(_) | syn_verus::FnMode::Default => CodeKind::Exec,
         }
     }
