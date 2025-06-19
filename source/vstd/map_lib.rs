@@ -277,17 +277,17 @@ impl<K, V> Map<K, V> {
     ///
     /// ## Example
     /// ```rust
-    /// proof fn lookup_test() {
+    /// proof fn get_test() {
     ///     let m: Map<int, bool> = map![
     ///         1 => true,
     ///         2 => false
     ///     ];
     ///
-    ///     assert(m.lookup(1) == Some(true));
-    ///     assert(m.lookup(3) == None);
+    ///     assert(m.get(1) == Some(true));
+    ///     assert(m.get(3) == None);
     /// }
     /// ```
-    pub open spec fn lookup(self, k: K) -> Option<V> {
+    pub open spec fn get(self, k: K) -> Option<V> {
         if self.dom().contains(k) {
             Some(self[k])
         } else {
@@ -299,14 +299,14 @@ impl<K, V> Map<K, V> {
     ///
     /// ## Example
     /// ```rust
-    /// proof fn lookup_dom_value_any_test() {
+    /// proof fn get_dom_value_any_test() {
     ///     let m = map![1 => 10, 2 => 20, 3 => 30];
     ///     let p = |v: int| v > 25;
     ///     assert(m[3] == 30);
     ///     assert(m.dom().any(|k| p(m[k])));
     /// }
     /// ```
-    pub proof fn lookup_dom_value_any(self, p: spec_fn(V) -> bool)
+    pub proof fn get_dom_value_any(self, p: spec_fn(V) -> bool)
         ensures
             self.dom().any(|k: K| p(self[k])) <==> self.values().any(p),
     {
