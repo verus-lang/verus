@@ -35,6 +35,13 @@ fn unwrap_test() {
     runtime_assert(a.unwrap() != b.unwrap());
 }
 
+fn expect_test() {
+    let a = Option::Some(2);
+    let b = Option::Some(4);
+    runtime_assert(a.expect("is some") == 2);
+    runtime_assert(a.expect("is some") != b.expect("is some"));
+}
+
 fn unwrap_or_test() {
     let a = Option::Some(2);
     let b = Option::None;

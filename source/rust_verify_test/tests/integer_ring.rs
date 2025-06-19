@@ -9,7 +9,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     simple_1 verus_code! {
         proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
-          requires (x-y) % m == 0
+          requires (x-y) % m == 0, m != 0,
           ensures (x*z- y*z) % m == 0
         {}
     } => Ok(())
@@ -32,6 +32,7 @@ test_verify_one_file! {
     mont_mul_1 verus_code! {
         proof fn test(a:int, s:int, R:int, M:int, RR:int, R_INV:int) by(integer_ring)
             requires
+                M != 0,
                 (a * R - RR * s) % M == 0,
                 (R_INV * R - 1) % M == 0,
                 (RR - R * R % M) == 0,
@@ -47,6 +48,7 @@ test_verify_one_file! {
     mont_mul_2 verus_code! {
         proof fn test(p2_full: int, BASE: int, ui: int, m0: int, m0d: int, p1_lh: int, p1_full: int) by(integer_ring)
             requires
+                BASE != 0,
                 p2_full == ui * m0 + p1_lh,
                 (p1_full - p1_lh) % BASE == 0,
                 (m0d * m0 - (BASE-1)) % BASE == 0,
@@ -108,6 +110,7 @@ test_verify_one_file! {
         }
         proof fn test(x:int, y:int, m:int) by(integer_ring)
             requires
+                m != 0,
                 (square(x) - square(y)) % m == 0,
                 square(x) == x*x,
                 square(y) == y*y,
@@ -125,6 +128,7 @@ test_verify_one_file! {
     simple_fail_1 verus_code! {
         proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
             requires
+                m != 0,
                 (x-y) % m == 0
             ensures (x*z + y*z) % m == 0 //FAILS
         {}
@@ -185,6 +189,7 @@ test_verify_one_file! {
     type_fail verus_code! {
         proof fn test(x: u32, y: u32, z:u32, m:int) by(integer_ring) // FAILS (not supported)
             requires
+              m != 0,
               (x-y) % m == 0
             ensures
               (x*z - y*z) % m == 0
@@ -197,7 +202,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     reserved_keyword verus_code! {
         proof fn test(singular_tmp_1 : int, y: int, z:int, m:int) by(integer_ring)
-            requires (singular_tmp_1 - y) % m == 0
+            requires (singular_tmp_1 - y) % m == 0, m != 0,
             ensures (singular_tmp_1 * z- y*z) % m == 0
         {}
     } => Ok(())
@@ -224,6 +229,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     mul_mod_noop verus_code! {
         pub proof fn test(x: int, y: int, m: int) by(integer_ring)
+            requires m != 0,
             ensures
                 ((x % m) * y) % m == (x * y) % m,
                 (x * (y % m)) % m == (x * y) % m,
@@ -237,6 +243,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     mul_mod_noop_fail_1 verus_code! {
         pub proof fn test(x: int, y: int, m: int) by(integer_ring)
+            requires m != 0,
             ensures
                 ((x % m) * y) % m == (x * y) % m,
                 ((x % m) * (y % m)) % m == (x) % m, // FAILS
@@ -250,21 +257,11 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     mul_mod_noop_fail_2 verus_code! {
         pub proof fn test(x: int, y: int, m: int) by(integer_ring)
+            requires m != 0,
             ensures
                 ((x % m) * y) % m == (x * y) % m,
                 ((x % m) * (y % m)) % m == (x) % m, // FAILS
                 (x * (y % m)) % m == (x) % m // also FAILS (but should not report this, since we stop at the first failure)
-        {}
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test]
-    #[cfg_attr(not(feature = "singular"), ignore)]
-    neq_not_supported verus_code! {
-        proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
-            requires (x-y) % m != 0  //FAILS (not supported)
-            ensures (x*z + y*z) % m == 0
         {}
     } => Err(err) => assert_one_fails(err)
 }
@@ -289,4 +286,28 @@ test_verify_one_file! {
             ensures (x*z + y*z) % m < 0 //FAILS (not supported)
         {}
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    warnings verus_code! {
+        pub proof fn foo(x: int, y:int, d:int, small_x:int, small_y:int, tmp1:int, tmp2:int) by(integer_ring)
+            requires
+                (d + 1) != 0,
+                small_x == x % d,
+                small_y == y % d,
+                tmp1 == (small_y - small_x) % d,
+                tmp2 == (y - x) % d,
+            ensures
+                (tmp1 - tmp2) % d == 0
+        {}
+    } => Ok(err) => {
+        assert_eq!(err.errors.len(), 0);
+        dbg!(&err.warnings);
+        assert_eq!(err.warnings.len(), 3);
+        assert!(err.warnings[0].message.contains("integer_ring: this precondition is superfluous and has no impact on the integer_ring decision procedure"));
+        assert!(err.warnings[1].message.contains("integer_ring: this lemma should have `d != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)"));
+        assert!(err.warnings[2].message.contains("2 warnings emitted"));
+    }
 }

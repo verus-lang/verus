@@ -1,6 +1,6 @@
 This directory contains various example files of programs to verify.
 
-There is a test in `rust_verify/tests/examples.rs` that attempts to run the verify on all .rs files in `example`, unless tagged as "ignore".
+There is a test in `rust_verify_test/tests/examples.rs` that attempts to run the verify on all .rs files in `example`, unless tagged as "ignore".
 The test will check the verification outcome based on the mode specified in the tag.
 The tag is specified by adding the following as the *first line*:
 

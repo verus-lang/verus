@@ -164,7 +164,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed {:?}", typ),
+                    None => {
+                        // this probably means you forgot to call coerce_typ_to_poly
+                        // or coerce_typ_to_native for this type during the poly pass
+                        panic!("abstract datatype should be boxed {:?}", typ)
+                    }
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -193,12 +197,10 @@ pub fn range_to_id(range: &IntRange) -> Expr {
         IntRange::Int => str_var(crate::def::TYPE_ID_INT),
         IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
         IntRange::Char => str_var(crate::def::TYPE_ID_CHAR),
-        IntRange::U(_) | IntRange::USize => {
-            apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
-        }
-        IntRange::I(_) | IntRange::ISize => {
-            apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
-        }
+        IntRange::USize => str_var(crate::def::TYPE_ID_USIZE),
+        IntRange::ISize => str_var(crate::def::TYPE_ID_ISIZE),
+        IntRange::U(_) => apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![]),
+        IntRange::I(_) => apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![]),
     }
 }
 
@@ -499,6 +501,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             } else {
                 if typ_as_mono(typ).is_none() {
+                    // this probably means you forgot to call coerce_typ_to_poly
+                    // or coerce_typ_to_native for this type during the poly pass
                     panic!("abstract datatype should be boxed")
                 } else {
                     None

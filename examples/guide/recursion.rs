@@ -1,5 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -110,6 +108,7 @@ fn rec_triangle(n: u32) -> (sum: u32)
         triangle(n as nat) < 0x1_0000_0000,
     ensures
         sum == triangle(n as nat),
+    decreases n,
 {
     if n == 0 {
         0
@@ -125,6 +124,7 @@ fn mut_triangle(n: u32, sum: &mut u32)
         triangle(n as nat) < 0x1_0000_0000,
     ensures
         *sum == triangle(n as nat),
+    decreases n,
 {
     if n == 0 {
         *sum = 0;
@@ -200,6 +200,7 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
         triangle(n as nat) < 0x1_0000_0000,
     ensures
         *sum == triangle(n as nat),
+    decreases n - idx,
 {
     if idx < n {
         let idx = idx + 1;
@@ -226,6 +227,7 @@ fn loop_triangle(n: u32) -> (sum: u32)
             idx <= n,
             sum == triangle(idx as nat),
             triangle(n as nat) < 0x1_0000_0000,
+        decreases n - idx,
     {
         idx = idx + 1;
         assert(sum + idx < 0x1_0000_0000) by {
@@ -248,6 +250,7 @@ fn loop_triangle_return(n: u32) -> (sum: u32)
         invariant
             idx <= n,
             sum == triangle(idx as nat),
+        decreases n - idx,
     {
         idx = idx + 1;
         if sum as u64 + idx as u64 >= 0x1_0000_0000 {
@@ -276,6 +279,7 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
             sum == triangle(idx as nat),
         ensures
             sum == triangle(n as nat) || (sum == 0xffff_ffff && triangle(n as nat) >= 0x1_0000_0000),
+        decreases n - idx,
     {
         idx = idx + 1;
         if sum as u64 + idx as u64 >= 0x1_0000_0000 {
@@ -313,7 +317,6 @@ fn for_loop_triangle(n: u32) -> (sum: u32)
     sum
 }
 // ANCHOR_END: for_loop
-    
 
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
@@ -329,8 +332,8 @@ spec fn ackermann(m: nat, n: nat) -> nat
 }
 
 proof fn test_ackermann() {
-    reveal_with_fuel(ackermann, 12);
-    assert(ackermann(3, 2) == 29);
+    reveal_with_fuel(ackermann, 9);
+    assert(ackermann(2, 3) == 9);
 }
 // ANCHOR_END: ackermann
 
@@ -487,6 +490,40 @@ proof fn example_decreases_to(s: Seq<int>)
     assert(decreases_to!(s => s.subrange(1, 3)));
 }
 // ANCHOR_END: example_decreases_to
+
+
+// ANCHOR: example_proof_in_spec
+spec fn floor_log2(n: u64) -> int 
+    decreases n
+{
+    if n <= 1 { 
+        0   
+    } else {
+        proof {
+          assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
+        }
+        floor_log2(n >> 1) + 1 
+    }   
+}
+// ANCHOR_END: example_proof_in_spec
+
+// ANCHOR: example_proof_using_via
+spec fn floor_log2_via(n: u64) -> int 
+    decreases n
+    via floor_log2_decreases_proof
+{
+    if n <= 1 { 
+        0   
+    } else {
+        floor_log2_via(n >> 1) + 1 
+    }   
+}
+
+#[via_fn]
+proof fn floor_log2_decreases_proof(n: u64) {
+    assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
+}
+// ANCHOR_END: example_proof_using_via
 
 fn main() {
 }

@@ -1,9 +1,10 @@
 use super::super::prelude::*;
 use builtin::*;
 
-use alloc::vec::Vec;
+use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
+use core::marker::PhantomData;
 use core::option::Option;
 use core::option::Option::None;
 
@@ -172,6 +173,13 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
         slice@ == vec@,
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
+    vec: &Vec<T, A>,
+) -> (slice: &[T])
+    ensures
+        slice@ == vec@,
+;
+
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,
@@ -252,10 +260,140 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     }
 }
 
+// The `into_iter` method of a `Vec` returns an iterator of type `IntoIter`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
+
+impl<T, A: Allocator> View for IntoIter<T, A> {
+    type V = (int, Seq<T>);
+
+    uninterp spec fn view(self: &IntoIter<T, A>) -> (int, Seq<T>);
+}
+
+pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
+    elements: &mut IntoIter<T, A>,
+) -> (r: Option<T>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(elements)@;
+            match r {
+                None => {
+                    &&& elements@ == old(elements)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(element) => {
+                    let (new_index, new_seq) = elements@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& element == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+pub struct IntoIterGhostIterator<T, A: Allocator> {
+    pub pos: int,
+    pub elements: Seq<T>,
+    pub _marker: PhantomData<A>,
+}
+
+impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoIter<T, A> {
+    type GhostIter = IntoIterGhostIterator<T, A>;
+
+    open spec fn ghost_iter(&self) -> IntoIterGhostIterator<T, A> {
+        IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
+    }
+}
+
+impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
+    T,
+    A,
+> {
+    type ExecIter = IntoIter<T, A>;
+
+    type Item = T;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &IntoIter<T, A>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.elements == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.elements == self.elements
+            &&& 0 <= self.pos <= self.elements.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.elements.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.elements.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<T> {
+        if 0 <= self.pos < self.elements.len() {
+            Some(self.elements[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &IntoIter<T, A>) -> IntoIterGhostIterator<T, A> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<T, A: Allocator> View for IntoIterGhostIterator<T, A> {
+    type V = Seq<T>;
+
+    open spec fn view(&self) -> Seq<T> {
+        self.elements.take(self.pos)
+    }
+}
+
+// To allow reasoning about the ghost iterator when the executable
+// function `into_iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
+
+pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
+    ensures
+        (#[trigger] spec_into_iter(v))@ == (0int, v@),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_into_iter)]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter)
+    ensures
+        iter@ == (0int, vec@),
+;
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
+    axiom_spec_into_iter,
 }
 
 } // verus!

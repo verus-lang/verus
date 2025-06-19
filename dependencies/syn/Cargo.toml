@@ -195,6 +195,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(syn_no_non_exhaustive)',
   'cfg(syn_no_const_vec_new)',
   'cfg(syn_no_negative_literal_parse)',
+  'cfg(test)',
 ] }
 
 # [workspace]
