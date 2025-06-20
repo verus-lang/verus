@@ -1,6 +1,7 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt, get_mode, get_verifier_attrs};
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
@@ -929,11 +930,6 @@ fn erase_call<'tcx>(
             let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let typing_env = TypingEnv::post_analysis(
-                ctxt.tcx,
-                state.enclosing_fun_id.expect("enclosing_fun_id"),
-            );
-
             let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
             let mut node_substs = crate::fn_call_to_vir::fix_node_substs(
                 ctxt.tcx,
@@ -944,17 +940,33 @@ fn erase_call<'tcx>(
                 expr,
             );
 
-            let normalized_substs = ctxt.tcx.normalize_erasing_regions(typing_env, node_substs);
-            let inst = rustc_middle::ty::Instance::try_resolve(
-                ctxt.tcx,
-                typing_env,
-                fn_def_id,
-                normalized_substs,
-            );
-            if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
-                    node_substs = &inst.args;
-                    fn_def_id = did;
+            if ctxt.tcx.trait_of_item(fn_def_id).is_some() {
+                let typing_env = TypingEnv::post_analysis(
+                    ctxt.tcx,
+                    state.enclosing_fun_id.expect("enclosing_fun_id"),
+                );
+                let resolution_result = crate::resolve_traits::resolve_trait_item(
+                    expr.span,
+                    ctxt.tcx,
+                    typing_env,
+                    fn_def_id,
+                    node_substs,
+                )
+                .unwrap();
+                match resolution_result {
+                    ResolutionResult::Unresolved => {}
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromImpl(did, args),
+                        ..
+                    } => {
+                        node_substs = args;
+                        fn_def_id = did;
+                    }
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromTrait(..),
+                        ..
+                    } => {}
+                    ResolutionResult::Builtin(_) => {}
                 }
             }
 

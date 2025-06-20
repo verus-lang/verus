@@ -1,5 +1,6 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
@@ -1083,23 +1084,32 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
-            let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
-            let normalized_substs = tcx.normalize_erasing_regions(typing_env, *args);
-            // TODO: replace with crate::resolve_traits::resolve_trait_item
-            let inst = rustc_middle::ty::Instance::try_resolve(
-                tcx,
-                typing_env,
-                *def_id,
-                normalized_substs,
-            );
-            let mut resolved = None;
-            if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
-                    let path = def_id_to_vir_path(tcx, verus_items, did);
-                    let fun = Arc::new(vir::ast::FunX { path });
-                    resolved = Some(fun);
+            let resolved = if tcx.trait_of_item(*def_id).is_none() {
+                None
+            } else {
+                let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
+                let resolution_result = crate::resolve_traits::resolve_trait_item(
+                    span, tcx, typing_env, *def_id, args,
+                )?;
+                match resolution_result {
+                    ResolutionResult::Unresolved => None,
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromImpl(did, _args),
+                        ..
+                    } => {
+                        let path = def_id_to_vir_path(tcx, verus_items, did);
+                        let fun = Arc::new(vir::ast::FunX { path });
+                        Some(fun)
+                    }
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromTrait(..),
+                        ..
+                    } => None,
+                    ResolutionResult::Builtin(b) => {
+                        unsupported_err!(span, format!("built-in instance {:?}", b));
+                    }
                 }
-            }
+            };
 
             let mut typ_args: Vec<(Typ, bool)> = Vec::new();
             for arg in args.iter() {
