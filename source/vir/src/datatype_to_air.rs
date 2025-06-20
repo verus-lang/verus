@@ -691,7 +691,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
-    if ctx.uses_array {
+    if ctx.used_builtins.uses_array {
         datatype_or_fun_to_air_commands(
             ctx,
             &mut field_commands,
@@ -792,7 +792,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
-    let array_commands = if ctx.uses_array {
+    let array_commands = if ctx.used_builtins.uses_array {
         let nodes = crate::prelude::array_functions(&prefix_box(&crate::def::array_type()));
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
@@ -817,7 +817,18 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let pointee_metadata_commands = if ctx.used_builtins.uses_pointee_metadata {
+        let nodes = crate::prelude::pointee_metadata_prelude();
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed pointee metadata axioms");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let mut commands: Vec<Command> = Vec::new();
+    commands.extend(pointee_metadata_commands);
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         transparent_air_datatypes,

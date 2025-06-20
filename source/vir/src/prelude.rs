@@ -112,8 +112,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let decorate_never = str_to_node(DECORATE_NEVER);
     let decorate_const_ptr = str_to_node(DECORATE_CONST_PTR);
     let decorate_dst_inherit = str_to_node(DECORATE_DST_INHERIT);
-    let project_pointee_metadata = str_to_node(PROJECT_POINTEE_METADATA);
-    let project_pointee_metadata_decoration = str_to_node(PROJECT_POINTEE_METADATA_DECORATION);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
@@ -192,8 +190,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_tracked] ([decoration]) [decoration])
         (declare-fun [decorate_never] ([decoration]) [decoration])
         (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
-        (declare-fun [project_pointee_metadata] ([decoration]) [typ])
-        (declare-fun [project_pointee_metadata_decoration] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-const [type_id_strslice] [typ])
@@ -279,63 +275,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_sized_decorate_const_ptr
         )))
         (axiom ([sized] [decorate_nil_sized]))
-
-        // The <T as Pointee>::Metadata projection type is special. Like Sized-ness, it depends
-        // only on the decoration.
-
-        // For Sized types: Metadata = ()
-        (axiom (forall ((d [decoration])) (!
-            (=>
-                ([sized] d)
-                (=
-                  ([project_pointee_metadata] d)
-                  [type_id_unit]
-                )
-            )
-            :pattern (([project_pointee_metadata] d))
-            :qid prelude_project_pointee_metadata_sized
-            :skolemid skolem_prelude_project_pointee_metadata_sized
-        )))
-        (axiom (forall ((d [decoration])) (!
-            (=>
-                ([sized] d)
-                (=
-                  ([project_pointee_metadata_decoration] d)
-                  [decorate_nil_sized]
-                )
-            )
-            :pattern (([project_pointee_metadata_decoration] d))
-            :qid prelude_project_pointee_metadata_decoration_sized
-            :skolemid skolem_prelude_project_pointee_metadata_decoration_sized
-        )))
-        // For slice (and str) types: Metadata = usize
-        (axiom (=
-            ([project_pointee_metadata] [decorate_nil_slice])
-            [type_id_usize]
-        ))
-        (axiom (=
-            ([project_pointee_metadata_decoration] [decorate_nil_slice])
-            [decorate_nil_sized]
-        ))
-        // For dst structs: Metadata is inherited same as the Sized trait
-        (axiom (forall ((d [decoration])) (!
-            (=
-                ([project_pointee_metadata] ([decorate_dst_inherit] d))
-                ([project_pointee_metadata] d)
-            )
-            :pattern (([project_pointee_metadata] ([decorate_dst_inherit] d)))
-            :qid prelude_project_pointee_metadata_decorate_struct_inherit
-            :skolemid skolem_prelude_project_pointee_metadata_decorate_struct_inherit
-        )))
-        (axiom (forall ((d [decoration])) (!
-            (=
-                ([project_pointee_metadata_decoration] ([decorate_dst_inherit] d))
-                ([project_pointee_metadata_decoration] d)
-            )
-            :pattern (([project_pointee_metadata_decoration] ([decorate_dst_inherit] d)))
-            :qid prelude_project_pointee_metadata_decoration_decorate_struct_inherit
-            :skolemid skolem_prelude_project_pointee_metadata_decoration_decorate_struct_inherit
-        )))
 
         (axiom (forall ((i Int)) (!
             (= i ([const_int] ([type_id_const_int] i)))
@@ -1043,6 +982,85 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
             :qid prelude_strlit_injective
             :skolemid skolem_prelude_strlit_injective
         )))
+    )
+}
+
+pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
+    let typ = str_to_node(TYPE);
+    let decoration = str_to_node(DECORATION);
+    let sized = str_to_node(SIZED_BOUND);
+
+    let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
+    let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
+    let decorate_dst_inherit = str_to_node(DECORATE_DST_INHERIT);
+
+    let project_pointee_metadata = str_to_node(PROJECT_POINTEE_METADATA);
+    let project_pointee_metadata_decoration = str_to_node(PROJECT_POINTEE_METADATA_DECORATION);
+
+    let type_id_usize = str_to_node(TYPE_ID_USIZE);
+    let type_id_unit = str_to_node(&prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
+
+    nodes_vec!(
+        (declare-fun [project_pointee_metadata] ([decoration]) [typ])
+        (declare-fun [project_pointee_metadata_decoration] ([decoration]) [decoration])
+
+        // The <T as Pointee>::Metadata projection type is special. Like Sized-ness, it depends
+        // only on the decoration.
+
+        // For Sized types: Metadata = ()
+        (axiom (forall ((d [decoration])) (!
+            (=>
+                ([sized] d)
+                (=
+                  ([project_pointee_metadata] d)
+                  [type_id_unit]
+                )
+            )
+            :pattern (([project_pointee_metadata] d))
+            :qid prelude_project_pointee_metadata_sized
+            :skolemid skolem_prelude_project_pointee_metadata_sized
+        )))
+        (axiom (forall ((d [decoration])) (!
+            (=>
+                ([sized] d)
+                (=
+                  ([project_pointee_metadata_decoration] d)
+                  [decorate_nil_sized]
+                )
+            )
+            :pattern (([project_pointee_metadata_decoration] d))
+            :qid prelude_project_pointee_metadata_decoration_sized
+            :skolemid skolem_prelude_project_pointee_metadata_decoration_sized
+        )))
+        // For slice and str types: Metadata = usize
+        (axiom (=
+            ([project_pointee_metadata] [decorate_nil_slice])
+            [type_id_usize]
+        ))
+        (axiom (=
+            ([project_pointee_metadata_decoration] [decorate_nil_slice])
+            [decorate_nil_sized]
+        ))
+        // For dst structs: Metadata is inherited same as the Sized trait
+        (axiom (forall ((d [decoration])) (!
+            (=
+                ([project_pointee_metadata] ([decorate_dst_inherit] d))
+                ([project_pointee_metadata] d)
+            )
+            :pattern (([project_pointee_metadata] ([decorate_dst_inherit] d)))
+            :qid prelude_project_pointee_metadata_decorate_struct_inherit
+            :skolemid skolem_prelude_project_pointee_metadata_decorate_struct_inherit
+        )))
+        (axiom (forall ((d [decoration])) (!
+            (=
+                ([project_pointee_metadata_decoration] ([decorate_dst_inherit] d))
+                ([project_pointee_metadata_decoration] d)
+            )
+            :pattern (([project_pointee_metadata_decoration] ([decorate_dst_inherit] d)))
+            :qid prelude_project_pointee_metadata_decoration_decorate_struct_inherit
+            :skolemid skolem_prelude_project_pointee_metadata_decoration_decorate_struct_inherit
+        )))
+
     )
 }
 
