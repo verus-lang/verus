@@ -1,5 +1,5 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
-verus_revspec = "jonh/sets-typed-finite"
+verus_revspec = "main"
 verus_features = ["singular"]
 verus_verify_vstd = true
 
