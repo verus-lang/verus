@@ -21,11 +21,11 @@ pub(crate) fn process_const_early<'tcx>(
     typs_sizes_set: &mut std::collections::HashMap<TypIgnoreImplPaths, u128>,
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
-    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+    let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
         let err = || crate::util::err_span(item.span, "invalid global size_of");
-        let ItemKind::Const(_ty, generics, body_id) = item.kind else {
+        let ItemKind::Const(_ident, _ty, generics, body_id) = item.kind else {
             return err();
         };
         unsupported_err_unless!(
