@@ -11,7 +11,7 @@ use super::relations::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::{set_int_range, Set};
+use super::set::*;
 
 verus! {
 
