@@ -65,13 +65,17 @@ fn handle_autospec<'tcx>(
                 format!("a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'"),
             );
         }
-        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
             ctxt.tcx, def_id,
         );
+        if matches!(&functionx.kind, FunctionKind::TraitMethodImpl { .. }) {
+            // pop off impl&%n:: (we want method_name, not Self::method_name)
+            this_path = this_path.pop_segment();
+        }
         let path = autospec_fun(&this_path, method_name.clone());
         Ok(Autospec { redirect_to: Some(Arc::new(FunX { path })), new_func: None })
     } else if vattrs.allow_in_spec {
-        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
             ctxt.tcx, def_id,
         );
         if functionx.mode != Mode::Exec {
@@ -126,6 +130,11 @@ fn handle_autospec<'tcx>(
             },
         );
 
+        if functionx.proxy.is_some() {
+            // Naively, this_path may contain a mangled _verus_external_fn_specification_ name.
+            // Clean this up before sending it to autospec_return_clause_spec_fn_name:
+            this_path = this_path.pop_segment().push_segment(functionx.name.path.last_segment());
+        }
         let new_func = ctxt.spanned_new(
             span,
             FunctionX {

@@ -65,10 +65,10 @@ pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
     admit();
 }
 
-#[verifier::allow_in_spec]
-pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> usize
-    returns
-        spec_vec_len(vec),
+#[verifier::when_used_as_spec(spec_vec_len)]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
+    ensures
+        len == spec_vec_len(vec),
     no_unwind
 ;
 

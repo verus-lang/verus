@@ -12,7 +12,7 @@ test_verify_one_file! {
 
             // Note: it's a good idea for g and f to return the same value,
             // but, for testing purposes only, we have them return different values here.
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self) -> bool { false }
 
             fn h(&self) {
@@ -30,7 +30,7 @@ test_verify_one_file! {
         impl S {
             spec fn f(&self) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self) -> bool { false }
 
             fn h(&self) {
@@ -48,7 +48,7 @@ test_verify_one_file! {
         impl S {
             spec fn f<A>(&self, k: &A) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g<B>(&self, k: &B) -> bool { true }
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same type bounds")
@@ -61,7 +61,7 @@ test_verify_one_file! {
         impl S {
             spec fn f(&self, k: int) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same parameters")
@@ -74,7 +74,7 @@ test_verify_one_file! {
         impl S {
             spec fn f(&self) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self) -> u8 { 0 }
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec function should have the same return types")
@@ -87,7 +87,7 @@ test_verify_one_file! {
         impl S {
             spec fn f(&self, k: u64) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             proof fn g(&self, k: u64) -> bool { true }
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
@@ -100,7 +100,7 @@ test_verify_one_file! {
         impl S {
             proof fn f(&self, k: u64) -> bool { true }
 
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec must point from an exec function to a spec function")
@@ -111,10 +111,48 @@ test_verify_one_file! {
         struct S {}
 
         impl S {
-            #[verifier(when_used_as_spec(f))]
+            #[verifier::when_used_as_spec(f)]
             fn g(&self, k: u64) -> bool { true }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+}
+
+test_verify_one_file! {
+    #[test] fail_traits_decl verus_code! {
+        spec fn f() -> bool { true }
+
+        trait T {
+            #[verifier::when_used_as_spec(f)]
+            fn g() -> bool { false }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot find function referred to in when_used_as_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_traits verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f() -> bool;
+
+            #[verifier::when_used_as_spec(f)]
+            fn g() -> bool;
+        }
+
+        uninterp spec fn h() -> bool;
+
+        impl T for bool {
+            uninterp spec fn f() -> bool;
+
+            #[verifier::when_used_as_spec(h)]
+            fn g() -> bool { true }
+        }
+
+        proof fn test<A: T>() {
+            assert(A::g() == A::f());
+            assert(<bool as T>::g() == h());
+            assert(<bool as T>::g() == <bool as T>::f()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

@@ -1475,7 +1475,10 @@ pub fn check_crate(
             } else {
                 return Err(error(
                     &function.span,
-                    "cannot find function referred to in when_used_as_spec",
+                    format!(
+                        "cannot find function referred to in when_used_as_spec: {}",
+                        fun_as_friendly_rust_name(spec_fun),
+                    ),
                 ));
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
@@ -1485,7 +1488,29 @@ pub fn check_crate(
                 )
                 .secondary_span(&function.span));
             }
-
+            match (&function.x.kind, &spec_function.x.kind) {
+                (
+                    FunctionKind::TraitMethodDecl { trait_path: p1, .. },
+                    FunctionKind::TraitMethodDecl { trait_path: p2, .. },
+                ) if p1 == p2 => {}
+                (FunctionKind::TraitMethodDecl { .. }, _) => {
+                    return Err(error(
+                        &spec_function.span,
+                        "when_used_as_spec on trait declaration must refer to a spec function in the same trait",
+                    )
+                    .secondary_span(&function.span));
+                }
+                (_, FunctionKind::Static) => {}
+                (_, _) => {
+                    // We can't yet handle FunctionKind::TraitMethodImpl because we don't
+                    // have the corresponding Dynamic info (typs, impl_paths) in general.
+                    return Err(error(
+                        &spec_function.span,
+                        "when_used_as_spec must point to a non-trait spec function",
+                    )
+                    .secondary_span(&function.span));
+                }
+            }
             if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
             {
                 return Err(error(
