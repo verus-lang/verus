@@ -710,7 +710,7 @@ impl<A> ISet<A> {
             assert forall|res: B| #[trigger] self.map(f).contains(res) implies false by {
                 let x = choose|x: A| self.contains(x) && f(x) == res;
             }
-            assert(self.map(f) =~= Set::<B>::empty());
+            assert(self.map(f) =~= ISet::<B>::empty());
         } else {
             let x = choose|x: A| self.contains(x);
             assert(self.map(f).contains(f(x)));

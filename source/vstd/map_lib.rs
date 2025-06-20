@@ -66,12 +66,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     /// }
     /// ```
     pub open spec fn kv_pairs(self) -> GSet<(K, V), FINITE> {
-        self.dom().map(|k: K| (k, self.index[k]))
-    }
-
-    /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
-    pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] == v
+        self.dom().map(|k: K| (k, self[k]))
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -279,7 +274,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     ///     assert(m.insert(2, 25).remove_keys(to_remove) == m.remove_keys(to_remove));
     /// }
     /// ```
-    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: Set<K>, k: K, v: V)
+    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: GSet<K, FINITE>, k: K, v: V)
         ensures
             #[trigger] self.insert(k, v).remove_keys(r) == if r.contains(k) {
                 self.remove_keys(r)
@@ -332,7 +327,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     }
 }
 
-impl<K, V> Map<Seq<K>, V> {
+impl<K, V> IMap<Seq<K>, V> {
     /// Returns a sub-map of all entries whose key begins with `prefix`,
     /// re-indexed so that the stored keys have that prefix removed.
     ///
@@ -352,7 +347,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// }
     /// ```
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
-        Map::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
+        IMap::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
     }
 
     /// For every key `k` kept by `prefixed_entries(prefix)`,
@@ -435,7 +430,7 @@ impl<K, V> Map<Seq<K>, V> {
 
         #[allow(deprecated)]
         super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
-        broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
+        broadcast use GMap::lemma_prefixed_entries_contains, GMap::lemma_prefixed_entries_get;
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
@@ -469,9 +464,9 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
         broadcast use
-            Map::lemma_prefixed_entries_contains,
-            Map::lemma_prefixed_entries_get,
-            Map::lemma_prefixed_entries_insert,
+            GMap::lemma_prefixed_entries_contains,
+            GMap::lemma_prefixed_entries_get,
+            GMap::lemma_prefixed_entries_insert,
         ;
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
@@ -640,12 +635,12 @@ pub broadcast group group_map_properties {
 }
 
 pub broadcast group group_map_extra {
-    Map::lemma_map_remove_keys_insert,
-    Map::lemma_filter_keys_insert,
-    Map::lemma_prefixed_entries_get,
-    Map::lemma_prefixed_entries_contains,
-    Map::lemma_prefixed_entries_insert,
-    Map::lemma_prefixed_entries_union,
+    GMap::lemma_map_remove_keys_insert,
+    GMap::lemma_filter_keys_insert,
+    GMap::lemma_prefixed_entries_get,
+    GMap::lemma_prefixed_entries_contains,
+    GMap::lemma_prefixed_entries_insert,
+    GMap::lemma_prefixed_entries_union,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
