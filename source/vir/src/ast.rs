@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
