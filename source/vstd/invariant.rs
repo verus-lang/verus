@@ -165,6 +165,10 @@ pub struct LocalInvariant<K, V, Pred> {
     dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
+// redundant, just makes the error msg a bit nicer
+#[cfg(verus_keep_ghost)]
+impl<K, V, Pred> !Sync for LocalInvariant<K, V, Pred> {}
+
 macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
         // note the path names of `inv` and `namespace` are harcoded into the VIR crate.
