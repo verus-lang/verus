@@ -33,6 +33,7 @@ enum ReachedType {
     StrSlice,
     Array,
     Primitive,
+    PointeeMetadata,
 }
 
 // Group all AssocTypeImpls with the same (ReachedType(self_typ), (trait_path, name)):
@@ -101,6 +102,7 @@ struct State {
     mono_abstract_datatypes: Option<HashSet<MonoTyp>>,
     spec_fn_types: HashSet<usize>,
     uses_array: bool,
+    uses_pointee_metadata: bool,
     fndef_types: HashSet<Fun>,
     // broadcast functions that are also defined or called normally
     // (not just used for the broadcast)
@@ -120,6 +122,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
+        TypX::PointeeMetadata(_) => ReachedType::PointeeMetadata,
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::ConstBool(_) => ReachedType::None,
@@ -258,7 +261,12 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::SpecFn(..)
+        | TypX::Datatype(..)
+        | TypX::Primitive(..)
+        | TypX::PointeeMetadata(_) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::AnonymousClosure(..) => {}
@@ -492,6 +500,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 ReachedType::Array => {
                     state.uses_array = true;
                 }
+                ReachedType::PointeeMetadata => {
+                    state.uses_pointee_metadata = true;
+                }
                 _ => {}
             }
             if let Some(imps) = ctxt.typ_to_trait_impls.get(&t) {
@@ -696,6 +707,12 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     trigs
 }
 
+#[derive(Debug)]
+pub struct UsedBuiltins {
+    pub uses_array: bool,
+    pub uses_pointee_metadata: bool,
+}
+
 //  - module is none: prune to keep what's reachable from current_crate
 //    module is some and fun is none: prune to keep what's reachable from module
 //    module is some and fun is some: prune to keep what's reachable from fun
@@ -709,7 +726,7 @@ pub fn prune_krate_for_module_or_krate(
     module: Option<Path>,
     fun: Option<&Fun>,
     collect_monotyps: bool,
-) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, bool, Vec<Fun>) {
+) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, UsedBuiltins, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -1136,5 +1153,9 @@ pub fn prune_krate_for_module_or_krate(
         }
         _ => None,
     };
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
+    let used_builtins = UsedBuiltins {
+        uses_array: state.uses_array,
+        uses_pointee_metadata: state.uses_pointee_metadata,
+    };
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types)
 }

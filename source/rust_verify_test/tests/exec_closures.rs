@@ -1470,3 +1470,49 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] send_capture_tracked verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred<T> { t: T }
+        impl<T> InvariantPredicate<(), T> for Pred<T> {
+            spec fn inv(k: (), v: T) -> bool { true }
+        }
+
+        struct X { }
+
+        fn require_send<R: Send>(r: R) { }
+
+        fn test(Tracked(t): Tracked<&'static LocalInvariant<(), X, Pred<X>>>) {
+            let clos = || {
+                let tracked z = t;
+            };
+            require_send(clos);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`vstd::invariant::LocalInvariant<(), X, Pred<X>>` cannot be shared between threads safely")
+}
+
+test_verify_one_file! {
+    #[test] sync_capture_tracked verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred<T> { t: T }
+        impl<T> InvariantPredicate<(), T> for Pred<T> {
+            spec fn inv(k: (), v: T) -> bool { true }
+        }
+
+        struct X { }
+
+        fn require_sync<R: Sync>(r: R) { }
+
+        fn test2(Tracked(t): Tracked<LocalInvariant<(), X, Pred<X>>>) {
+            let clos = || {
+                let tracked z = t;
+            };
+            require_sync(clos);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`vstd::invariant::LocalInvariant<(), X, Pred<X>>` cannot be shared between threads safely")
+}

@@ -3,14 +3,46 @@ use super::set::*;
 
 verus! {
 
-/// Interface for ghost state that is consistent with the common
-/// presentations of partially commutative monoids (PCMs) / resource algebras.
-///
-/// For applications, the general advice is to use the
-/// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
-/// which lets you focus on updates and invariants rather than composition.
-///
-/// However, the PCM interface you'll find here may be more familiar to people.
+broadcast use super::set::group_set_axioms;
+/** Interface for PCM / Resource Algebra ghost state.
+
+RA-based ghost state is a well-established theory that is especially
+useful for verifying concurrent code. An introduction to the concept
+can be found in
+[Iris: Monoids and Invariants as an Orthogonal Basis for Concurrent Reasoning](https://iris-project.org/pdfs/2015-popl-iris1-final.pdf)
+or
+[Iris from the ground up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf).
+
+To embed the concept into Verus, we:
+ * Use a trait, [`PCM`], to embed the well-formedness laws of a resource algebra
+ * use a "tracked ghost" object, `Resource<P>` (this page) to represent ownership of a resource.
+
+Most operations are fairly standard, just "translated" from the usual CSL presentation into Verus.
+
+ * [`alloc`](Self::alloc) to allocate a resource.
+ * [`join`](Self::join) to combine two resources via `P::op`, and [`split`](Self::split), its inverse.
+ * [`validate`](Self::validate) to assert the validity of any held resource.
+ * [`update`](Self::update) or [`update_nondeterministic`](Self::update_nondeterministic) to perform a frame-preserving update.
+
+The interface also includes a nontrivial extension for working with _shared references_ to resources.
+Shared resources do not compose in a "separating" way via `P::op`, but rather, in a "potentially overlapping" way ([`join_shared`](Self::join_shared)). Shared resources can also be used to "help" perform frame-preserving updates, as long as they themselves do not change ([`update_with_shared`](Self::update_with_shared)).
+
+### Examples
+
+See:
+ * Any of the examples in [this directory](https://github.com/verus-lang/verus/tree/main/examples/pcm)
+ * The source code for the [fractional resource library](super::tokens::frac::FracGhost)
+
+### See also
+
+The ["storage protocol"](super::storage_protocol::StorageResource) formalism
+is an even more significant
+extension with additional capabilities for interacting with shared resources.
+
+[VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
+"swiss army knife" for building useful ghost resources.
+*/
+
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P> {
@@ -118,13 +150,17 @@ impl<P: PCM> Resource<P> {
             self.value().valid(),
     ;
 
-    pub axiom fn update(tracked self, new_value: P) -> (tracked out: Self)
+    pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
         requires
             frame_preserving_update(self.value(), new_value),
         ensures
             out.loc() == self.loc(),
             out.value() == new_value,
-    ;
+    {
+        let new_values = set![new_value];
+        assert(new_values.contains(new_value));
+        self.update_nondeterministic(new_values)
+    }
 
     pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
         requires
@@ -135,6 +171,8 @@ impl<P: PCM> Resource<P> {
     ;
 
     // Operations with shared references
+    /// This is useful when you have two (or more) shared resources and want to learn
+    /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
     pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
@@ -178,7 +216,9 @@ impl<P: PCM> Resource<P> {
             P::op(self.value(), other.value()).valid(),
     ;
 
-    pub axiom fn update_with_shared(
+    /// If `x · y --> x · z` is a frame-perserving update, and we have a shared reference to `x`,
+    /// we can update the `y` resource to `z`.
+    pub proof fn update_with_shared(
         tracked self,
         tracked other: &Self,
         new_value: P,
@@ -192,7 +232,12 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             out.value() == new_value,
-    ;
+    {
+        let new_values = set![new_value];
+        let so = set_op(new_values, other.value());
+        assert(so.contains(P::op(new_value, other.value())));
+        self.update_nondeterministic_with_shared(other, new_values)
+    }
 
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,

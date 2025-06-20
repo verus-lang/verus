@@ -94,6 +94,10 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
                     })
                 })
             }
+            TypX::PointeeMetadata(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::PointeeMetadata(R::get(t))))
+            }
         }
     }
 }

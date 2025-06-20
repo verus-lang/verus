@@ -110,7 +110,7 @@ fn check_well_founded_typ(
             // depends on the spec-encoding of Allocator)
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
-        TypX::Projection { .. } => {
+        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
             true
@@ -267,7 +267,7 @@ fn check_positive_uses(
                 )),
             }
         }
-        TypX::Projection { .. } => {
+        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
             Ok(())

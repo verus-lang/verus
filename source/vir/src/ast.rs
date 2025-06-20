@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,6 +263,10 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)

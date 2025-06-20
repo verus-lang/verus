@@ -185,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
         },
         TypX::Projection { .. } => str_typ(POLY),
+        TypX::PointeeMetadata(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
@@ -374,6 +375,16 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let pt = ident_apply(&crate::def::projection(false, trait_path, name), &args);
             vec![pd, pt]
         }
+        TypX::PointeeMetadata(t) => {
+            let ids = typ_to_ids(ctx, t);
+            let id = ids[0].clone(); // Metadata is a function of just the decoration
+            let args = vec![id];
+
+            let pd = ident_apply(&crate::def::projection_pointee_metadata(true), &args);
+            let pt = ident_apply(&crate::def::projection_pointee_metadata(false), &args);
+
+            vec![pd, pt]
+        }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
         TypX::ConstInt(c) => {
             mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
@@ -513,6 +524,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -581,6 +593,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -613,6 +626,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
