@@ -231,6 +231,14 @@ ensures
     assert( trigger_finite(g, ub) );    // tickle spec fn finite trigger
 }
 
+pub broadcast proof fn lemma_set_filter_finite<A, const FINITE: bool>(s: GSet<A, FINITE>, f: spec_fn(A) -> bool)
+requires s.finite(),
+ensures
+    #![trigger(s.filter(f))]
+    s.filter(f).finite(),
+{
+}
+
 impl<A, const FINITE:bool> GSet<A, FINITE> {
     pub open spec fn to_infinite(self) -> (infinite_out: ISet<A>)
     {
@@ -1410,6 +1418,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_contains,
     lemma_set_map_subset,
     lemma_set_map_finite,
+    lemma_set_filter_finite,
     lemma_set_map_len,
     lemma_set_map_insert,
     lemma_set_int_range_ensures,
