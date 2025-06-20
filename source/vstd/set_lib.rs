@@ -6,7 +6,7 @@ use super::pervasive::*;
 #[cfg(verus_keep_ghost)]
 use super::prelude::Seq;
 #[cfg(verus_keep_ghost)]
-use ::builtin::{int,SpecAdd,SpecOrd,SpecSub};
+use ::builtin::{int, SpecAdd, SpecOrd, SpecSub};
 #[allow(unused_imports)]
 // use super::prelude::*;
 use ::builtin_macros::verus;
@@ -1362,7 +1362,7 @@ pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
     ensures
         exists|a: A| s.contains(a),
 {
-    assert( s.contains(s.choose()) );
+    assert(s.contains(s.choose()));
 }
 
 pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
