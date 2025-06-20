@@ -474,7 +474,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let mut map: VisitorScopeMap = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
-            let methods = reached_methods(ctxt, state.reached_types.iter().map(|t| (t, &f)));
+            let methods = reached_methods(
+                ctxt,
+                state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
+            );
             reach_methods(ctxt, state, methods);
             continue;
         }
@@ -547,7 +550,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             continue;
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
-            let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
+            let typs: Vec<ReachedType> =
+                state.reached_types.iter().chain(vec![ReachedType::None].iter()).cloned().collect();
             for t in typs {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
