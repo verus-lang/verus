@@ -30,7 +30,8 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         | crate::ast::TypX::FnDef(..)
         | crate::ast::TypX::Decorate(_, _, _)
         | crate::ast::TypX::TypParam(_)
-        | crate::ast::TypX::Projection { .. } => {
+        | crate::ast::TypX::Projection { .. }
+        | crate::ast::TypX::Opaque { .. } => {
             return Err(error(span, "this type is not supported in global size_of / align_of"));
         }
 

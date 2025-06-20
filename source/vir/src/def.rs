@@ -230,6 +230,8 @@ pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
 
+pub const RUST_OPAQUE_TYPE: &str = "opaque";
+
 // used by axiom-usage-info to identify axioms from the prelude
 pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
 

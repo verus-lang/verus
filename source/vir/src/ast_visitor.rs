@@ -46,6 +46,7 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
             TypX::ConstBool(_) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
+            TypX::Opaque { .. } => R::ret(|| typ.clone()),
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;
