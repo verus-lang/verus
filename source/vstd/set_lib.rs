@@ -2,11 +2,11 @@
 use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
+
+#[cfg(verus_keep_ghost)]
 use super::prelude::Seq;
-use ::builtin::int;
-use ::builtin::SpecAdd;
-use ::builtin::SpecOrd;
-use ::builtin::SpecSub;
+#[cfg(verus_keep_ghost)]
+use ::builtin::{int,SpecAdd,SpecOrd,SpecSub};
 #[allow(unused_imports)]
 // use super::prelude::*;
 use ::builtin_macros::verus;
