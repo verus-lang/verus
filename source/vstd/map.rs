@@ -39,7 +39,8 @@ pub tracked struct GMap<K, V, const FINITE: bool> {
 pub type Map<K, V> = GMap<K, V, true>;
 
 pub broadcast proof fn lemma_map_finite_from_type<K, V>(m: Map<K, V>)
-ensures #[trigger] m.dom().finite()
+    ensures
+        #[trigger] m.dom().finite(),
 {
     admit();
 }
@@ -61,19 +62,21 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
         self.dom().contains(k) && self[k] == v
     }
 
-    pub open spec fn congruent<const FINITE2: bool>(self: GMap<K, V, FINITE>, m2: GMap<K, V, FINITE2>) -> bool
-    {
+    pub open spec fn congruent<const FINITE2: bool>(
+        self: GMap<K, V, FINITE>,
+        m2: GMap<K, V, FINITE2>,
+    ) -> bool {
         &&& self.dom().congruent(m2.dom())
-        &&& forall |k| #[trigger] self.contains_key(k) ==> self[k] == m2[k]
+        &&& forall|k| #[trigger] self.contains_key(k) ==> self[k] == m2[k]
     }
 
-    pub open spec fn to_infinite(self) -> IMap<K, V>
-    {
+    pub open spec fn to_infinite(self) -> IMap<K, V> {
         IMap::new(|k| self.contains_key(k), |k| self[k])
     }
 
     pub open spec fn to_finite(self) -> Map<K, V>
-    recommends self.dom().finite()
+        recommends
+            self.dom().finite(),
     {
         Map::new(self.dom().to_finite(), |k| self[k])
     }
@@ -165,15 +168,19 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     // We'll worry about this someday when some user level code actually cares to jump over the
     // divide.
     pub closed spec fn union_prefer_right(self, m2: Self) -> Self {
-        Self{
-            mapping: |k: K| if self.dom().contains(k) || m2.dom().contains(k) {
-                Some(
-                    if m2.dom().contains(k) {
-                        m2[k]
-                    } else {
-                        self[k]
-                    }
-                ) } else { None }
+        Self {
+            mapping: |k: K|
+                if self.dom().contains(k) || m2.dom().contains(k) {
+                    Some(
+                        if m2.dom().contains(k) {
+                            m2[k]
+                        } else {
+                            self[k]
+                        },
+                    )
+                } else {
+                    None
+                },
         }
     }
 
@@ -189,8 +196,13 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     ///    =~= map![1 => 10]);
     /// ```
     pub closed spec fn remove_keys(self, keys: GSet<K, FINITE>) -> Self {
-        Self{
-            mapping: |k: K| if self.dom().contains(k) && !keys.contains(k) { Some(self[k]) } else { None }
+        Self {
+            mapping: |k: K|
+                if self.dom().contains(k) && !keys.contains(k) {
+                    Some(self[k])
+                } else {
+                    None
+                },
         }
     }
 
@@ -206,59 +218,95 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     ///    =~= map![2 => 11, 3 => 12]);
     /// ```
     pub closed spec fn restrict(self, keys: GSet<K, FINITE>) -> Self {
-        Self{
-            mapping: |k: K| if self.dom().contains(k) && keys.contains(k) { Some(self[k]) } else { None }
+        Self {
+            mapping: |k: K|
+                if self.dom().contains(k) && keys.contains(k) {
+                    Some(self[k])
+                } else {
+                    None
+                },
         }
     }
 
     // DONE(jonh): expose as broadcast lemmas
     // okay, good, actually the problem was a missing trigger
     pub broadcast proof fn lemma_union_prefer_right(self, m2: Self)
-    ensures
-        #![trigger (self.union_prefer_right(m2))]
-        self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(m2.dom()),
-        self.union_prefer_right(m2).dom().congruent(self.dom().generic_union(m2.dom())),
-        forall |k| #![auto] self.union_prefer_right(m2).dom().contains(k) ==>
-            self.union_prefer_right(m2)[k] == if m2.dom().contains(k) { m2[k] } else { self[k] },
+        ensures
+            #![trigger (self.union_prefer_right(m2))]
+            self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(m2.dom()),
+            self.union_prefer_right(m2).dom().congruent(self.dom().generic_union(m2.dom())),
+            forall|k|
+                #![auto]
+                self.union_prefer_right(m2).dom().contains(k) ==> self.union_prefer_right(m2)[k]
+                    == if m2.dom().contains(k) {
+                    m2[k]
+                } else {
+                    self[k]
+                },
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-        assert( self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(m2.dom()) );
+
+        assert(self.union_prefer_right(m2).dom().to_infinite() == self.dom().generic_union(
+            m2.dom(),
+        ));
     }
 
     pub broadcast proof fn lemma_remove_keys(self, keys: GSet<K, FINITE>)
-    ensures
-        #![trigger(self.remove_keys(keys))]
-        self.remove_keys(keys).dom().to_infinite() == self.dom().generic_difference(keys),
-        self.remove_keys(keys).dom().congruent(self.dom().generic_difference(keys)),
-        // TODO(jonh): ask Chris if there's a better trigger here.
-        // Things got ugly in verus-mimalloc/os_mem_util::split
-        forall |k| #![auto] self.remove_keys(keys).dom().contains(k) ==> self.remove_keys(keys)[k] == self[k],
-        forall |k| #![auto] self.dom().contains(k) && !keys.contains(k) ==> self.remove_keys(keys)[k] == self[k],
+        ensures
+            #![trigger(self.remove_keys(keys))]
+            self.remove_keys(keys).dom().to_infinite() == self.dom().generic_difference(keys),
+            self.remove_keys(keys).dom().congruent(self.dom().generic_difference(keys)),
+            // TODO(jonh): ask Chris if there's a better trigger here.
+            // Things got ugly in verus-mimalloc/os_mem_util::split
+            forall|k|
+                #![auto]
+                self.remove_keys(keys).dom().contains(k) ==> self.remove_keys(keys)[k] == self[k],
+            forall|k|
+                #![auto]
+                self.dom().contains(k) && !keys.contains(k) ==> self.remove_keys(keys)[k]
+                    == self[k],
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
         // trigger extn
-        assert( self.remove_keys(keys).dom().to_infinite() == self.dom().generic_difference(keys) );
+
+        assert(self.remove_keys(keys).dom().to_infinite() == self.dom().generic_difference(keys));
     }
 
     pub broadcast proof fn lemma_restrict(self, keys: GSet<K, FINITE>)
-    ensures
-        #![trigger(self.restrict(keys))]
-        self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys),
-        self.restrict(keys).dom().congruent(self.dom().generic_intersect(keys)),
-        forall |k| #![auto] self.restrict(keys).dom().contains(k) ==> self.restrict(keys)[k] == self[k],
-        forall |k| #![auto] self.dom().contains(k) && keys.contains(k) ==> self.restrict(keys)[k] == self[k],
+        ensures
+            #![trigger(self.restrict(keys))]
+            self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys),
+            self.restrict(keys).dom().congruent(self.dom().generic_intersect(keys)),
+            forall|k|
+                #![auto]
+                self.restrict(keys).dom().contains(k) ==> self.restrict(keys)[k] == self[k],
+            forall|k|
+                #![auto]
+                self.dom().contains(k) && keys.contains(k) ==> self.restrict(keys)[k] == self[k],
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
         // trigger extn
-        assert( self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys) );
+
+        assert(self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys));
     }
 
     // Preserves finite soundness because key_set is finite by its type.
-    pub closed spec fn new_from_set(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V) -> GMap<K, V, FINITE> {
-        GMap { mapping: |k| if key_set.contains(k) { Some(fv(k)) } else { None } }
+    pub closed spec fn new_from_set(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V) -> GMap<
+        K,
+        V,
+        FINITE,
+    > {
+        GMap {
+            mapping: |k|
+                if key_set.contains(k) {
+                    Some(fv(k))
+                } else {
+                    None
+                },
+        }
     }
 
     /// Map a function `f` over all (k, v) pairs in `self`.
@@ -267,15 +315,18 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     }
 
     pub broadcast proof fn lemma_map_entries<W>(self, f: spec_fn(K, V) -> W)
-    ensures
-        #![trigger(self.map_entries(f))]
-        self.map_entries(f).dom() == self.dom(),
-        forall |k| #![auto] self.map_entries(f).contains_key(k) ==> self.map_entries(f)[k] == f(k, self[k]),
+        ensures
+            #![trigger(self.map_entries(f))]
+            self.map_entries(f).dom() == self.dom(),
+            forall|k|
+                #![auto]
+                self.map_entries(f).contains_key(k) ==> self.map_entries(f)[k] == f(k, self[k]),
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
         // trigger extn
-        assert( self.map_entries(f).dom() == self.dom() );
+
+        assert(self.map_entries(f).dom() == self.dom());
     }
 
     /// Map a function `f` over the values in `self`.
@@ -284,14 +335,16 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     }
 
     pub broadcast proof fn lemma_map_values_ensures<W>(self, f: spec_fn(V) -> W)
-    ensures
-        #![trigger(self.map_values(f))]
-        self.dom() == self.map_values(f).dom(),
-        forall |k| #[trigger] self.map_values(f).dom().contains(k) ==> self.map_values(f)[k] == f(self[k]),
+        ensures
+            #![trigger(self.map_values(f))]
+            self.dom() == self.map_values(f).dom(),
+            forall|k| #[trigger]
+                self.map_values(f).dom().contains(k) ==> self.map_values(f)[k] == f(self[k]),
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
-        assert( self.dom() =~= self.map_values(f).dom() );  // trigger-it-yourself
+
+        assert(self.dom() =~= self.map_values(f).dom());  // trigger-it-yourself
     }
 
     /// Swaps map keys and values. Values are not required to be unique; no
@@ -302,12 +355,16 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
 
     /// Export publicly-meaningful definition of invert
     pub broadcast proof fn lemma_invert_ensures(self)
-    ensures
-        #![trigger(self.invert())]
-        GMap::congruent(self.invert(), IMap::new(|v| self.contains_value(v), |v| choose|k: K| self.contains_pair(k, v))),
+        ensures
+            #![trigger(self.invert())]
+            GMap::congruent(
+                self.invert(),
+                IMap::new(|v| self.contains_value(v), |v| choose|k: K| self.contains_pair(k, v)),
+            ),
     {
         broadcast use super::set::group_set_lemmas;
         broadcast use axiom_dom_ensures;
+
     }
 }
 
@@ -315,12 +372,12 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v == GMap::<K, V, FINITE>::empty(),
-        ;
+    ;
 
     pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self == Self::insert(*old(self), key, value),
-        ;
+    ;
 
     /// todo fill in documentation
     pub axiom fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
@@ -361,7 +418,8 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 ) == old_map.index(key_map.index(j)),
     ;
 
-    pub axiom fn tracked_remove_keys(tracked &mut self, keys: GSet<K, FINITE>) -> (tracked out_map: Self)
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: GSet<K, FINITE>) -> (tracked out_map:
+        Self)
         requires
             keys.subset_of(old(self).dom()),
         ensures
@@ -375,26 +433,27 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     ;
 
     #[verifier::external_body]
-    pub proof fn tracked_to_finite(tracked self) -> (tracked out: Map<K,V>)
-    requires
-        self.dom().finite(),
-    ensures
-        self.congruent(out),
+    pub proof fn tracked_to_finite(tracked self) -> (tracked out: Map<K, V>)
+        requires
+            self.dom().finite(),
+        ensures
+            self.congruent(out),
     {
         unimplemented!();
     }
 
     #[verifier::external_body]
-    pub proof fn tracked_to_infinite(tracked self) -> (tracked out: IMap<K,V>)
-    ensures
-        self.congruent(out),
+    pub proof fn tracked_to_infinite(tracked self) -> (tracked out: IMap<K, V>)
+        ensures
+            self.congruent(out),
     {
         unimplemented!();
     }
 }
 
-broadcast proof fn axiom_dom_ensures<K,V,const FINITE: bool>(m: GMap<K,V,FINITE>)
-ensures  (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some))
+broadcast proof fn axiom_dom_ensures<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>)
+    ensures
+        (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some)),
 {
     // This property relies on this module only allowing the construction of
     // finite mappings inside GMaps with FINITE=true.
@@ -407,14 +466,16 @@ impl<K, V> Map<K, V> {
     }
 }
 
-pub broadcast proof fn lemma_finite_new_ensures<K,V>(key_set: Set<K>, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_finite_new_ensures<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
     ensures
         #![trigger(Map::new(key_set, fv))]
-        forall |k| key_set.contains(k) <==> #[trigger] Map::new(key_set, fv).dom().contains(k),
-        forall |k| key_set.contains(k) ==> #[trigger] Map::new(key_set, fv)[k] == fv(k),
+        forall|k|
+            key_set.contains(k) <==> #[trigger] Map::new(key_set, fv).dom().contains(k),
+        forall|k| key_set.contains(k) ==> #[trigger] Map::new(key_set, fv)[k] == fv(k),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+
 }
 
 impl<K, V> IMap<K, V> {
@@ -427,18 +488,28 @@ impl<K, V> IMap<K, V> {
     /// Gives a `IMap<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
     pub closed spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> IMap<K, V> {
-        IMap { mapping: |k| if fk(k) { Some(fv(k)) } else { None } }
+        IMap {
+            mapping: |k|
+                if fk(k) {
+                    Some(fv(k))
+                } else {
+                    None
+                },
+        }
     }
 }
 
-pub broadcast proof fn lemma_infinite_new_ensures<K,V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
         #![trigger(IMap::new(fk, fv))]
-        forall |k| #![auto] fk(k) <==> (#[trigger] IMap::new(fk, fv)).dom().contains(k),
-        forall |k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
+        forall|k|
+            #![auto]
+            fk(k) <==> (#[trigger] IMap::new(fk, fv)).dom().contains(k),
+        forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+
 }
 
 // Trusted axioms
@@ -474,32 +545,45 @@ pub broadcast proof fn axiom_map_empty<K, V, const FINITE: bool>()
 {
     broadcast use {super::set::group_set_lemmas, axiom_dom_ensures};
 
-    assert( GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty() );
+    assert(GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty());
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_insert_domain<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>, key: K, value: V)
+pub broadcast proof fn axiom_map_insert_domain<K, V, const FINITE: bool>(
+    m: GMap<K, V, FINITE>,
+    key: K,
+    value: V,
+)
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
     broadcast use super::set::group_set_lemmas;
-
     broadcast use axiom_dom_ensures;
-//     m.axiom_dom_ensures();
-//     m.insert(key, value).axiom_dom_ensures();
+    //     m.axiom_dom_ensures();
+    //     m.insert(key, value).axiom_dom_ensures();
+
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-pub broadcast proof fn axiom_map_insert_same<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>, key: K, value: V)
+pub broadcast proof fn axiom_map_insert_same<K, V, const FINITE: bool>(
+    m: GMap<K, V, FINITE>,
+    key: K,
+    value: V,
+)
     ensures
         #[trigger] m.insert(key, value)[key] == value,
 {
 }
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn axiom_map_insert_different<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>, key1: K, key2: K, value: V)
+pub broadcast proof fn axiom_map_insert_different<K, V, const FINITE: bool>(
+    m: GMap<K, V, FINITE>,
+    key1: K,
+    key2: K,
+    value: V,
+)
     requires
         key1 != key2,
     ensures
@@ -509,21 +593,28 @@ pub broadcast proof fn axiom_map_insert_different<K, V, const FINITE: bool>(m: G
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_remove_domain<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>, key: K)
+pub broadcast proof fn axiom_map_remove_domain<K, V, const FINITE: bool>(
+    m: GMap<K, V, FINITE>,
+    key: K,
+)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
     broadcast use super::set::group_set_lemmas;
-
     broadcast use axiom_dom_ensures;
-//     m.axiom_dom_ensures();
-//     m.remove(key).axiom_dom_ensures();
+    //     m.axiom_dom_ensures();
+    //     m.remove(key).axiom_dom_ensures();
+
     assert(m.remove(key).dom() =~= m.dom().remove(key));
 }
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-pub broadcast proof fn axiom_map_remove_different<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>, key1: K, key2: K)
+pub broadcast proof fn axiom_map_remove_different<K, V, const FINITE: bool>(
+    m: GMap<K, V, FINITE>,
+    key1: K,
+    key2: K,
+)
     requires
         key1 != key2,
     ensures
@@ -532,7 +623,10 @@ pub broadcast proof fn axiom_map_remove_different<K, V, const FINITE: bool>(m: G
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(m1: GMap<K, V, FINITE>, m2: GMap<K, V, FINITE>)
+pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(
+    m1: GMap<K, V, FINITE>,
+    m2: GMap<K, V, FINITE>,
+)
     ensures
         #[trigger] (m1 =~= m2) <==> {
             &&& m1.dom() =~= m2.dom()
@@ -540,8 +634,8 @@ pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(m1: GMap<K,
         },
 {
     broadcast use axiom_dom_ensures;
-//     m1.axiom_dom_ensures();
-//     m2.axiom_dom_ensures();
+    //     m1.axiom_dom_ensures();
+    //     m2.axiom_dom_ensures();
     broadcast use super::set::group_set_lemmas;
 
     if m1 =~= m2 {
@@ -564,7 +658,10 @@ pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(m1: GMap<K,
     }
 }
 
-pub broadcast proof fn axiom_map_ext_equal_deep<K, V, const FINITE: bool>(m1: GMap<K, V, FINITE>, m2: GMap<K, V, FINITE>)
+pub broadcast proof fn axiom_map_ext_equal_deep<K, V, const FINITE: bool>(
+    m1: GMap<K, V, FINITE>,
+    m2: GMap<K, V, FINITE>,
+)
     ensures
         #[trigger] (m1 =~~= m2) <==> {
             &&& m1.dom() =~~= m2.dom()
@@ -593,7 +690,7 @@ pub broadcast group group_map_axioms {
     axiom_map_ext_equal,
     axiom_map_ext_equal_deep,
     GMap::lemma_union_prefer_right,
-//     lemma_union_prefer_right_noself,
+    //     lemma_union_prefer_right_noself,
 }
 
 // Macros
@@ -643,7 +740,11 @@ macro_rules! imap {
 
 #[doc(hidden)]
 #[verifier::inline]
-pub open spec fn check_argument_is_map<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>) -> GMap<K, V, FINITE> {
+pub open spec fn check_argument_is_map<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>) -> GMap<
+    K,
+    V,
+    FINITE,
+> {
     m
 }
 

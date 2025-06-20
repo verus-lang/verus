@@ -11,7 +11,7 @@ use super::relations::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::{Set, set_int_range};
+use super::set::{set_int_range, Set};
 
 verus! {
 
@@ -527,17 +527,21 @@ impl<A> Seq<A> {
 
     pub broadcast proof fn to_set_ensures(self)
         ensures
-        #![trigger(self.to_set())]
-        // to_set works for all indices
-        forall |i| 0 <= i < self.len() ==> #[trigger] self.to_set().contains(self[i]),
-        // to_set finds everything .contains finds
-        forall |a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
+            #![trigger(self.to_set())]
+            // to_set works for all indices
+            forall|i|
+                0 <= i < self.len() ==> #[trigger] self.to_set().contains(self[i]),
+            // to_set finds everything .contains finds
+            forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
         //         TODO(jonh): shouldn't need explicit call, it's broadcast now
-//         crate::set::lemma_set_int_range_ensures(0, self.len() as int);
-        assert forall |i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
-            assert( set_int_range(0, self.len() as int).contains(i) && self[i] == self[i] );
-            crate::set::lemma_set_map_contains( set_int_range(0, self.len() as int), |i| self.index(i));
+        //         crate::set::lemma_set_int_range_ensures(0, self.len() as int);
+        assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
+            assert(set_int_range(0, self.len() as int).contains(i) && self[i] == self[i]);
+            crate::set::lemma_set_map_contains(
+                set_int_range(0, self.len() as int),
+                |i| self.index(i),
+            );
         }
     }
 
@@ -1077,6 +1081,7 @@ impl<A> Seq<A> {
     {
         // trivial from lemma_set_map_len
         broadcast use {super::set::group_set_lemmas, seq_to_set_is_finite};
+
     }
 
     /// A sequence is of length 0 if and only if its conversion to
@@ -1086,6 +1091,7 @@ impl<A> Seq<A> {
             self.to_set().len() == 0 <==> self.len() == 0,
     {
         broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+
         self.to_set_ensures();
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
@@ -1107,6 +1113,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+
         self.to_set_ensures();
         self.drop_first().to_set_ensures();
 
@@ -1933,7 +1940,7 @@ impl<A> Seq<A> {
         ensures
             #[trigger] self.push(elem).to_set() =~= self.to_set().insert(elem),
     {
-        broadcast use {group_seq_properties,super::set::group_set_lemmas,Seq::to_set_ensures};
+        broadcast use {group_seq_properties, super::set::group_set_lemmas, Seq::to_set_ensures};
 
         let lhs = self.push(elem).to_set();
         let rhs = self.to_set().insert(elem);
@@ -3041,9 +3048,9 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 
 // Helper function showing that the recursive definition matches the set comprehension one
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
-ensures
-    seq.to_set() == seq_to_set_rec(seq),
-decreases seq.len(),
+    ensures
+        seq.to_set() == seq_to_set_rec(seq),
+    decreases seq.len(),
 {
     broadcast use super::set::group_set_lemmas;
 

@@ -1,5 +1,5 @@
 #[macro_use]
-use super::map::{GMap,Map,IMap,assert_maps_equal,assert_maps_equal_internal};
+use super::map::{GMap, Map, IMap, assert_maps_equal, assert_maps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
@@ -142,10 +142,12 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
 
         if keys.len() > 0 {
             let key = keys.choose();
-            self.remove(key).lemma_remove_keys_len(keys.remove(key));   // recurse
+            self.remove(key).lemma_remove_keys_len(keys.remove(key));  // recurse
 
             // trigger extensionality
-            assert( self.remove_keys(keys).dom() == self.remove(key).remove_keys(keys.remove(key)).dom() );
+            assert(self.remove_keys(keys).dom() == self.remove(key).remove_keys(
+                keys.remove(key),
+            ).dom());
         } else {
             // keys is empty, so remove_keys is a noop
             self.remove_keys(keys).dom().to_infinite().congruent_len(self.remove_keys(keys).dom());
@@ -534,7 +536,7 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] m1.union_prefer_right(m2).dom() == m1.dom() + m2.dom(),
 {
-    assert( m1.union_prefer_right(m2).dom() == m1.dom() + m2.dom() );  // issue #1534
+    assert(m1.union_prefer_right(m2).dom() == m1.dom() + m2.dom());  // issue #1534
 }
 
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
@@ -589,9 +591,9 @@ pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: s
 // finite variant of same
 pub broadcast proof fn lemma_map_new_domain<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
     ensures
-    #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
+        #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
 {
-    assert( Map::<K, V>::new(key_set, fv).dom() =~= key_set );  // issue #1534
+    assert(Map::<K, V>::new(key_set, fv).dom() =~= key_set);  // issue #1534
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -627,6 +629,7 @@ pub proof fn lemma_map_properties<K, V>()
             ),  //from lemma_imap_new_values
 {
     broadcast use group_map_properties;
+
 }
 
 pub broadcast group group_map_properties {
@@ -644,8 +647,10 @@ pub broadcast group group_map_extra {
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
-requires m.dom().finite(),
-ensures m.values().finite(),
+    requires
+        m.dom().finite(),
+    ensures
+        m.values().finite(),
 {
     // This proof is trivial now, since values() is defined as the map() of a finite source map.
 }
