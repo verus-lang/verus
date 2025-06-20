@@ -1443,3 +1443,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] subst_in_traits verus_code! {
+        // https://github.com/verus-lang/verus/issues/1511
+        use vstd::prelude::*;
+
+        struct A {
+            a: bool,
+        }
+
+        struct B;
+
+        trait TraitA {
+            proof fn prop(chain: Seq<Option<A>>, i: int)
+                ensures
+                    0 <= i < chain.len() ==> {
+                        let c = chain[i];
+                        if c is Some {
+                            let MISSING_KEY = c->0;
+                            MISSING_KEY.a
+                        } else {
+                            false
+                        }
+                    }
+                    ;
+        }
+
+        impl TraitA for B {
+            proof fn prop(chain: Seq<Option<A>>, i: int) { assume(false); }
+        }
+    } => Ok(())
+}
