@@ -3,7 +3,6 @@ use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::Seq;
-use ::builtin::admit;
 use ::builtin::int;
 use ::builtin::SpecAdd;
 use ::builtin::SpecOrd;
@@ -1363,7 +1362,7 @@ pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
     ensures
         exists|a: A| s.contains(a),
 {
-    admit();  // REVIEW, should this be in `set`, or have a proof?
+    assert( s.contains(s.choose()) );
 }
 
 pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
