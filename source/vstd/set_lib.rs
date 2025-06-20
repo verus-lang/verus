@@ -3,14 +3,14 @@ use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::Seq;
-use builtin::admit;
-use builtin::int;
-use builtin::SpecAdd;
-use builtin::SpecOrd;
-use builtin::SpecSub;
+use ::builtin::admit;
+use ::builtin::int;
+use ::builtin::SpecAdd;
+use ::builtin::SpecOrd;
+use ::builtin::SpecSub;
 #[allow(unused_imports)]
 // use super::prelude::*;
-use builtin_macros::verus;
+use ::builtin_macros::verus;
 
 #[allow(unused_imports)]
 use super::relations::*;
