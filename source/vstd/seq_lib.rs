@@ -1933,19 +1933,12 @@ impl<A> Seq<A> {
         ensures
             #[trigger] self.push(elem).to_set() =~= self.to_set().insert(elem),
     {
-        broadcast use group_seq_properties;
-        broadcast use super::set::group_set_lemmas;
+        broadcast use {group_seq_properties,super::set::group_set_lemmas,Seq::to_set_ensures};
 
         let lhs = self.push(elem).to_set();
         let rhs = self.to_set().insert(elem);
-
-        assert(lhs.subset_of(rhs));
         assert forall|x: A| rhs.contains(x) implies lhs.contains(x) by {
             lemma_seq_contains_after_push(self, elem, x);
-            if x == elem {
-            } else {
-                lemma_seq_contains_after_push(self, elem, x);
-            }
         }
     }
 
