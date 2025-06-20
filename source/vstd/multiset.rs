@@ -171,10 +171,7 @@ impl<V> Multiset<V> {
     /// Returns a multiset containing the difference between the count of a
     /// given element of the two sets.
     pub open spec fn difference_with(self, other: Self) -> Self {
-        let m = Map::<V, nat>::new(
-            self.dom(),
-            |v: V| clip(self.count(v) - other.count(v)),
-        );
+        let m = Map::<V, nat>::new(self.dom(), |v: V| clip(self.count(v) - other.count(v)));
         Self::from_map(m)
     }
 
@@ -195,11 +192,14 @@ impl<V> Multiset<V> {
     // dom() won't mean anything unless we know our domain is finite, which is a soundness
     // invariant that the present axiom-heavy representation promises to maintain.
     pub broadcast proof fn dom_ensures(self)
-    ensures
-        #![trigger(self.dom())]
-        forall |v: V| #[trigger] self.dom().contains(v) <==> self.count(v) > 0
+        ensures
+            #![trigger(self.dom())]
+            forall|v: V| #[trigger]
+                self.dom().contains(v) <==> self.count(v) > 0,
     {
-        assert( ISet::new(|v: V| self.count(v) > 0).finite() ) by { admit(); }
+        assert(ISet::new(|v: V| self.count(v) > 0).finite()) by {
+            admit();
+        }
     }
 }
 
@@ -385,7 +385,13 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
     ensures
         #[trigger] m.update(v, mult).count(v) == mult,
 {
-    broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms, Multiset::dom_ensures};
+    broadcast use {
+        group_set_lemmas,
+        group_map_axioms,
+        group_multiset_axioms,
+        Multiset::dom_ensures,
+    };
+
 }
 
 /// The multiset resulting from updating a value `v1` in a multiset `m` to multiplicity `mult` will
@@ -398,6 +404,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
 {
     broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
     broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
+
 }
 
 // Lemmas about `insert`
@@ -466,10 +473,7 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
     broadcast use {group_multiset_axioms, Multiset::dom_ensures};
 
-    let m = Map::<V, nat>::new(
-        a.dom(),
-        |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
-    );
+    let m = Map::<V, nat>::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
     assert(m.dom() =~= a.dom());
 }
 
@@ -533,10 +537,15 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
     ensures
         #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
 {
-    broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms, Multiset::dom_ensures};
+    broadcast use {
+        group_set_lemmas,
+        group_map_axioms,
+        group_multiset_axioms,
+        Multiset::dom_ensures,
+    };
 
     let map = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
-    assert( map.dom() =~= a.dom() );
+    assert(map.dom() =~= a.dom());
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
