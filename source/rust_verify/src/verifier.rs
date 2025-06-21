@@ -2631,16 +2631,15 @@ impl Verifier {
             return Ok(false);
         }
 
-        let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id));
-        tcx.ensure().check_private_in_public(());
-        hir.par_for_each_module(|module| {
-            tcx.ensure().check_mod_privacy(module);
+        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
+        tcx.ensure_ok().check_private_in_public(());
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_mod_privacy(module);
         });
 
         self.air_no_span = {
-            let no_span = hir
-                .krate()
+            let no_span = tcx
+                .hir_crate(())
                 .owners
                 .iter()
                 .filter_map(|oi| {
@@ -2686,7 +2685,7 @@ impl Verifier {
         let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
             tcx,
-            krate: hir.krate(),
+            krate: tcx.hir_crate(()),
             erasure_info,
             spans: spans.clone(),
             verus_items,
@@ -2881,8 +2880,6 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// end time of lifetime analysys
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
-    pub(crate) file_loader:
-        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
     pub(crate) verus_externs: Option<VerusExterns>,
 }
 
@@ -2940,12 +2937,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
             providers.mir_borrowck = |tcx, _local_def_id| {
-                tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
-                    concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
-                    closure_requirements: None,
-                    used_mut_upvars: smallvec::SmallVec::new(),
-                    tainted_by_errors: None,
-                })
+                Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                    rustc_data_structures::fx::FxIndexMap::default(),
+                )))
             };
         });
     }
@@ -3073,11 +3067,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         // We could print them immediately, but instead,
                         // let's first run rustc's standard lifetime checking
                         // because the error messages are likely to be better.
-                        let file_loader =
-                            std::mem::take(&mut self.file_loader).expect("file_loader");
                         let compile_status = crate::driver::run_with_erase_macro_compile(
                             self.rustc_args.clone(),
-                            file_loader,
                             false,
                             self.verifier.args.vstd,
                         );
