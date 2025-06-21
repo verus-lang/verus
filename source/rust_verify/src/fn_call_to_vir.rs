@@ -279,12 +279,19 @@ pub(crate) fn deref_to_vir<'tcx>(
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
     expr_typ: Typ,
-    inner_ty: rustc_middle::ty::Ty<'tcx>,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
     span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
-    let node_substs = tcx.mk_args(&[GenericArg::from(inner_ty)]);
+    // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
+    // reference for calling `deref`. We strip it for trait resolution.
+    //
+    // Otherwise, it may be `deref` coercion. Leave it as-is.
+    let arg_ty =
+        if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
+    let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
+
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
@@ -302,6 +309,7 @@ pub(crate) fn deref_to_vir<'tcx>(
         ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
         _ => crate::internal_err!(span, "unexpected deref"),
     };
+
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
     let trait_fun =
@@ -310,6 +318,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call(call_target, args);
+
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
 
