@@ -124,7 +124,7 @@ fn clone_add_post_condition<'tcx>(
         }
     }
 
-    if functionx.ensure.len() != 0 {
+    if functionx.ensure.0.len() != 0 {
         warn_unexpected();
         return Ok(());
     }
@@ -144,7 +144,7 @@ fn clone_add_post_condition<'tcx>(
         );
 
         let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
-        functionx.ensure = Arc::new(vec![eq_expr]);
+        functionx.ensure.0 = Arc::new(vec![eq_expr]);
     } else {
         warn_unsupported();
     }
