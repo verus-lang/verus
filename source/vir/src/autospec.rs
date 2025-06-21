@@ -30,7 +30,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                         resolved,
                         typs: r_typs,
                         impl_paths: r_impl_paths,
-                        ..
+                        is_trait_default,
                     },
                     AutospecUsage::IfMarked,
                 ) => {
@@ -42,12 +42,23 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                             r_impl_paths.clone(),
                         )
                     } else if functions.get(tgt).is_some_and(|f| f.x.attrs.autospec.is_some()) {
-                        (
-                            CallTargetKind::Dynamic,
-                            new_tgt(tgt, *autospec_usage),
-                            typs.clone(),
-                            impl_paths.clone(),
-                        )
+                        let new_t = &functions[tgt].x.attrs.autospec.as_ref().unwrap();
+                        // calling tgt = T::exec, resolved = impl::exec
+                        // new_t = T::spec, so check for new_resolved = impl::spec first
+                        let new_resolved_path =
+                            resolved.path.pop_segment().push_segment(new_t.path.last_segment());
+                        let new_resolved = Arc::new(crate::ast::FunX { path: new_resolved_path });
+                        let kind = if !is_trait_default && functions.contains_key(&new_resolved) {
+                            CallTargetKind::DynamicResolved {
+                                resolved: new_resolved,
+                                typs: r_typs.clone(),
+                                impl_paths: r_impl_paths.clone(),
+                                is_trait_default: *is_trait_default,
+                            }
+                        } else {
+                            CallTargetKind::Dynamic
+                        };
+                        (kind, new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
                     } else {
                         (kind.clone(), tgt.clone(), typs.clone(), impl_paths.clone())
                     }
