@@ -307,7 +307,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let trait_fun =
         Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
     let call_target =
-        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, AutospecUsage::Final);
+        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, AutospecUsage::IfMarked);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call(call_target, args);
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
