@@ -136,7 +136,6 @@ pub fn main() {
 
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
-    let file_loader = rust_verify::file_loader::RealFileLoader;
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
 
@@ -144,7 +143,6 @@ pub fn main() {
         verifier,
         rustc_args,
         verus_root,
-        file_loader,
         build_test_mode || via_cargo_rebuild_verus_libs,
     );
 
