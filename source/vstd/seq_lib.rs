@@ -534,14 +534,8 @@ impl<A> Seq<A> {
             // to_set finds everything .contains finds
             forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
-        //         TODO(jonh): shouldn't need explicit call, it's broadcast now
-        //         crate::set::lemma_set_int_range_ensures(0, self.len() as int);
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
-            assert(set_int_range(0, self.len() as int).contains(i) && self[i] == self[i]);
-            crate::set::lemma_set_map_contains(
-                set_int_range(0, self.len() as int),
-                |i| self.index(i),
-            );
+            assert(set_int_range(0, self.len() as int).contains(i) && self[i] == self[i]);  // trigger
         }
     }
 
