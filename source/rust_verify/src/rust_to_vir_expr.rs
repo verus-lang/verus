@@ -2166,6 +2166,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
+            let loop_isolation = loop_isolation();
+            let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
@@ -2182,7 +2184,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 *header_span,
                 &expr_typ()?,
                 ExprX::Loop {
-                    loop_isolation: loop_isolation(),
+                    loop_isolation,
                     is_for_loop: expr_vattrs.for_loop,
                     label,
                     cond: None,
