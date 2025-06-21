@@ -44,6 +44,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
+    // loop_isolation for the nearest enclosing loop, false otherwise
+    pub(crate) loop_isolation: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {

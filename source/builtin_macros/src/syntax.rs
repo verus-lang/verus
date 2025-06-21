@@ -3178,7 +3178,10 @@ impl Visitor {
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
         //                          builtin::infer_spec_for_loop_iter(
         //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)))),
+        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)),
+        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                                  &::core::iter::IntoIterator::into_iter(e)),
+        //                          )),
         //                      { let x =
         //                          ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y)
         //                          .unwrap_or(vstd::pervasive::arbitrary());
@@ -3283,11 +3286,15 @@ impl Visitor {
             Ident::new("VERUS_ghost_iter", span)
         };
         let mut stmts: Vec<Stmt> = Vec::new();
+        let expr_inv = expr.clone();
         //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
         //              ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
         //                  builtin::infer_spec_for_loop_iter(
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)))),
+        //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)),
+        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                          &::core::iter::IntoIterator::into_iter(e)),
+        //                  )),
         let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
@@ -3298,6 +3305,8 @@ impl Visitor {
                 builtin::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(VERUS_iter)),
+                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+                        &::core::iter::IntoIterator::into_iter(#expr_inv)),
                     #print_hint,
                 ))
         ));
