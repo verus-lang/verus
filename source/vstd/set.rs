@@ -1427,7 +1427,7 @@ pub broadcast proof fn lemma_set_int_range_ensures<const FINITE: bool>(lo: int, 
     }
 }
 
-// TODO(jonh): remove/deprecate
+#[deprecated = "Use `Set::int_range` instead"]
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::<int>::int_range(lo, hi)
 }

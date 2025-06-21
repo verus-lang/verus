@@ -798,7 +798,7 @@ impl<A> Set<A> {
                 lemma_to_seq_to_set_ix_recursive(self, x);
                 assert(exists|i|
                     #![auto]
-                    set_int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]
+                    Set::int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]
                         == x);  // witness
             }
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
@@ -1028,15 +1028,15 @@ pub proof fn lemma_int_range(lo: int, hi: int)
     requires
         lo <= hi,
     ensures
-        set_int_range(lo, hi).finite(),
-        set_int_range(lo, hi).len() == hi - lo,
+        Set::int_range(lo, hi).finite(),
+        Set::int_range(lo, hi).len() == hi - lo,
     decreases hi - lo,
 {
     if lo == hi {
-        assert(set_int_range(lo, hi) =~= Set::empty());
+        assert(Set::int_range(lo, hi) =~= Set::empty());
     } else {
         lemma_int_range(lo, hi - 1);
-        assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_range(lo, hi));
+        assert(Set::int_range(lo, hi - 1).insert(hi - 1) =~= Set::int_range(lo, hi));
     }
 }
 

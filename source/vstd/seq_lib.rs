@@ -522,7 +522,7 @@ impl<A> Seq<A> {
 
     /// Converts a sequence into a set
     pub open spec fn to_set(self) -> Set<A> {
-        set_int_range(0, self.len() as int).map(|i| self.index(i))
+        Set::int_range(0, self.len() as int).map(|i| self.index(i))
     }
 
     pub broadcast proof fn to_set_ensures(self)
@@ -535,7 +535,7 @@ impl<A> Seq<A> {
             forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
     {
         assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
-            assert(set_int_range(0, self.len() as int).contains(i) && self[i] == self[i]);  // trigger
+            assert(Set::int_range(0, self.len() as int).contains(i) && self[i] == self[i]);  // trigger
         }
     }
 

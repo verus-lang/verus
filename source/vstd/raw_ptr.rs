@@ -661,12 +661,12 @@ impl PointsToRaw {
 
     /// Returns `true` if the domain of this permission is exactly the range `[start, start + len)`.
     pub open spec fn is_range(self, start: int, len: int) -> bool {
-        super::set::set_int_range(start, start + len) =~= self.dom()
+        super::set::Set::int_range(start, start + len) =~= self.dom()
     }
 
     /// Returns `true` if the domain of this permission contains the range `[start, start + len)`.
     pub open spec fn contains_range(self, start: int, len: int) -> bool {
-        super::set::set_int_range(start, start + len) <= self.dom()
+        super::set::Set::int_range(start, start + len) <= self.dom()
     }
 
     /// Constructs a `PointsToRaw` permission over an empty domain with the given provenance.
