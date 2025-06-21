@@ -276,6 +276,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
 pub(crate) fn deref_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
     expr_typ: Typ,
@@ -292,6 +293,10 @@ pub(crate) fn deref_to_vir<'tcx>(
         if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
     let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
 
+    let trait_fun =
+        Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
+    let mut record_trait_fun = trait_fun.clone();
+
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
@@ -299,6 +304,9 @@ pub(crate) fn deref_to_vir<'tcx>(
             let impl_paths = get_impl_paths(bctx, did, args, None);
             let resolved =
                 Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+
+            record_trait_fun = resolved.clone();
+
             vir::ast::CallTargetKind::DynamicResolved {
                 resolved,
                 typs,
@@ -310,11 +318,12 @@ pub(crate) fn deref_to_vir<'tcx>(
         _ => crate::internal_err!(span, "unexpected deref"),
     };
 
+    let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+
+    record_call(bctx, expr, ResolvedCall::Call(record_trait_fun, autospec_usage));
+
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
-    let trait_fun =
-        Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
-    let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
     let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call(call_target, args);
