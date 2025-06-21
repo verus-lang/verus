@@ -4,7 +4,6 @@ use super::multiset::Multiset;
 use super::pervasive::*;
 use super::prelude::*;
 #[allow(unused_imports)]
-
 #[allow(unused_imports)]
 use super::relations::*;
 #[allow(unused_imports)]
