@@ -831,10 +831,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
@@ -865,10 +865,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
@@ -1449,4 +1449,70 @@ test_verify_one_file! {
             proof { consume_x(x); }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] param_boxing_issue1725 verus_code! {
+        mod a {
+            use vstd::prelude::*;
+
+            fn write<'a, T, C>(t: &'a T) {
+                let j = |s: &crate::foo::Context<'a, T>| true;
+            }
+        }
+
+        mod foo {
+            use vstd::prelude::*;
+
+            pub struct Context<'a, T> {
+                t: &'a T,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] send_capture_tracked verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred<T> { t: T }
+        impl<T> InvariantPredicate<(), T> for Pred<T> {
+            spec fn inv(k: (), v: T) -> bool { true }
+        }
+
+        struct X { }
+
+        fn require_send<R: Send>(r: R) { }
+
+        fn test(Tracked(t): Tracked<&'static LocalInvariant<(), X, Pred<X>>>) {
+            let clos = || {
+                let tracked z = t;
+            };
+            require_send(clos);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`vstd::invariant::LocalInvariant<(), X, Pred<X>>` cannot be shared between threads safely")
+}
+
+test_verify_one_file! {
+    #[test] sync_capture_tracked verus_code! {
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        struct Pred<T> { t: T }
+        impl<T> InvariantPredicate<(), T> for Pred<T> {
+            spec fn inv(k: (), v: T) -> bool { true }
+        }
+
+        struct X { }
+
+        fn require_sync<R: Sync>(r: R) { }
+
+        fn test2(Tracked(t): Tracked<LocalInvariant<(), X, Pred<X>>>) {
+            let clos = || {
+                let tracked z = t;
+            };
+            require_sync(clos);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`vstd::invariant::LocalInvariant<(), X, Pred<X>>` cannot be shared between threads safely")
 }

@@ -1,12 +1,23 @@
 use super::super::prelude::*;
 
-verus! {
+use verus as verus_;
+
+verus_! {
+
+#[verifier::external_trait_specification]
+pub trait ExDeref {
+    type ExternalTraitSpecificationFor: core::ops::Deref;
+
+    type Target: ?Sized;
+
+    fn deref(&self) -> &Self::Target;
+}
 
 #[verifier::external_trait_specification]
 pub trait ExIndex<Idx> where Idx: ?Sized {
-    type Output: ?Sized;
-
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+
+    type Output: ?Sized;
 }
 
 #[verifier::external_trait_specification]
@@ -37,6 +48,11 @@ pub trait ExFreeze {
 #[verifier::external_trait_specification]
 pub trait ExDebug {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExDisplay {
+    type ExternalTraitSpecificationFor: core::fmt::Display;
 }
 
 #[verifier::external_trait_specification]
@@ -185,9 +201,7 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
 pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
 // A private seal trait to prevent a trait from being implemented outside of vstd.
-pub(crate) trait TrustedSpecSealed {
-
-}
+pub(crate) trait TrustedSpecSealed {}
 
 #[allow(private_bounds)]
 pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
@@ -216,42 +230,10 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
         old(container).spec_index_set_requires(index),
     ensures
         old(container).spec_index_set_ensures(container, index, val),
+    no_unwind
 {
     container[index] = val;
 }
-
-impl<T, const N: usize> TrustedSpecSealed for [T; N] {
-
-}
-
-impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < N
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ === self@.update(index as int, val)
-    }
-}
-
-impl<T> TrustedSpecSealed for [T] {
-
-}
-
-impl<T> IndexSetTrustedSpec<usize> for [T] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self@.len()
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
-}
-
-pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
-    requires
-        false,
-;
 
 } // verus!
 macro_rules! impl_from_spec {

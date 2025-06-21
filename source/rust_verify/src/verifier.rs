@@ -3,7 +3,7 @@ use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::externs::VerusExterns;
-use crate::spans::{from_raw_span, SpanContext, SpanContextX};
+use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
@@ -18,15 +18,15 @@ use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
-    message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning_bare,
 };
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
-use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
@@ -39,7 +39,7 @@ use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
-    path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
+    CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string,
 };
 use vir::prelude::PreludeConfig;
 
@@ -787,6 +787,7 @@ impl Verifier {
                 &command,
                 &context.span,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
+                reporter,
             )
         };
 
@@ -1936,7 +1937,7 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, uses_array, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1958,7 +1959,7 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
-            uses_array,
+            used_builtins,
             fndef_types,
             self.args.debugger,
         )?;
@@ -2952,7 +2953,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
@@ -2963,159 +2964,155 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
-        let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
-            if self.verifier.via_cargo_args.is_some() {
-                let crate_meta_path = tcx
-                    .output_filenames(())
-                    .path(rustc_session::config::OutputType::Metadata);
-                if let rustc_session::config::OutFileName::Real(path) = crate_meta_path {
-                    self.verifier.export_vir_path_via_cargo = Some(path.with_extension("vir"));
-                }
+        if self.verifier.via_cargo_args.is_some() {
+            let crate_meta_path =
+                tcx.output_filenames(()).path(rustc_session::config::OutputType::Metadata);
+            if let rustc_session::config::OutFileName::Real(path) = crate_meta_path {
+                self.verifier.export_vir_path_via_cargo = Some(path.with_extension("vir"));
             }
+        }
 
-            rustc_interface::passes::write_dep_info(tcx);
-            let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
+        rustc_interface::passes::write_dep_info(tcx);
+        let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
-            let time_import0 = Instant::now();
-            let imported = match crate::import_export::import_crates(
-                &self.verifier.args,
-                self.verifier.import_virs_via_cargo.clone().unwrap_or_default(),
-            ) {
-                Ok(imported) => imported,
-                Err(err) => {
-                    assert!(err.spans.len() == 0);
-                    assert!(err.level == MessageLevel::Error);
-                    compiler.sess.dcx().err(err.note.clone());
-                    self.verifier.encountered_vir_error = true;
-                    return;
-                }
-            };
-            let time_import1 = Instant::now();
-            self.verifier.time_import = time_import1 - time_import0;
-            let verus_items =
-                Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
-            let spans = SpanContextX::new(
+        let time_import0 = Instant::now();
+        let imported = match crate::import_export::import_crates(
+            &self.verifier.args,
+            self.verifier.import_virs_via_cargo.clone().unwrap_or_default(),
+        ) {
+            Ok(imported) => imported,
+            Err(err) => {
+                assert!(err.spans.len() == 0);
+                assert!(err.level == MessageLevel::Error);
+                compiler.sess.dcx().err(err.note.clone());
+                self.verifier.encountered_vir_error = true;
+                return rustc_driver::Compilation::Stop;
+            }
+        };
+        let time_import1 = Instant::now();
+        self.verifier.time_import = time_import1 - time_import0;
+        let verus_items =
+            Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        let spans = SpanContextX::new(
+            tcx,
+            tcx.stable_crate_id(LOCAL_CRATE),
+            compiler.sess.source_map(),
+            imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
+            self.verus_externs.as_ref(),
+        );
+        {
+            let reporter = Reporter::new(&spans, compiler);
+            if self.verifier.args.trace {
+                reporter.report_now(&note_bare("preparing crate for verification").to_any());
+            }
+            if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
                 tcx,
-                tcx.stable_crate_id(LOCAL_CRATE),
-                compiler.sess.source_map(),
-                imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
-                self.verus_externs.as_ref(),
-            );
-            {
-                let reporter = Reporter::new(&spans, compiler);
-                if self.verifier.args.trace {
-                    reporter.report_now(&note_bare("preparing crate for verification").to_any());
+                verus_items.clone(),
+                &spans,
+                imported.crate_names,
+                imported.vir_crates,
+                &reporter,
+                crate_name.clone(),
+            ) {
+                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                self.verifier.encountered_vir_error = true;
+
+                for diag in diagnostics.drain(..) {
+                    match diag {
+                        vir::ast::VirErrAs::Warning(err) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Warning)
+                        }
+                        vir::ast::VirErrAs::Note(err) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Note)
+                        }
+                    }
                 }
-                if let Err((err, mut diagnostics)) = self.verifier.construct_vir_crate(
+                return rustc_driver::Compilation::Stop;
+            }
+            if let Some(_guar) = compiler.sess.dcx().has_errors() {
+                self.verifier.encountered_error = true;
+                return rustc_driver::Compilation::Stop;
+            }
+            self.lifetime_start_time = Some(Instant::now());
+            let status = if self.verifier.args.no_lifetime {
+                Ok(vec![])
+            } else {
+                let log_lifetime =
+                    self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
+                let lifetime_log_file = if log_lifetime {
+                    let file =
+                        self.verifier.create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
+                    match file {
+                        Err(err) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Error);
+                            self.verifier.encountered_vir_error = true;
+                            return rustc_driver::Compilation::Stop;
+                        }
+                        Ok(file) => Some(file),
+                    }
+                } else {
+                    None
+                };
+                crate::lifetime::check_tracked_lifetimes(
+                    self.verifier.args.clone(),
                     tcx,
-                    verus_items.clone(),
+                    verus_items,
                     &spans,
-                    imported.crate_names,
-                    imported.vir_crates,
-                    &reporter,
-                    crate_name.clone(),
-                ) {
+                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
+                    self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
+                    self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
+                    lifetime_log_file,
+                )
+            };
+            self.lifetime_end_time = Some(Instant::now());
+            match status {
+                Ok(msgs) => {
+                    if msgs.len() > 0 {
+                        self.verifier.encountered_vir_error = true;
+                        // We found lifetime errors.
+                        // We could print them immediately, but instead,
+                        // let's first run rustc's standard lifetime checking
+                        // because the error messages are likely to be better.
+                        let file_loader =
+                            std::mem::take(&mut self.file_loader).expect("file_loader");
+                        let compile_status = crate::driver::run_with_erase_macro_compile(
+                            self.rustc_args.clone(),
+                            file_loader,
+                            false,
+                            self.verifier.args.vstd,
+                        );
+                        if compile_status.is_err() {
+                            return rustc_driver::Compilation::Stop;
+                        }
+                        for msg in &msgs {
+                            reporter.report(&msg.clone().to_any());
+                        }
+                        reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
+                        return rustc_driver::Compilation::Stop;
+                    }
+                }
+                Err(err) => {
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                     self.verifier.encountered_vir_error = true;
-
-                    for diag in diagnostics.drain(..) {
-                        match diag {
-                            vir::ast::VirErrAs::Warning(err) => {
-                                reporter.report_as(&err.to_any(), MessageLevel::Warning)
-                            }
-                            vir::ast::VirErrAs::Note(err) => {
-                                reporter.report_as(&err.to_any(), MessageLevel::Note)
-                            }
-                        }
-                    }
-                    return;
-                }
-                if let Some(_guar) = compiler.sess.dcx().has_errors() {
-                    self.verifier.encountered_error = true;
-                    return;
-                }
-                self.lifetime_start_time = Some(Instant::now());
-                let status = if self.verifier.args.no_lifetime {
-                    Ok(vec![])
-                } else {
-                    let log_lifetime =
-                        self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
-                    let lifetime_log_file = if log_lifetime {
-                        let file = self
-                            .verifier
-                            .create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
-                        match file {
-                            Err(err) => {
-                                reporter.report_as(&err.to_any(), MessageLevel::Error);
-                                self.verifier.encountered_vir_error = true;
-                                return;
-                            }
-                            Ok(file) => Some(file),
-                        }
-                    } else {
-                        None
-                    };
-                    crate::lifetime::check_tracked_lifetimes(
-                        self.verifier.args.clone(),
-                        tcx,
-                        verus_items,
-                        &spans,
-                        self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
-                        self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
-                        self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
-                        lifetime_log_file,
-                    )
-                };
-                self.lifetime_end_time = Some(Instant::now());
-                match status {
-                    Ok(msgs) => {
-                        if msgs.len() > 0 {
-                            self.verifier.encountered_vir_error = true;
-                            // We found lifetime errors.
-                            // We could print them immediately, but instead,
-                            // let's first run rustc's standard lifetime checking
-                            // because the error messages are likely to be better.
-                            let file_loader =
-                                std::mem::take(&mut self.file_loader).expect("file_loader");
-                            let compile_status = crate::driver::run_with_erase_macro_compile(
-                                self.rustc_args.clone(),
-                                file_loader,
-                                false,
-                                self.verifier.args.vstd,
-                            );
-                            if compile_status.is_err() {
-                                return;
-                            }
-                            for msg in &msgs {
-                                reporter.report(&msg.clone().to_any());
-                            }
-                            reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
-                            return;
-                        }
-                    }
-                    Err(err) => {
-                        reporter.report_as(&err.to_any(), MessageLevel::Error);
-                        self.verifier.encountered_vir_error = true;
-                        return;
-                    }
+                    return rustc_driver::Compilation::Stop;
                 }
             }
+        }
 
-            if let Some(_guar) = compiler.sess.dcx().has_errors() {
-                return;
-            }
+        if let Some(_guar) = compiler.sess.dcx().has_errors() {
+            return rustc_driver::Compilation::Stop;
+        }
 
-            match self.verifier.verify_crate(compiler, &spans) {
-                Ok(()) => {}
-                Err(err) => {
-                    if let VerifyErr::Vir(err) = err {
-                        let reporter = Reporter::new(&spans, compiler);
-                        reporter.report_as(&err.to_any(), MessageLevel::Error);
-                    }
-                    self.verifier.encountered_vir_error = true;
+        match self.verifier.verify_crate(compiler, &spans) {
+            Ok(()) => {}
+            Err(err) => {
+                if let VerifyErr::Vir(err) = err {
+                    let reporter = Reporter::new(&spans, compiler);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
+                self.verifier.encountered_vir_error = true;
             }
-        });
+        }
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error
             && !self.verifier.encountered_vir_error

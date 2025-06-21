@@ -6,11 +6,11 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
+use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
+use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -2249,6 +2249,16 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }
+        ExprX::ProofInSpec(e) => {
+            let stms = if state.checking_spec_general(ctx) {
+                let (stms, exp_opt) = expr_to_stm_opt(ctx, state, e)?;
+                assert!(crate::ast_util::is_unit(&exp_opt.expect_value().typ));
+                stms
+            } else {
+                vec![]
+            };
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut local_decls: Vec<LocalDecl> = Vec::new();
@@ -2274,7 +2284,9 @@ pub(crate) fn expr_to_stm_opt(
                     }
                     None => {
                         // the statement wasn't a Decl; it could have been anything
-                        is_pure_exp = false;
+                        if stms0.len() > 0 {
+                            is_pure_exp = false;
+                        }
                     }
                 }
                 stms.append(&mut stms0);

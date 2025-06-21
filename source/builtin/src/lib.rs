@@ -725,6 +725,8 @@ impl_structural! {
     bool char
 }
 
+unsafe impl<T: Structural> Structural for Option<T> {}
+
 pub struct NoCopy {}
 #[cfg(verus_keep_ghost)]
 impl !Copy for NoCopy {}

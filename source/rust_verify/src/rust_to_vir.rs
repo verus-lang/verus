@@ -11,7 +11,7 @@ use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
-use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode,
+    Mutability, OwnerNode,
 };
 
 use std::collections::HashMap;
@@ -314,15 +314,6 @@ fn check_item<'tcx>(
         ItemKind::GlobalAsm(..) =>
         //TODO(utaal): add a crate-level attribute to enable global_asm
         {
-            return Ok(());
-        }
-        ItemKind::OpaqueTy(OpaqueTy {
-            generics: _,
-            bounds: _,
-            origin: OpaqueTyOrigin::AsyncFn(_),
-            in_trait: _,
-            lifetime_mapping: _,
-        }) => {
             return Ok(());
         }
         _ => {

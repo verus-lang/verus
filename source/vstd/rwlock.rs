@@ -79,7 +79,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
             remove pending_reader -= {()};
 
-            birds_eye let x: V = pre.storage.get_Some_0();
+            birds_eye let x: V = pre.storage->0;
             add reader += {x};
 
             assert Pred::inv(pre.k, x);
@@ -117,7 +117,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
             add writer += Some(());
 
-            birds_eye let x = pre.storage.get_Some_0();
+            birds_eye let x = pre.storage->0;
             withdraw storage -= Some(x);
 
             assert Pred::inv(pre.k, x);
@@ -162,7 +162,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
             assert(pre.flag_rc >= 1) by {
                 //assert(pre.reader.count(x) >= 1);
                 assert(equal(pre.storage, Option::Some(x)));
-                //assert(equal(x, pre.storage.get_Some_0()));
+                //assert(equal(x, pre.storage->0));
             };
             update flag_rc = (pre.flag_rc - 1) as nat;
         }
@@ -171,14 +171,14 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     #[invariant]
     pub fn exc_bit_matches(&self) -> bool {
         (if self.flag_exc { 1 } else { 0 as int }) ==
-            (if self.pending_writer.is_Some() { 1 } else { 0 as int }) as int
-            + (if self.writer.is_Some() { 1 } else { 0 as int }) as int
+            (if self.pending_writer is Some { 1 } else { 0 as int }) as int
+            + (if self.writer is Some { 1 } else { 0 as int }) as int
     }
 
     #[invariant]
     pub fn count_matches(&self) -> bool {
         self.flag_rc == self.pending_reader.count(())
-            + self.reader.count(self.storage.get_Some_0())
+            + self.reader.count(self.storage->0)
     }
 
     #[invariant]
@@ -189,12 +189,12 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
     #[invariant]
     pub fn writer_agrees_storage(&self) -> bool {
-        imply(self.writer.is_Some(), self.storage.is_None())
+        imply(self.writer is Some, self.storage is None)
     }
 
     #[invariant]
     pub fn writer_agrees_storage_rev(&self) -> bool {
-        imply(self.storage.is_None(), self.writer.is_Some())
+        imply(self.storage is None, self.writer is Some)
     }
 
     #[invariant]
@@ -544,10 +544,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         > = Option::None;
         while !done
             invariant
-                done ==> token.is_some() && equal(
-                    token.get_Some_0().instance_id(),
-                    self.inst@.id(),
-                ),
+                done ==> token.is_some() && equal(token->0.instance_id(), self.inst@.id()),
                 self.wf(),
         {
             let result =
@@ -556,7 +553,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 returning res;
                 ghost g =>
             {
-                if res.is_Ok() {
+                if res is Ok {
                     token = Option::Some(self.inst.borrow().acquire_exc_start(&mut g));
                 }
             });
@@ -569,7 +566,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         }
         loop
             invariant
-                token.is_Some() && equal(token.get_Some_0().instance_id(), self.inst@.id()),
+                token is Some && equal(token->0.instance_id(), self.inst@.id()),
                 self.wf(),
         {
             let tracked mut perm_opt: Option<PointsTo<V>> = None;
@@ -644,7 +641,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                     returning res;
                     ghost g =>
                 {
-                    if res.is_Ok() {
+                    if res is Ok {
                         token = Option::Some(self.inst.borrow().acquire_read_start(&mut g));
                     }
                 });

@@ -6,10 +6,10 @@ use std::{
 };
 
 use serde::Serialize;
-use syn_verus::{spanned::Spanned, visit::Visit, Attribute, File, Meta, MetaList, Signature};
+use syn_verus::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 use tabled::settings::{
-    object::{Columns, Rows},
     Alignment, Modify, Style,
+    object::{Columns, Rows},
 };
 
 struct Config {
@@ -126,7 +126,8 @@ impl ToCodeKind for syn_verus::FnMode {
     fn to_code_kind(&self) -> CodeKind {
         match self {
             syn_verus::FnMode::Spec(_) | syn_verus::FnMode::SpecChecked(_) => CodeKind::Spec,
-            syn_verus::FnMode::Proof(_) => CodeKind::Proof,
+            // REVIEW: ProofAxiom may need to be treatead as trusted, with an explicit LineContent entry
+            syn_verus::FnMode::Proof(_) | syn_verus::FnMode::ProofAxiom(_) => CodeKind::Proof,
             syn_verus::FnMode::Exec(_) | syn_verus::FnMode::Default => CodeKind::Exec,
         }
     }

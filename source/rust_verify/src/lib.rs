@@ -26,6 +26,7 @@ extern crate rustc_resolve;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
+extern crate rustc_type_ir;
 extern crate smallvec;
 
 mod attributes;
@@ -56,6 +57,7 @@ mod lifetime_ast;
 mod lifetime_emit;
 mod lifetime_generate;
 pub mod profiler;
+mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;
 pub mod rust_to_vir;

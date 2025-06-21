@@ -122,6 +122,9 @@ impl ToString for TypX {
                     typ_args_to_string(Some(name), assoc_typ_args, &vec![], &None)
                 )
             }
+            TypX::PointeeMetadata(t) => {
+                format!("<{} as std::ptr::Pointee>::Metadata", t.to_string())
+            }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
             TypX::RawPtr(t, mutbl) => {

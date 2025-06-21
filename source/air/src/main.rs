@@ -2,7 +2,7 @@ use air::ast::CommandX;
 use air::context::UsageInfo;
 use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
-use air::profiler::{Profiler, PROVER_LOG_FILE};
+use air::profiler::{PROVER_LOG_FILE, Profiler};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;

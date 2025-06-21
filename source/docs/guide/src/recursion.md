@@ -30,6 +30,9 @@ Furthermore, the call cannot cause the expression to decrease below 0.
 With these restrictions, the expression in the `decreases` clause serves as an upper bound on the
 depth of calls that `triangle` can make to itself, ensuring termination.
 
+While Verus can often complete these proofs of termination automatically,
+it sometimes needs [additional help with the proof](reference-decreases).
+
 # Fuel and reasoning about recursive functions
 
 Given the definition of `triangle` above, we can make some assertions about it:

@@ -94,6 +94,10 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
                     })
                 })
             }
+            TypX::PointeeMetadata(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::PointeeMetadata(R::get(t))))
+            }
         }
     }
 }
@@ -509,6 +513,9 @@ where
                 },
                 ExprX::BreakOrContinue { label: _, is_break: _ } => (),
                 ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
+                }
+                ExprX::ProofInSpec(e1) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
                 }
                 ExprX::Block(ss, e1) => {
@@ -1065,6 +1072,10 @@ where
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::Ghost { alloc_wrapper: *alloc_wrapper, tracked: *tracked, expr }
+        }
+        ExprX::ProofInSpec(e1) => {
+            let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::ProofInSpec(expr)
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();

@@ -2,14 +2,14 @@ use crate::ast::{
     DatatypeTransparency, Dt, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
 };
 use crate::ast_util::{
-    air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
+    LowerUniqueVar, air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name,
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
-    prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
-    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM, Spanned, encode_dt_as_path,
+    is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param, prefix_type_id,
+    prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
@@ -87,6 +87,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
+        TypX::PointeeMetadata(_) => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::ConstBool(_) => false,
@@ -135,8 +136,9 @@ fn datatype_or_fun_to_air_commands(
     let x_var = ident_var(&x.lower());
     let apolytyp = str_typ(crate::def::POLY);
 
-    if dtyp_id.is_none() {
+    if dtyp_id.is_none() && !matches!(kind, EncodedDtKind::Dt(Dt::Tuple(0))) {
         // datatype TYPE identifiers
+        // We skip this for Dt::Tuple(0) because the prelude already emits the identifier
         let mut args: Vec<air::ast::Typ> = Vec::new();
         for _ in tparams.iter() {
             args.extend(crate::def::types().iter().map(|s| str_typ(s)));
@@ -689,7 +691,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
-    if ctx.uses_array {
+    if ctx.used_builtins.uses_array {
         datatype_or_fun_to_air_commands(
             ctx,
             &mut field_commands,
@@ -790,7 +792,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
-    let array_commands = if ctx.uses_array {
+    let array_commands = if ctx.used_builtins.uses_array {
         let nodes = crate::prelude::array_functions(&prefix_box(&crate::def::array_type()));
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
@@ -815,7 +817,18 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let pointee_metadata_commands = if ctx.used_builtins.uses_pointee_metadata {
+        let nodes = crate::prelude::pointee_metadata_prelude();
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed pointee metadata axioms");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let mut commands: Vec<Command> = Vec::new();
+    commands.extend(pointee_metadata_commands);
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         transparent_air_datatypes,

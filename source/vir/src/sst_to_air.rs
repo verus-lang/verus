@@ -5,32 +5,32 @@ use crate::ast::{
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ, undecorate_typ,
-    LowerUniqueVar,
+    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
+    undecorate_typ,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
-    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
-    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, ProverChoice, SNAPSHOT_CALL,
+    SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos,
+    SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
+    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
+    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
+    suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal,
+    variant_ident,
 };
-use crate::messages::{error, error_with_label, Span};
-use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX, MonoTyps};
+use crate::messages::{Span, error, error_with_label};
+use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_util::subst_typ_for_datatype;
-use crate::sst_vars::{get_loc_var, AssignMap};
+use crate::sst_vars::{AssignMap, get_loc_var};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
@@ -164,7 +164,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed {:?}", typ),
+                    None => {
+                        // this probably means you forgot to call coerce_typ_to_poly
+                        // or coerce_typ_to_native for this type during the poly pass
+                        panic!("abstract datatype should be boxed {:?}", typ)
+                    }
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -181,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
         },
         TypX::Projection { .. } => str_typ(POLY),
+        TypX::PointeeMetadata(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
@@ -193,12 +198,10 @@ pub fn range_to_id(range: &IntRange) -> Expr {
         IntRange::Int => str_var(crate::def::TYPE_ID_INT),
         IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
         IntRange::Char => str_var(crate::def::TYPE_ID_CHAR),
-        IntRange::U(_) | IntRange::USize => {
-            apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
-        }
-        IntRange::I(_) | IntRange::ISize => {
-            apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
-        }
+        IntRange::USize => str_var(crate::def::TYPE_ID_USIZE),
+        IntRange::ISize => str_var(crate::def::TYPE_ID_ISIZE),
+        IntRange::U(_) => apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![]),
+        IntRange::I(_) => apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![]),
     }
 }
 
@@ -372,6 +375,16 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let pt = ident_apply(&crate::def::projection(false, trait_path, name), &args);
             vec![pd, pt]
         }
+        TypX::PointeeMetadata(t) => {
+            let ids = typ_to_ids(ctx, t);
+            let id = ids[0].clone(); // Metadata is a function of just the decoration
+            let args = vec![id];
+
+            let pd = ident_apply(&crate::def::projection_pointee_metadata(true), &args);
+            let pt = ident_apply(&crate::def::projection_pointee_metadata(false), &args);
+
+            vec![pd, pt]
+        }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
         TypX::ConstInt(c) => {
             mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
@@ -499,6 +512,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             } else {
                 if typ_as_mono(typ).is_none() {
+                    // this probably means you forgot to call coerce_typ_to_poly
+                    // or coerce_typ_to_native for this type during the poly pass
                     panic!("abstract datatype should be boxed")
                 } else {
                     None
@@ -509,6 +524,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -577,6 +593,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -609,6 +626,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -1683,13 +1701,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
                         "cannot show this call will not unwind, in function marked 'no_unwind'",
-                        "this call might unwind",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
                         error_with_label(
                             &stm.span,
                             "cannot show this call will not unwind",
-                            "this call might unwind",
+                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                         )
                         .secondary_label(span, "unwinding is not allowed in this invariant block")
                     }

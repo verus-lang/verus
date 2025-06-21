@@ -690,8 +690,8 @@ test_verify_one_file! {
             let b = m.is_empty();
             assert(b);
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
             m.insert(three.clone(), 4);
 
             let b = m.is_empty();
@@ -732,6 +732,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_deep_view verus_code! {
+        use std::collections::HashMap;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+
+        fn test(m: HashMap<u64, Vec<bool>>, k: u64)
+            requires
+                m@.contains_key(k),
+                m[k]@ == seq![true],
+        {
+            broadcast use lemma_hashmap_deepview_properties;
+            assert(m.deep_view()[k] == seq![true]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_string_hash_set verus_code! {
         use vstd::hash_set::StringHashSet;
         use vstd::prelude::*;
@@ -743,8 +760,8 @@ test_verify_one_file! {
             let b = m.is_empty();
             assert(b);
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
 
             let res = m.insert(three.clone());
             assert(res);
@@ -754,7 +771,7 @@ test_verify_one_file! {
 
             m.insert(six.clone());
 
-            let res = m.insert("three".to_string());
+            let res = m.insert("three".to_owned());
             assert(!res);
 
             assert(!(three@ =~= six@)) by {
@@ -869,6 +886,33 @@ test_verify_one_file_with_options! {
             }
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
                 assert(g_values.take(g_values.len() as int) =~= g_values);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_hash_map_iter ["exec_allows_no_decreases_clause"] => verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::Iter;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            assert(m@ == Map::<u32, i8>::empty());
+
+            m.insert(3, 4);
+            m.insert(6, -8);
+
+            let mut idx = 0;
+            let m_iter = m.iter();
+            for (k, v) in iter: m_iter
+                invariant
+                    iter.kv_pairs.to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+            {
+                assert(*k == 3 ==> *v == 4);
+                assert(*k == 6 ==> *v == -8);
             }
         }
     } => Ok(())

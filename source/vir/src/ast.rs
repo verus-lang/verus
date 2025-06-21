@@ -11,7 +11,7 @@ pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vir_macros::{to_node_impl, ToDebugSNode};
+use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,6 +263,10 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
@@ -863,6 +868,8 @@ pub enum ExprX {
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    /// Enter a proof block from inside spec-mode code
+    ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
