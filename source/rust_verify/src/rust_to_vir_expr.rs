@@ -990,6 +990,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             } else {
                 crate::fn_call_to_vir::deref_to_vir(
                     bctx,
+                    expr,
                     deref.method_call(bctx.ctxt.tcx),
                     inner?,
                     expr_typ()?,
@@ -3001,7 +3002,7 @@ fn deref_expr_to_vir<'tcx>(
             false,
         )?;
         crate::fn_call_to_vir::deref_to_vir(
-            bctx, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
+            bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
         )
     }
 }
