@@ -156,6 +156,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_traits2 verus_code! {
+        // https://github.com/verus-lang/verus/issues/1767
+        trait T {
+            spec fn f() -> bool;
+
+            #[verifier::when_used_as_spec(f)]
+            fn g() -> bool
+                returns Self::f();
+
+            proof fn lemma()
+                ensures Self::g();
+        }
+
+        struct S;
+        impl T for S {
+            spec fn f() -> bool { true }
+
+            fn g() -> bool { true }
+
+            proof fn lemma()
+                ensures Self::g()
+            {}
+        }
+
+        proof fn test() {
+            assert(S::f() == S::g());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] vec_len_regression_issue212 verus_code! {
         use vstd::prelude::*;
 
