@@ -1755,7 +1755,7 @@ pub use decreases_to_internal;
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
+pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
     unimplemented!()
 }
 

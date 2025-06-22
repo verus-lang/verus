@@ -808,10 +808,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::InferSpecForLoopIter => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                assert!(args.len() == 2);
-                let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                assert!(args.len() == 3);
+                let arg = if bctx.loop_isolation {
+                    expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?
+                } else {
+                    expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?
+                };
                 let print_hint = matches!(
-                    &args[1],
+                    &args[2],
                     Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
                 );
                 mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
