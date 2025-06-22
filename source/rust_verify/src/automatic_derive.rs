@@ -40,8 +40,8 @@ pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
 
 pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
     for attr in attrs.iter() {
-        match &attr.kind {
-            rustc_hir::AttrKind::Normal(item) => match &item.path.segments[..] {
+        match attr {
+            rustc_hir::Attribute::Unparsed(item) => match &item.path.segments[..] {
                 [segment] => {
                     if segment.as_str() == "automatically_derived" {
                         return true;
