@@ -1548,3 +1548,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// `Deref` is special since it has an alias `*` for calling `.deref()`.
+
+test_verify_one_file! {
+    #[test] test_manually_drop_deref_when_have_spec verus_code! {
+        use core::mem::ManuallyDrop;
+        use core::ops::Deref;
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        #[verifier::reject_recursive_types(T)]
+        pub struct ExManuallyDrop<T: ?Sized>(ManuallyDrop<T>);
+
+        pub uninterp spec fn manually_drop_spec_get<T: ?Sized>(m: &ManuallyDrop<T>) -> &T;
+
+        #[verifier::when_used_as_spec(manually_drop_spec_get)]
+        pub assume_specification<T: ?Sized >[ <ManuallyDrop<T> as Deref>::deref ](
+            v: &ManuallyDrop<T>,
+        ) -> (res: &T)
+            ensures
+                res == manually_drop_spec_get(v),
+        ;
+
+        fn do_exec_deref(x: &ManuallyDrop<usize>) {
+            // Explicit call.
+            let u: &usize = &((*x).deref());
+            assert(*u >= 0);
+            // Implicit call.
+            let v: &usize = &**x;
+            assert(*v >= 0);
+        }
+
+        spec fn do_explicit_spec_deref(x: &ManuallyDrop<usize>) -> &usize {
+            &((*x).deref())
+        }
+
+        spec fn do_implicit_spec_deref(x: &ManuallyDrop<usize>) -> &usize {
+            &**x
+        }
+    } => Ok(())
+}

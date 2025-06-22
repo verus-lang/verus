@@ -612,3 +612,54 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_overloaded_deref verus_code! {
+        use core::ops::Deref;
+
+        pub struct X<T> {
+            pub t: T,
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExDeref {
+            type ExternalTraitSpecificationFor: core::ops::Deref;
+
+            type Target: ?Sized;
+
+            fn deref(&self) -> &Self::Target;
+        }
+
+        pub open spec fn x_deref_spec<T>(x: &X<T>) -> &T {
+            &x.t
+        }
+
+        impl<T> Deref for X<T> {
+            type Target = T;
+
+            #[verifier::when_used_as_spec(x_deref_spec)]
+            fn deref(&self) -> (ret: &T)
+                ensures ret == self.t
+            {
+                &self.t
+            }
+        }
+
+        fn do_exec_deref(x: &X<usize>) {
+            // Explicit call.
+            let u: &usize = &((*x).deref());
+            assert(*u >= 0);
+            // Implicit call.
+            let v: &usize = &**x;
+            assert(*v >= 0);
+        }
+
+        spec fn do_explicit_spec_deref(x: &X<usize>) -> &usize {
+            &((*x).deref())
+        }
+
+        spec fn do_implicit_spec_deref(x: &X<usize>) -> &usize {
+            &**x
+        }
+    } => Ok(())
+}
