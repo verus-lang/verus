@@ -23,7 +23,7 @@ use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unl
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
-use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
+use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::{
     BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt, Lit,
@@ -34,7 +34,7 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, VariantDef, Upcast,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -281,12 +281,16 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                             &bctx.ctxt.verus_items,
                             ctor.adt_def_id,
                         );
-                        Ok(PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(vec![])))
+                        Ok(PatternX::Constructor(
+                            Dt::Path(vir_path),
+                            variant_name,
+                            Arc::new(vec![]),
+                        ))
                     }
                     _ => {
                         crate::internal_err!(pat.span, "expected const constructor")
                     }
-                }
+                },
             }
         }
         PatExprKind::ConstBlock(_) => err_span(span, "PatExprKind::ConstBlock"),
@@ -311,110 +315,6 @@ pub(crate) fn get_fn_path<'tcx>(
         }
         _ => unsupported_err!(expr.span, format!("{:?}", expr)),
     }
-}
-
-/// Gets the DefId of the AdtDef for this Res and the Variant
-/// The bool return values: (is_enum, is_union)
-/// (As a caller, you probably want to use `get_adt_res_struct_enum` or
-/// `get_adt_res_struct_enum_union` instead,
-/// depending on whether you need to handle unions or not.)
-fn get_adt_res<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    res: Res,
-    span: Span,
-    expect_ctor_const: bool,
-) -> Result<(DefId, &'tcx VariantDef, bool, bool), VirErr> {
-    // Based off of implementation of rustc_middle's TyCtxt::expect_variant_res
-    // But with a few more cases it didn't handle
-    // Also, returns the adt DefId instead of just the VariantDef
-
-    let (def_id, variant_def, is_enum, is_union) = match res {
-        Res::Def(DefKind::Variant, did) => {
-            let enum_did = tcx.parent(did);
-            let variant_def = tcx.adt_def(enum_did).variant_with_id(did);
-            (enum_did, variant_def, true, false)
-        }
-        Res::Def(DefKind::Struct, did) => {
-            let variant_def = tcx.adt_def(did).non_enum_variant();
-            (did, variant_def, false, false)
-        }
-        Res::Def(DefKind::Union, did) => {
-            let variant_def = tcx.adt_def(did).non_enum_variant();
-            (did, variant_def, false, true)
-        }
-        Res::Def(DefKind::Ctor(CtorOf::Variant, ..), variant_ctor_did) => {
-            let variant_did = tcx.parent(variant_ctor_did);
-            let enum_did = tcx.parent(variant_did);
-            let adt_def = tcx.adt_def(enum_did);
-            assert!(adt_def.is_enum());
-            let variant_def = adt_def.variant_with_ctor_id(variant_ctor_did);
-            (enum_did, variant_def, true, false)
-        }
-        Res::Def(DefKind::Ctor(CtorOf::Struct, ..), ctor_did) => {
-            let struct_did = tcx.parent(ctor_did);
-            let adt_def = tcx.adt_def(struct_did);
-            assert!(adt_def.is_struct());
-            let variant_def = adt_def.non_enum_variant();
-            (struct_did, variant_def, false, false)
-        }
-        Res::Def(DefKind::TyAlias, alias_did) => {
-            let alias_ty = tcx.type_of(alias_did).skip_binder();
-
-            let struct_did = match alias_ty.kind() {
-                TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
-                _ => {
-                    crate::internal_err!(
-                        span,
-                        "got unexpected alias type trying to resolve constructor"
-                    )
-                }
-            };
-
-            let adt_def = tcx.adt_def(struct_did);
-            assert!(adt_def.is_struct() || adt_def.is_union());
-
-            let variant_def = adt_def.non_enum_variant();
-            (struct_did, variant_def, false, adt_def.is_union())
-        }
-        Res::SelfCtor(impl_id) | Res::SelfTyAlias { alias_to: impl_id, .. } => {
-            let self_ty = tcx.type_of(impl_id).skip_binder();
-            let struct_did = match self_ty.kind() {
-                TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
-                _ => {
-                    crate::internal_err!(
-                        span,
-                        "got unexpected Self type trying to resolve constructor"
-                    )
-                }
-            };
-
-            let adt_def = tcx.adt_def(struct_did);
-            assert!(adt_def.is_struct() || adt_def.is_union());
-
-            let variant_def = adt_def.non_enum_variant();
-            (struct_did, variant_def, false, adt_def.is_union())
-        }
-        _ => {
-            crate::internal_err!(
-                span,
-                format!("got unexpected Res trying to resolve constructor {res:#?}")
-            )
-        }
-    };
-
-    if expect_ctor_const {
-        match variant_def.ctor_kind() {
-            Some(CtorKind::Fn) => {
-                unsupported_err!(span, "using a datatype constructor as a function value");
-            }
-            Some(CtorKind::Const) => { /* ok */ }
-            None => {
-                unsupported_err!(span, "expected CtorKind::Const");
-            }
-        }
-    }
-
-    Ok((def_id, variant_def, is_enum, is_union))
 }
 
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
