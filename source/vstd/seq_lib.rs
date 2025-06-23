@@ -2807,6 +2807,7 @@ pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
     assert(s.insert(i, a) =~= s0 + seq![a] + s1);
     assert(((s0 + seq![a]) + s1).to_multiset() =~= ((seq![a] + s0) + s1).to_multiset()) by {
         broadcast use lemma_multiset_commutative;
+
     };
     assert((seq![a] + s0 + s1).drop_first() == s0 + s1);
 }
@@ -2866,15 +2867,6 @@ pub broadcast proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
     }
 }
 
-pub broadcast proof fn update_is_remove_insert<A>(s: Seq<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
-    ensures
-        #[trigger] s.update(i, a) =~= s.remove(i).insert(i, a),
-    decreases s.len(),
-{
-}
-
 pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
@@ -2882,10 +2874,26 @@ pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
         #[trigger] s.update(i, a).to_multiset() =~= s.to_multiset().insert(a).remove(s[i]),
     decreases s.len(),
 {
-    broadcast use {group_seq_properties, 
-                   crate::multiset::group_multiset_properties, 
-                   crate::multiset::group_multiset_axioms,
-                   to_multiset_insert, to_multiset_remove, update_is_remove_insert};
+    broadcast use {
+        crate::seq_lib::lemma_seq_take_len,
+        crate::multiset::group_multiset_properties,
+        crate::multiset::group_multiset_axioms,
+        to_multiset_insert,
+        to_multiset_remove,
+        to_multiset_contains,
+        lemma_update_is_remove_insert,
+    };
+
+}
+
+/// Lemma showing that update is equivalent to a remove followed by an insertae
+pub broadcast proof fn lemma_update_is_remove_insert<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a) =~= s.remove(i).insert(i, a),
+    decreases s.len(),
+{
 }
 
 /// The last element of two concatenated sequences, the second one being non-empty, will be the
