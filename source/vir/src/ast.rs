@@ -959,6 +959,7 @@ pub struct AutoExtEqual {
     pub assert: bool,
     pub assert_by: bool,
     pub ensures: bool,
+    pub invariant: bool,
 }
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
