@@ -3,7 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
-use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
+use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
@@ -645,15 +645,22 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
             match res {
                 Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
                 _ => {
-                    let (adt_def_id, variant_def, is_enum) =
-                        get_adt_res_struct_enum(ctxt.tcx, res, pat.span, true).unwrap();
-                    let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
-
-                    let name = state.datatype_name(&vir_path);
-                    let variant =
-                        if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-                    mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
+                    if let Some((ctor, ctor_kind)) = resolve_ctor(ctxt.tcx, res) {
+                        if ctor_kind != CtorKind::Const {
+                            panic!("lifetime_generate PatKind::Path: expected CtorKind::Const");
+                        }
+                        let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                        let vir_path =
+                            def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
+                        let name = state.datatype_name(&vir_path);
+                        let variant = match &ctor.kind {
+                            AdtKind::Enum => Some(state.variant(variant_name.to_string())),
+                            _ => None,
+                        };
+                        mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
+                    } else {
+                        panic!("lifetime_generate PatKind::Path: expected ctor");
+                    }
                 }
             }
         }
@@ -674,29 +681,38 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
         }
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
-            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
-            let name = state.datatype_name(&vir_path);
-            let variant_name = state.variant(variant_name.to_string());
-            let mut patterns: Vec<Pattern> = Vec::new();
-            for pat in pats.iter() {
-                patterns.push(erase_pat(ctxt, state, pat));
+            if let Some((ctor, ctor_kind)) = resolve_ctor(ctxt.tcx, res) {
+                assert!(ctor_kind == CtorKind::Fn);
+                let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
+
+                let name = state.datatype_name(&vir_path);
+                let variant_name = state.variant(variant_name.to_string());
+                let mut patterns: Vec<Pattern> = Vec::new();
+                for pat in pats.iter() {
+                    patterns.push(erase_pat(ctxt, state, pat));
+                }
+                let variant = match &ctor.kind {
+                    AdtKind::Enum => Some(variant_name),
+                    _ => None,
+                };
+                mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
+            } else {
+                panic!("lifetime_generate PatKind::TupleStruct: expected ctor");
             }
-            let variant = if is_enum { Some(variant_name) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
         }
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
-            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+            let ty = ctxt.types().node_type(pat.hir_id);
+            let ctor = resolve_braces_ctor(ctxt.tcx, res, ty, false, pat.span).unwrap();
+            let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
-            let variant_opt =
-                if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+            let variant_opt = match &ctor.kind {
+                AdtKind::Enum => Some(state.variant(variant_name.to_string())),
+                _ => None,
+            };
 
             let name = state.datatype_name(&vir_path);
             let mut binders: Vec<(Id, Pattern)> = Vec::new();
@@ -1251,12 +1267,15 @@ fn erase_expr_inner<'tcx>(
                     if expect_spec {
                         None
                     } else {
-                        let (adt_def_id, variant_def, is_enum) =
-                            get_adt_res_struct_enum(ctxt.tcx, res, expr.span, true).unwrap();
-                        let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+                        let (ctor, ctor_kind) = resolve_ctor(ctxt.tcx, res).unwrap();
+                        if ctor_kind != CtorKind::Const {
+                            panic!("unsupported: this CtorKind here");
+                        }
+                        let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                        let vir_path =
+                            def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
-                        let rust_item = verus_items::get_rust_item(ctxt.tcx, adt_def_id);
+                        let rust_item = verus_items::get_rust_item(ctxt.tcx, ctor.adt_def_id);
                         if rust_item == Some(RustItem::PhantomData) {
                             return mk_exp(ExpX::Var(Id::new(
                                 IdKind::Builtin,
@@ -1265,7 +1284,7 @@ fn erase_expr_inner<'tcx>(
                             )));
                         }
 
-                        let variant = if is_enum {
+                        let variant = if ctor.kind == AdtKind::Enum {
                             Some(state.variant(variant_name.to_string()))
                         } else {
                             None
@@ -1408,10 +1427,11 @@ fn erase_expr_inner<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             } else {
                 let res = ctxt.types().qpath_res(qpath, expr.hir_id);
+                let ty = ctxt.types().node_type(expr.hir_id);
 
-                let (adt_def_id, variant_name, is_enum) =
-                    get_adt_res_struct_enum_union(ctxt.tcx, res, expr.span, fields).unwrap();
-                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+                let ctor = resolve_braces_ctor(ctxt.tcx, res, ty, true, expr.span).unwrap();
+                let variant_name = ctor.variant_name(ctxt.tcx, fields);
+                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
                 let datatype = &ctxt.datatypes[&vir_path];
                 let variant = datatype.x.get_variant(&variant_name);
@@ -1427,8 +1447,11 @@ fn erase_expr_inner<'tcx>(
                     };
                     fs.push((name, e));
                 }
-                let variant_opt =
-                    if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+                let variant_opt = if ctor.kind == AdtKind::Enum {
+                    Some(state.variant(variant_name.to_string()))
+                } else {
+                    None
+                };
                 let spread = match spread {
                     rustc_hir::StructTailExpr::None => None,
                     rustc_hir::StructTailExpr::Base(expr) => {
