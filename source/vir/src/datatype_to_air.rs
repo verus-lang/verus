@@ -700,7 +700,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
-    dbg!(&ctx.mono_types);
     for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
@@ -818,7 +817,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);
 
-    dbg!(&sorts_for_prophecies);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         sorts_for_prophecies
             .into_iter()

@@ -335,6 +335,7 @@ fn simplify_one_expr(
                 None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
                 Some(entry) if !entry.is_mut && entry.init => {
                     let name = user_local_name(x);
+                    todo!("{name:} is not marked mutable");
                     Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
                 }
                 _ => Ok(expr.new_x(ExprX::VarLoc(rename_var(state, scope_map, x)))),
