@@ -2798,7 +2798,7 @@ pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
         s.insert(i, a).to_multiset() =~= s.to_multiset().insert(a),
     decreases s.len(),
 {
-    broadcast use {super::multiset::group_multiset_axioms, lemma_seq_union_to_multiset_commutative};
+    broadcast use super::multiset::group_multiset_axioms;
 
     let s0 = s.subrange(0, i);
     let s1 = s.subrange(i, s.len() as int);
