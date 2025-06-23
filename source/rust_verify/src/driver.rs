@@ -7,17 +7,7 @@ struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
 pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> () {
-    rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
-}
-
-fn mk_compiler<'a>(
-    rustc_args: &'a [String],
-    verifier: &'a mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a> {
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
-    compiler.set_file_loader(Some(file_loader));
-    compiler
+    rustc_driver::run_compiler(&rustc_args, &mut DefaultCallbacks)
 }
 
 fn run_compiler<'a, 'b>(
@@ -25,7 +15,6 @@ fn run_compiler<'a, 'b>(
     syntax_macro: bool,
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
 ) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -33,7 +22,7 @@ fn run_compiler<'a, 'b>(
         erase_ghost,
     );
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        mk_compiler(&rustc_args, verifier, file_loader).run()
+        rustc_driver::run_compiler(&rustc_args, verifier)
     }));
     result.map_err(|_| ())
 }
@@ -129,7 +118,6 @@ pub struct Stats {
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
@@ -154,7 +142,7 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
+    run_compiler(rustc_args, true, true, &mut callbacks)
 }
 
 pub struct VerusRoot {
@@ -206,20 +194,12 @@ pub fn find_verusroot() -> Option<VerusRoot> {
         })
 }
 
-pub fn run<F>(
+pub fn run(
     verifier: Verifier,
     mut rustc_args: Vec<String>,
     verus_root: Option<VerusRoot>,
-    file_loader: F,
     build_test_mode: bool,
-) -> (Verifier, Stats, Result<(), ()>)
-where
-    F: 'static
-        + rustc_span::source_map::FileLoader
-        + crate::file_loader::FileLoaderClone
-        + Send
-        + Sync,
-{
+) -> (Verifier, Stats, Result<(), ()>) {
     if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
@@ -259,16 +239,9 @@ where
         lifetime_start_time: None,
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
-        file_loader: Some(Box::new(file_loader.clone())),
         verus_externs,
     };
-    let status = run_compiler(
-        rustc_args_verify.clone(),
-        true,
-        false,
-        &mut verifier_callbacks,
-        Box::new(file_loader.clone()),
-    );
+    let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
         verifier,
         rust_start_time,
@@ -304,12 +277,7 @@ where
     let compile_status = if !verifier.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(
-            rustc_args,
-            Box::new(file_loader),
-            verifier.compile,
-            verifier.args.vstd,
-        )
+        run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
     };
 
     let time2 = Instant::now();

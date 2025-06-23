@@ -12,7 +12,8 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
     Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode, Pat,
-    PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind, TraitItemRef, UnOp,
+    PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
@@ -619,29 +620,8 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
     let mk_pat = |p: PatternX| Box::new((pat.span, p));
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
-        PatKind::Lit(_expr) => mk_pat(PatternX::Wildcard),
-        PatKind::Range(_, _, _) => mk_pat(PatternX::Wildcard),
-        PatKind::Binding(ann, hir_id, x, None) => {
-            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
-                mk_pat(PatternX::Wildcard)
-            } else {
-                let id = state.local(&x.to_string(), hir_id.local_id.index());
-                let BindingMode(_, mutability) = ann;
-                mk_pat(PatternX::Binding(id, mutability.to_owned(), None))
-            }
-        }
-        PatKind::Binding(ann, hir_id, x, Some(subpat)) => {
-            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
-                erase_pat(ctxt, state, subpat)
-            } else {
-                let id = state.local(&x.to_string(), hir_id.local_id.index());
-                let BindingMode(_, mutability) = ann;
-                let subpat = erase_pat(ctxt, state, subpat);
-                mk_pat(PatternX::Binding(id, mutability.to_owned(), Some(subpat)))
-            }
-        }
-        PatKind::Path(qpath) => {
-            let res = ctxt.types().qpath_res(qpath, pat.hir_id);
+        PatKind::Expr(PatExpr { kind: PatExprKind::Path(qpath), hir_id, .. }) => {
+            let res = ctxt.types().qpath_res(qpath, *hir_id);
             match res {
                 Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
                 _ => {
@@ -662,6 +642,27 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
                         panic!("lifetime_generate PatKind::Path: expected ctor");
                     }
                 }
+            }
+        }
+        PatKind::Expr(_expr) => mk_pat(PatternX::Wildcard),
+        PatKind::Range(_, _, _) => mk_pat(PatternX::Wildcard),
+        PatKind::Binding(ann, hir_id, x, None) => {
+            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
+                mk_pat(PatternX::Wildcard)
+            } else {
+                let id = state.local(&x.to_string(), hir_id.local_id.index());
+                let BindingMode(_, mutability) = ann;
+                mk_pat(PatternX::Binding(id, mutability.to_owned(), None))
+            }
+        }
+        PatKind::Binding(ann, hir_id, x, Some(subpat)) => {
+            if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
+                erase_pat(ctxt, state, subpat)
+            } else {
+                let id = state.local(&x.to_string(), hir_id.local_id.index());
+                let BindingMode(_, mutability) = ann;
+                let subpat = erase_pat(ctxt, state, subpat);
+                mk_pat(PatternX::Binding(id, mutability.to_owned(), Some(subpat)))
             }
         }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
@@ -2987,7 +2988,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 matches!(&item.kind, ItemKind::Static(..)),
                             );
                         }
-                        ItemKind::Fn(sig, _generics, body_id) => {
+                        ItemKind::Fn { sig, body: body_id, .. } => {
                             if vattrs.reveal_group {
                                 continue;
                             }
