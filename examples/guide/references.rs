@@ -1,5 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -72,8 +70,10 @@ fn asserts()
 
 // ANCHOR: complex
 fn decrease(b: &mut u32)
-    requires *old(b) == 10,
-    ensures *b == 0,
+    requires
+        *old(b) == 10,
+    ensures
+        *b == 0,
 {
     let mut i: u32 = 0;
     while (*b > 0) 

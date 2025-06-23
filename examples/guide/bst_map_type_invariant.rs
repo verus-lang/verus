@@ -1,5 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 // ANCHOR: all
 use vstd::prelude::*;
 
@@ -97,7 +95,8 @@ impl<V> Node<V> {
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
             node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value)
+            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).insert(key, value),
+        decreases *old(node),
     {
         if node.is_none() {
             *node = Some(Box::new(Node::<V> {
@@ -123,6 +122,7 @@ impl<V> Node<V> {
         ensures
             self.well_formed(),
             self.as_map() =~= old(self).as_map().insert(key, value),
+        decreases *old(self),
     {
         if key == self.key {
             self.value = value;
@@ -146,7 +146,7 @@ impl<V> TreeMap<V> {
 // ANCHOR: insert_signature
     pub fn insert(&mut self, key: u64, value: V)
         ensures
-            self@ == old(self)@.insert(key, value)
+            self@ == old(self)@.insert(key, value),
 // ANCHOR_END: insert_signature
     {
         proof { use_type_invariant(&*self); }
@@ -164,7 +164,8 @@ impl<V> Node<V> {
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
             node.is_some() ==> node.unwrap().well_formed(),
-            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(key)
+            Node::<V>::optional_as_map(*node) =~= Node::<V>::optional_as_map(*old(node)).remove(key),
+        decreases *old(node),
     {
         if node.is_some() {
             let mut tmp = None;
@@ -209,6 +210,7 @@ impl<V> Node<V> {
             Node::<V>::optional_as_map(*old(node)).dom().contains(popped.0),
             Node::<V>::optional_as_map(*old(node))[popped.0] == popped.1,
             forall |elem| Node::<V>::optional_as_map(*old(node)).dom().contains(elem) ==> popped.0 >= elem,
+        decreases *old(node),
     {
         let mut tmp = None;
         std::mem::swap(&mut tmp, node);
@@ -233,7 +235,7 @@ impl<V> TreeMap<V> {
 // ANCHOR: delete_signature
     pub fn delete(&mut self, key: u64)
         ensures
-            self@ == old(self)@.remove(key)
+            self@ == old(self)@.remove(key),
 // ANCHOR_END: delete_signature
     {
         proof { use_type_invariant(&*self); }
@@ -247,11 +249,14 @@ impl<V> TreeMap<V> {
 
 impl<V> Node<V> {
     fn get_from_optional(node: &Option<Box<Node<V>>>, key: u64) -> Option<&V>
-        requires node.is_some() ==> node.unwrap().well_formed(),
-        returns (match node {
-            Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
-            None => None,
-        }),
+        requires
+            node.is_some() ==> node.unwrap().well_formed(),
+        returns
+            (match node {
+                Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
+                None => None,
+            }),
+        decreases node,
     {
         match node {
             None => None,
@@ -262,8 +267,11 @@ impl<V> Node<V> {
     }
 
     fn get(&self, key: u64) -> Option<&V>
-        requires self.well_formed(),
-        returns (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None })
+        requires
+            self.well_formed(),
+        returns
+            (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None }),
+        decreases self,
     {
         if key == self.key {
             Some(&self.value)
@@ -281,7 +289,8 @@ impl<V> Node<V> {
 impl<V> TreeMap<V> {
 // ANCHOR: get_signature
     pub fn get(&self, key: u64) -> Option<&V>
-        returns (if self@.dom().contains(key) { Some(&self@[key]) } else { None })
+        returns
+            (if self@.dom().contains(key) { Some(&self@[key]) } else { None }),
 // ANCHOR_END: get_signature
     {
         proof { use_type_invariant(&*self); }
