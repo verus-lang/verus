@@ -2790,6 +2790,27 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
     assert(s2 + s0 == (s1 + s0).drop_first());
 }
 
+pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i <= s.len(),
+    ensures
+        #![trigger s.insert(i, a).to_multiset()]
+        s.insert(i, a).to_multiset() =~= s.to_multiset().insert(a),
+    decreases s.len(),
+{
+    broadcast use {super::multiset::group_multiset_axioms, lemma_seq_union_to_multiset_commutative};
+
+    let s0 = s.subrange(0, i);
+    let s1 = s.subrange(i, s.len() as int);
+
+    assert(s =~= s0 + s1);
+    assert(s.insert(i, a) =~= s0 + seq![a] + s1);
+    assert(((s0 + seq![a]) + s1).to_multiset() =~= ((seq![a] + s0) + s1).to_multiset()) by {
+        broadcast use lemma_multiset_commutative;
+    };
+    assert((seq![a] + s0 + s1).drop_first() == s0 + s1);
+}
+
 /// to_multiset() preserves length
 pub broadcast proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
@@ -2843,6 +2864,28 @@ pub broadcast proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
             assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
         }
     }
+}
+
+pub broadcast proof fn update_is_remove_insert<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a) =~= s.remove(i).insert(i, a),
+    decreases s.len(),
+{
+}
+
+pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a).to_multiset() =~= s.to_multiset().insert(a).remove(s[i]),
+    decreases s.len(),
+{
+    broadcast use {group_seq_properties, 
+                   crate::multiset::group_multiset_properties, 
+                   crate::multiset::group_multiset_axioms,
+                   to_multiset_insert, to_multiset_remove, update_is_remove_insert};
 }
 
 /// The last element of two concatenated sequences, the second one being non-empty, will be the
@@ -3007,9 +3050,9 @@ pub proof fn lemma_flatten_alt_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
 
 /// The multiset of a concatenated sequence `a + b` is equivalent to the multiset of the
 /// concatenated sequence `b + a`.
-pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+pub broadcast proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
-        (a + b).to_multiset() =~= (b + a).to_multiset(),
+        #[trigger] (a + b).to_multiset() =~= (b + a).to_multiset(),
 {
     broadcast use super::multiset::group_multiset_axioms;
 
@@ -3019,9 +3062,9 @@ pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
 
 /// The multiset of a concatenated sequence `a + b` is equivalent to the multiset of just
 /// sequence `a` added to the multiset of just sequence `b`.
-pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+pub broadcast proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
-        (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
+        #[trigger] (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
     decreases a.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -3563,6 +3606,8 @@ pub broadcast group group_to_multiset_ensures {
     to_multiset_remove,
     to_multiset_len,
     to_multiset_contains,
+    to_multiset_insert,
+    to_multiset_update,
 }
 
 // include all the Dafny prelude lemmas
