@@ -2875,9 +2875,9 @@ pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
     decreases s.len(),
 {
     broadcast use {
-        crate::seq_lib::lemma_seq_take_len,
-        crate::multiset::group_multiset_properties,
-        crate::multiset::group_multiset_axioms,
+        super::seq_lib::lemma_seq_take_len,
+        super::multiset::group_multiset_properties,
+        super::multiset::group_multiset_axioms,
         to_multiset_insert,
         to_multiset_remove,
         to_multiset_contains,
