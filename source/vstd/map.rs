@@ -31,12 +31,13 @@ verus! {
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
-pub tracked struct GMap<K, V, const FINITE: bool> {
+pub tracked struct GMap<K, V, FINITE: Finiteness> {
     mapping: spec_fn(K) -> Option<V>,
+    _phantom: core::marker::PhantomData<FINITE>,
 }
 
 /// Map<K,V> is a type synonym for map whose membership is finite (known at typechecking time).
-pub type Map<K, V> = GMap<K, V, true>;
+pub type Map<K, V> = GMap<K, V, Finite>;
 
 pub broadcast proof fn lemma_map_finite_from_type<K, V>(m: Map<K, V>)
     ensures
@@ -45,7 +46,7 @@ pub broadcast proof fn lemma_map_finite_from_type<K, V>(m: Map<K, V>)
     admit();
 }
 
-impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// Returns true if the key `k` is in the domain of `self`.
     #[verifier::inline]
     pub open spec fn contains_key(self, k: K) -> bool {
@@ -62,7 +63,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
         self.dom().contains(k) && self[k] == v
     }
 
-    pub open spec fn congruent<const FINITE2: bool>(
+    pub open spec fn congruent<FINITE2: Finiteness>(
         self: GMap<K, V, FINITE>,
         m2: GMap<K, V, FINITE2>,
     ) -> bool {
@@ -84,12 +85,12 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
 
 /// IMap<K,V> is a type synonym a set whose membership may be infinite (but can be
 /// proven finite at verification time).
-pub type IMap<K, V> = GMap<K, V, false>;
+pub type IMap<K, V> = GMap<K, V, Infinite>;
 
-impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// An empty map.
     pub closed spec fn empty() -> Self {
-        GMap { mapping: |k| None }
+        GMap { mapping: |k| None, _phantom: core::marker::PhantomData }
     }
 
     /// The domain of the map as a set.
@@ -127,6 +128,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     (self.mapping)(k)
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -141,6 +143,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     (self.mapping)(k)
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -181,6 +184,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -203,6 +207,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -225,6 +230,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -306,6 +312,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
+                _phantom: core::marker::PhantomData 
         }
     }
 
@@ -368,7 +375,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     }
 }
 
-impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v == GMap::<K, V, FINITE>::empty(),
@@ -451,7 +458,7 @@ impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
     }
 }
 
-broadcast proof fn axiom_dom_ensures<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>)
+broadcast proof fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
         (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some)),
 {
@@ -495,6 +502,7 @@ impl<K, V> IMap<K, V> {
                 } else {
                     None
                 },
+            _phantom: core::marker::PhantomData 
         }
     }
 }
@@ -539,7 +547,7 @@ pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, ke
 ;
 
 /// The domain of the empty map is the empty set
-pub broadcast proof fn axiom_map_empty<K, V, const FINITE: bool>()
+pub broadcast proof fn axiom_map_empty<K, V, FINITE: Finiteness>()
     ensures
         #[trigger] GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty(),
 {
@@ -550,7 +558,7 @@ pub broadcast proof fn axiom_map_empty<K, V, const FINITE: bool>()
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_insert_domain<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_insert_domain<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
     value: V,
@@ -567,7 +575,7 @@ pub broadcast proof fn axiom_map_insert_domain<K, V, const FINITE: bool>(
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-pub broadcast proof fn axiom_map_insert_same<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_insert_same<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
     value: V,
@@ -578,7 +586,7 @@ pub broadcast proof fn axiom_map_insert_same<K, V, const FINITE: bool>(
 }
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn axiom_map_insert_different<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_insert_different<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key1: K,
     key2: K,
@@ -593,7 +601,7 @@ pub broadcast proof fn axiom_map_insert_different<K, V, const FINITE: bool>(
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_remove_domain<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_remove_domain<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
 )
@@ -610,7 +618,7 @@ pub broadcast proof fn axiom_map_remove_domain<K, V, const FINITE: bool>(
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-pub broadcast proof fn axiom_map_remove_different<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_remove_different<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key1: K,
     key2: K,
@@ -623,7 +631,7 @@ pub broadcast proof fn axiom_map_remove_different<K, V, const FINITE: bool>(
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_ext_equal<K, V, FINITE: Finiteness>(
     m1: GMap<K, V, FINITE>,
     m2: GMap<K, V, FINITE>,
 )
@@ -658,7 +666,7 @@ pub broadcast proof fn axiom_map_ext_equal<K, V, const FINITE: bool>(
     }
 }
 
-pub broadcast proof fn axiom_map_ext_equal_deep<K, V, const FINITE: bool>(
+pub broadcast proof fn axiom_map_ext_equal_deep<K, V, FINITE: Finiteness>(
     m1: GMap<K, V, FINITE>,
     m2: GMap<K, V, FINITE>,
 )
@@ -740,7 +748,7 @@ macro_rules! imap {
 
 #[doc(hidden)]
 #[verifier::inline]
-pub open spec fn check_argument_is_map<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>) -> GMap<
+pub open spec fn check_argument_is_map<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>) -> GMap<
     K,
     V,
     FINITE,
