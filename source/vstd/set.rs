@@ -494,8 +494,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
     #[deprecated = "Use `Map::from_set` instead"]
-    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GMap<A, V, FINITE>
-    {
+    pub open spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GMap<A, V, FINITE> {
         GMap::from_set(self, f)
     }
 
@@ -1242,18 +1241,6 @@ pub broadcast proof fn lemma_set_ext_equal_deep<A, FINITE: Finiteness>(
 {
 }
 
-// pub broadcast axiom fn axiom_mk_map_domain<K, V>(s: ISet<K>, f: spec_fn(K) -> V)
-//     ensures
-//         #[trigger] s.mk_map(f).dom() == s,
-// ;
-// 
-// pub broadcast axiom fn axiom_mk_map_index<K, V>(s: ISet<K>, f: spec_fn(K) -> V, key: K)
-//     requires
-//         s.contains(key),
-//     ensures
-//         #[trigger] s.mk_map(f)[key] == f(key),
-// ;
-
 /// The empty set is finite.
 pub broadcast proof fn lemma_set_empty_finite<A, FINITE: Finiteness>()
     ensures
@@ -1694,8 +1681,6 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_insert,
     lemma_set_int_range_ensures,
     lemma_set_nat_range_ensures,
-//     axiom_mk_map_domain,
-//     axiom_mk_map_index,
     lemma_set_generic_union_finite,
     lemma_set_union_finite,
     lemma_set_generic_intersect_finite,
