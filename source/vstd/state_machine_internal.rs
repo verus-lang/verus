@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 #![doc(hidden)]
 
+use super::set::*;
 use super::map::*;
 use super::pervasive::*;
 use super::prelude::*;
@@ -276,7 +277,7 @@ impl<A> Seq<A> {
 }
 
 #[doc(hidden)]
-impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     // note that despite the name, this is allowed to insert
     #[verifier::inline]
     pub open spec fn update_at_index(self, k: K, v: V) -> Self {
