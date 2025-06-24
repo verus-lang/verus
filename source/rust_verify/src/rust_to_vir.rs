@@ -46,7 +46,7 @@ fn check_item<'tcx>(
     if vattrs.internal_const_body {
         return Ok(());
     }
-    if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
+    if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn { .. }) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }
     if vattrs.external_type_specification && !matches!(&item.kind, ItemKind::Struct(..)) {
@@ -177,7 +177,7 @@ fn check_item<'tcx>(
     };
 
     match &item.kind {
-        ItemKind::Fn(sig, generics, body_id) => {
+        ItemKind::Fn { sig, generics, body: body_id, .. } => {
             check_item_fn(
                 ctxt,
                 &mut vir.functions,
@@ -482,7 +482,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                     GeneralItemId::ItemId(item_id) => {
                         let i = ctxt.tcx.hir().item(item_id);
                         match i.kind {
-                            ItemKind::Fn(..) | ItemKind::Const(..) => (true, false),
+                            ItemKind::Fn { .. } | ItemKind::Const(..) => (true, false),
                             ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..) => {
                                 (false, true)
                             }

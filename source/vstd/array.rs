@@ -131,11 +131,17 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
     [t;N]
 }
 
+pub broadcast axiom fn axiom_array_ext_equal<T, const N: usize>(a1: [T; N], a2: [T; N])
+    ensures
+        #[trigger] (a1 =~= a2) <==> (forall|i: int| 0 <= i < N ==> a1[i] == a2[i]),
+;
+
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
+    axiom_array_ext_equal,
 }
 
 } // verus!

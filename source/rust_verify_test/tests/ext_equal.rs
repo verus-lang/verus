@@ -434,6 +434,45 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] heuristic_invariant verus_code! {
+        use vstd::prelude::*;
+
+        fn test_invariant1(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t, // FAILS
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant2(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t,
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant3(Ghost(s): Ghost<Seq<int>>) {
+            let ghost mut t = s.push(5).drop_last();
+            for i in 0..3
+                invariant s == t,
+            {
+                proof {
+                    t = s.push(6).push(7).drop_last().drop_last();
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] heuristic_ensures verus_code! {
         use vstd::prelude::*;
 
