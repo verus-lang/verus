@@ -128,7 +128,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     (self.mapping)(k)
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -143,7 +143,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     (self.mapping)(k)
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -184,7 +184,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -207,7 +207,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -230,7 +230,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -312,7 +312,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
                 } else {
                     None
                 },
-                _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -502,7 +502,7 @@ impl<K, V> IMap<K, V> {
                 } else {
                     None
                 },
-            _phantom: core::marker::PhantomData 
+            _phantom: core::marker::PhantomData,
         }
     }
 }
