@@ -474,7 +474,10 @@ impl<K, V> Map<K, V> {
     }
 }
 
-pub broadcast proof fn lemma_new_from_set_ensures<K, V, FINITE: Finiteness>(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_new_from_set_ensures<K, V, FINITE: Finiteness>(
+    key_set: GSet<K, FINITE>,
+    fv: spec_fn(K) -> V,
+)
     ensures
         #![trigger(GMap::from_set(key_set, fv))]
         forall|k|
