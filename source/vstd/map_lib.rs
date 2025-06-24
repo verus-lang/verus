@@ -12,7 +12,7 @@ verus! {
 
 broadcast use {super::map::group_map_axioms, super::set::group_set_lemmas};
 
-impl<K, V, const FINITE: bool> GMap<K, V, FINITE> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
