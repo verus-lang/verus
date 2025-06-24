@@ -52,23 +52,23 @@ proof fn test_seq2() {
 }
 
 proof fn test_set2() {
-    let s: Set<int> = Set::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
+    let s: ISet<int> = ISet::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
     assert(s.contains(20));
     assert(s.contains(30));
     assert(!s.contains(60));
 
-    let s_infinite: Set<int> = Set::new(|i: int| i % 10 == 0);
+    let s_infinite: ISet<int> = ISet::new(|i: int| i % 10 == 0);
     assert(s_infinite.contains(20));
     assert(s_infinite.contains(30));
     assert(!s_infinite.contains(35));
 }
 
 proof fn test_map2() {
-    let m: Map<int, int> = Map::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
+    let m: IMap<int, int> = IMap::new(|i: int| 0 <= i <= 40 && i % 10 == 0, |i: int| 10 * i);
     assert(m[20] == 200);
     assert(m[30] == 300);
 
-    let m_infinite: Map<int, int> = Map::new(|i: int| i % 10 == 0, |i: int| 10 * i);
+    let m_infinite: IMap<int, int> = IMap::new(|i: int| i % 10 == 0, |i: int| 10 * i);
     assert(m_infinite[20] == 200);
     assert(m_infinite[30] == 300);
     assert(m_infinite[90] == 900);

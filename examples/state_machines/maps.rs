@@ -10,13 +10,13 @@ tokenized_state_machine!(
     X {
         fields {
             #[sharding(map)]
-            pub bool_map: Map<int, bool>,
+            pub bool_map: IMap<int, bool>,
 
         }
 
         init!{
             initialize(cond: bool) {
-                init bool_map = Map::empty().insert(5, true);
+                init bool_map = IMap::empty().insert(5, true);
             }
         }
 
@@ -53,10 +53,10 @@ tokenized_state_machine!(
             pub m: int,
 
             #[sharding(map)]
-            pub map: Map<int, bool>,
+            pub map: IMap<int, bool>,
 
             #[sharding(storage_map)]
-            pub storage_map: Map<int, bool>,
+            pub storage_map: IMap<int, bool>,
         }
 
         #[invariant]
@@ -80,8 +80,8 @@ tokenized_state_machine!(
         init!{
             initialize(cond: bool) {
                 init m = 0;
-                init storage_map = Map::empty();
-                init map = Map::empty();
+                init storage_map = IMap::empty();
+                init map = IMap::empty();
             }
         }
 
