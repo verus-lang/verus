@@ -171,6 +171,13 @@ impl<FINITE: Finiteness> GSet<int, FINITE> {
     }
 }
 
+impl<FINITE: Finiteness> GSet<nat, FINITE> {
+    /// Creates a finite set of nats in the range [lo, hi).
+    pub closed spec fn nat_range(lo: nat, hi: nat) -> GSet<nat, FINITE> {
+        GSet { set: |i: nat| lo <= i && i < hi, _phantom: core::marker::PhantomData }
+    }
+}
+
 pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
     ensures
         #[trigger] s.finite(),
@@ -1502,6 +1509,38 @@ pub broadcast proof fn lemma_set_int_range_ensures<FINITE: Finiteness>(lo: int, 
     }
 }
 
+pub broadcast proof fn lemma_set_nat_range_ensures<FINITE: Finiteness>(lo: nat, hi: nat)
+    ensures
+        #![trigger(GSet::<nat, FINITE>::nat_range(lo, hi))]
+        forall|i: nat| #[trigger]
+            GSet::<nat, FINITE>::nat_range(lo, hi).contains(i) <==> lo <= i && i < hi,
+        (lo <= hi) ==> GSet::<nat, FINITE>::nat_range(lo, hi).len() == hi - lo,
+        GSet::<nat, FINITE>::nat_range(lo, hi).finite(),
+    decreases hi - lo,
+{
+    if lo < hi {
+        let dechi = (hi - 1) as nat;
+        lemma_set_nat_range_ensures::<FINITE>(lo, dechi);
+        assert(GSet::<nat, FINITE>::nat_range(lo, hi) =~= GSet::<nat, FINITE>::nat_range(
+            lo,
+            dechi,
+        ).insert(dechi));
+        lemma_set_insert_finite(GSet::<nat, FINITE>::nat_range(lo, dechi), dechi);
+        fold::lemma_fold_insert::<nat, FINITE, nat>(
+            GSet::<nat, FINITE>::nat_range(lo, dechi),
+            0,
+            |b: nat, a: nat| b + 1,
+            dechi,
+        );
+    } else {
+        broadcast use lemma_set_empty_len;
+
+        assert(GSet::<nat, FINITE>::nat_range(lo, hi) =~= GSet::<nat, FINITE>::empty());  // extn
+        broadcast use lemma_set_empty_finite;
+
+    }
+}
+
 #[deprecated = "Use `Set::int_range` instead"]
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::<int>::int_range(lo, hi)
@@ -1650,6 +1689,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_len,
     lemma_set_map_insert,
     lemma_set_int_range_ensures,
+    lemma_set_nat_range_ensures,
     axiom_mk_map_domain,
     axiom_mk_map_index,
     lemma_set_generic_union_finite,
