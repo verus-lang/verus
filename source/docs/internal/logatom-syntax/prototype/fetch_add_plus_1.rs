@@ -27,7 +27,9 @@ fn atomic_caller(
     
     // assert PRIVATE PRE of fetch_add_plus_1
     let old_v = patomic.fetch_add_plus_1(3) atomically {
+        // tranforming an atomic invariant into an atomic update
         open_atomic_invariant!(inv => permu64 => { 
+            /* open atomic update start */
             // assume inv's property
             assert(inv.inv(patomic.id(), permu64));
             assert(
@@ -37,7 +39,9 @@ fn atomic_caller(
             // ✅ assert ATOMIC PRE of fetch_add_plus_1
             let ghost old_permu64 = permu64.value(); // 38
             assert(old_permu64 as int % 2 == 0);
-            now(&mut permu64) // the atomic operation
+            /* open atomic update end */
+            /* --> */ now(&mut permu64) // the atomic operation
+            /* close atomic update start */
             // assume ATOMIC POST of fetch_add_plus_1
             assert(
               &&& permu64.id() == patomic.id()
@@ -46,6 +50,7 @@ fn atomic_caller(
             )
             assert(permu64.value() as int % 2 == 0);
             // assert inv's property
+            /* close atomic update end */
         });
     };
     // assume PRIVATE POST of fetch_add_plus_1 at POST
