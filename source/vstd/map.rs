@@ -299,8 +299,8 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         assert(self.restrict(keys).dom().to_infinite() == self.dom().generic_intersect(keys));
     }
 
-    // Preserves finite soundness because key_set is finite by its type.
-    pub closed spec fn new_from_set(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V) -> GMap<
+    // Preserves finite soundness because, when FINITE=Finite, key_set is finite by its type.
+    pub closed spec fn from_set(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V) -> GMap<
         K,
         V,
         FINITE,
@@ -318,7 +318,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 
     /// Map a function `f` over all (k, v) pairs in `self`.
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> GMap<K, W, FINITE> {
-        GMap::new_from_set(self.dom(), |k| f(k, self[k]))
+        GMap::from_set(self.dom(), |k| f(k, self[k]))
     }
 
     pub broadcast proof fn lemma_map_entries<W>(self, f: spec_fn(K, V) -> W)
@@ -338,7 +338,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
 
     /// Map a function `f` over the values in `self`.
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> GMap<K, W, FINITE> {
-        GMap::new_from_set(self.dom(), |k| f(self[k]))
+        GMap::from_set(self.dom(), |k| f(self[k]))
     }
 
     pub broadcast proof fn lemma_map_values_ensures<W>(self, f: spec_fn(V) -> W)
@@ -357,7 +357,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     /// Swaps map keys and values. Values are not required to be unique; no
     /// promises on which key is chosen on the intersection.
     pub open spec fn invert(self) -> GMap<V, K, FINITE> {
-        GMap::new_from_set(self.dom().map(|k| self[k]), |v| choose|k: K| self.contains_pair(k, v))
+        GMap::from_set(self.dom().map(|k| self[k]), |v| choose|k: K| self.contains_pair(k, v))
     }
 
     /// Export publicly-meaningful definition of invert
@@ -468,17 +468,18 @@ broadcast proof fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FIN
 }
 
 impl<K, V> Map<K, V> {
+    #[verifier::inline]
     pub open spec fn new(key_set: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Map::new_from_set(key_set, fv)
+        Map::from_set(key_set, fv)
     }
 }
 
-pub broadcast proof fn lemma_finite_new_ensures<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_new_from_set_ensures<K, V, FINITE: Finiteness>(key_set: GSet<K, FINITE>, fv: spec_fn(K) -> V)
     ensures
-        #![trigger(Map::new(key_set, fv))]
+        #![trigger(GMap::from_set(key_set, fv))]
         forall|k|
-            key_set.contains(k) <==> #[trigger] Map::new(key_set, fv).dom().contains(k),
-        forall|k| key_set.contains(k) ==> #[trigger] Map::new(key_set, fv)[k] == fv(k),
+            key_set.contains(k) <==> #[trigger] GMap::from_set(key_set, fv).dom().contains(k),
+        forall|k| key_set.contains(k) ==> #[trigger] GMap::from_set(key_set, fv)[k] == fv(k),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
@@ -680,7 +681,7 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V, FINITE: Finiteness>(
 }
 
 pub broadcast group group_map_axioms {
-    lemma_finite_new_ensures,
+    lemma_new_from_set_ensures,
     lemma_infinite_new_ensures,
     GMap::lemma_remove_keys,
     GMap::lemma_invert_ensures,

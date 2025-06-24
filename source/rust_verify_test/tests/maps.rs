@@ -4,6 +4,19 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_map_from_set verus_code! {
+        use vstd::set::*;
+        use vstd::map::*;
+
+        proof fn test_map_new() {
+            let s1 = Set::<int>::empty().insert(1).insert(2).insert(3);
+            let m1 = Map::from_set(s1, |k: int| 10 * k);
+            assert(m1[2] == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1 verus_code! {
         use vstd::set::*;
         use vstd::map::*;
