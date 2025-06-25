@@ -1,9 +1,10 @@
 use crate::ast::{
-    Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, CallTargetKind, Datatype, DatatypeX, Expr, ExprX, Field,
+    Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, CallTarget, CallTargetKind, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
     TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
-    NullaryOpr,
+    NullaryOpr, BinaryOpr, VarBinder, VarBinders, VarBinderX,
+    LoopInvariants, LoopInvariant, Exprs,
 };
 use crate::def::Spanned;
 use crate::util::vec_map_result;
@@ -15,7 +16,8 @@ use std::sync::Arc;
 pub(crate) trait Scoper {
     fn push_scope(&mut self) {}
     fn pop_scope(&mut self) {}
-    fn insert_binding(&mut self, ident: &VarIdent, entry: ScopeEntry) {}
+    fn insert_binding(&mut self, _ident: &VarIdent, _entry: ScopeEntry) {}
+    fn insert_pattern_bindings(&mut self, _pattern: &Pattern, _init: bool) {}
 }
 
 pub(crate) struct NoScoper;
@@ -51,6 +53,10 @@ impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
 
     fn insert_binding(&mut self, ident: &VarIdent, entry: ScopeEntry) {
         let _ = self.insert(ident.clone(), entry);
+    }
+
+    fn insert_pattern_bindings(&mut self, pattern: &Pattern, init: bool) {
+        insert_pattern_vars(self, pattern, init);
     }
 }
 
@@ -99,6 +105,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn insert_pattern_bindings(&mut self, pattern: &Pattern, init: bool) {
+        if let Some(scoper) = self.scoper() {
+            scoper.insert_pattern_bindings(pattern, init);
+        }
+    }
+
     fn visit_typs(&mut self, typs: &Vec<Typ>) -> Result<R::Vec<Typ>, Err> {
         R::map_vec(typs, &mut |t| self.visit_typ(t))
     }
@@ -107,12 +119,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         R::map_vec(exprs, &mut |e| self.visit_expr(e))
     }
 
-    fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
-        R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
+    fn visit_exprs_vec(&mut self, exprs: &Vec<Exprs>) -> Result<R::Vec<Exprs>, Err> {
+        R::map_vec(exprs, &mut |es| {
+            let es = self.visit_exprs(es)?;
+            R::ret(|| Arc::new(R::get_vec(es)))
+        })
     }
 
-    fn visit_stmts(&mut self, stmts: &Vec<Stmt>) -> Result<R::Vec<Stmt>, Err> {
-        R::map_vec(stmts, &mut |s| self.visit_stmt(s))
+    fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
+        R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
     }
 
     fn visit_binders_expr(&mut self, binders: &air::ast::Binders<Expr>) -> Result<R::Vec<air::ast::Binder<Expr>>, Err> {
@@ -123,10 +138,28 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    fn visit_binders_pattern(&mut self, binders: &air::ast::Binders<Pattern>) -> Result<R::Vec<air::ast::Binder<Pattern>>, Err> {
+        R::map_vec(binders, &mut |b| {
+            let air::ast::BinderX { name, a } = &**b;
+            let a = self.visit_pattern(a)?;
+            R::ret(|| Arc::new(air::ast::BinderX { name: name.clone(), a: R::get(a) }))
+        })
+    }
+
+    fn visit_binder_typ(&mut self, b: &VarBinder<Typ>) -> Result<R::Ret<VarBinder<Typ>>, Err> {
+        let VarBinderX { name, a } = &**b;
+        let a = self.visit_typ(a)?;
+        R::ret(|| Arc::new(VarBinderX { name: name.clone(), a: R::get(a) }))
+    }
+
+    fn visit_binders_typ(&mut self, binders: &VarBinders<Typ>) -> Result<R::Vec<VarBinder<Typ>>, Err> {
+        R::map_vec(binders, &mut |b| self.visit_binder_typ(b))
+    }
+
     fn visit_call_target_kind(&mut self, call_target_kind: &CallTargetKind) -> Result<R::Ret<CallTargetKind>, Err> {
         match call_target_kind {
             CallTargetKind::Static => R::ret(|| call_target_kind.clone()),
-            CallTargetKind::ProofFn(modes, mode) => R::ret(|| call_target_kind.clone()),
+            CallTargetKind::ProofFn(_modes, _mode) => R::ret(|| call_target_kind.clone()),
             CallTargetKind::Dynamic => R::ret(|| call_target_kind.clone()),
             CallTargetKind::DynamicResolved { resolved, typs, impl_paths, is_trait_default } => {
                 let typs = self.visit_typs(typs)?;
@@ -158,6 +191,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    // TODO: NullaryOpr, UnaryOpr, BinaryOpr are all redundant with the SST visitor,
+    // could be factored out
     fn visit_nullary_opr(&mut self, nopr: &NullaryOpr) -> Result<R::Ret<NullaryOpr>, Err> {
         match nopr {
             NullaryOpr::ConstGeneric(typ) => {
@@ -186,9 +221,30 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_unary_opr(&mut self, uopr: &UnaryOpr) -> Result<R::Ret<UnaryOpr>, Err> {
         match uopr {
-            UnaryOpr::Box(typ) => {
-                let t = self.visit_typ(typ)?;
-                R::ret(|| UnaryOpr::Box(t)
+            UnaryOpr::Box(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::Box(R::get(t)))
+            }
+            UnaryOpr::Unbox(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::Unbox(R::get(t)))
+            }
+            UnaryOpr::HasType(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::HasType(R::get(t)))
+            }
+            UnaryOpr::IsVariant { .. }
+            | UnaryOpr::Field { .. }
+            | UnaryOpr::IntegerTypeBound(..)
+            | UnaryOpr::CustomErr(..) => R::ret(|| uopr.clone()),
+        }
+    }
+
+    fn visit_binary_opr(&mut self, bopr: &BinaryOpr) -> Result<R::Ret<BinaryOpr>, Err> {
+        match bopr {
+            BinaryOpr::ExtEq(deep, t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| BinaryOpr::ExtEq(*deep, R::get(t)))
             }
         }
     }
@@ -241,7 +297,345 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e2 = self.visit_expr(e2)?;
                 R::ret(|| expr_new(ExprX::BinaryOpr(R::get(bo), R::get(e1), R::get(e2))))
             }
-            _ => { }
+            ExprX::Multi(multi_op, es) => {
+                let es = self.visit_exprs(es)?;
+                R::ret(|| expr_new(ExprX::Multi(multi_op.clone(), R::get_vec_a(es))))
+            }
+            ExprX::Quant(quant, bs, e) => {
+                let binders = self.visit_binders_typ(bs)?;
+                self.push_scope();
+                for b in R::get_vec_or(&binders, bs).iter() {
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+                }
+                let e = self.visit_expr(e)?;
+                self.pop_scope();
+                R::ret(|| expr_new(ExprX::Quant(quant.clone(), R::get_vec_a(binders), R::get(e))))
+            }
+            ExprX::Closure(bs, e) => {
+                let binders = self.visit_binders_typ(bs)?;
+                self.push_scope();
+                for b in R::get_vec_or(&binders, bs).iter() {
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+                }
+                let e = self.visit_expr(e)?;
+                self.pop_scope();
+                R::ret(|| expr_new(ExprX::Closure(R::get_vec_a(binders), R::get(e))))
+            }
+            ExprX::NonSpecClosure {
+                params: p,
+                proof_fn_modes,
+                body,
+                requires,
+                ensures,
+                ret: r,
+                external_spec,
+            } => {
+                let params = self.visit_binders_typ(p)?;
+                let ret = self.visit_binder_typ(r)?;
+
+                self.push_scope();
+                for b in R::get_vec_or(&params, p).iter() {
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+                }
+
+                let requires = self.visit_exprs(requires)?;
+
+                self.push_scope();
+                let b = R::get_or(&ret, r);
+                self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+
+                let ensures = self.visit_exprs(ensures)?;
+
+                self.pop_scope();
+
+                let body = self.visit_expr(body)?;
+
+                self.pop_scope();
+
+                let external_spec = R::map_opt(external_spec, &mut |(var_ident, e)| {
+                    let e = self.visit_expr(e)?;
+                    R::ret(|| (var_ident.clone(), R::get(e)))
+                })?;
+
+                R::ret(|| expr_new(ExprX::NonSpecClosure {
+                    params: R::get_vec_a(params),
+                    proof_fn_modes: proof_fn_modes.clone(),
+                    body: R::get(body),
+                    requires: R::get_vec_a(requires),
+                    ensures: R::get_vec_a(ensures),
+                    ret: R::get(ret),
+                    external_spec: R::get_opt(external_spec),
+                }))
+            }
+            ExprX::ArrayLiteral(es) => {
+                let es = self.visit_exprs(es)?;
+                R::ret(|| expr_new(ExprX::ArrayLiteral(R::get_vec_a(es))))
+            }
+            ExprX::ExecFnByName(_fun) => R::ret(|| expr.clone()),
+            ExprX::Choose { params: bs, cond, body } => {
+                let binders = self.visit_binders_typ(bs)?;
+                self.push_scope();
+                for b in R::get_vec_or(&binders, bs).iter() {
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+                }
+                let cond = self.visit_expr(cond)?;
+                let body = self.visit_expr(body)?;
+                self.pop_scope();
+                R::ret(|| expr_new(ExprX::Choose {
+                    params: R::get_vec_a(binders),
+                    cond: R::get(cond),
+                    body: R::get(body),
+                }))
+            }
+            ExprX::WithTriggers { triggers, body } => {
+                let triggers = self.visit_exprs_vec(triggers)?;
+                let body = self.visit_expr(body)?;
+                R::ret(|| expr_new(ExprX::WithTriggers {
+                    triggers: R::get_vec_a(triggers),
+                    body: R::get(body),
+                }))
+            }
+            ExprX::Assign { init_not_mut, lhs, rhs, op } => {
+                let lhs = self.visit_expr(lhs)?;
+                let rhs = self.visit_expr(rhs)?;
+                R::ret(|| expr_new(ExprX::Assign {
+                    init_not_mut: *init_not_mut,
+                    lhs: R::get(lhs),
+                    rhs: R::get(rhs),
+                    op: *op,
+                }))
+            }
+            ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr.clone()),
+            ExprX::RevealString(_s) => R::ret(|| expr.clone()),
+            ExprX::Header(_) => {
+                // don't descend into Headers
+                R::ret(|| expr.clone())
+            }
+            ExprX::AssertAssume { is_assume, expr } => {
+                let expr = self.visit_expr(expr)?;
+                R::ret(|| expr_new(ExprX::AssertAssume { is_assume: *is_assume, expr: R::get(expr) }))
+            }
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => {
+                let expr = self.visit_expr(expr)?;
+                R::ret(|| expr_new(ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: *is_assume, expr: R::get(expr), fun: fun.clone() }))
+            }
+            ExprX::AssertBy { vars: bs, require, ensure, proof } => {
+                let binders = self.visit_binders_typ(bs)?;
+                self.push_scope();
+                for b in R::get_vec_or(&binders, bs).iter() {
+                    self.insert_binding(&b.name, ScopeEntry::new(&b.a, false, true));
+                }
+                let require = self.visit_expr(require)?;
+                let ensure = self.visit_expr(ensure)?;
+                let proof = self.visit_expr(proof)?;
+                self.pop_scope();
+                R::ret(|| expr_new(ExprX::AssertBy {
+                    vars: R::get_vec_a(binders),
+                    require: R::get(require),
+                    ensure: R::get(ensure),
+                    proof: R::get(proof),
+                }))
+            }
+            ExprX::AssertQuery { requires, ensures, proof, mode } => {
+                let requires = self.visit_exprs(requires)?;
+                let ensures = self.visit_exprs(ensures)?;
+                let proof = self.visit_expr(proof)?;
+                R::ret(|| expr_new(ExprX::AssertQuery {
+                    requires: R::get_vec_a(requires),
+                    ensures: R::get_vec_a(ensures),
+                    proof: R::get(proof),
+                    mode: *mode,
+                }))
+            }
+            ExprX::AssertCompute(expr, compute_mode) => {
+                let expr = self.visit_expr(expr)?;
+                R::ret(|| expr_new(ExprX::AssertCompute(
+                    R::get(expr), *compute_mode
+                )))
+            }
+            ExprX::If(cond, thn, els) => {
+                let cond = self.visit_expr(cond)?;
+                let thn = self.visit_expr(thn)?;
+                let els = self.visit_opt_expr(els)?;
+                R::ret(|| expr_new(ExprX::If(R::get(cond), R::get(thn), R::get_opt(els))))
+            }
+            ExprX::Match(expr, arms) => {
+                let expr = self.visit_expr(expr)?;
+                let arms = self.visit_arms(arms)?;
+                R::ret(|| expr_new(ExprX::Match(R::get(expr), R::get_vec_a(arms))))
+            }
+            ExprX::Loop {
+                loop_isolation,
+                is_for_loop,
+                label,
+                cond,
+                body,
+                invs,
+                decrease,
+            } => {
+                let cond = self.visit_opt_expr(cond)?;
+                let body = self.visit_expr(body)?;
+                let invs = self.visit_loop_invariants(invs)?;
+                let decrease = self.visit_exprs(decrease)?;
+                R::ret(|| expr_new(ExprX::Loop {
+                    loop_isolation: *loop_isolation,
+                    is_for_loop: *is_for_loop,
+                    label: label.clone(),
+                    cond: R::get_opt(cond),
+                    body: R::get(body),
+                    invs: R::get_vec_a(invs),
+                    decrease: R::get_vec_a(decrease),
+                }))
+            }
+            ExprX::OpenInvariant(e, b, body, ato) => {
+                let e = self.visit_expr(e)?;
+
+                let binder = self.visit_binder_typ(b)?;
+
+                self.push_scope();
+                let b = R::get_or(&binder, b);
+                self.insert_binding(&b.name, ScopeEntry::new(&b.a, true, true));
+
+                let body = self.visit_expr(body)?;
+
+                R::ret(|| expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato)))
+            }
+            ExprX::Return(e) => {
+                let e = self.visit_opt_expr(e)?;
+                R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))
+            }
+            ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr.clone()),
+            ExprX::Ghost { alloc_wrapper, tracked, expr } => {
+                let expr = self.visit_expr(expr)?;
+                R::ret(|| expr_new(ExprX::Ghost {
+                    alloc_wrapper: *alloc_wrapper,
+                    tracked: *tracked,
+                    expr: R::get(expr),
+                }))
+            }
+            ExprX::ProofInSpec(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::ProofInSpec(R::get(e))))
+            }
+            ExprX::Block(stmts, e) => {
+                let mut scope_count = 0;
+
+                let stmts = R::map_vec(stmts, &mut |s| {
+                    let stmt = self.visit_stmt(s)?;
+
+                    match &R::get_or(&stmt, s).x {
+                        StmtX::Expr(_) => { }
+                        StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                            self.push_scope();
+                            self.insert_pattern_bindings(pattern, init.is_some());
+                            scope_count += 1;
+                        }
+                    }
+                    Ok(stmt)
+                })?;
+
+                let e = self.visit_opt_expr(e)?;
+
+                for _i in 0 .. scope_count {
+                    self.pop_scope();
+                }
+
+                R::ret(|| expr_new(ExprX::Block(R::get_vec_a(stmts), R::get_opt(e))))
+            }
+            ExprX::AirStmt(_) => R::ret(|| expr.clone()),
+            ExprX::NeverToAny(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::NeverToAny(R::get(e))))
+            }
+            ExprX::Nondeterministic => R::ret(|| expr.clone()),
+        }
+    }
+
+    fn visit_arms(&mut self, arms: &Arms) -> Result<R::Vec<Arm>, Err> {
+        R::map_vec(arms, &mut |e| self.visit_arm(e))
+    }
+
+    fn visit_arm(&mut self, arm: &Arm) -> Result<R::Ret<Arm>, Err> {
+        let ArmX { pattern: p, guard, body } = &arm.x;
+        let pattern = self.visit_pattern(p)?;
+        self.push_scope();
+        self.insert_pattern_bindings(R::get_or(&pattern, p), true);
+        let guard = self.visit_expr(guard)?;
+        let body = self.visit_expr(body)?;
+        self.pop_scope();
+        R::ret(|| Spanned::new(arm.span.clone(), ArmX {
+            pattern: R::get(pattern),
+            guard: R::get(guard),
+            body: R::get(body),
+        }))
+    }
+
+    fn visit_loop_invariants(&mut self, invs: &LoopInvariants) -> Result<R::Vec<LoopInvariant>, Err> {
+        R::map_vec(invs, &mut |e| self.visit_loop_invariant(e))
+    }
+
+    fn visit_loop_invariant(&mut self, inv: &LoopInvariant) -> Result<R::Ret<LoopInvariant>, Err> {
+        let LoopInvariant { kind, inv: e } = inv;
+        let e = self.visit_expr(e)?;
+        R::ret(|| LoopInvariant { kind: *kind, inv: R::get(e) })
+    }
+
+    fn visit_stmt_rec(&mut self, stmt: &Stmt) -> Result<R::Ret<Stmt>, Err> {
+        let stmt_new = |s: StmtX| Spanned::new(stmt.span.clone(), s);
+        match &stmt.x {
+            StmtX::Expr(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| stmt_new(StmtX::Expr(R::get(e))))
+            }
+            StmtX::Decl { pattern, mode, init, els } => {
+                let pattern = self.visit_pattern(pattern)?;
+                let init = self.visit_opt_expr(init)?;
+                let els = self.visit_opt_expr(els)?;
+                R::ret(|| stmt_new(StmtX::Decl {
+                    pattern: R::get(pattern),
+                    mode: *mode,
+                    init: R::get_opt(init),
+                    els: R::get_opt(els),
+                }))
+            }
+        }
+    }
+
+    fn visit_pattern_rec(&mut self, pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
+        let typ = self.visit_typ(&pattern.typ)?;
+        let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
+        match &pattern.x {
+            PatternX::Wildcard(_) => R::ret(|| pattern.clone()),
+            PatternX::Var { name: _, mutable: _ } => R::ret(|| pattern.clone()),
+            PatternX::Binding { name, mutable, sub_pat } => {
+                let sub_pat = self.visit_pattern(sub_pat)?;
+                R::ret(|| pattern_new(PatternX::Binding {
+                    name: name.clone(),
+                    mutable: *mutable,
+                    sub_pat: R::get(sub_pat),
+                }))
+            }
+            PatternX::Constructor(dt, ident, bs) => {
+                let bs = self.visit_binders_pattern(bs)?;
+                R::ret(|| pattern_new(PatternX::Constructor(dt.clone(), ident.clone(), R::get_vec_a(bs))))
+            }
+            PatternX::Or(a, b) => {
+                let a = self.visit_pattern(a)?;
+                let b = self.visit_pattern(b)?;
+                R::ret(|| pattern_new(PatternX::Or(R::get(a), R::get(b))))
+            }
+            PatternX::Expr(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| pattern_new(PatternX::Expr(R::get(e))))
+            }
+            PatternX::Range(start, end) => {
+                let start = self.visit_opt_expr(start)?;
+                let end = R::map_opt(end, &mut |(end_expr, ineq_op)| {
+                    let end_expr = self.visit_expr(end_expr)?;
+                    R::ret(|| (R::get(end_expr), *ineq_op))
+                })?;
+                R::ret(|| pattern_new(PatternX::Range(R::get_opt(start), R::get_opt(end))))
+            }
         }
     }
 }

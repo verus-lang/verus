@@ -9,6 +9,7 @@ pub(crate) trait Returner {
     fn get_vec<A>(r: Self::Vec<A>) -> Vec<A>;
     fn get_vec_a<A>(r: Self::Vec<A>) -> Arc<Vec<A>>;
     fn get_vec_or<'a, A>(r: &'a Self::Vec<A>, or: &'a Vec<A>) -> &'a Vec<A>;
+    fn get_or<'a, A>(r: &'a Self::Ret<A>, or: &'a A) -> &'a A;
     fn get_opt<A>(r: Self::Opt<A>) -> Option<A>;
     fn vec<A>() -> Self::Vec<A>;
     fn push<A>(v: &mut Self::Vec<A>, a: Self::Ret<A>);
@@ -40,6 +41,9 @@ impl Returner for Walk {
         panic!("cannot use Returner::get_vec_a in Walk");
     }
     fn get_vec_or<'a, A>(_r: &'a Self::Vec<A>, or: &'a Vec<A>) -> &'a Vec<A> {
+        or
+    }
+    fn get_or<'a, A>(_r: &'a Self::Ret<A>, or: &'a A) -> &'a A {
         or
     }
     fn get_opt<A>(_: Self::Opt<A>) -> Option<A> {
@@ -86,6 +90,9 @@ impl Returner for Rewrite {
         Arc::new(r)
     }
     fn get_vec_or<'a, A>(r: &'a Self::Vec<A>, _or: &'a Vec<A>) -> &'a Vec<A> {
+        r
+    }
+    fn get_or<'a, A>(r: &'a Self::Ret<A>, _or: &'a A) -> &'a A {
         r
     }
     fn get_opt<A>(o: Self::Opt<A>) -> Option<A> {
