@@ -6,10 +6,10 @@
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
  - [`external`](#verifierexternal)
- - `external_body`
+ - [`external_body`](#verifierexternal_body)
  - `external_fn_specification`
  - `external_type_specification`
- - `ext_equal`
+ - [`ext_equal`](#verifierext_equal)
  - [`inline`](#verifierinline)
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
@@ -74,6 +74,15 @@ Tells Verus to only consider the function definition but not the function body, 
 it correctly satisfies its specification.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
+## `#[verifier::ext_equal]`
+
+Used to mark datatypes that need extensionality on `Seq`, `Set`, `Map`,
+`Multiset`, `spec_fn` fields or fields of other `#[verifier::ext_equal]`
+datatypes.
+
+See the [discussion of equality via extensionality](./extensional_equality..md#equality-via-extensionality)
+for more information.
 
 ## `#[verifier::inline]`
 
