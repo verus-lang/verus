@@ -1444,6 +1444,21 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_no_unsupported_trait_imports ["no-auto-import-builtin"] => code! {
+        // https://github.com/verus-lang/verus/issues/1582
+        // https://github.com/verus-lang/verus/issues/1597
+        // https://github.com/verus-lang/verus/issues/1708
+        #![feature(extern_types)]
+
+        // The bug is a mishandling of unsupported types, so to test it,
+        // declare a foreign type that is unlikely to be supported in future Verus versions:
+        extern "C" { type T; }
+
+        impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] subst_in_traits verus_code! {
         // https://github.com/verus-lang/verus/issues/1511

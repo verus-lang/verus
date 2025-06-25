@@ -378,15 +378,16 @@ fn adt_args<'a, 'tcx>(
 // Collect some or all as-yet unreached types mentioned directly by ty
 // (It's ok to miss some, but the more we capture, the less extraneous code
 // we have to import.)
+// Return Err if we don't handle an impl with this type.
 fn collect_unreached_datatypes<'tcx>(
     ctxt: &Context<'tcx>,
     state: &State,
     datatypes: &mut Vec<DefId>,
     ty: &Ty<'tcx>,
-) {
+) -> Result<(), ()> {
     match ty.kind() {
         TyKind::Ref(_, t, _) | TyKind::Slice(t) | TyKind::Array(t, _) => {
-            collect_unreached_datatypes(ctxt, state, datatypes, t);
+            collect_unreached_datatypes(ctxt, state, datatypes, t)
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
@@ -398,13 +399,27 @@ fn collect_unreached_datatypes<'tcx>(
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::GenericArgKind::Type(t) => {
-                        collect_unreached_datatypes(ctxt, state, datatypes, &t);
+                        collect_unreached_datatypes(ctxt, state, datatypes, &t)?;
                     }
                     _ => {}
                 }
             }
+            Ok(())
         }
-        _ => {}
+        TyKind::Bool
+        | TyKind::Uint(_)
+        | TyKind::Int(_)
+        | TyKind::Char
+        | TyKind::Str
+        | TyKind::Float(_)
+        | TyKind::Param(_)
+        | TyKind::Never
+        | TyKind::Tuple(..)
+        | TyKind::RawPtr(..)
+        | TyKind::Alias(rustc_middle::ty::AliasTyKind::Projection, _) => Ok(()),
+        TyKind::Closure(..) => Err(()),
+        TyKind::FnDef(..) => Err(()),
+        _ => Err(()),
     }
 }
 
@@ -2489,11 +2504,14 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             state.trait_decls.push(decl);
         }
 
-        for impl_id in ctxt.tcx.all_impls(trait_id) {
+        'imp: for impl_id in ctxt.tcx.all_impls(trait_id) {
             let mut datatypes: Vec<DefId> = Vec::new();
             let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
             for ty in trait_ref.skip_binder().args.types() {
-                collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
+                let result = collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
+                if result.is_err() {
+                    continue 'imp;
+                }
                 for t in &datatypes {
                     state
                         .typs_used_in_trait_impls_reverse_map
