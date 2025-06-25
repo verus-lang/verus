@@ -1165,7 +1165,7 @@ fn check_function(
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
             _ => {
-                 return Err(error(
+                return Err(error(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
                 ));
