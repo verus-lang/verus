@@ -10,12 +10,17 @@ pub(crate) trait Returner {
     fn get_vec_a<A>(r: Self::Vec<A>) -> Arc<Vec<A>>;
     fn get_vec_or<'a, A>(r: &'a Self::Vec<A>, or: &'a Vec<A>) -> &'a Vec<A>;
     fn get_or<'a, A>(r: &'a Self::Ret<A>, or: &'a A) -> &'a A;
+    fn get_vec_or_slice<'a, A>(r: &'a Self::Vec<A>, or: &'a [A]) -> &'a [A];
     fn get_opt<A>(r: Self::Opt<A>) -> Option<A>;
     fn vec<A>() -> Self::Vec<A>;
     fn push<A>(v: &mut Self::Vec<A>, a: Self::Ret<A>);
     fn map_vec<A, B, Err>(
         v: &Vec<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
+    ) -> Result<Self::Vec<B>, Err>;
+    fn map_vec_and_flatten<A, B, Err>(
+        v: &Vec<A>,
+        f: &mut impl FnMut(&A) -> Result<Self::Vec<B>, Err>,
     ) -> Result<Self::Vec<B>, Err>;
     fn map_opt<A, B, Err>(
         o: &Option<A>,
@@ -43,6 +48,9 @@ impl Returner for Walk {
     fn get_vec_or<'a, A>(_r: &'a Self::Vec<A>, or: &'a Vec<A>) -> &'a Vec<A> {
         or
     }
+    fn get_vec_or_slice<'a, A>(_r: &'a Self::Vec<A>, or: &'a [A]) -> &'a [A] {
+        or
+    }
     fn get_or<'a, A>(_r: &'a Self::Ret<A>, or: &'a A) -> &'a A {
         or
     }
@@ -62,9 +70,18 @@ impl Returner for Walk {
         }
         Ok(())
     }
+    fn map_vec_and_flatten<A, B, Err>(
+        v: &Vec<A>,
+        f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
+    ) -> Result<Self::Vec<B>, Err> {
+        for a in v {
+            f(a)?;
+        }
+        Ok(())
+    }
     fn map_opt<A, B, Err>(
         o: &Option<A>,
-        f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
+        f: &mut impl FnMut(&A) -> Result<Self::Vec<B>, Err>,
     ) -> Result<Self::Opt<B>, Err> {
         if let Some(a) = o {
             f(a)?;
@@ -92,6 +109,9 @@ impl Returner for Rewrite {
     fn get_vec_or<'a, A>(r: &'a Self::Vec<A>, _or: &'a Vec<A>) -> &'a Vec<A> {
         r
     }
+    fn get_vec_or_slice<'a, A>(r: &'a Self::Vec<A>, _or: &'a [A]) -> &'a [A] {
+        &r
+    }
     fn get_or<'a, A>(r: &'a Self::Ret<A>, _or: &'a A) -> &'a A {
         r
     }
@@ -113,6 +133,17 @@ impl Returner for Rewrite {
             vec.push(f(a)?);
         }
         Ok(vec)
+    }
+    fn map_vec_and_flatten<A, B, Err>(
+        v: &Vec<A>,
+        f: &mut impl FnMut(&A) -> Result<Self::Vec<B>, Err>,
+    ) -> Result<Self::Vec<B>, Err> {
+        let mut vec = Vec::new();
+        for a in v {
+            vec.push(f(a)?);
+        }
+        let flattened = vec.into_iter().flatten().collect::<Vec<_>>();
+        Ok(flattened)
     }
     fn map_opt<A, B, Err>(
         o: &Option<A>,

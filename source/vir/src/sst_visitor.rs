@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOpr, GenericBound, GenericBoundX, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder,
     VarIdent, VirErr,
 };
-use crate::ast_visitor::TypVisitor;
+use crate::ast_visitor::AstVisitor;
 use crate::def::Spanned;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
@@ -1057,7 +1057,7 @@ where
     }
 }
 
-impl<'a, T, Env, FE, FT> crate::ast_visitor::TypVisitor<Walk, T>
+impl<'a, T, Env, FE, FT> crate::ast_visitor::AstVisitor<Walk, T, crate::ast_visitor::NoScoper>
     for ExpTypVisitorDfs<'a, Env, FE, FT>
 where
     FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
