@@ -1,8 +1,9 @@
 use crate::ast::{
-    Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
+    Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, CallTargetKind, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
     TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
+    NullaryOpr,
 };
 use crate::def::Spanned;
 use crate::util::vec_map_result;
@@ -10,6 +11,15 @@ use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
+
+pub(crate) trait Scoper {
+    fn push_scope(&mut self) {}
+    fn pop_scope(&mut self) {}
+    fn insert_binding(&mut self, ident: &VarIdent, entry: ScopeEntry) {}
+}
+
+pub(crate) struct NoScoper;
+impl Scoper for NoScoper {}
 
 pub struct ScopeEntry {
     #[allow(dead_code)]
@@ -19,8 +29,6 @@ pub struct ScopeEntry {
     pub is_outer_param_or_ret: bool,
 }
 
-pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
-
 impl ScopeEntry {
     fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
         ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
@@ -29,6 +37,217 @@ impl ScopeEntry {
         ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: true }
     }
 }
+
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
+
+impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
+    fn push_scope(&mut self) {
+        self.push_scope(true);
+    }
+
+    fn pop_scope(&mut self) {
+        self.pop_scope();
+    }
+
+    fn insert_binding(&mut self, ident: &VarIdent, entry: ScopeEntry) {
+        let _ = self.insert(ident.clone(), entry);
+    }
+}
+
+
+
+pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
+    // These methods are often overridden to make a specific sort of visit
+
+    fn visit_typ(&mut self, typ: &Typ) -> Result<R::Ret<Typ>, Err> {
+        R::ret(|| typ.clone())
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) -> Result<R::Ret<Expr>, Err> {
+        R::ret(|| expr.clone())
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<R::Ret<Stmt>, Err> {
+        R::ret(|| stmt.clone())
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
+        R::ret(|| pattern.clone())
+    }
+
+    fn scoper(&mut self) -> Option<&mut Scope> {
+        None
+    }
+
+    // These methods are usually left unchanged
+
+    fn push_scope(&mut self) {
+        if let Some(scoper) = self.scoper() {
+            scoper.push_scope();
+        }
+    }
+
+    fn pop_scope(&mut self) {
+        if let Some(scoper) = self.scoper() {
+            scoper.pop_scope();
+        }
+    }
+
+    fn insert_binding(&mut self, ident: &VarIdent, entry: ScopeEntry) {
+        if let Some(scoper) = self.scoper() {
+            scoper.insert_binding(ident, entry);
+        }
+    }
+
+    fn visit_typs(&mut self, typs: &Vec<Typ>) -> Result<R::Vec<Typ>, Err> {
+        R::map_vec(typs, &mut |t| self.visit_typ(t))
+    }
+
+    fn visit_exprs(&mut self, exprs: &Vec<Expr>) -> Result<R::Vec<Expr>, Err> {
+        R::map_vec(exprs, &mut |e| self.visit_expr(e))
+    }
+
+    fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
+        R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
+    }
+
+    fn visit_stmts(&mut self, stmts: &Vec<Stmt>) -> Result<R::Vec<Stmt>, Err> {
+        R::map_vec(stmts, &mut |s| self.visit_stmt(s))
+    }
+
+    fn visit_binders_expr(&mut self, binders: &air::ast::Binders<Expr>) -> Result<R::Vec<air::ast::Binder<Expr>>, Err> {
+        R::map_vec(binders, &mut |b| {
+            let air::ast::BinderX { name, a } = &**b;
+            let a = self.visit_expr(a)?;
+            R::ret(|| Arc::new(air::ast::BinderX { name: name.clone(), a: R::get(a) }))
+        })
+    }
+
+    fn visit_call_target_kind(&mut self, call_target_kind: &CallTargetKind) -> Result<R::Ret<CallTargetKind>, Err> {
+        match call_target_kind {
+            CallTargetKind::Static => R::ret(|| call_target_kind.clone()),
+            CallTargetKind::ProofFn(modes, mode) => R::ret(|| call_target_kind.clone()),
+            CallTargetKind::Dynamic => R::ret(|| call_target_kind.clone()),
+            CallTargetKind::DynamicResolved { resolved, typs, impl_paths, is_trait_default } => {
+                let typs = self.visit_typs(typs)?;
+                R::ret(|| CallTargetKind::DynamicResolved {
+                    resolved: resolved.clone(),
+                    typs: R::get_vec_a(typs),
+                    impl_paths: impl_paths.clone(),
+                    is_trait_default: *is_trait_default,
+                })
+            }
+        }
+    }
+
+    fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
+        match call_target {
+            CallTarget::Fun(kind, fun, typs, impl_paths, au) => {
+                let kind = self.visit_call_target_kind(kind)?;
+                let typs = self.visit_typs(typs)?;
+                R::ret(|| CallTarget::Fun(R::get(kind), fun.clone(), R::get_vec_a(typs), impl_paths.clone(), au.clone()))
+            }
+            CallTarget::FnSpec(expr) => {
+                let e = self.visit_expr(expr)?;
+                R::ret(|| CallTarget::FnSpec(R::get(e)))
+            }
+            CallTarget::BuiltinSpecFun(bsf, typs, impl_paths) => {
+                let typs = self.visit_typs(typs)?;
+                R::ret(|| CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), impl_paths.clone()))
+            }
+        }
+    }
+
+    fn visit_nullary_opr(&mut self, nopr: &NullaryOpr) -> Result<R::Ret<NullaryOpr>, Err> {
+        match nopr {
+            NullaryOpr::ConstGeneric(typ) => {
+                let t = self.visit_typ(typ)?;
+                R::ret(|| NullaryOpr::ConstGeneric(R::get(t)))
+            }
+            NullaryOpr::TraitBound(trait_id, typs) => {
+                let ts = self.visit_typs(typs)?;
+                R::ret(|| NullaryOpr::TraitBound(trait_id.clone(), R::get_vec_a(ts)))
+            }
+            NullaryOpr::TypEqualityBound(path, typs, id, typ) => {
+                let ts = self.visit_typs(typs)?;
+                let t = self.visit_typ(typ)?;
+                R::ret(|| NullaryOpr::TypEqualityBound(path.clone(), R::get_vec_a(ts), id.clone(), R::get(t)))
+            }
+            NullaryOpr::ConstTypBound(t1, t2) => {
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| NullaryOpr::ConstTypBound(R::get(t1), R::get(t2)))
+            }
+            NullaryOpr::NoInferSpecForLoopIter => {
+                R::ret(|| nopr.clone())
+            }
+        }
+    }
+
+    fn visit_unary_opr(&mut self, uopr: &UnaryOpr) -> Result<R::Ret<UnaryOpr>, Err> {
+        match uopr {
+            UnaryOpr::Box(typ) => {
+                let t = self.visit_typ(typ)?;
+                R::ret(|| UnaryOpr::Box(t)
+            }
+        }
+    }
+
+    fn visit_expr_rec(&mut self, expr: &Expr) -> Result<R::Ret<Expr>, Err> {
+        let typ = self.visit_typ(&expr.typ)?;
+        let expr_new = |e: ExprX| SpannedTyped::new(&expr.span, &R::get(typ), e);
+        match &expr.x {
+            ExprX::Const(_) => R::ret(|| expr.clone()),
+            ExprX::Var(_) => R::ret(|| expr.clone()),
+            ExprX::VarLoc(_) => R::ret(|| expr.clone()),
+            ExprX::VarAt(_, _) => R::ret(|| expr.clone()),
+            ExprX::ConstVar(_, _) => R::ret(|| expr.clone()),
+            ExprX::StaticVar(_) => R::ret(|| expr.clone()),
+            ExprX::Loc(e) => {
+                let e1 = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
+            }
+            ExprX::Call(call_target, exprs) => {
+                let ct = self.visit_call_target(call_target)?;
+                let es = self.visit_exprs(exprs)?;
+                R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es))))
+            }
+            ExprX::Ctor(dt, id, binders, opt_e) => {
+                let bs = self.visit_binders_expr(binders)?;
+                let oe = self.visit_opt_expr(opt_e)?;
+                R::ret(|| expr_new(ExprX::Ctor(dt.clone(), id.clone(), R::get_vec_a(bs), R::get_opt(oe))))
+            }
+            ExprX::NullaryOpr(nullary_opr) => {
+                let no = self.visit_nullary_opr(nullary_opr)?;
+                R::ret(|| expr_new(ExprX::NullaryOpr(R::get(no))))
+            }
+            ExprX::Unary(op, e) => {
+                let e1 = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Unary(*op, R::get(e1))))
+            }
+            ExprX::UnaryOpr(opr, e) => {
+                let uo = self.visit_unary_opr(opr)?;
+                let e1 = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::UnaryOpr(R::get(uo), R::get(e1))))
+            }
+            ExprX::Binary(op, e1, e2) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                R::ret(|| expr_new(ExprX::Binary(*op, R::get(e1), R::get(e2))))
+            }
+            ExprX::BinaryOpr(opr, e1, e2) => {
+                let bo = self.visit_binary_opr(opr)?;
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                R::ret(|| expr_new(ExprX::BinaryOpr(R::get(bo), R::get(e1), R::get(e2))))
+            }
+            _ => { }
+        }
+    }
+}
+
+
+
 
 pub(crate) trait TypVisitor<R: Returner, Err> {
     fn visit_typ(&mut self, typ: &Typ) -> Result<R::Ret<Typ>, Err>;
