@@ -1161,10 +1161,16 @@ fn check_function(
     }
 
     if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
-        return Err(error(
-            &function.span,
-            "external_body/assume_specification not allowed with --no-cheating",
-        ));
+        match &function.x.owning_module {
+            // Allow external_body/assume_specification inside vstd
+            Some(path) if path.is_vstd_path() => {}
+            _ => {
+                 return Err(error(
+                    &function.span,
+                    "external_body/assume_specification not allowed with --no-cheating",
+                ));
+            }
+        }
     }
 
     Ok(())
