@@ -2777,7 +2777,7 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
         0 <= i < s.len(),
     ensures
         #![trigger s.remove(i).to_multiset()]
-        s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
+        s.remove(i).to_multiset() == s.to_multiset().remove(s[i]),
 {
     broadcast use super::multiset::group_multiset_axioms;
 
@@ -2788,6 +2788,7 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
     lemma_seq_union_to_multiset_commutative(s0, s1);
     assert(s == s0 + s1);
     assert(s2 + s0 == (s1 + s0).drop_first());
+    assert(s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]));
 }
 
 pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
@@ -2795,7 +2796,7 @@ pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
         0 <= i <= s.len(),
     ensures
         #![trigger s.insert(i, a).to_multiset()]
-        s.insert(i, a).to_multiset() =~= s.to_multiset().insert(a),
+        s.insert(i, a).to_multiset() == s.to_multiset().insert(a),
     decreases s.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -2810,6 +2811,7 @@ pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
 
     };
     assert((seq![a] + s0 + s1).drop_first() == s0 + s1);
+    assert(s.insert(i, a).to_multiset() =~= s.to_multiset().insert(a));
 }
 
 /// to_multiset() preserves length
@@ -2871,7 +2873,7 @@ pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
-        #[trigger] s.update(i, a).to_multiset() =~= s.to_multiset().insert(a).remove(s[i]),
+        #[trigger] s.update(i, a).to_multiset() == s.to_multiset().insert(a).remove(s[i]),
     decreases s.len(),
 {
     broadcast use {
@@ -2883,6 +2885,8 @@ pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
         to_multiset_contains,
         lemma_update_is_remove_insert,
     };
+
+    assert(s.update(i, a).to_multiset() =~= s.to_multiset().insert(a).remove(s[i]));
 
 }
 
