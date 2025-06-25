@@ -736,7 +736,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 // This function returns a new type with projections replace by holes,
 // along with a vector of H = typ equations.
 pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
-    use crate::ast_visitor::{Rewrite, AstVisitor, NoScoper};
+    use crate::ast_visitor::{AstVisitor, NoScoper, Rewrite};
     struct ProjVisitor {
         holes: Vec<(Ident, Typ)>,
     }
