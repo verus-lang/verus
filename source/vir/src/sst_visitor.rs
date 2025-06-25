@@ -189,18 +189,18 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let typ = self.visit_typ(&exp.typ)?;
         let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &R::get(typ), e);
         match &exp.x {
-            ExpX::Const(_) => R::ret(|| exp.clone()),
-            ExpX::Var(..) => R::ret(|| exp.clone()),
-            ExpX::VarAt(..) => R::ret(|| exp.clone()),
-            ExpX::VarLoc(..) => R::ret(|| exp.clone()),
-            ExpX::StaticVar(..) => R::ret(|| exp.clone()),
-            ExpX::ExecFnByName(_) => R::ret(|| exp.clone()),
-            ExpX::FuelConst(_) => R::ret(|| exp.clone()),
+            ExpX::Const(_) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::Var(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::VarAt(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::VarLoc(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::StaticVar(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::ExecFnByName(_) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::FuelConst(_) => R::ret(|| exp_new(exp.x.clone())),
             ExpX::Loc(e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Loc(R::get(e1))))
             }
-            ExpX::Old(..) => R::ret(|| exp.clone()),
+            ExpX::Old(..) => R::ret(|| exp_new(exp.x.clone())),
             ExpX::Call(fun, ts, es) => {
                 use crate::sst::CallFun;
                 let fun = match fun {
@@ -253,7 +253,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
                 })
             }
-            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => R::ret(|| exp.clone()),
+            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => R::ret(|| exp_new(exp.x.clone())),
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Unary(*op, R::get(e1))))
@@ -359,7 +359,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let es = self.visit_exps(es)?;
                 R::ret(|| exp_new(ExpX::ArrayLiteral(R::get_vec_a(es))))
             }
-            ExpX::Interp(_) => R::ret(|| exp.clone()),
+            ExpX::Interp(_) => R::ret(|| exp_new(exp.x.clone())),
         }
     }
 

@@ -248,12 +248,18 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let typ = self.visit_typ(&expr.typ)?;
         let expr_new = |e: ExprX| SpannedTyped::new(&expr.span, &R::get(typ), e);
         match &expr.x {
-            ExprX::Const(_) => R::ret(|| expr.clone()),
-            ExprX::Var(_) => R::ret(|| expr.clone()),
-            ExprX::VarLoc(_) => R::ret(|| expr.clone()),
-            ExprX::VarAt(_, _) => R::ret(|| expr.clone()),
-            ExprX::ConstVar(_, _) => R::ret(|| expr.clone()),
-            ExprX::StaticVar(_) => R::ret(|| expr.clone()),
+            ExprX::Const(_) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::Var(_) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::VarLoc(_) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::VarAt(_, _) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::ConstVar(_, _) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::StaticVar(_) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::ExecFnByName(_fun) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::RevealString(_s) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Loc(e) => {
                 let e1 = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
@@ -366,7 +372,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let es = self.visit_exprs(es)?;
                 R::ret(|| expr_new(ExprX::ArrayLiteral(R::get_vec_a(es))))
             }
-            ExprX::ExecFnByName(_fun) => R::ret(|| expr.clone()),
             ExprX::Choose { params: bs, cond, body } => {
                 let binders = self.visit_binders_typ(bs)?;
                 self.push_scope();
@@ -400,11 +405,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     op: *op,
                 }))
             }
-            ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr.clone()),
-            ExprX::RevealString(_s) => R::ret(|| expr.clone()),
             ExprX::Header(_) => {
                 // don't descend into Headers
-                R::ret(|| expr.clone())
+                R::ret(|| expr_new(expr.x.clone()))
             }
             ExprX::AssertAssume { is_assume, expr } => {
                 let expr = self.visit_expr(expr)?;
@@ -501,7 +504,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_opt_expr(e)?;
                 R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))
             }
-            ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr.clone()),
             ExprX::Ghost { alloc_wrapper, tracked, expr } => {
                 let expr = self.visit_expr(expr)?;
                 R::ret(|| expr_new(ExprX::Ghost {
@@ -542,12 +544,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
                 R::ret(|| expr_new(ExprX::Block(R::get_vec_a(stmts), R::get_opt(e))))
             }
-            ExprX::AirStmt(_) => R::ret(|| expr.clone()),
             ExprX::NeverToAny(e) => {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::NeverToAny(R::get(e))))
             }
-            ExprX::Nondeterministic => R::ret(|| expr.clone()),
         }
     }
 
@@ -605,8 +605,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let typ = self.visit_typ(&pattern.typ)?;
         let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
         match &pattern.x {
-            PatternX::Wildcard(_) => R::ret(|| pattern.clone()),
-            PatternX::Var { name: _, mutable: _ } => R::ret(|| pattern.clone()),
+            PatternX::Wildcard(_) | PatternX::Var { name: _, mutable: _ } =>
+                R::ret(|| pattern_new(pattern.x.clone())),
             PatternX::Binding { name, mutable, sub_pat } => {
                 let sub_pat = self.visit_pattern(sub_pat)?;
                 R::ret(|| pattern_new(PatternX::Binding {
