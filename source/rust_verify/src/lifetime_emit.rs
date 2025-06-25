@@ -982,18 +982,30 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.write("trait ");
     state.write(&t.name.to_string());
     emit_generic_params(state, &t.generic_params);
-    emit_generic_bounds(state, &t.generic_params, &t.generic_bounds);
+
+    // Move the assoc_typs bounds into the top-level generic_bounds,
+    // because rustc seems to have overflow issues with bounds directly on associated types.
+    // See, for example: https://github.com/rust-lang/rust/issues/87755
+    let mut generic_bounds = t.generic_bounds.clone();
+    for (a, _, bounds) in &t.assoc_typs {
+        let (_bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
+        generic_bounds.extend(wheres.clone());
+    }
+
+    emit_generic_bounds(state, &t.generic_params, &generic_bounds);
     state.write(" {");
     state.push_indent();
     for (a, params, bounds) in &t.assoc_typs {
-        let (bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
+        let (bares, _wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
         state.newline();
         state.write("type ");
         state.write(a.to_string());
         emit_generic_params(state, &params);
         let sized = bares.iter().any(|b| b.bound == Bound::Sized);
         let unsize = if sized { vec![] } else { vec!["?Sized".to_string()] };
-        if bounds.len() + unsize.len() > 0 {
+        // See comment above about overflow issues
+        // if bounds.len() + unsize.len() > 0 {
+        if bares.len() + unsize.len() > 0 {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
@@ -1001,7 +1013,8 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));
-            emit_generic_bounds(state, &vec![], &wheres);
+            // See comment above about overflow issues
+            //emit_generic_bounds(state, &vec![], &wheres);
         }
         state.write(";");
     }
