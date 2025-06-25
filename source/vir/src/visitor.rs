@@ -72,7 +72,7 @@ impl Returner for Walk {
     }
     fn map_vec_and_flatten<A, B, Err>(
         v: &Vec<A>,
-        f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
+        f: &mut impl FnMut(&A) -> Result<Self::Vec<B>, Err>,
     ) -> Result<Self::Vec<B>, Err> {
         for a in v {
             f(a)?;
@@ -81,7 +81,7 @@ impl Returner for Walk {
     }
     fn map_opt<A, B, Err>(
         o: &Option<A>,
-        f: &mut impl FnMut(&A) -> Result<Self::Vec<B>, Err>,
+        f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Opt<B>, Err> {
         if let Some(a) = o {
             f(a)?;
