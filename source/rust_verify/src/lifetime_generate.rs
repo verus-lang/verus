@@ -1838,7 +1838,7 @@ fn erase_const_or_static<'tcx>(
     body_id: Option<&BodyId>,
     is_static: bool,
 ) {
-    // When importing a const/static, we expect both to be None.  
+    // When importing a const/static, we expect both to be None.
     // Otherwise, both should be Some.
     assert!(krate.is_none() == body_id.is_none());
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
@@ -2309,16 +2309,21 @@ fn import_fn<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId) {
     );
 }
 
-fn import_const_static<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId, is_static: bool) {
+fn import_const_static<'tcx>(
+    ctxt: &mut Context<'tcx>,
+    state: &mut State,
+    id: DefId,
+    is_static: bool,
+) {
     erase_const_or_static(
-        None, 
-        ctxt, 
+        None,
+        ctxt,
         state,
-        ctxt.tcx.def_ident_span(id).expect("const/static name span"), 
+        ctxt.tcx.def_ident_span(id).expect("const/static name span"),
         id,
-        true, 
-        None, 
-        is_static
+        true,
+        None,
+        is_static,
     );
 }
 
@@ -3136,7 +3141,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     }
     loop {
         if let Some(const_or_static) = state.const_static_worklist.pop() {
-            import_const_static(&mut ctxt, &mut state, const_or_static.id, const_or_static.is_static);
+            import_const_static(
+                &mut ctxt,
+                &mut state,
+                const_or_static.id,
+                const_or_static.is_static,
+            );
             continue;
         }
         if let Some(id) = state.imported_fun_worklist.pop() {
