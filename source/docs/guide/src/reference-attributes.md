@@ -81,7 +81,7 @@ Used to mark datatypes that need extensionality on `Seq`, `Set`, `Map`,
 `Multiset`, `spec_fn` fields or fields of other `#[verifier::ext_equal]`
 datatypes.
 
-See the [discussion of equality via extensionality](./extensional_equality..md#equality-via-extensionality)
+See the [discussion of equality via extensionality](./extensional_equality.md#equality-via-extensionality)
 for more information.
 
 ## `#[verifier::inline]`
