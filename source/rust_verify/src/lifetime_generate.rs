@@ -76,9 +76,15 @@ impl<'tcx> Context<'tcx> {
     }
 }
 
+struct ConstOrStaticImport {
+    id: DefId,
+    is_static: bool,
+}
+
 pub(crate) struct State {
     rename_count: usize,
     reached: HashSet<(Option<Path>, DefId)>,
+    const_static_worklist: Vec<ConstOrStaticImport>,
     datatype_worklist: Vec<DefId>,
     impl_assocs_worklist: Vec<DefId>,
     imported_fun_worklist: Vec<DefId>,
@@ -115,6 +121,7 @@ impl State {
         State {
             rename_count: 0,
             reached: HashSet::new(),
+            const_static_worklist: Vec::new(),
             datatype_worklist: Vec::new(),
             impl_assocs_worklist: Vec::new(),
             imported_fun_worklist: Vec::new(),
@@ -273,6 +280,13 @@ impl State {
             }
         }
         s
+    }
+
+    fn reach_const_static(&mut self, id: DefId, is_static: bool) {
+        if id.as_local().is_none() && !self.reached.contains(&(None, id)) {
+            self.reached.insert((None, id));
+            self.const_static_worklist.push(ConstOrStaticImport { id, is_static });
+        }
     }
 
     fn reach_datatype(&mut self, ctxt: &Context, id: DefId) {
@@ -1315,10 +1329,11 @@ fn erase_expr_inner<'tcx>(
                         ));
                     }
                 }
-                Res::Def(DefKind::AssocConst, _id) => {
+                Res::Def(DefKind::AssocConst, id) => {
                     if expect_spec {
                         None
                     } else {
+                        state.reach_const_static(id, false);
                         let typ = expr_typ(state);
                         assert!(matches!(*typ, TypX::Primitive(_)));
                         mk_exp(ExpX::Op(vec![], typ))
@@ -1328,6 +1343,7 @@ fn erase_expr_inner<'tcx>(
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
+                        state.reach_const_static(id, false);
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                         let fun_name = Arc::new(FunX { path: vir_path });
                         let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
@@ -1341,6 +1357,7 @@ fn erase_expr_inner<'tcx>(
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
+                        state.reach_const_static(id, true);
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                         let fun_name = Arc::new(FunX { path: vir_path });
                         let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
@@ -1812,15 +1829,18 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
 }
 
 fn erase_const_or_static<'tcx>(
-    krate: &'tcx Crate<'tcx>,
+    krate: Option<&'tcx Crate<'tcx>>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
     span: Span,
     id: DefId,
     external_body: bool,
-    body_id: &BodyId,
+    body_id: Option<&BodyId>,
     is_static: bool,
 ) {
+    // When importing a const/static, we expect both to be None.  
+    // Otherwise, both should be Some.
+    assert!(krate.is_none() == body_id.is_none());
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(s) = path.segments.last() {
         if s.to_string().starts_with("_DERIVE_builtin_Structural_FOR_") {
@@ -1828,21 +1848,28 @@ fn erase_const_or_static<'tcx>(
         }
     }
     let fun_name = Arc::new(FunX { path });
-    if let Some(f_vir) = &ctxt.functions[&fun_name] {
+    if let Some(Some(f_vir)) = ctxt.functions.get(&fun_name) {
         if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
         }
-        let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
-        ctxt.types_opt = Some(types);
-        ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
+        if let Some(body_id) = body_id {
+            let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
+            ctxt.types_opt = Some(types);
+            ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
+        }
 
         let name = state.fun_name(&fun_name);
         let ty = ctxt.tcx.type_of(id).skip_binder();
         let typ = erase_ty(ctxt, state, &ty);
-        let body = crate::rust_to_vir_func::find_body_krate(krate, body_id);
-        let body_exp = if external_body {
-            Box::new((body.value.span, ExpX::Panic))
+        let body = if let Some(body_id) = body_id {
+            Some(crate::rust_to_vir_func::find_body_krate(krate.expect("krate"), body_id))
         } else {
+            None
+        };
+        let body_exp = if body.is_none() || external_body {
+            Box::new((span, ExpX::Panic))
+        } else {
+            let body = &body.expect("body");
             state.enclosing_fun_id = Some(id);
             let body_exp = erase_expr(ctxt, state, false, &body.value).expect("const body");
             state.enclosing_fun_id = None;
@@ -1850,7 +1877,7 @@ fn erase_const_or_static<'tcx>(
         };
 
         let mut return_typ = typ;
-        let body_span = body.value.span;
+        let body_span = body_exp.0;
         let mut body = Box::new((body_span, ExpX::Block(vec![], Some(body_exp))));
 
         if is_static {
@@ -2282,6 +2309,19 @@ fn import_fn<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId) {
     );
 }
 
+fn import_const_static<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId, is_static: bool) {
+    erase_const_or_static(
+        None, 
+        ctxt, 
+        state,
+        ctxt.tcx.def_ident_span(id).expect("const/static name span"), 
+        id,
+        true, 
+        None, 
+        is_static
+    );
+}
+
 fn erase_fn<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
@@ -2648,13 +2688,13 @@ fn erase_impl<'tcx>(
                 match &kind {
                     ImplItemKind::Const(_, body_id) => {
                         erase_const_or_static(
-                            krate,
+                            Some(krate),
                             ctxt,
                             state,
                             ident.span,
                             id,
                             vattrs.external_body,
-                            body_id,
+                            Some(body_id),
                             false,
                         );
                     }
@@ -2996,13 +3036,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 continue;
                             }
                             erase_const_or_static(
-                                krate,
+                                Some(krate),
                                 &mut ctxt,
                                 &mut state,
                                 item.span,
                                 id,
                                 vattrs.external_body,
-                                body_id,
+                                Some(body_id),
                                 matches!(&item.kind, ItemKind::Static(..)),
                             );
                         }
@@ -3095,6 +3135,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         }
     }
     loop {
+        if let Some(const_or_static) = state.const_static_worklist.pop() {
+            import_const_static(&mut ctxt, &mut state, const_or_static.id, const_or_static.is_static);
+            continue;
+        }
         if let Some(id) = state.imported_fun_worklist.pop() {
             import_fn(&mut ctxt, &mut state, id);
             continue;
