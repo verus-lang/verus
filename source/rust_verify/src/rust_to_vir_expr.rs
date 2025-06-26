@@ -16,7 +16,7 @@ use crate::rust_to_vir_func::find_body;
 use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem,
+    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
     UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
@@ -964,27 +964,14 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
-            let mut new_expr = expr_to_vir_with_adjustments(
+            let inner = expr_to_vir_with_adjustments(
                 bctx,
                 expr,
                 new_modifier,
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ = &mut Arc::make_mut(&mut new_expr).typ;
-            if let TypX::Decorate(
-                vir::ast::TypDecoration::MutRef
-                | vir::ast::TypDecoration::Ref
-                | vir::ast::TypDecoration::Box
-                | vir::ast::TypDecoration::Rc
-                | vir::ast::TypDecoration::Arc,
-                _,
-                inner_typ,
-            ) = &**typ
-            {
-                *typ = inner_typ.clone();
-            }
-            Ok(new_expr)
+            Ok(strip_vir_ref_decoration(inner))
         }
         Adjust::Deref(Some(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
@@ -1003,6 +990,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             } else {
                 crate::fn_call_to_vir::deref_to_vir(
                     bctx,
+                    expr,
                     deref.method_call(bctx.ctxt.tcx),
                     inner?,
                     expr_typ()?,
@@ -1704,49 +1692,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     varg,
                 ))
             }
-            UnOp::Deref => {
-                let inner_ty = bctx.types.expr_ty_adjusted(arg);
-                match inner_ty.kind() {
-                    TyKind::RawPtr(..) => {
-                        unsupported_err!(
-                            expr.span,
-                            format!(
-                                "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
-                            )
-                        );
-                    }
-                    TyKind::Ref(..) => { /* ok */ }
-                    TyKind::Adt(AdtDef(adt_def_data), _args)
-                        if matches!(
-                            verus_items::get_rust_item(tcx, adt_def_data.did),
-                            Some(RustItem::Box) | Some(RustItem::Rc) | Some(RustItem::Arc)
-                        ) =>
-                    { /* ok */ }
-                    _ => {
-                        unsupported_err!(
-                            expr.span,
-                            format!("dereferencing this type: {:?}", inner_ty)
-                        );
-                    }
-                }
-
-                let modifier = is_expr_typ_mut_ref(inner_ty, modifier)?;
-                let mut new_expr = expr_to_vir_inner(bctx, arg, modifier)?;
-                let typ = &mut Arc::make_mut(&mut new_expr).typ;
-                if let TypX::Decorate(
-                    vir::ast::TypDecoration::MutRef
-                    | vir::ast::TypDecoration::Ref
-                    | vir::ast::TypDecoration::Box
-                    | vir::ast::TypDecoration::Rc
-                    | vir::ast::TypDecoration::Arc,
-                    _,
-                    inner_typ,
-                ) = &**typ
-                {
-                    *typ = inner_typ.clone();
-                }
-                Ok(new_expr)
-            }
+            UnOp::Deref => deref_expr_to_vir(bctx, expr, arg, modifier),
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;
@@ -3011,4 +2957,69 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
         }
         None => Ok(None),
     }
+}
+
+fn deref_expr_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    arg: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    let arg_ty = bctx.types.expr_ty_adjusted(arg);
+
+    match arg_ty.kind() {
+        TyKind::RawPtr(..) => {
+            unsupported_err!(
+                expr.span,
+                format!(
+                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
+                )
+            );
+        }
+        _ => { /* report errors for dereferencing other types later */ }
+    }
+
+    let modifier = is_expr_typ_mut_ref(arg_ty, modifier)?;
+    let inner_expr = expr_to_vir_inner(bctx, arg, modifier)?;
+
+    if !bctx.types.is_method_call(expr) || auto_deref_supported_for_ty(bctx.ctxt.tcx, &arg_ty) {
+        // Normal dereference, just strip the inner expression.
+        Ok(strip_vir_ref_decoration(inner_expr))
+    } else {
+        // Overloaded dereference other than internally implemented ones.
+        // Insert a function call to the overloaded method.
+        let fn_def_id = bctx
+            .types
+            .type_dependent_def_id(expr.hir_id)
+            .expect("cannot get the function definition id for a deref");
+        let res_ty = bctx.types.node_type(expr.hir_id);
+        let inner_ty = mid_ty_to_vir(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            expr.span,
+            &res_ty,
+            false,
+        )?;
+        crate::fn_call_to_vir::deref_to_vir(
+            bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
+        )
+    }
+}
+
+fn strip_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Expr {
+    let typ = &mut Arc::make_mut(&mut inner_expr).typ;
+    if let TypX::Decorate(
+        vir::ast::TypDecoration::MutRef
+        | vir::ast::TypDecoration::Ref
+        | vir::ast::TypDecoration::Box
+        | vir::ast::TypDecoration::Rc
+        | vir::ast::TypDecoration::Arc,
+        _,
+        inner_typ,
+    ) = &**typ
+    {
+        *typ = inner_typ.clone();
+    }
+    inner_expr
 }
