@@ -190,6 +190,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
+        TypX::Opaque { .. } => str_typ(POLY),
     }
 }
 
@@ -394,6 +395,21 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
         )),
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::Opaque { def_path, args } => {
+            if args.len() != 0 {
+                let mut e_args = Vec::new();
+                for arg in args.iter() {
+                    e_args.extend(typ_to_ids(ctx, arg));
+                }
+                let self_dcr = ident_apply(&crate::def::prefix_dcr_id(def_path), &e_args);
+                let self_type = ident_apply(&crate::def::prefix_type_id(def_path), &e_args);
+                vec![self_dcr, self_type]
+            } else {
+                let self_dcr = str_var(&crate::def::prefix_dcr_id(def_path));
+                let self_type = str_var(&crate::def::prefix_type_id(def_path));
+                vec![self_dcr, self_type]
+            }
+        }
     }
 }
 
@@ -544,6 +560,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             None
         }
         TypX::FnDef(..) => None,
+        TypX::Opaque { .. } => Some(expr_has_typ(ctx, expr, typ)),
     }
 }
 
@@ -598,6 +615,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -631,6 +649,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }

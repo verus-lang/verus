@@ -1202,6 +1202,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         reveal_groups,
         datatypes,
+        opaque_types,
         traits,
         trait_impls,
         assoc_type_impls,
@@ -1340,6 +1341,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,
+        opaque_types: opaque_types.clone(),
         traits,
         trait_impls,
         assoc_type_impls,
@@ -1372,6 +1374,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             functions,
             reveal_groups,
             datatypes,
+            opaque_types,
             traits,
             trait_impls,
             assoc_type_impls,
@@ -1384,6 +1387,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
+        kratex.opaque_types.extend(opaque_types.clone());
         kratex.traits.extend(traits.clone());
         kratex.trait_impls.extend(trait_impls.clone());
         kratex.assoc_type_impls.extend(assoc_type_impls.clone());

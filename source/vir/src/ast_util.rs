@@ -178,7 +178,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
         (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
-        // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
+        (
+            TypX::Opaque { def_path: def_path1, args: args1 },
+            TypX::Opaque { def_path: def_path2, args: args2 },
+        ) => def_path1 == def_path2 && n_types_equal(args1, args2),
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
@@ -195,6 +198,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
         (TypX::PointeeMetadata(..), _) => false,
+        (TypX::Opaque { .. }, _) => false,
     }
 }
 
@@ -921,6 +925,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             let t = typ_to_diagnostic_str(t);
             format!("<{} as Pointee>::Metadata", t)
         }
+        TypX::Opaque { .. } => format!("opaque_ty"),
     }
 }
 

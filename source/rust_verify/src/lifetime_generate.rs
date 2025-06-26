@@ -456,6 +456,15 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 Box::new(TypX::TypParam(state.typ_param("Self", None)))
             }
         }
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, ..) => {
+            // for lifetime checks, normalize all the opaque types.
+            let typing_env = TypingEnv::post_analysis(
+                ctxt.tcx,
+                state.enclosing_fun_id.expect("enclosing_fun_id"),
+            );
+            let normalized_ty = ctxt.tcx.normalize_erasing_regions(typing_env, *ty);
+            erase_ty(ctxt, state, &normalized_ty)
+        }
         TyKind::Param(p) => {
             let name = p.name.as_str();
             Box::new(TypX::TypParam(state.typ_param(name.to_string(), Some(p.index))))

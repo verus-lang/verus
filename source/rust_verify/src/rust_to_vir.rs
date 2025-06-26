@@ -7,7 +7,7 @@ For soundness's sake, be as defensive as possible:
 */
 
 use crate::context::Context;
-use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
+use crate::external::{CrateItems, GeneralItemId, OpaqueDef, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
@@ -365,6 +365,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         functions: Vec::new(),
         reveal_groups: Vec::new(),
         datatypes: Vec::new(),
+        opaque_types: Vec::new(),
         traits: Vec::new(),
         trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),
@@ -525,6 +526,16 @@ pub fn crate_to_vir<'a, 'tcx>(
                 }
             }
             VerifOrExternal::External { path: None, path_string: _, explicit: _ } => {}
+        }
+    }
+
+    for OpaqueDef { id, verif } in crate_items.opaque_tys.iter() {
+        match verif {
+            VerifOrExternal::VerusAware { .. } => {
+                let opaque_ty = ctxt.tcx.hir().expect_opaque_ty(*id);
+                crate::rust_to_vir_base::opaque_def_to_vir(ctxt, &mut vir, opaque_ty)?;
+            }
+            VerifOrExternal::External { .. } => {}
         }
     }
 
