@@ -232,6 +232,7 @@ impl<B: Base> EndianNat<B> {
         decreases self.len(),
     {
         reveal(EndianNat::to_nat);
+        reveal(pow);
         if self.len() == 1 {
             broadcast use lemma_pow1;
             assert(pow(B::base() as int, self.len()) as nat == B::base());
@@ -309,6 +310,7 @@ impl<B: Base> EndianNat<B> {
     {
         reveal(EndianNat::to_nat_left);
         reveal(EndianNat::to_nat_right);
+        reveal(pow);
         if self.len() == 0 {
         } else {
             if self.drop_last().len() == 0 {
@@ -433,6 +435,7 @@ impl<B: Base> EndianNat<B> {
     {
         reveal(EndianNat::to_nat_left);
         reveal(EndianNat::to_nat_right);
+        reveal(pow);
         if self.len() == 0 {
         } else {
             if self.drop_first().len() == 0 {
@@ -921,7 +924,10 @@ pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
 {
     reveal(EndianNat::to_nat);
 
-    if x.len() == 0 || x.len() == 1 {}
+    if x.len() == 0 {}
+    else if x.len() == 1 {
+        reveal_with_fuel(EndianNat::to_nat, 2);
+    }
     else {
         let x_rest = x.drop_least().to_nat() as usize;
         let y_rest = y.drop_least().to_nat() as usize;

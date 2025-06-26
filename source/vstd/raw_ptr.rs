@@ -820,6 +820,7 @@ impl<V> PointsTo<V> {
     /// Creates a `PointsToRaw` from a `PointsTo<V>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<V>` and size of `V`,
     /// provided that the memory tracked by the `PointsTo<V>`is uninitialized.
+    /// Q: Do we need memory to be unitialized?
     pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
             self.is_uninit(),
