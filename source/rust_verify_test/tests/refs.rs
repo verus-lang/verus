@@ -496,7 +496,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] deref_not_allowed verus_code! {
+    #[test] deref_allowed_but_must_be_declared verus_code! {
         struct X { a: u8 }
 
         #[verifier::external]
@@ -511,7 +511,77 @@ test_verify_one_file! {
         {
             let t: &u8 = &a;
         }
-    } => Err(err) => assert_vir_error_msg(err, "overloaded deref (`X` is implicity converted to `u8`)")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::deref`")
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_ok verus_code! {
+        use vstd::prelude::*;
+        use std::ops::Deref;
+        fn test1(v: Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            assert(s0@ == s1@);
+            assert(s0@ == s2@);
+            let i2 = v.iter();
+        }
+        fn test2(v: &Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            assert(s0@ == s1@);
+            assert(s0@ == s2@);
+            let i2 = v.iter();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_fails verus_code! {
+        use vstd::prelude::*;
+        use std::ops::Deref;
+        fn test1(v: Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            let i2 = v.iter();
+            assert(s0@ == s1@);
+            assert(s0@ != s2@); // FAILS
+        }
+        fn test2(v: &Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            let i2 = v.iter();
+            assert(s0@ == s1@);
+            assert(s0@ != s2@); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_alone1 verus_code! {
+        use vstd::prelude::*;
+        fn test1(v: Vec<u8>) {
+            let s2: &[u8] = &v;
+        }
+        fn test2(v: &Vec<u8>) {
+            let s2: &[u8] = &v;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_alone2 verus_code! {
+        use vstd::prelude::*;
+        fn test1(v: Vec<u8>) {
+            let i2 = v.iter();
+        }
+        fn test2(v: &Vec<u8>) {
+            let i2 = v.iter();
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -539,6 +609,60 @@ test_verify_one_file! {
                 check_inc(a, old(a)),
         {
             *a = *a + 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_overloaded_deref verus_code! {
+        use core::ops::Deref;
+
+        pub struct X {
+            pub inner: usize,
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExDeref {
+            type ExternalTraitSpecificationFor: core::ops::Deref;
+
+            type Target: ?Sized;
+
+            fn deref(&self) -> &Self::Target;
+        }
+
+        pub open spec fn x_deref_spec(x: &X) -> (ret: &usize) {
+            &x.inner
+        }
+
+        impl Deref for X {
+            type Target = usize;
+
+            #[verifier::when_used_as_spec(x_deref_spec)]
+            fn deref(&self) -> (ret: &usize)
+                ensures
+                    ret == self.inner,
+            {
+                &self.inner
+            }
+        }
+
+        fn do_exec_deref(x: &X)
+            requires 100 <= x.inner < 102
+        {
+            // Explicit call.
+            let u: &usize = &((*x).deref());
+            assert(100 <= *u < 102);
+            // Implicit call.
+            let v: &usize = &**x;
+            assert(100 <= *v < 102);
+        }
+
+        spec fn do_explicit_spec_deref(x: &X) -> &usize {
+            &((*x).deref())
+        }
+
+        spec fn do_implicit_spec_deref(x: &X) -> &usize {
+            &**x
         }
     } => Ok(())
 }

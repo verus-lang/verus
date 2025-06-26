@@ -695,6 +695,7 @@ pub mod parsing {
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
                 || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -1112,13 +1113,24 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureSpecAttr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let ret_pat = if input.peek2(Token![=>]) {
-                let pat = Pat::parse_single(&input)?;
-                let token = input.parse()?;
-                Some((pat, token))
-            } else {
-                None
-            };
+            let ret_pat =
+                if input.peek2(Token![=>]) || (input.peek2(Token![:]) && input.peek4(Token![=>])) {
+                    let mut pat = Pat::parse_single(&input)?;
+                    if input.peek(Token![:]) {
+                        let colon_token = input.parse()?;
+                        let ty = input.parse()?;
+                        pat = Pat::Type(PatType {
+                            attrs: vec![],
+                            pat: Box::new(pat),
+                            colon_token,
+                            ty,
+                        });
+                    }
+                    let token = input.parse()?;
+                    Some((pat, token))
+                } else {
+                    None
+                };
             let spec = input.parse()?;
 
             Ok(SignatureSpecAttr { ret_pat, spec })

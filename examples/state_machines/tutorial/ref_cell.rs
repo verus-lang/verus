@@ -53,12 +53,12 @@ tokenized_state_machine!(RefCounter<S> {
         match self.flag {
             BorrowFlag::MutBorrow => {
                 self.writer && self.reader == Multiset::<Perm<S>>::empty()
-                  && self.storage.is_None()
+                  && self.storage is None
             }
             BorrowFlag::ReadBorrow(n) => {
                 !self.writer
-                  && self.storage.is_Some()
-                  && self.reader.count(self.storage.get_Some_0()) == n
+                  && self.storage is Some
+                  && self.reader.count(self.storage->0) == n
             }
         }
     }
@@ -127,7 +127,7 @@ tokenized_state_machine!(RefCounter<S> {
             require let BorrowFlag::ReadBorrow(n) = pre.flag;
             update flag = BorrowFlag::ReadBorrow(n + 1);
 
-            birds_eye let x = pre.storage.get_Some_0();
+            birds_eye let x = pre.storage->0;
             add reader += { x };
             assert(x@.pcell == pre.pcell_loc && x.is_init());
         }
@@ -149,7 +149,7 @@ tokenized_state_machine!(RefCounter<S> {
     fn drop_reader_inductive(pre: Self, post: Self, x: Perm<S>) {
         assert(pre.reader.count(x) > 0);
         assert(pre.storage == Option::Some(x));
-        assert(pre.storage.is_Some());
+        assert(pre.storage is Some);
     }
 });
 

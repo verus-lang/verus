@@ -229,7 +229,6 @@ impl<V> PointsTo<V> {
 
     #[verifier::type_invariant]
     closed spec fn wf(self) -> bool {
-        &&& self.points_to.ptr()@.metadata == Metadata::Thin
         &&& self.points_to.ptr()@.provenance == self.exposed.provenance()
         &&& match self.dealloc {
             Some(dealloc) => {

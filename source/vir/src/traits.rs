@@ -7,7 +7,7 @@ use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::{error, warning, Span, ToAny};
+use crate::messages::{Span, ToAny, error, warning};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
 use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
@@ -736,11 +736,11 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 // This function returns a new type with projections replace by holes,
 // along with a vector of H = typ equations.
 pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
-    use crate::ast_visitor::{Rewrite, TypVisitor};
+    use crate::ast_visitor::{AstVisitor, NoScoper, Rewrite};
     struct ProjVisitor {
         holes: Vec<(Ident, Typ)>,
     }
-    impl TypVisitor<Rewrite, ()> for ProjVisitor {
+    impl AstVisitor<Rewrite, (), NoScoper> for ProjVisitor {
         fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, ()> {
             match &**typ {
                 TypX::Projection { .. } => {

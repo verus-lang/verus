@@ -54,6 +54,7 @@ pub(crate) enum TypX {
         name: Id,
         assoc_typ_args: Vec<Id>,
     },
+    PointeeMetadata(Typ),
     Closure,
     FnDef,
     RawPtr(Typ, rustc_middle::ty::Mutability),

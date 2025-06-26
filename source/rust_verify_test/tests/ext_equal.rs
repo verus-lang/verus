@@ -405,14 +405,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
         proof fn test(a: core::option::Option<Seq<int>>, b: core::option::Option<Seq<int>>)
             requires
-                a.is_Some() == b.is_Some(),
-                a.is_Some() ==> {
-                    &&& a.get_Some_0().len() == 2
-                    &&& b.get_Some_0().len() == 2
-                    &&& a.get_Some_0()[0] == 0
-                    &&& b.get_Some_0()[0] == 0
-                    &&& a.get_Some_0()[1] == 1
-                    &&& b.get_Some_0()[1] == 1
+                a is Some == b is Some,
+                a is Some ==> {
+                    &&& a->0.len() == 2
+                    &&& b->0.len() == 2
+                    &&& a->0[0] == 0
+                    &&& b->0[0] == 0
+                    &&& a->0[1] == 1
+                    &&& b->0[1] == 1
                 },
         {
             assert(a =~= b);
@@ -431,6 +431,45 @@ test_verify_one_file! {
             assert(s == t);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] heuristic_invariant verus_code! {
+        use vstd::prelude::*;
+
+        fn test_invariant1(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t, // FAILS
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant2(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t,
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant3(Ghost(s): Ghost<Seq<int>>) {
+            let ghost mut t = s.push(5).drop_last();
+            for i in 0..3
+                invariant s == t,
+            {
+                proof {
+                    t = s.push(6).push(7).drop_last().drop_last();
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

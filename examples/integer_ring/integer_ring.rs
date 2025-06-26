@@ -9,8 +9,10 @@ use vstd::{pervasive::*, *};
 verus! {
 
 proof fn mod_of_mul_int(a: int, b: int)
-    by (integer_ring) {
-    ensures((a * b) % b == 0);
+    by (integer_ring)
+    requires b != 0,
+    ensures (a * b) % b == 0,
+{
 }
 
 proof fn mod_of_mul(a: nat, b: nat)
@@ -33,6 +35,7 @@ proof fn mod_of_mul(a: nat, b: nat)
 pub proof fn mod_add_zero_int(a: int, b: int, c: int)
     by (integer_ring)
     requires
+        c != 0,
         a % c == 0,
         b % c == 0,
     ensures
@@ -54,6 +57,8 @@ pub proof fn mod_add_zero(a: nat, b: nat, c: nat)
 
 pub proof fn subtract_mod_aligned_int(a: int, b: int)
     by (integer_ring)
+    requires
+        b != 0,
     ensures
         (a - (a % b)) % b == 0,
 {
@@ -72,6 +77,8 @@ pub proof fn subtract_mod_aligned(a: nat, b: nat)
 pub proof fn mod_mult_zero_implies_mod_zero_int(a: int, b: int, c: int)
     by (integer_ring)
     requires
+        b != 0,
+        b * c != 0,
         a % (b * c) == 0,
     ensures
         a % b == 0,
@@ -93,6 +100,7 @@ pub proof fn mod_mult_zero_implies_mod_zero(a: nat, b: nat, c: nat)
 pub proof fn subtract_mod_eq_zero_int(a: int, b: int, c: int)
     by (integer_ring)
     requires
+        c != 0,
         a % c == 0,
         b % c == 0,
     ensures
@@ -116,6 +124,7 @@ pub proof fn subtract_mod_eq_zero(a: nat, b: nat, c: nat)
 pub proof fn multiple_offsed_mod_gt_0_int(a: int, b: int, c: int, ac: int, bc: int, abc: int)
     by (integer_ring)
     requires
+        c != 0,
         ac == a % c,
         bc == b % c,
         abc == (a - b) % c,
@@ -207,6 +216,8 @@ pub proof fn LemmaModIsZero(x: int, m: int)
 
 pub proof fn LemmaModMultiplesBasic(x: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         (x * m) % m == 0,
 {
@@ -214,6 +225,8 @@ pub proof fn LemmaModMultiplesBasic(x: int, m: int)
 
 pub proof fn LemmaModMultipleVanish(b: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         (b + m) % m == b % m,
         (b - m) % m == b % m,
@@ -222,6 +235,7 @@ pub proof fn LemmaModMultipleVanish(b: int, m: int)
 
 pub proof fn LemmaModMultiplesVanish(a: int, b: int, m: int)
     by (integer_ring)
+    requires m != 0,
     ensures
         (b + a * m) % m == b % m,
         (b + m * a) % m == b % m,
@@ -232,6 +246,8 @@ pub proof fn LemmaModMultiplesVanish(a: int, b: int, m: int)
 
 pub proof fn LemmaAddModNoopLeft(x: int, y: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         ((x % m) + y) % m == (x + y) % m,
 {
@@ -239,6 +255,8 @@ pub proof fn LemmaAddModNoopLeft(x: int, y: int, m: int)
 
 pub proof fn LemmaSubModNoopRight(x: int, y: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         (x - (y % m)) % m == (x - y) % m,
 {
@@ -246,6 +264,8 @@ pub proof fn LemmaSubModNoopRight(x: int, y: int, m: int)
 
 pub proof fn LemmaModNegNeg(x: int, d: int)
     by (integer_ring)
+    requires
+        d != 0,
     ensures
         x % d == (x * (1 - d)) % d,
 {
@@ -253,6 +273,8 @@ pub proof fn LemmaModNegNeg(x: int, d: int)
 
 pub proof fn LemmaMulModNoopRight(x: int, y: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         x * (y % m) % m == (x * y) % m,
 {
@@ -260,6 +282,8 @@ pub proof fn LemmaMulModNoopRight(x: int, y: int, m: int)
 
 pub proof fn LemmaMulModNoopGeneral(x: int, y: int, m: int)
     by (integer_ring)
+    requires
+        m != 0,
     ensures
         ((x % m) * y) % m == (x * y) % m,
         (x * (y % m)) % m == (x * y) % m,

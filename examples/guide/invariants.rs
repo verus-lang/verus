@@ -1,5 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
@@ -31,10 +29,9 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
         fib(i) <= fib(j),
     decreases j - i,
 {
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
     } else {
         lemma_fib_is_monotonic(i, (j - 1) as nat);
         lemma_fib_is_monotonic(i, (j - 2) as nat);
@@ -88,10 +85,9 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
     ensures
         fib(i) <= fib(j),
 {
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        assume(false);
     } else {
         assume(false);
     }
@@ -119,6 +115,7 @@ fn fib_impl(n: u64) -> (result: u64)
             fib(n as nat) <= u64::MAX,
             cur == fib(i as nat),
             prev == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         proof {
@@ -151,6 +148,7 @@ fn fib_checked(n: u64) -> (result: u64)
             fib(n as nat) <= u64::MAX,
             cur@ == fib(i as nat),
             prev@ == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         let new_cur = cur.add_checked(&prev);
@@ -180,6 +178,7 @@ fn fib_checked_no_precondition(n: u64) -> (result: Option<u64>)
             0 < i <= n,
             cur@ == fib(i as nat),
             prev@ == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         let new_cur = cur.add_checked(&prev);

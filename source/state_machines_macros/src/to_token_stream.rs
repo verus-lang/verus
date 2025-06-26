@@ -6,7 +6,7 @@
 //! Concurrent-state-machine-specific stuff is in concurrency_tokens.rs
 
 use crate::ast::{
-    Invariant, Lemma, ShardableType, Transition, TransitionKind, TransitionParam, SM,
+    Invariant, Lemma, SM, ShardableType, Transition, TransitionKind, TransitionParam,
 };
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
@@ -16,7 +16,7 @@ use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{ToTokens, quote, quote_spanned};
 use std::collections::HashMap;
 use std::mem::swap;
 use syn_verus::parse;

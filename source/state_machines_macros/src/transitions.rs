@@ -1,8 +1,8 @@
 use crate::ast::INIT_LABEL_TYPE_NAME;
 use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
-    Field, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind, Transition,
-    TransitionKind, TransitionStmt, SM,
+    Field, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind, Transition,
+    TransitionKind, TransitionStmt,
 };
 use crate::check_bind_stmts::check_bind_stmts;
 use crate::check_birds_eye::check_birds_eye;

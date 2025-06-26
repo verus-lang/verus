@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::str;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
 use colored::Colorize;
 use serde::Deserialize;

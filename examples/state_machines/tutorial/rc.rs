@@ -37,18 +37,18 @@ tokenized_state_machine!(RefCounter<Perm> {
 
     #[invariant]
     pub fn counter_agrees_storage(&self) -> bool {
-        self.counter == 0 ==> self.storage.is_None()
+        self.counter == 0 ==> self.storage is None
     }
 
     #[invariant]
     pub fn counter_agrees_storage_rev(&self) -> bool {
-        self.storage.is_None() ==> self.counter == 0
+        self.storage is None ==> self.counter == 0
     }
 
     #[invariant]
     pub fn counter_agrees_reader_count(&self) -> bool {
-        self.storage.is_Some() ==>
-            self.reader.count(self.storage.get_Some_0()) == self.counter
+        self.storage is Some ==>
+            self.reader.count(self.storage->0) == self.counter
     }
 
     init!{
@@ -93,7 +93,7 @@ tokenized_state_machine!(RefCounter<Perm> {
     fn do_clone_inductive(pre: Self, post: Self, x: Perm) {
         assert(pre.reader.count(x) > 0);
         assert(pre.storage == Option::Some(x));
-        assert(pre.storage.is_Some());
+        assert(pre.storage is Some);
         assert(pre.counter > 0);
     }
 

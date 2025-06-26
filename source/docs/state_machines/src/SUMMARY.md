@@ -61,6 +61,7 @@
       - [`not_tokenized`](./strategy-not-tokenized.md)
       - [`storage_option`](./strategy-storage-option.md)
       - [`storage_map`](./strategy-storage-map.md)
+    - [Properties](./properties.md)
     - [Operation definitions](./operations.md)
       - [`birds_eye`](./birds-eye.md)
     - [Formalism of Tokenization by monoids (TODO)](./monoid-formalism.md)

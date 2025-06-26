@@ -111,7 +111,7 @@ pub broadcast axiom fn axiom_proof_fn_ensures<
         ),
 ;
 
-/// Retype a proof_fn, introducing ReqEns<R>
+/// Retype a proof_fn, introducing `ReqEns<R>`
 pub axiom fn proof_fn_as_req_ens<
     R: ProofFnReqEnsDef<Args, Output>,
     const USAGE: u8,
@@ -132,7 +132,7 @@ pub axiom fn proof_fn_as_req_ens<
             f.ensures(args, output) ==> #[trigger] R::ens(args, output),
 ;
 
-pub broadcast group group_seq_axioms {
+pub broadcast group group_function_axioms {
     axiom_proof_fn_requires,
     axiom_proof_fn_ensures,
 }

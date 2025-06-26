@@ -12,9 +12,9 @@
 #![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-#![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
+#![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -95,8 +95,10 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
     std_specs::hash::group_hash_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
+    std_specs::slice::group_slice_axioms,
 }
 
 #[cfg(feature = "alloc")]
@@ -119,7 +121,9 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
+    std_specs::slice::group_slice_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -140,7 +144,8 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
+    std_specs::slice::group_slice_axioms,
 }
 
 } // verus!

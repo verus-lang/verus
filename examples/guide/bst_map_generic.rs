@@ -1,5 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 // ANCHOR: all
 use vstd::prelude::*;
 
@@ -124,7 +122,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
             node.is_some() ==> node.unwrap().well_formed(),
-            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).insert(key, value)
+            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).insert(key, value),
+        decreases *old(node),
     {
         if node.is_none() {
             *node = Some(Box::new(Node::<K, V> {
@@ -150,6 +149,7 @@ impl<K: TotalOrdered, V> Node<K, V> {
         ensures
             self.well_formed(),
             self.as_map() =~= old(self).as_map().insert(key, value),
+        decreases *old(self),
     {
         match key.compare(&self.key) {
             Cmp::Equal => {
@@ -201,7 +201,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
             old(node).is_some() ==> old(node).unwrap().well_formed(),
         ensures
             node.is_some() ==> node.unwrap().well_formed(),
-            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).remove(key)
+            Node::<K, V>::optional_as_map(*node) =~= Node::<K, V>::optional_as_map(*old(node)).remove(key),
+        decreases *old(node),
     {
         if node.is_some() {
             let mut tmp = None;
@@ -272,6 +273,7 @@ impl<K: TotalOrdered, V> Node<K, V> {
             Node::<K, V>::optional_as_map(*old(node)).dom().contains(popped.0),
             Node::<K, V>::optional_as_map(*old(node))[popped.0] == popped.1,
             forall |elem| #[trigger] Node::<K, V>::optional_as_map(*old(node)).dom().contains(elem) ==> elem.le(popped.0),
+        decreases *old(node),
     {
         let mut tmp = None;
         std::mem::swap(&mut tmp, node);
@@ -321,11 +323,14 @@ impl<K: TotalOrdered, V> TreeMap<K, V> {
 // ANCHOR: node_get
 impl<K: TotalOrdered, V> Node<K, V> {
     fn get_from_optional(node: &Option<Box<Node<K, V>>>, key: K) -> Option<&V>
-        requires node.is_some() ==> node.unwrap().well_formed(),
-        returns (match node {
-            Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
-            None => None,
-        }),
+        requires
+            node.is_some() ==> node.unwrap().well_formed(),
+        returns
+            (match node {
+                Some(node) => (if node.as_map().dom().contains(key) { Some(&node.as_map()[key]) } else { None }),
+                None => None,
+            }),
+        decreases node,
     {
         match node {
             None => None,
@@ -336,8 +341,11 @@ impl<K: TotalOrdered, V> Node<K, V> {
     }
 
     fn get(&self, key: K) -> Option<&V>
-        requires self.well_formed(),
-        returns (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None })
+        requires
+            self.well_formed(),
+        returns
+            (if self.as_map().dom().contains(key) { Some(&self.as_map()[key]) } else { None }),
+        decreases self,
     {
         match key.compare(&self.key) {
             Cmp::Equal => {
@@ -378,7 +386,8 @@ impl<K: TotalOrdered, V> Node<K, V> {
 
 impl<K: TotalOrdered, V> TreeMap<K, V> {
     pub fn get(&self, key: K) -> Option<&V>
-        returns (if self@.dom().contains(key) { Some(&self@[key]) } else { None })
+        returns
+            (if self@.dom().contains(key) { Some(&self@[key]) } else { None }),
     {
         proof { use_type_invariant(&*self); }
         Node::<K, V>::get_from_optional(&self.root, key)
@@ -392,7 +401,8 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for Node<K, V> {
             self.well_formed() ==> res.well_formed(),
             self.as_map().dom() =~= res.as_map().dom(),
             forall |key| #[trigger] res.as_map().dom().contains(key) ==>
-                cloned::<V>(self.as_map()[key], res.as_map()[key])
+                cloned::<V>(self.as_map()[key], res.as_map()[key]),
+        decreases self,
     {
         let res = Node {
             key: self.key,
@@ -426,7 +436,7 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for TreeMap<K, V> {
     fn clone(&self) -> (res: Self)
         ensures self@.dom() =~= res@.dom(),
             forall |key| #[trigger] res@.dom().contains(key) ==>
-                cloned::<V>(self@[key], res@[key])
+                cloned::<V>(self@[key], res@[key]),
 // ANCHOR_END: clone_signature
     {
         proof {
@@ -520,7 +530,8 @@ pub struct WeirdInt {
 
 impl Clone for WeirdInt {
     fn clone(&self) -> (s: Self)
-        ensures s.int_value == self.int_value
+        ensures
+            s.int_value == self.int_value,
     {
         WeirdInt { int_value: self.int_value, other: 0 }
     }

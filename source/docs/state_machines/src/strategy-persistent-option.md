@@ -147,23 +147,24 @@ and this statement binds all the variables in `$pat` for use later in the transi
 
 ### Operations that manipulate optional tokens
 
-You can also write versions of the above operations that operate on optional tokens.
-The operations below are equivalent to the above versions whenever `opt_v == Some(v)`,
-and they are all no-ops when `opt_v == None`.
+You can also write versions of the above operations that operate on an optional token
+`opt_tok:` <code>Option&lt;<span style="font-style: italic; color: #c08080">Tok</span>&gt;</code>.
+The operations below are equivalent to the above versions whenever `opt_tok == Some(v)`,
+and they are all no-ops when `opt_tok == None`.
 
-To create an <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
+To create an `opt_tok:` <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
-add field (union)= (opt_v);
+add field (union)= (opt_tok);
 ```
 
 To check the value of an <code>&amp;Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
-have field >= (opt_v);
+have field >= (opt_tok);
 ```
 
-The value of `opt_v` is related to the value of
+The value of `opt_tok` is related to the value of
 <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>
 as [they are for initialization](#initializing-the-field).
 

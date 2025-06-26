@@ -107,8 +107,7 @@ If you require manual proof to prove the inherent safety condition, you can add
 an optional `by` clause:
 
 ```rust
-add field += { e };
-by {
+add field += { e } by {
     // proof goes here
 };
 ```

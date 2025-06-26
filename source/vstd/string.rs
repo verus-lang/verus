@@ -2,8 +2,12 @@
 #![allow(unused_imports)]
 
 #[cfg(feature = "alloc")]
+use alloc::str::Chars;
+#[cfg(feature = "alloc")]
 use alloc::string::{self, String, ToString};
 
+#[cfg(feature = "alloc")]
+use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
 use super::view::*;
@@ -14,6 +18,14 @@ impl View for str {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
+}
+
+impl DeepView for str {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
 }
 
 pub uninterp spec fn str_slice_is_ascii(s: &str) -> bool;
@@ -29,10 +41,36 @@ pub open spec fn new_strlit_spec(s: &str) -> &str {
 }
 
 #[cfg(feature = "alloc")]
-pub assume_specification[ str::to_string ](s: &str) -> (res: String)
+use crate::alloc::borrow::ToOwned;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),
+;
+
+#[cfg(feature = "alloc")]
+pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Sized>(
+    t: &T,
+    s: String,
+) -> bool;
+
+#[cfg(feature = "alloc")]
+pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: String)
+    ensures
+        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@ && t.is_ascii()
+            == res.is_ascii()),
+{
+    admit();
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
+    t: &T,
+) -> (res: String)
+    ensures
+        to_string_from_display_ensures::<T>(t, res),
 ;
 
 #[verifier::external]
@@ -167,6 +205,7 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
         #[trigger] s@.index(i) == strslice_get_char(s, i),
 ;
 
+#[cfg(not(feature = "alloc"))]
 pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,
     axiom_str_literal_len,
@@ -174,10 +213,27 @@ pub broadcast group group_string_axioms {
 }
 
 #[cfg(feature = "alloc")]
+pub broadcast group group_string_axioms {
+    axiom_str_literal_is_ascii,
+    axiom_str_literal_len,
+    axiom_str_literal_get_char,
+    to_string_from_display_ensures_for_str,
+}
+
+#[cfg(feature = "alloc")]
 impl View for String {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
+}
+
+#[cfg(feature = "alloc")]
+impl DeepView for String {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -266,6 +322,127 @@ impl StringExecFns for String {
             ret.is_ascii() == self.is_ascii() && other.is_ascii(),
     {
         self + other
+    }
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
+    ensures
+        ({
+            let (index, c) = chars@;
+            &&& index == 0
+            &&& c == s@
+        }),
+;
+
+// The `chars` method of a `str` returns an iterator of type `Chars`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[cfg(feature = "alloc")]
+pub struct ExChars<'a>(Chars<'a>);
+
+#[cfg(feature = "alloc")]
+impl<'a> View for Chars<'a> {
+    type V = (int, Seq<char>);
+
+    uninterp spec fn view(&self) -> (int, Seq<char>);
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(chars)@;
+            match r {
+                None => {
+                    &&& chars@ == old(chars)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(k) => {
+                    let (new_index, new_seq) = chars@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& k == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+#[cfg(feature = "alloc")]
+pub struct CharsGhostIterator<'a> {
+    pub pos: int,
+    pub chars: Seq<char>,
+    pub phantom: Option<&'a char>,
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
+    type GhostIter = CharsGhostIterator<'a>;
+
+    open spec fn ghost_iter(&self) -> CharsGhostIterator<'a> {
+        CharsGhostIterator { pos: self@.0, chars: self@.1, phantom: None }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
+    type ExecIter = Chars<'a>;
+
+    type Item = char;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &Chars<'a>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.chars == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.chars == self.chars
+            &&& 0 <= self.pos <= self.chars.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.chars.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.chars.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<char> {
+        if 0 <= self.pos < self.chars.len() {
+            Some(self.chars[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &Chars<'a>) -> CharsGhostIterator<'a> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> View for CharsGhostIterator<'a> {
+    type V = Seq<char>;
+
+    open spec fn view(&self) -> Seq<char> {
+        self.chars.take(self.pos)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> DeepView for CharsGhostIterator<'a> {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
     }
 }
 
