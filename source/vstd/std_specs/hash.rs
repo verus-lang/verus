@@ -634,8 +634,6 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
         },
 ;
 
-// We now specify the behavior of `HashMap`.
-
 /// Specifications for the behavior of [`std::collections::HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html).
 ///
 /// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
