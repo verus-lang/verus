@@ -270,7 +270,6 @@ pub struct PostConditionSst {
 pub struct FuncDeclSst {
     pub req_inv_pars: Pars,
     pub ens_pars: Pars,
-    pub post_pars: Pars,
     pub reqs: Exps,
     pub enss: Exps,
     pub inv_masks: Arc<Vec<Exps>>,

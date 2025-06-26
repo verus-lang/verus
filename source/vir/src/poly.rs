@@ -938,7 +938,6 @@ fn visit_func_decl_sst(
     let FuncDeclSst {
         req_inv_pars,
         ens_pars,
-        post_pars,
         reqs,
         enss,
         inv_masks,
@@ -959,21 +958,8 @@ fn visit_func_decl_sst(
     let enss = visit_exps_native(ctx, state, enss);
     state.types.pop_scope();
 
-    state.types.push_scope(true);
-    let post_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, post_pars);
-    state.types.pop_scope();
-
     let fndef_axioms = visit_exps_native(ctx, state, fndef_axioms);
-    FuncDeclSst {
-        req_inv_pars,
-        ens_pars,
-        post_pars,
-        reqs,
-        enss,
-        inv_masks,
-        unwind_condition,
-        fndef_axioms,
-    }
+    FuncDeclSst { req_inv_pars, ens_pars, reqs, enss, inv_masks, unwind_condition, fndef_axioms }
 }
 
 fn update_temp_locals(
