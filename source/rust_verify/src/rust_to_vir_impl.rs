@@ -476,7 +476,7 @@ pub(crate) fn translate_impl<'tcx>(
                     )?;
                     crate::rust_to_vir_func::check_item_const_or_static(
                         ctxt,
-                        vir,
+                        &mut vir.functions,
                         impl_item.span,
                         impl_item.owner_id.to_def_id(),
                         mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
