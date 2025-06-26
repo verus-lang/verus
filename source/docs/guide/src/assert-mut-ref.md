@@ -1,4 +1,4 @@
-# Assertions containing mutable references
+# Assertions about mutable references
 
 Assertions containing mutable references allow us to make statements about the *prior* (at the beginning of the function call) and *current* state of the piece of memory to which the mutable reference points. Consider the following example: 
 

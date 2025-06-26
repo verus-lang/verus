@@ -1960,15 +1960,31 @@ pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
     )
 }
 
+/// Returns if auto-dereferencing is supported for the given type.
+///
+/// Currently, this checks if the type is a `Box`, `Rc`, or `Arc`. Also, a
+/// reference of a `Box`, `Rc`, or `Arc` is supported since it should be the
+/// argument to the `deref` call.
 pub(crate) fn auto_deref_supported_for_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: &rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
+    fn is_supported_adt<'tcx>(tcx: TyCtxt<'tcx>, adt_def: &rustc_middle::ty::AdtDefData) -> bool {
+        let did = adt_def.did;
+        matches!(
+            verus_items::get_rust_item(tcx, did),
+            Some(RustItem::Box | RustItem::Rc | RustItem::Arc)
+        )
+    }
+
     match ty.kind() {
-        TyKind::Adt(AdtDef(adt_def_data), _args) => {
-            let did = adt_def_data.did;
-            let rust_item = verus_items::get_rust_item(tcx, did);
-            return matches!(rust_item, Some(RustItem::Box | RustItem::Rc | RustItem::Arc));
+        TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
+        TyKind::Ref(_, t, _) => {
+            // Only one-level of recursion.
+            match t.kind() {
+                TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
+                _ => false,
+            }
         }
         _ => false,
     }

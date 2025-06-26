@@ -2,7 +2,9 @@ use crate::attributes::{GhostBlockAttr, get_ghost_block_opt, get_mode, get_verif
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
+use crate::rust_to_vir_base::{
+    auto_deref_supported_for_ty, def_id_to_vir_path, mid_ty_const_to_vir,
+};
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
@@ -1240,7 +1242,7 @@ fn erase_expr<'tcx>(
         use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
         match adjust.kind {
             Adjust::Deref(Some(deref)) => {
-                if !crate::rust_to_vir_base::auto_deref_supported_for_ty(ctxt.tcx, &ty) {
+                if !auto_deref_supported_for_ty(ctxt.tcx, &ty) {
                     // exp := *op<_, &t>(&exp)
                     let typ = erase_ty(ctxt, state, &adjust.target);
                     let typ = Box::new(TypX::Ref(typ, None, deref.mutbl));
@@ -1560,7 +1562,32 @@ fn erase_expr_inner<'tcx>(
         ExprKind::Unary(op, e1) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             match op {
-                UnOp::Deref if !expect_spec => mk_exp(ExpX::Deref(exp1.expect("expr"))),
+                UnOp::Deref if !expect_spec => {
+                    if auto_deref_supported_for_ty(ctxt.tcx, &ctxt.types().node_type(e1.hir_id))
+                        || !ctxt.types().is_method_call(expr)
+                    {
+                        mk_exp(ExpX::Deref(exp1.expect("expr")))
+                    } else {
+                        let fn_def_id = ctxt
+                            .types()
+                            .type_dependent_def_id(expr.hir_id)
+                            .expect("`deref` method ID not found");
+                        erase_call(
+                            ctxt,
+                            state,
+                            expect_spec,
+                            expr,
+                            None,
+                            Some(fn_def_id),
+                            ctxt.types().node_args(expr.hir_id),
+                            expr.span,
+                            Some(e1),
+                            &[],
+                            true,
+                            false,
+                        )
+                    }
+                }
                 _ => erase_spec_exps(ctxt, state, expr, vec![exp1]),
             }
         }

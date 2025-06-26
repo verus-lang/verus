@@ -6,12 +6,13 @@ use rustc_span::Span;
 use rustc_trait_selection::traits::BuiltinImplSource;
 use vir::ast::VirErr;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ResolvedItem<'tcx> {
     FromImpl(DefId, GenericArgsRef<'tcx>),
     FromTrait(DefId, GenericArgsRef<'tcx>),
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ResolutionResult<'tcx> {
     Unresolved,
     Resolved {

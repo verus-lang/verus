@@ -256,3 +256,48 @@ pub fn hir_prim_ty_to_mir_ty<'tcx>(
         rustc_hir::PrimTy::Char => tcx.types.char,
     }
 }
+
+#[allow(unused_macros)]
+macro_rules! dbg_backtrace {
+    ($val: expr) => {
+        match $val {
+            tmp => {
+                std::eprintln!(
+                    "[{}:{}:{}] {} = {:#?}",
+                    std::file!(),
+                    std::line!(),
+                    std::column!(),
+                    std::stringify!($val),
+                    &tmp
+                );
+                eprintln!(
+                    "[{}:{}:{}]\n{}",
+                    std::file!(),
+                    std::line!(),
+                    std::column!(),
+                    std::backtrace::Backtrace::force_capture()
+                );
+                tmp
+            }
+        }
+    };
+}
+
+#[allow(unused_imports)]
+pub(crate) use dbg_backtrace;
+
+#[allow(unused_macros)]
+macro_rules! backtrace {
+    () => {
+        eprintln!(
+            "[{}:{}:{}]\n{}",
+            std::file!(),
+            std::line!(),
+            std::column!(),
+            std::backtrace::Backtrace::force_capture()
+        );
+    };
+}
+
+#[allow(unused_imports)]
+pub(crate) use backtrace;
