@@ -51,7 +51,7 @@ fn increment(a: &mut u32)
 fn caller()
 {
     let mut z: u32 = 0;
-    check_and_inc(&mut z);
+    increment(&mut z);
     assert(z == 1);
 }
 // ANCHOR_END: requires
