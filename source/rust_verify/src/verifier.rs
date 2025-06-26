@@ -1400,6 +1400,17 @@ impl Verifier {
             &("Associated-Type-Impls".to_string()),
         );
 
+        // Declare opaque type defs
+        let opaque_type_impl_commands =
+            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &opaque_type_impl_commands,
+            &("Opaque-Type-Constructors".to_string()),
+        );
+
         let mut function_decl_commands = vec![];
 
         // Declare the function symbols

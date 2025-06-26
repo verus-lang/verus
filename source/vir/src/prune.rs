@@ -4,8 +4,8 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitId, TraitX, Typ, TypX,
+    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Opaquetype, Path,
+    RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -40,6 +40,7 @@ enum ReachedType {
 type AssocTypeGroup = (ReachedType, (Path, Ident));
 
 type TraitName = Path;
+type OpaqueTyName = Path;
 type ImplName = Path;
 
 #[derive(Debug)]
@@ -65,6 +66,7 @@ struct Ctxt {
     function_map: HashMap<Fun, Function>,
     reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Dt, Datatype>,
+    opaque_ty_map: HashMap<OpaqueTyName, Opaquetype>,
     trait_map: HashMap<Path, Trait>,
     // For an impl "bounds ==> trait T(...t...)", point T to impl:
     trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
@@ -92,10 +94,12 @@ struct State {
     reached_trait_impls: HashSet<ImplName>,
     reached_assoc_type_decls: HashSet<(Path, Ident)>,
     reached_assoc_type_impls: HashSet<AssocTypeGroup>,
+    reached_opaque_types: HashSet<OpaqueTyName>,
     worklist_functions: Vec<Fun>,
     worklist_reveal_groups: Vec<Fun>,
     worklist_types: Vec<ReachedType>,
     worklist_bound_traits: Vec<TraitName>,
+    worklist_opaque_types: Vec<OpaqueTyName>,
     worklist_trait_impls: Vec<ImplName>,
     worklist_assoc_type_decls: Vec<(Path, Ident)>,
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
@@ -132,6 +136,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
+        TypX::Opaque { .. } => ReachedType::None,
     }
 }
 
@@ -220,6 +225,10 @@ fn reach_bound_trait(_ctxt: &Ctxt, state: &mut State, name: &TraitName) {
     reach(&mut state.reached_bound_traits, &mut state.worklist_bound_traits, name);
 }
 
+fn reach_opaque_type(_ctxt: &Ctxt, state: &mut State, name: &OpaqueTyName) {
+    reach(&mut state.reached_opaque_types, &mut state.worklist_opaque_types, name);
+}
+
 fn reach_trait_impl(ctxt: &Ctxt, state: &mut State, imp: &ImplName) {
     if let Some(trait_impl) = ctxt.trait_impl_map.get(imp) {
         // We only reach the impl "bounds ==> trait T(...t...)" when all of T and t have been reached.
@@ -268,6 +277,9 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Primitive(..)
         | TypX::PointeeMetadata(_) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
+        }
+        TypX::Opaque { def_path, .. } => {
+            reach_opaque_type(ctxt, state, def_path);
         }
         TypX::AnonymousClosure(..) => {}
         TypX::Air(_) => {
@@ -333,6 +345,12 @@ fn traverse_typ(ctxt: &Ctxt, state: &mut State, t: &Typ) {
                     mono_abstract_datatypes.insert(monotyp);
                 }
             }
+        }
+        TypX::Opaque { .. } => {
+            // Revisit.
+            // For let x = foo<SomeType>(..);
+            // Do we need to traverse typ args (SomeType)? Probably not?
+            // All the type args should have been included in the function body through other means.
         }
         _ => {}
     }
@@ -572,6 +590,19 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             }
             continue;
         }
+        if let Some(opaque_ty_path) = state.worklist_opaque_types.pop() {
+            if let Some(opaque_type) = ctxt.opaque_ty_map.get(&opaque_ty_path) {
+                // Revist. this is probably needed, the opaque type can refer to some actual types, which, if pruned
+                // can cause problems
+                traverse_generic_bounds(ctxt, state, &opaque_type.x.typ_bounds, true);
+                for t in opaque_type.x.typ_params.iter() {
+                    // Revist. Not sure if this is needed. If I understand it correctly, these typs can only be
+                    // type params like "T", not some types defined somewhere else.
+                    traverse_typ(ctxt, state, t);
+                }
+            }
+            continue;
+        }
         break;
     }
     assert!(state.worklist_functions.len() == 0);
@@ -581,6 +612,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     assert!(state.worklist_trait_impls.len() == 0);
     assert!(state.worklist_assoc_type_decls.len() == 0);
     assert!(state.worklist_assoc_type_impls.len() == 0);
+    assert!(state.worklist_opaque_types.len() == 0);
 }
 
 impl TraitX {
@@ -773,6 +805,7 @@ pub fn prune_krate_for_module_or_krate(
             functions,
             reveal_groups,
             datatypes,
+            opaque_types,
             assoc_type_impls,
             traits,
             trait_impls,
@@ -791,6 +824,9 @@ pub fn prune_krate_for_module_or_krate(
         for d in datatypes {
             let t = ReachedType::Datatype(d.x.name.clone());
             reach(&mut state.reached_types, &mut state.worklist_types, &t);
+        }
+        for o in opaque_types {
+            reach(&mut state.reached_opaque_types, &mut state.worklist_opaque_types, &o.x.name);
         }
         for a in assoc_type_impls {
             reach(
@@ -865,6 +901,7 @@ pub fn prune_krate_for_module_or_krate(
     let mut functions: Vec<Function> = Vec::new();
     let mut reveal_groups: Vec<RevealGroup> = Vec::new();
     let mut datatypes: Vec<Datatype> = Vec::new();
+    let mut opaque_types: Vec<Opaquetype> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.reveal_groups {
         if is_visible_to_or_true(&f.x.visibility, &module) {
@@ -930,9 +967,14 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
+    for op in &krate.opaque_types {
+        opaque_types.push(op.clone());
+    }
+
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
     let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
+    let mut opaque_ty_map: HashMap<OpaqueTyName, Opaquetype> = HashMap::new();
     let mut trait_map: HashMap<Path, Trait> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();
@@ -983,6 +1025,9 @@ pub fn prune_krate_for_module_or_krate(
     }
     for d in &datatypes {
         datatype_map.insert(d.x.name.clone(), d.clone());
+    }
+    for op in &opaque_types {
+        opaque_ty_map.insert(op.x.name.clone(), op.clone());
     }
     for tr in krate.traits.iter() {
         trait_map.insert(tr.x.name.clone(), tr.clone());
@@ -1050,6 +1095,7 @@ pub fn prune_krate_for_module_or_krate(
         function_map,
         reveal_group_map,
         datatype_map,
+        opaque_ty_map,
         trait_map,
         trait_to_trait_impls,
         typ_to_trait_impls,
@@ -1122,6 +1168,11 @@ pub fn prune_krate_for_module_or_krate(
         datatypes: datatypes
             .into_iter()
             .filter(|d| state.reached_types.contains(&ReachedType::Datatype(d.x.name.clone())))
+            .collect(),
+        opaque_types: opaque_types
+            .iter()
+            .filter(|a| state.reached_opaque_types.contains(&a.x.name.clone()))
+            .cloned()
             .collect(),
         assoc_type_impls: krate
             .assoc_type_impls
