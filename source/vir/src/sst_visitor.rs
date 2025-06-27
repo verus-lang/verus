@@ -594,7 +594,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_func_decl(&mut self, func_decl: &FuncDeclSst) -> Result<R::Ret<FuncDeclSst>, Err> {
         let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
         let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
-        let post_pars = self.visit_pars(&func_decl.post_pars)?;
         let reqs = self.visit_exps(&func_decl.reqs)?;
         let enss = self.visit_exps(&func_decl.enss)?;
         let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
@@ -608,7 +607,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
-            post_pars: R::get_vec_a(post_pars),
             reqs: R::get_vec_a(reqs),
             enss: R::get_vec_a(enss),
             inv_masks: R::get_vec_a(inv_masks),
