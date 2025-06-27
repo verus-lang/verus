@@ -1,4 +1,7 @@
+#![allow(unused_imports)]
 #![allow(unused_variables)]
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use rustc_hir as hir;
 use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime};
@@ -48,15 +51,12 @@ pub(crate) fn handle_var<'tcx>(
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId
 ) -> Option<ExprKind<'tcx>> {
-    return None;
-    /*
     let erasure_ctxt = get_verus_erasure_ctxt();
     if matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
         return None;
     }
     let ty = cx.typeck_results.expr_ty(expr);
     Some(erased_ghost_value(cx, &erasure_ctxt, expr, ty))
-    */
 }
 
 /// Produce an expression `builtin::erased_ghost_value::<T>()`
@@ -93,6 +93,7 @@ fn erased_ghost_value<'tcx>(
     }
 }
 
+/*
 pub(crate) fn should_keep_upvar<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_def_id: LocalDefId,
@@ -112,6 +113,7 @@ pub(crate) fn should_keep_upvar<'tcx>(
     //false
     true
 }
+*/
 
 /*
 fn expr_matches_place(thir_body: &Thir, expr: &Expr, place: &Place) -> bool {
@@ -139,6 +141,7 @@ fn expr_matches_projection(expr: &Expr, projection: &Projection) {
 }
 */
 
+/*
 pub(crate) fn fix_closure<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_expr: ClosureExpr<'tcx>
@@ -172,7 +175,9 @@ pub(crate) fn fix_closure<'tcx>(
 
     ClosureExpr { closure_id, args, upvars, movability, fake_reads }
 }
+*/
 
+/*
 pub(crate) fn get_upvars<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_expr: ClosureExpr<'tcx>,
@@ -198,3 +203,4 @@ pub(crate) fn get_upvars<'tcx>(
     */
     todo!()
 }
+*/

@@ -60,7 +60,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
     typing_env: ty::TypingEnv<'tcx>,
 
     pub(crate) region_scope_tree: &'tcx region::ScopeTree,
-    typeck_results: &'tcx ty::TypeckResults<'tcx>,
+    pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
     pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
