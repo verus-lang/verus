@@ -373,6 +373,7 @@ pub(crate) enum VerusItem {
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
     External(ExternalItem),
+    ErasedGhostValue,
 }
 
 #[rustfmt::skip]
@@ -497,6 +498,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
         ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
+
+        ("verus::builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
 
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),

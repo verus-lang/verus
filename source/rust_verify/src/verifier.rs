@@ -283,6 +283,7 @@ pub struct Verifier {
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
     /// the parallel bucket verification
@@ -447,6 +448,7 @@ impl Verifier {
             args,
             user_filter: None,
             erasure_hints: None,
+            verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
@@ -492,6 +494,7 @@ impl Verifier {
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
+            verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -2631,11 +2634,13 @@ impl Verifier {
             return Ok(false);
         }
 
-        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
-        tcx.ensure_ok().check_private_in_public(());
-        tcx.hir_for_each_module(|module| {
-            tcx.ensure_ok().check_mod_privacy(module);
-        });
+        if !self.args.new_lifetime {
+            tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
+            tcx.ensure_ok().check_private_in_public(());
+            tcx.hir_for_each_module(|module| {
+                tcx.ensure_ok().check_mod_privacy(module);
+            });
+        }
 
         self.air_no_span = {
             let no_span = tcx
@@ -2936,22 +2941,30 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             dep_tracker.config_install(config);
         }
 
-        config.override_queries = Some(|_session, providers| {
-            providers.hir_crate = hir_crate;
+        if !self.verifier.args.new_lifetime {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
 
-            // Hooking mir_const_qualif solves constness issue in function body,
-            // but const-eval will still do check-const when evaluating const
-            // value. Thus const_header_wrapper is still needed.
-            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
-            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
-            // by const evaluation through the mir interpreter.
-            providers.mir_borrowck = |tcx, _local_def_id| {
-                Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
-                    rustc_data_structures::fx::FxIndexMap::default(),
-                )))
-            };
-        });
+                // Hooking mir_const_qualif solves constness issue in function body,
+                // but const-eval will still do check-const when evaluating const
+                // value. Thus const_header_wrapper is still needed.
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                // Prevent the borrow checker from running, as we will run our own lifetime analysis.
+                // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
+                // by const evaluation through the mir interpreter.
+                providers.mir_borrowck = |tcx, _local_def_id| {
+                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                        rustc_data_structures::fx::FxIndexMap::default(),
+                    )))
+                };
+            });
+        } else {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                rustc_mir_build_verus::verus_provide(providers);
+            });
+        }
     }
 
     fn after_expansion<'tcx>(
@@ -2997,6 +3010,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.time_import = time_import1 - time_import0;
         let verus_items =
             Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        self.verifier.verus_items = Some(verus_items.clone());
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),
@@ -3038,7 +3052,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 return rustc_driver::Compilation::Stop;
             }
             self.lifetime_start_time = Some(Instant::now());
-            let status = if self.verifier.args.no_lifetime {
+            let status = if self.verifier.args.no_lifetime || self.verifier.args.new_lifetime {
                 Ok(vec![])
             } else {
                 let log_lifetime =
@@ -3128,7 +3142,17 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     ""
                 }
             );
+            if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
+                crate::erase::setup_verus_ctxt_for_thir_erasure(
+                    &self.verifier.verus_items.as_ref().unwrap(),
+                    self.verifier.erasure_hints.as_ref().unwrap(),
+                );
+                rustc_driver::Compilation::Continue
+            } else {
+                rustc_driver::Compilation::Stop
+            }
+        } else {
+            rustc_driver::Compilation::Stop
         }
-        rustc_driver::Compilation::Stop
     }
 }
