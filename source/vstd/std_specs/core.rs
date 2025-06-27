@@ -253,3 +253,8 @@ impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
 impl_from_spec! {u16 => [u32 u64 usize u128]}
 impl_from_spec! {u32 => [u64 u128]}
 impl_from_spec! {u64 => [u128]}
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExAssertParamIsClone<T: Clone + ?Sized>(core::clone::AssertParamIsClone<T>);

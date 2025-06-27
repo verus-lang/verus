@@ -7,6 +7,7 @@ use crate::ast::{
     VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
+use crate::messages::Span;
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
@@ -876,6 +877,129 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         PatternX::Range(_, _) => {}
     }
 }
+
+/// Walk the AST, visit every Expr, Stmt, Pattern, Typ
+
+pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT>(
+    expr: &Expr,
+    fe: &mut FE,
+    fs: &mut FS,
+    fp: &mut FP,
+    ft: &mut FT,
+) -> Result<(), E>
+where
+    FE: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
+    FS: FnMut(&VisitorScopeMap, &Stmt) -> Result<(), E>,
+    FP: FnMut(&VisitorScopeMap, &Pattern) -> Result<(), E>,
+    FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
+{
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
+    match ast_visitor_dfs(
+        expr,
+        &mut scope_map,
+        &mut |scope_map, x| match fe(scope_map, x) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+        &mut |scope_map, x| match fs(scope_map, x) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+        &mut |scope_map, x| match fp(scope_map, x) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+        &mut |scope_map, x, span| match ft(scope_map, x, span) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+    ) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
+struct WalkAstVisitor<'a, FE, FS, FP, FT> {
+    fe: &'a mut FE,
+    fs: &'a mut FS,
+    fp: &'a mut FP,
+    ft: &'a mut FT,
+    map: &'a mut VisitorScopeMap,
+    // Since types don't have spans, keep track of the best span as we descend
+    most_specific_span: Span,
+}
+
+impl<'a, FE, FS, FP, FT, T> AstVisitor<Walk, T, VisitorScopeMap>
+    for WalkAstVisitor<'a, FE, FS, FP, FT>
+where
+    FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
+        match (self.ft)(self.map, typ, &self.most_specific_span) {
+            VisitorControlFlow::Recurse => self.visit_typ_rec(typ),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Stop(err) => Err(err),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) -> Result<(), T> {
+        self.most_specific_span = expr.span.clone();
+        match (self.fe)(self.map, expr) {
+            VisitorControlFlow::Recurse => self.visit_expr_rec(expr),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Stop(err) => Err(err),
+        }
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), T> {
+        self.most_specific_span = stmt.span.clone();
+        match (self.fs)(self.map, stmt) {
+            VisitorControlFlow::Recurse => self.visit_stmt_rec(stmt),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Stop(err) => Err(err),
+        }
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
+        self.most_specific_span = pattern.span.clone();
+        match (self.fp)(self.map, pattern) {
+            VisitorControlFlow::Recurse => self.visit_pattern_rec(pattern),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Stop(err) => Err(err),
+        }
+    }
+
+    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+        Some(self.map)
+    }
+}
+
+pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT>(
+    expr: &Expr,
+    map: &mut VisitorScopeMap,
+    fe: &mut FE,
+    fs: &mut FS,
+    fp: &mut FP,
+    ft: &mut FT,
+) -> VisitorControlFlow<T>
+where
+    FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+{
+    let mut vis = WalkAstVisitor { fe, fs, fp, ft, map, most_specific_span: expr.span.clone() };
+    match vis.visit_expr(expr) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(t) => VisitorControlFlow::Stop(t),
+    }
+}
+
+/// Walk the AST, visit every Expr
 
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
