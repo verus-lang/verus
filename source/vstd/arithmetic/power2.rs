@@ -17,7 +17,13 @@ use super::super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use super::power::{pow, lemma_pow_positive, lemma_pow_adds, lemma_pow_strictly_increases};
+use super::power::{
+    pow,
+    lemma_pow_positive,
+    lemma_pow_adds,
+    lemma_pow_strictly_increases,
+    lemma_pow_subtracts,
+};
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
@@ -80,6 +86,19 @@ pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow2(e2);
     lemma_pow2(e1 + e2);
     lemma_pow_adds(2, e1, e2);
+}
+
+/// Proof that, as long as `e1 <= e2`, `2^(e2 - e1)` is equivalent to `2^e2 / 2^e1`.
+pub broadcast proof fn lemma_pow2_subtracts(e1: nat, e2: nat)
+    requires
+        e1 <= e2,
+    ensures
+        #[trigger] pow2((e2 - e1) as nat) == pow2(e2) / pow2(e1) > 0,
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow2((e2 - e1) as nat);
+    lemma_pow_subtracts(2, e1, e2);
 }
 
 /// Proof that if `e1 < e2` then `2^e1 < 2^e2`.
