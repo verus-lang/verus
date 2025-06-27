@@ -231,7 +231,7 @@ test_both! {
             open_atomic_invariant_in_proof!(credit => &i => inner => {});
             open_atomic_invariant_in_proof!(credit => &i => inner => {});
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `credit`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `credit`")
 }
 
 test_both! {

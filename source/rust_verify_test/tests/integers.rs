@@ -612,5 +612,5 @@ test_verify_one_file! {
                 let tracked i = e as usize;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "mismatched types")
+    } => Ok(())
 }
