@@ -1490,3 +1490,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] well_formed_typ_check_issue1399 verus_code! {
+        #[verifier::external]
+        enum Never {}
+
+        uninterp spec fn arbitrary<T>() -> T;
+
+        spec fn foo() -> u64 {
+            match arbitrary::<Never>() {
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] well_formed_pattern_check_issue1741 verus_code! {
+        #[verifier::external_body]
+        pub enum E {
+            A,
+            B,
+        }
+
+        pub fn foo(e: E) -> i32{
+            match e {
+                E::A { .. } => 0,
+                _ => 1,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
+}
