@@ -59,6 +59,19 @@ pub(crate) fn handle_var<'tcx>(
     Some(erased_ghost_value(cx, &erasure_ctxt, expr, ty))
 }
 
+pub(crate) fn fix_upvars<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    upvars: &[ExprId],
+) -> Box<[ExprId]>,
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let ty = cx.typeck_results.expr_ty(expr);
+
+    for id in upvars.iter() {
+    }
+    Some(erased_ghost_value(cx, &erasure_ctxt, &cx.thir.exprs[id], ty))
+}
+
+
 /// Produce an expression `builtin::erased_ghost_value::<T>()`
 fn erased_ghost_value<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
