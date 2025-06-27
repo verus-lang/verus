@@ -679,6 +679,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     })
                     .collect();
 
+                dbg!(&self.thir.exprs);
+                dbg!(&self.tcx.closure_captures(def_id));
+                dbg!(&upvars);
+                let upv = crate::verus::fix_upvars(cx, &upvars);
+
                 // Convert the closure fake reads, if any, from hir `Place` to ExprRef
                 let fake_reads = match self.typeck_results.closure_fake_reads.get(&def_id) {
                     Some(fake_reads) => fake_reads

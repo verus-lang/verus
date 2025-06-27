@@ -478,6 +478,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     })
                     .collect();
 
+                dbg!(&operands);
+
                 let result = match args {
                     UpvarArgs::Coroutine(args) => {
                         Box::new(AggregateKind::Coroutine(closure_id.to_def_id(), args))
