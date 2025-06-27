@@ -1789,10 +1789,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(
-    krate: &Krate,
-    func_modes: &mut HashMap<Fun, Mode>,
-) -> Result<(Krate, ErasureModes), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1842,7 +1839,6 @@ pub fn check_crate(
         } else {
             check_function(&ctxt, &mut record, &mut typing, function)?;
         }
-        func_modes.insert(function.x.name.clone(), function.x.mode);
     }
     Ok((Arc::new(kratex), record.erasure_modes))
 }
