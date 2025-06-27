@@ -52,16 +52,16 @@ pub(crate) fn thir_body(
 }
 
 /// Context for lowering HIR to THIR for a single function body (or other kind of body).
-struct ThirBuildCx<'tcx> {
-    tcx: TyCtxt<'tcx>,
+pub(crate) struct ThirBuildCx<'tcx> {
+    pub(crate) tcx: TyCtxt<'tcx>,
     /// The THIR data that this context is building.
-    thir: Thir<'tcx>,
+    pub(crate) thir: Thir<'tcx>,
 
     typing_env: ty::TypingEnv<'tcx>,
 
-    region_scope_tree: &'tcx region::ScopeTree,
+    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    rvalue_scopes: &'tcx RvalueScopes,
+    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
