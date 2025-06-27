@@ -84,7 +84,7 @@ impl<'tcx> ConstToPat<'tcx> {
             if let hir::def::DefKind::Const | hir::def::DefKind::AssocConst = def_kind {
                 err.span_label(
                     self.tcx.def_span(uv.def),
-                    crate::fluent_generated::mir_build_const_defined_here,
+                    crate::fluent_generated::mir_build_verus_const_defined_here,
                 );
             }
         }
