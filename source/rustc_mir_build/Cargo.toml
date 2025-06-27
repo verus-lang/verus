@@ -1,5 +1,5 @@
 [package]
-name = "rustc_mir_build"
+name = "rustc_mir_build_verus"
 version = "0.0.0"
 edition = "2024"
 
