@@ -1097,7 +1097,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             }
 
-            Res::Local(var_hir_id) => self.convert_var(var_hir_id),
+            Res::Local(var_hir_id) => {
+                match crate::verus::handle_var(self, expr, var_hir_id) {
+                    Some(expr) => expr,
+                    None => self.convert_var(var_hir_id),
+                }
+            }
 
             _ => span_bug!(expr.span, "res `{:?}` not yet implemented", res),
         }
