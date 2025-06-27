@@ -465,7 +465,7 @@ pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro
         quote! {
             #[verifier::proof_block]
             {
-                #[verus::internal(const_header_wrapper)]||#block;
+                #block;
             }
         }
         .into()

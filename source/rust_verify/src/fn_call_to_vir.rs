@@ -21,8 +21,9 @@ use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
-use rustc_hir::{Expr, ExprKind, Node, QPath};
+use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -755,8 +756,16 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
+                if !bctx.in_ghost {
+                    if matches!(expr_item, ExprItem::ClosureToFnSpec) {
+                        return err_span(args[0].span, "cannot use spec_fn closure in 'exec' mode");
+                    } else {
+                        return err_span(args[0].span, "cannot use proof_fn closure in 'exec' mode");
+                    }
+                }
                 if let ExprKind::Closure(..) = &args[0].kind {
                     let is_spec_fn = matches!(expr_item, ExprItem::ClosureToFnSpec);
+
                     let proof_fn_modes = if matches!(expr_item, ExprItem::ClosureToFnProof) {
                         let ty = bctx.types.node_type(expr.hir_id);
                         if let Some((arg_modes, ret_mode)) =
@@ -1586,6 +1595,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
+        VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {
+            return err_span(
+                expr.span,
+                format!("this builtin item should not appear in user code",),
+            );
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
@@ -1632,6 +1647,11 @@ fn extract_ensures<'tcx>(
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
@@ -1666,6 +1686,11 @@ fn extract_quant<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
@@ -1723,6 +1748,11 @@ fn extract_assert_forall_by<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
@@ -1777,6 +1807,11 @@ fn extract_choose<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
@@ -1843,7 +1878,7 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
                     rustc_hir::def::Res::Def(_, def_id) => {
                         let verus_item = bctx.ctxt.verus_items.id_to_name.get(&def_id);
                         if verus_item == Some(&VerusItem::Expr(ExprItem::ClosureToFnSpec)) {
-                            return &args_slice[0];
+                            return skip_closure_coercion(bctx, &args_slice[0]);
                         }
                     }
                     _ => {}
@@ -1851,6 +1886,29 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
             }
             _ => {}
         },
+        ExprKind::Block(
+            Block {
+                stmts,
+                expr: Some(e),
+                hir_id: _,
+                rules: BlockCheckMode::DefaultBlock,
+                span: _,
+                targeted_by_break: false,
+            },
+            None,
+        ) => {
+            if stmts.len() == 1 {
+                match &stmts[0].kind {
+                    StmtKind::Let(rustc_hir::LetStmt { init: Some(init), .. }) => {
+                        if crate::rust_to_vir_expr::is_ignorable_dummy_capture_operation(bctx, init)
+                        {
+                            return skip_closure_coercion(bctx, e);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         _ => {}
     }
 
@@ -2192,7 +2250,7 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
     record_call(bctx, expr, ResolvedCall::Spec)
 }
 
-fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
+pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
 }

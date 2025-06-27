@@ -2807,7 +2807,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #[verus::internal(const_header_wrapper)]||{#inner}; } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { {#inner}; } ),
                 ),
             );
         }
@@ -2874,12 +2874,7 @@ impl Visitor {
             match (mode_block, &*unary.expr) {
                 ((false, _), Expr::Block(..)) => {
                     // proof { ... }
-                    let mut inner = take_expr(&mut *unary.expr);
-                    if self.inside_const {
-                        inner = Expr::Verbatim(
-                            quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
-                        );
-                    }
+                    let inner = take_expr(&mut *unary.expr);
                     let e = if is_inside_ghost {
                         quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
                     } else {
@@ -2967,6 +2962,11 @@ impl Visitor {
             let mut stmts: Vec<Stmt> = Vec::new();
             // TODO: wrap specs inside ghost blocks
             self.inside_ghost += 1;
+            if self.erase_ghost.keep() {
+                stmts.push(stmt_with_semi!(builtin, clos.span() =>
+                    #builtin::dummy_capture_consume(_verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it)
+                ));
+            }
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3015,7 +3015,13 @@ impl Visitor {
                 if let Expr::Block(block) = &mut *clos.body {
                     block.block.stmts.splice(0..0, stmts);
                 } else {
-                    panic!("parser requires Expr::Block for requires/ensures")
+                    let body = take_expr(&mut *clos.body);
+                    stmts.push(Stmt::Expr(body, None));
+                    *clos.body = Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block { brace_token: Brace(clos.span()), stmts },
+                    })
                 }
             }
             let span = clos.span();
@@ -3040,7 +3046,13 @@ impl Visitor {
                     ));
                 }
             }
-            *expr = new_expr;
+            *expr = if self.erase_ghost.keep() {
+                Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
+                    { let _verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it = #builtin::dummy_capture_new(); #new_expr }
+                ))
+            } else {
+                new_expr
+            }
         }
 
         true

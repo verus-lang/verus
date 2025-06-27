@@ -32,23 +32,44 @@ impl<'tcx> ThirBuildCx<'tcx> {
     /// "reversed".)
     ///
     /// [dev-guide]: https://rustc-dev-guide.rust-lang.org/thir.html
-    pub(crate) fn mirror_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) -> ExprId {
+    pub(crate) fn mirror_expr(&mut self, expr: &'tcx hir::Expr<'tcx>, spec: bool) -> ExprId {
         // `mirror_expr` is recursing very deep. Make sure the stack doesn't overflow.
-        ensure_sufficient_stack(|| self.mirror_expr_inner(expr))
+        ensure_sufficient_stack(|| self.mirror_expr_inner(expr, spec))
     }
 
-    pub(crate) fn mirror_exprs(&mut self, exprs: &'tcx [hir::Expr<'tcx>]) -> Box<[ExprId]> {
-        exprs.iter().map(|expr| self.mirror_expr_inner(expr)).collect()
+    pub(crate) fn mirror_exprs(
+        &mut self,
+        exprs: &'tcx [hir::Expr<'tcx>],
+        spec: bool,
+    ) -> Box<[ExprId]> {
+        exprs.iter().map(|expr| self.mirror_expr_inner(expr, spec)).collect()
+    }
+
+    pub(crate) fn mirror_exprs_spec_args(
+        &mut self,
+        exprs: &'tcx [hir::Expr<'tcx>],
+        spec: bool,
+        spec_args: &crate::verus::ExpectSpecArgs,
+    ) -> Box<[ExprId]> {
+        exprs
+            .iter()
+            .enumerate()
+            .map(|(i, expr)| self.mirror_expr_inner(expr, spec_args.get(i).apply(spec)))
+            .collect()
     }
 
     #[instrument(level = "trace", skip(self, hir_expr))]
-    pub(super) fn mirror_expr_inner(&mut self, hir_expr: &'tcx hir::Expr<'tcx>) -> ExprId {
+    pub(super) fn mirror_expr_inner(
+        &mut self,
+        hir_expr: &'tcx hir::Expr<'tcx>,
+        spec: bool,
+    ) -> ExprId {
         let expr_scope =
             region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
 
         trace!(?hir_expr.hir_id, ?hir_expr.span);
 
-        let mut expr = self.make_mirror_unadjusted(hir_expr);
+        let mut expr = self.make_mirror_unadjusted(hir_expr, spec);
 
         trace!(?expr.ty);
 
@@ -57,7 +78,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             for adjustment in self.typeck_results.expr_adjustments(hir_expr) {
                 trace!(?expr, ?adjustment);
                 let span = expr.span;
-                expr = self.apply_adjustment(hir_expr, expr, adjustment, span);
+                expr = self.apply_adjustment(hir_expr, expr, adjustment, span, spec);
             }
         }
 
@@ -86,6 +107,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         mut expr: Expr<'tcx>,
         adjustment: &Adjustment<'tcx>,
         mut span: Span,
+        spec: bool,
     ) -> Expr<'tcx> {
         let Expr { temp_lifetime, .. } = expr;
 
@@ -136,7 +158,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
             Adjust::NeverToAny => ExprKind::NeverToAny { source: self.thir.exprs.push(expr) },
             Adjust::Deref(None) => {
                 adjust_span(&mut expr);
-                ExprKind::Deref { arg: self.thir.exprs.push(expr) }
+                let kind = ExprKind::Deref { arg: self.thir.exprs.push(expr) };
+                crate::verus::maybe_erased_top_node(self, hir_expr, adjustment.target, kind, spec)
             }
             Adjust::Deref(Some(deref)) => {
                 // We don't need to do call adjust_span here since
@@ -165,10 +188,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     deref.span,
                 )
             }
-            Adjust::Borrow(AutoBorrow::Ref(m)) => ExprKind::Borrow {
-                borrow_kind: m.to_borrow_kind(),
-                arg: self.thir.exprs.push(expr),
-            },
+            Adjust::Borrow(AutoBorrow::Ref(m)) => {
+                let kind = ExprKind::Borrow {
+                    borrow_kind: m.to_borrow_kind(),
+                    arg: self.thir.exprs.push(expr),
+                };
+                crate::verus::maybe_erased_top_node(self, hir_expr, adjustment.target, kind, spec)
+            }
             Adjust::Borrow(AutoBorrow::RawPtr(mutability)) => {
                 ExprKind::RawBorrow { mutability, arg: self.thir.exprs.push(expr) }
             }
@@ -247,6 +273,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         source: &'tcx hir::Expr<'tcx>,
         temp_lifetime: TempLifetime,
         span: Span,
+        spec: bool,
     ) -> ExprKind<'tcx> {
         let tcx = self.tcx;
 
@@ -254,13 +281,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
         // using a coercion (or is a no-op).
         if self.typeck_results.is_coercion_cast(source.hir_id) {
             // Convert the lexpr to a vexpr.
-            ExprKind::Use { source: self.mirror_expr(source) }
+            ExprKind::Use { source: self.mirror_expr(source, spec) }
         } else if self.typeck_results.expr_ty(source).is_ref() {
             // Special cased so that we can type check that the element
             // type of the source matches the pointed to type of the
             // destination.
             ExprKind::PointerCoercion {
-                source: self.mirror_expr(source),
+                source: self.mirror_expr(source, spec),
                 cast: PointerCoercion::ArrayToPointer,
                 is_from_as_cast: true,
             }
@@ -322,12 +349,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
         } else {
             // Default to `ExprKind::Cast` for all explicit casts.
             // MIR building then picks the right MIR casts based on the types.
-            ExprKind::Cast { source: self.mirror_expr(source) }
+            ExprKind::Cast { source: self.mirror_expr(source, spec) }
         }
     }
 
     #[instrument(level = "debug", skip(self), ret)]
-    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>) -> Expr<'tcx> {
+    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>, spec: bool) -> Expr<'tcx> {
         let tcx = self.tcx;
         let expr_ty = self.typeck_results.expr_ty(expr);
         let (temp_lifetime, backwards_incompatible) =
@@ -336,24 +363,53 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let kind = match expr.kind {
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
-                // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
-                let expr = self.method_callee(expr, segment.ident.span, None);
-                info!("Using method span: {:?}", expr.span);
-                let args = std::iter::once(receiver)
-                    .chain(args.iter())
-                    .map(|expr| self.mirror_expr(expr))
-                    .collect();
-                ExprKind::Call {
-                    ty: expr.ty,
-                    fun: self.thir.exprs.push(expr),
-                    args,
-                    from_hir_call: true,
-                    fn_span,
+                let call_erasure = crate::verus::handle_call(self, expr);
+
+                match call_erasure {
+                    crate::verus::CallErasure::EraseTree => {
+                        crate::verus::erase_tree_kind(self, expr)
+                    }
+                    crate::verus::CallErasure::Call(node_erase, spec_args) => {
+                        // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
+                        let method_expr = self.method_callee(expr, segment.ident.span, None);
+                        info!("Using method span: {:?}", method_expr.span);
+                        let args = std::iter::once(receiver)
+                            .chain(args.iter())
+                            .enumerate()
+                            .map(|(i, expr)| self.mirror_expr(expr, spec_args.get(i).apply(spec)))
+                            .collect();
+                        let kind = ExprKind::Call {
+                            ty: method_expr.ty,
+                            fun: self.thir.exprs.push(method_expr),
+                            args,
+                            from_hir_call: true,
+                            fn_span,
+                        };
+
+                        if node_erase.should_erase(spec) {
+                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                        } else {
+                            kind
+                        }
+                    }
                 }
             }
 
             hir::ExprKind::Call(fun, ref args) => {
-                if self.typeck_results.is_method_call(expr) {
+                let call_erasure = crate::verus::handle_call(self, expr);
+                #[rustfmt::skip]
+                let kind = match call_erasure {
+                    crate::verus::CallErasure::EraseTree => {
+                        crate::verus::erase_tree_kind(self, expr)
+                    }
+                    crate::verus::CallErasure::Call(node_erase, spec_args) => {
+
+                // leave unindented for easier merging
+                //////////////////////////////
+                //////////////////////////////
+                //////////////////////////////
+
+                let kind = if self.typeck_results.is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
                     // Find the actual method implementation being called and
                     // build the appropriate UFCS call expression with the
@@ -368,14 +424,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         ty: Ty::new_tup_from_iter(tcx, arg_tys),
                         temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
                         span: expr.span,
-                        kind: ExprKind::Tuple { fields: self.mirror_exprs(args) },
+                        kind: ExprKind::Tuple { fields: self.mirror_exprs_spec_args(args, spec, &spec_args) },
                     };
                     let tupled_args = self.thir.exprs.push(tupled_args);
 
                     ExprKind::Call {
                         ty: method.ty,
                         fun: self.thir.exprs.push(method),
-                        args: Box::new([self.mirror_expr(fun), tupled_args]),
+                        args: Box::new([self.mirror_expr(fun, false), tupled_args]),
                         from_hir_call: true,
                         fn_span: expr.span,
                     }
@@ -395,7 +451,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
                         ty: expr_ty,
                         span: expr.span,
-                        kind: ExprKind::Box { value: self.mirror_expr(value) },
+                        kind: ExprKind::Box { value: self.mirror_expr(value, spec_args.get(0).apply(spec)) },
                     };
                 } else {
                     // Tuple-like ADTs are represented as ExprKind::Call. We convert them here.
@@ -441,7 +497,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             .enumerate()
                             .map(|(idx, e)| FieldExpr {
                                 name: FieldIdx::new(idx),
-                                expr: self.mirror_expr(e),
+                                expr: self.mirror_expr(e, spec_args.get(idx).apply(spec)),
                             })
                             .collect();
                         ExprKind::Adt(Box::new(AdtExpr {
@@ -455,43 +511,66 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     } else {
                         ExprKind::Call {
                             ty: self.typeck_results.node_type(fun.hir_id),
-                            fun: self.mirror_expr(fun),
-                            args: self.mirror_exprs(args),
+                            fun: self.mirror_expr(fun, false),
+                            args: self.mirror_exprs_spec_args(args, spec, &spec_args),
                             from_hir_call: true,
                             fn_span: expr.span,
                         }
                     }
-                }
+                };
+
+                //////////////////////////////
+                //////////////////////////////
+                //////////////////////////////
+
+                        if node_erase.should_erase(spec) {
+                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                        } else {
+                            kind
+                        }
+
+                    }
+                };
+                kind
             }
 
             hir::ExprKind::Use(expr, span) => {
-                ExprKind::ByUse { expr: self.mirror_expr(expr), span }
+                ExprKind::ByUse { expr: self.mirror_expr(expr, spec), span }
             }
 
             hir::ExprKind::AddrOf(hir::BorrowKind::Ref, mutbl, arg) => {
-                ExprKind::Borrow { borrow_kind: mutbl.to_borrow_kind(), arg: self.mirror_expr(arg) }
+                let kind = ExprKind::Borrow {
+                    borrow_kind: mutbl.to_borrow_kind(),
+                    arg: self.mirror_expr(arg, spec),
+                };
+                crate::verus::maybe_erased_top_node_unadjusted(self, expr, kind, spec)
             }
 
             hir::ExprKind::AddrOf(hir::BorrowKind::Raw, mutability, arg) => {
-                ExprKind::RawBorrow { mutability, arg: self.mirror_expr(arg) }
+                ExprKind::RawBorrow { mutability, arg: self.mirror_expr(arg, spec) }
             }
 
-            hir::ExprKind::Block(blk, _) => ExprKind::Block { block: self.mirror_block(blk) },
+            hir::ExprKind::Block(blk, _) => ExprKind::Block { block: self.mirror_block(blk, spec) },
 
             hir::ExprKind::Assign(lhs, rhs, _) => {
-                ExprKind::Assign { lhs: self.mirror_expr(lhs), rhs: self.mirror_expr(rhs) }
+                let erase = crate::verus::should_erase_var(self, lhs.hir_id);
+                ExprKind::Assign {
+                    lhs: self.mirror_expr(lhs, erase),
+                    rhs: self.mirror_expr(rhs, erase),
+                }
             }
 
             hir::ExprKind::AssignOp(op, lhs, rhs) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let lhs = self.mirror_expr(lhs);
-                    let rhs = self.mirror_expr(rhs);
+                    let lhs = self.mirror_expr(lhs, false);
+                    let rhs = self.mirror_expr(rhs, false);
                     self.overloaded_operator(expr, Box::new([lhs, rhs]))
                 } else {
+                    let erase = crate::verus::should_erase_var(self, lhs.hir_id);
                     ExprKind::AssignOp {
                         op: assign_op(op.node),
-                        lhs: self.mirror_expr(lhs),
-                        rhs: self.mirror_expr(rhs),
+                        lhs: self.mirror_expr(lhs, erase),
+                        rhs: self.mirror_expr(rhs, erase),
                     }
                 }
             }
@@ -500,27 +579,27 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
             hir::ExprKind::Binary(op, lhs, rhs) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let lhs = self.mirror_expr(lhs);
-                    let rhs = self.mirror_expr(rhs);
+                    let lhs = self.mirror_expr(lhs, false);
+                    let rhs = self.mirror_expr(rhs, false);
                     self.overloaded_operator(expr, Box::new([lhs, rhs]))
                 } else {
                     match op.node {
                         hir::BinOpKind::And => ExprKind::LogicalOp {
                             op: LogicalOp::And,
-                            lhs: self.mirror_expr(lhs),
-                            rhs: self.mirror_expr(rhs),
+                            lhs: self.mirror_expr(lhs, spec),
+                            rhs: self.mirror_expr(rhs, spec),
                         },
                         hir::BinOpKind::Or => ExprKind::LogicalOp {
                             op: LogicalOp::Or,
-                            lhs: self.mirror_expr(lhs),
-                            rhs: self.mirror_expr(rhs),
+                            lhs: self.mirror_expr(lhs, spec),
+                            rhs: self.mirror_expr(rhs, spec),
                         },
                         _ => {
                             let op = bin_op(op.node);
                             ExprKind::Binary {
                                 op,
-                                lhs: self.mirror_expr(lhs),
-                                rhs: self.mirror_expr(rhs),
+                                lhs: self.mirror_expr(lhs, spec),
+                                rhs: self.mirror_expr(rhs, spec),
                             }
                         }
                     }
@@ -529,8 +608,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
             hir::ExprKind::Index(lhs, index, brackets_span) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let lhs = self.mirror_expr(lhs);
-                    let index = self.mirror_expr(index);
+                    let lhs = self.mirror_expr(lhs, false);
+                    let index = self.mirror_expr(index, false);
                     self.overloaded_place(
                         expr,
                         expr_ty,
@@ -539,118 +618,166 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         brackets_span,
                     )
                 } else {
-                    ExprKind::Index { lhs: self.mirror_expr(lhs), index: self.mirror_expr(index) }
+                    ExprKind::Index {
+                        lhs: self.mirror_expr(lhs, spec),
+                        index: self.mirror_expr(index, spec),
+                    }
                 }
             }
 
             hir::ExprKind::Unary(hir::UnOp::Deref, arg) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let arg = self.mirror_expr(arg);
+                    let arg = self.mirror_expr(arg, false);
                     self.overloaded_place(expr, expr_ty, None, Box::new([arg]), expr.span)
                 } else {
-                    ExprKind::Deref { arg: self.mirror_expr(arg) }
+                    let kind = ExprKind::Deref { arg: self.mirror_expr(arg, spec) };
+                    crate::verus::maybe_erased_top_node_unadjusted(self, expr, kind, spec)
                 }
             }
 
             hir::ExprKind::Unary(hir::UnOp::Not, arg) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let arg = self.mirror_expr(arg);
+                    let arg = self.mirror_expr(arg, false);
                     self.overloaded_operator(expr, Box::new([arg]))
                 } else {
-                    ExprKind::Unary { op: UnOp::Not, arg: self.mirror_expr(arg) }
+                    ExprKind::Unary { op: UnOp::Not, arg: self.mirror_expr(arg, spec) }
                 }
             }
 
             hir::ExprKind::Unary(hir::UnOp::Neg, arg) => {
                 if self.typeck_results.is_method_call(expr) {
-                    let arg = self.mirror_expr(arg);
+                    let arg = self.mirror_expr(arg, false);
                     self.overloaded_operator(expr, Box::new([arg]))
                 } else if let hir::ExprKind::Lit(lit) = arg.kind {
                     ExprKind::Literal { lit, neg: true }
                 } else {
-                    ExprKind::Unary { op: UnOp::Neg, arg: self.mirror_expr(arg) }
+                    ExprKind::Unary { op: UnOp::Neg, arg: self.mirror_expr(arg, spec) }
                 }
             }
 
-            hir::ExprKind::Struct(qpath, fields, ref base) => match expr_ty.kind() {
-                ty::Adt(adt, args) => match adt.adt_kind() {
-                    AdtKind::Struct | AdtKind::Union => {
-                        let user_provided_types = self.typeck_results.user_provided_types();
-                        let user_ty = user_provided_types.get(expr.hir_id).copied().map(Box::new);
-                        debug!("make_mirror_unadjusted: (struct/union) user_ty={:?}", user_ty);
-                        ExprKind::Adt(Box::new(AdtExpr {
-                            adt_def: *adt,
-                            variant_index: FIRST_VARIANT,
-                            args,
-                            user_ty,
-                            fields: self.field_refs(fields),
-                            base: match base {
-                                hir::StructTailExpr::Base(base) => AdtExprBase::Base(FruInfo {
-                                    base: self.mirror_expr(base),
-                                    field_types: self.typeck_results.fru_field_types()[expr.hir_id]
-                                        .iter()
-                                        .copied()
-                                        .collect(),
-                                }),
-                                hir::StructTailExpr::DefaultFields(_) => {
-                                    AdtExprBase::DefaultFields(
-                                        self.typeck_results.fru_field_types()[expr.hir_id]
-                                            .iter()
-                                            .copied()
-                                            .collect(),
-                                    )
-                                }
-                                hir::StructTailExpr::None => AdtExprBase::None,
-                            },
-                        }))
+            hir::ExprKind::Struct(qpath, fields, ref base) => {
+                let call_erasure = crate::verus::handle_call(self, expr);
+                match call_erasure {
+                    crate::verus::CallErasure::EraseTree => {
+                        crate::verus::erase_tree_kind(self, expr)
                     }
-                    AdtKind::Enum => {
-                        let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
-                        match res {
-                            Res::Def(DefKind::Variant, variant_id) => {
-                                assert!(matches!(
-                                    base,
-                                    hir::StructTailExpr::None
-                                        | hir::StructTailExpr::DefaultFields(_)
-                                ));
+                    crate::verus::CallErasure::Call(node_erase, spec_args) => {
+                        let kind = match expr_ty.kind() {
+                            ty::Adt(adt, args) => match adt.adt_kind() {
+                                AdtKind::Struct | AdtKind::Union => {
+                                    let user_provided_types =
+                                        self.typeck_results.user_provided_types();
+                                    let user_ty =
+                                        user_provided_types.get(expr.hir_id).copied().map(Box::new);
+                                    debug!(
+                                        "make_mirror_unadjusted: (struct/union) user_ty={:?}",
+                                        user_ty
+                                    );
+                                    ExprKind::Adt(Box::new(AdtExpr {
+                                        adt_def: *adt,
+                                        variant_index: FIRST_VARIANT,
+                                        args,
+                                        user_ty,
+                                        fields: self.field_refs(fields, spec, &spec_args),
+                                        base: match base {
+                                            hir::StructTailExpr::Base(base) => {
+                                                AdtExprBase::Base(FruInfo {
+                                                    base: self.mirror_expr(
+                                                        base,
+                                                        spec_args.last().apply(spec),
+                                                    ),
+                                                    field_types: self
+                                                        .typeck_results
+                                                        .fru_field_types()[expr.hir_id]
+                                                        .iter()
+                                                        .copied()
+                                                        .collect(),
+                                                })
+                                            }
+                                            hir::StructTailExpr::DefaultFields(_) => {
+                                                AdtExprBase::DefaultFields(
+                                                    self.typeck_results.fru_field_types()
+                                                        [expr.hir_id]
+                                                        .iter()
+                                                        .copied()
+                                                        .collect(),
+                                                )
+                                            }
+                                            hir::StructTailExpr::None => AdtExprBase::None,
+                                        },
+                                    }))
+                                }
+                                AdtKind::Enum => {
+                                    let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
+                                    match res {
+                                        Res::Def(DefKind::Variant, variant_id) => {
+                                            assert!(matches!(
+                                                base,
+                                                hir::StructTailExpr::None
+                                                    | hir::StructTailExpr::DefaultFields(_)
+                                            ));
 
-                                let index = adt.variant_index_with_id(variant_id);
-                                let user_provided_types = self.typeck_results.user_provided_types();
-                                let user_ty =
-                                    user_provided_types.get(expr.hir_id).copied().map(Box::new);
-                                debug!("make_mirror_unadjusted: (variant) user_ty={:?}", user_ty);
-                                ExprKind::Adt(Box::new(AdtExpr {
-                                    adt_def: *adt,
-                                    variant_index: index,
-                                    args,
-                                    user_ty,
-                                    fields: self.field_refs(fields),
-                                    base: match base {
-                                        hir::StructTailExpr::DefaultFields(_) => {
-                                            AdtExprBase::DefaultFields(
-                                                self.typeck_results.fru_field_types()[expr.hir_id]
-                                                    .iter()
-                                                    .copied()
-                                                    .collect(),
-                                            )
+                                            let index = adt.variant_index_with_id(variant_id);
+                                            let user_provided_types =
+                                                self.typeck_results.user_provided_types();
+                                            let user_ty = user_provided_types
+                                                .get(expr.hir_id)
+                                                .copied()
+                                                .map(Box::new);
+                                            debug!(
+                                                "make_mirror_unadjusted: (variant) user_ty={:?}",
+                                                user_ty
+                                            );
+                                            ExprKind::Adt(Box::new(AdtExpr {
+                                                adt_def: *adt,
+                                                variant_index: index,
+                                                args,
+                                                user_ty,
+                                                fields: self.field_refs(fields, spec, &spec_args),
+                                                base: match base {
+                                                    hir::StructTailExpr::DefaultFields(_) => {
+                                                        AdtExprBase::DefaultFields(
+                                                            self.typeck_results.fru_field_types()
+                                                                [expr.hir_id]
+                                                                .iter()
+                                                                .copied()
+                                                                .collect(),
+                                                        )
+                                                    }
+                                                    hir::StructTailExpr::Base(base) => {
+                                                        span_bug!(
+                                                            base.span,
+                                                            "unexpected res: {:?}",
+                                                            res
+                                                        );
+                                                    }
+                                                    hir::StructTailExpr::None => AdtExprBase::None,
+                                                },
+                                            }))
                                         }
-                                        hir::StructTailExpr::Base(base) => {
-                                            span_bug!(base.span, "unexpected res: {:?}", res);
+                                        _ => {
+                                            span_bug!(expr.span, "unexpected res: {:?}", res);
                                         }
-                                        hir::StructTailExpr::None => AdtExprBase::None,
-                                    },
-                                }))
-                            }
+                                    }
+                                }
+                            },
                             _ => {
-                                span_bug!(expr.span, "unexpected res: {:?}", res);
+                                span_bug!(
+                                    expr.span,
+                                    "unexpected type for struct literal: {:?}",
+                                    expr_ty
+                                );
                             }
+                        };
+
+                        if node_erase.should_erase(spec) {
+                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                        } else {
+                            kind
                         }
                     }
-                },
-                _ => {
-                    span_bug!(expr.span, "unexpected type for struct literal: {:?}", expr_ty);
                 }
-            },
+            }
 
             hir::ExprKind::Closure(hir::Closure { .. }) => {
                 let closure_ty = self.typeck_results.expr_ty(expr);
@@ -668,41 +795,55 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
-                let upvars = self
-                    .tcx
-                    .closure_captures(def_id)
-                    .iter()
-                    .zip_eq(args.upvar_tys())
-                    .map(|(captured_place, ty)| {
-                        let upvars = self.capture_upvar(expr, captured_place, ty);
-                        self.thir.exprs.push(upvars)
-                    })
-                    .collect();
-
-                // Convert the closure fake reads, if any, from hir `Place` to ExprRef
-                let fake_reads = match self.typeck_results.closure_fake_reads.get(&def_id) {
-                    Some(fake_reads) => fake_reads
+                if let Some((upvars, fake_reads)) =
+                    crate::verus::get_override_closure_kind(self, def_id)
+                {
+                    ExprKind::Closure(Box::new(ClosureExpr {
+                        closure_id: def_id,
+                        args,
+                        upvars,
+                        movability,
+                        fake_reads,
+                    }))
+                } else if self.verus_ctxt.skip_closure(def_id) {
+                    crate::verus::erase_tree_kind(self, expr)
+                } else {
+                    let upvars = self
+                        .tcx
+                        .closure_captures(def_id)
                         .iter()
-                        .map(|(place, cause, hir_id)| {
-                            let expr = self.convert_captured_hir_place(expr, place.clone());
-                            (self.thir.exprs.push(expr), *cause, *hir_id)
+                        .zip_eq(args.upvar_tys())
+                        .map(|(captured_place, ty)| {
+                            let upvars = self.capture_upvar(expr, captured_place, ty);
+                            self.thir.exprs.push(upvars)
                         })
-                        .collect(),
-                    None => Vec::new(),
-                };
+                        .collect();
 
-                ExprKind::Closure(Box::new(ClosureExpr {
-                    closure_id: def_id,
-                    args,
-                    upvars,
-                    movability,
-                    fake_reads,
-                }))
+                    // Convert the closure fake reads, if any, from hir `Place` to ExprRef
+                    let fake_reads = match self.typeck_results.closure_fake_reads.get(&def_id) {
+                        Some(fake_reads) => fake_reads
+                            .iter()
+                            .map(|(place, cause, hir_id)| {
+                                let expr = self.convert_captured_hir_place(expr, place.clone());
+                                (self.thir.exprs.push(expr), *cause, *hir_id)
+                            })
+                            .collect(),
+                        None => Vec::new(),
+                    };
+
+                    ExprKind::Closure(Box::new(ClosureExpr {
+                        closure_id: def_id,
+                        args,
+                        upvars,
+                        movability,
+                        fake_reads,
+                    }))
+                }
             }
 
             hir::ExprKind::Path(ref qpath) => {
                 let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
-                self.convert_path_expr(expr, res)
+                self.convert_path_expr(expr, res, spec)
             }
 
             hir::ExprKind::InlineAsm(asm) => ExprKind::InlineAsm(Box::new(InlineAsmExpr {
@@ -713,24 +854,28 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     .iter()
                     .map(|(op, _op_sp)| match *op {
                         hir::InlineAsmOperand::In { reg, expr } => {
-                            InlineAsmOperand::In { reg, expr: self.mirror_expr(expr) }
+                            InlineAsmOperand::In { reg, expr: self.mirror_expr(expr, false) }
                         }
                         hir::InlineAsmOperand::Out { reg, late, ref expr } => {
                             InlineAsmOperand::Out {
                                 reg,
                                 late,
-                                expr: expr.map(|expr| self.mirror_expr(expr)),
+                                expr: expr.map(|expr| self.mirror_expr(expr, false)),
                             }
                         }
                         hir::InlineAsmOperand::InOut { reg, late, expr } => {
-                            InlineAsmOperand::InOut { reg, late, expr: self.mirror_expr(expr) }
+                            InlineAsmOperand::InOut {
+                                reg,
+                                late,
+                                expr: self.mirror_expr(expr, false),
+                            }
                         }
                         hir::InlineAsmOperand::SplitInOut { reg, late, in_expr, ref out_expr } => {
                             InlineAsmOperand::SplitInOut {
                                 reg,
                                 late,
-                                in_expr: self.mirror_expr(in_expr),
-                                out_expr: out_expr.map(|expr| self.mirror_expr(expr)),
+                                in_expr: self.mirror_expr(in_expr, false),
+                                out_expr: out_expr.map(|expr| self.mirror_expr(expr, false)),
                             }
                         }
                         hir::InlineAsmOperand::Const { ref anon_const } => {
@@ -750,13 +895,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             InlineAsmOperand::Const { value, span: tcx.def_span(did) }
                         }
                         hir::InlineAsmOperand::SymFn { expr } => {
-                            InlineAsmOperand::SymFn { value: self.mirror_expr(expr) }
+                            InlineAsmOperand::SymFn { value: self.mirror_expr(expr, false) }
                         }
                         hir::InlineAsmOperand::SymStatic { path: _, def_id } => {
                             InlineAsmOperand::SymStatic { def_id }
                         }
                         hir::InlineAsmOperand::Label { block } => {
-                            InlineAsmOperand::Label { block: self.mirror_block(block) }
+                            InlineAsmOperand::Label { block: self.mirror_block(block, false) }
                         }
                     })
                     .collect(),
@@ -789,17 +934,21 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     span_bug!(expr.span, "unexpected repeat expr ty: {:?}", ty);
                 };
 
-                ExprKind::Repeat { value: self.mirror_expr(v), count: *count }
+                ExprKind::Repeat { value: self.mirror_expr(v, spec), count: *count }
             }
-            hir::ExprKind::Ret(v) => ExprKind::Return { value: v.map(|v| self.mirror_expr(v)) },
-            hir::ExprKind::Become(call) => ExprKind::Become { value: self.mirror_expr(call) },
+            hir::ExprKind::Ret(v) => ExprKind::Return {
+                value: v.map(|v| self.mirror_expr(v, self.verus_ctxt.ret_spec())),
+            },
+            hir::ExprKind::Become(call) => {
+                ExprKind::Become { value: self.mirror_expr(call, self.verus_ctxt.ret_spec()) }
+            }
             hir::ExprKind::Break(dest, ref value) => match dest.target_id {
                 Ok(target_id) => ExprKind::Break {
                     label: region::Scope {
                         local_id: target_id.local_id,
                         data: region::ScopeData::Node,
                     },
-                    value: value.map(|value| self.mirror_expr(value)),
+                    value: value.map(|value| self.mirror_expr(value, false)),
                 },
                 Err(err) => bug!("invalid loop id for break: {}", err),
             },
@@ -813,7 +962,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 Err(err) => bug!("invalid loop id for continue: {}", err),
             },
             hir::ExprKind::Let(let_expr) => ExprKind::Let {
-                expr: self.mirror_expr(let_expr.init),
+                expr: self
+                    .mirror_expr(let_expr.init, self.verus_ctxt.var_spec(let_expr.pat.hir_id)),
                 pat: self.pattern_from_hir(let_expr.pat),
             },
             hir::ExprKind::If(cond, then, else_opt) => ExprKind::If {
@@ -827,13 +977,16 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         }
                     },
                 },
-                cond: self.mirror_expr(cond),
-                then: self.mirror_expr(then),
-                else_opt: else_opt.map(|el| self.mirror_expr(el)),
+                cond: self.mirror_expr(cond, self.verus_ctxt.condition_spec(expr)),
+                then: self.mirror_expr(then, spec),
+                else_opt: else_opt.map(|el| self.mirror_expr(el, spec)),
             },
             hir::ExprKind::Match(discr, arms, match_source) => ExprKind::Match {
-                scrutinee: self.mirror_expr(discr),
-                arms: arms.iter().map(|a| self.convert_arm(a)).collect(),
+                scrutinee: self.mirror_expr(discr, self.verus_ctxt.condition_spec(expr)),
+                arms: arms
+                    .iter()
+                    .map(|a| self.convert_arm(a, spec, self.verus_ctxt.condition_spec(expr)))
+                    .collect(),
                 match_source,
             },
             hir::ExprKind::Loop(body, ..) => {
@@ -841,7 +994,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 let (temp_lifetime, backwards_incompatible) = self
                     .rvalue_scopes
                     .temporary_scope(self.region_scope_tree, body.hir_id.local_id);
-                let block = self.mirror_block(body);
+                let block = self.mirror_block(body, false);
                 let body = self.thir.exprs.push(Expr {
                     ty: block_ty,
                     temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
@@ -851,7 +1004,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 ExprKind::Loop { body }
             }
             hir::ExprKind::Field(source, ..) => ExprKind::Field {
-                lhs: self.mirror_expr(source),
+                lhs: self.mirror_expr(source, spec),
                 variant_index: FIRST_VARIANT,
                 name: self.typeck_results.field_index(expr.hir_id),
             },
@@ -869,6 +1022,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     source,
                     TempLifetime { temp_lifetime, backwards_incompatible },
                     expr.span,
+                    spec,
                 );
 
                 if let Some(user_ty) = user_ty {
@@ -895,7 +1049,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 let user_provided_types = self.typeck_results.user_provided_types();
                 let user_ty = user_provided_types.get(ty.hir_id).copied().map(Box::new);
                 debug!("make_mirror_unadjusted: (type) user_ty={:?}", user_ty);
-                let mirrored = self.mirror_expr(source);
+                let mirrored = self.mirror_expr(source, spec);
                 if source.is_syntactic_place_expr() {
                     ExprKind::PlaceTypeAscription {
                         source: mirrored,
@@ -913,7 +1067,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
             hir::ExprKind::UnsafeBinderCast(UnsafeBinderCastKind::Unwrap, source, _ty) => {
                 // FIXME(unsafe_binders): Take into account the ascribed type, too.
-                let mirrored = self.mirror_expr(source);
+                let mirrored = self.mirror_expr(source, false);
                 if source.is_syntactic_place_expr() {
                     ExprKind::PlaceUnwrapUnsafeBinder { source: mirrored }
                 } else {
@@ -922,15 +1076,21 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
             hir::ExprKind::UnsafeBinderCast(UnsafeBinderCastKind::Wrap, source, _ty) => {
                 // FIXME(unsafe_binders): Take into account the ascribed type, too.
-                let mirrored = self.mirror_expr(source);
+                let mirrored = self.mirror_expr(source, false);
                 ExprKind::WrapUnsafeBinder { source: mirrored }
             }
 
-            hir::ExprKind::DropTemps(source) => ExprKind::Use { source: self.mirror_expr(source) },
-            hir::ExprKind::Array(fields) => ExprKind::Array { fields: self.mirror_exprs(fields) },
-            hir::ExprKind::Tup(fields) => ExprKind::Tuple { fields: self.mirror_exprs(fields) },
+            hir::ExprKind::DropTemps(source) => {
+                ExprKind::Use { source: self.mirror_expr(source, spec) }
+            }
+            hir::ExprKind::Array(fields) => {
+                ExprKind::Array { fields: self.mirror_exprs(fields, spec) }
+            }
+            hir::ExprKind::Tup(fields) => {
+                ExprKind::Tuple { fields: self.mirror_exprs(fields, spec) }
+            }
 
-            hir::ExprKind::Yield(v, _) => ExprKind::Yield { value: self.mirror_expr(v) },
+            hir::ExprKind::Yield(v, _) => ExprKind::Yield { value: self.mirror_expr(v, false) },
             hir::ExprKind::Err(_) => unreachable!("cannot lower a `hir::ExprKind::Err` to THIR"),
         };
 
@@ -1008,11 +1168,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
         }
     }
 
-    fn convert_arm(&mut self, arm: &'tcx hir::Arm<'tcx>) -> ArmId {
+    fn convert_arm(&mut self, arm: &'tcx hir::Arm<'tcx>, spec: bool, discr_spec: bool) -> ArmId {
         let arm = Arm {
             pattern: self.pattern_from_hir(&arm.pat),
-            guard: arm.guard.as_ref().map(|g| self.mirror_expr(g)),
-            body: self.mirror_expr(arm.body),
+            guard: arm.guard.as_ref().map(|g| self.mirror_expr(g, discr_spec)),
+            body: self.mirror_expr(arm.body, spec),
             lint_level: LintLevel::Explicit(arm.hir_id),
             scope: region::Scope { local_id: arm.hir_id.local_id, data: region::ScopeData::Node },
             span: arm.span,
@@ -1020,7 +1180,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
         self.thir.arms.push(arm)
     }
 
-    fn convert_path_expr(&mut self, expr: &'tcx hir::Expr<'tcx>, res: Res) -> ExprKind<'tcx> {
+    fn convert_path_expr(
+        &mut self,
+        expr: &'tcx hir::Expr<'tcx>,
+        res: Res,
+        spec: bool,
+    ) -> ExprKind<'tcx> {
         let args = self.typeck_results.node_args(expr.hir_id);
         match res {
             // A regular function, constructor function or a constant.
@@ -1097,7 +1262,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             }
 
-            Res::Local(var_hir_id) => self.convert_var(var_hir_id),
+            Res::Local(var_hir_id) => {
+                match crate::verus::handle_var(self, expr, var_hir_id, spec) {
+                    Some(expr) => expr,
+                    None => self.convert_var(var_hir_id),
+                }
+            }
 
             _ => span_bug!(expr.span, "res `{:?}` not yet implemented", res),
         }
@@ -1180,7 +1350,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         ExprKind::Deref { arg: ref_expr }
     }
 
-    fn convert_captured_hir_place(
+    pub(crate) fn convert_captured_hir_place(
         &mut self,
         closure_expr: &'tcx hir::Expr<'tcx>,
         place: HirPlace<'tcx>,
@@ -1237,7 +1407,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         captured_place_expr
     }
 
-    fn capture_upvar(
+    pub(crate) fn capture_upvar(
         &mut self,
         closure_expr: &'tcx hir::Expr<'tcx>,
         captured_place: &'tcx ty::CapturedPlace<'tcx>,
@@ -1287,12 +1457,18 @@ impl<'tcx> ThirBuildCx<'tcx> {
     }
 
     /// Converts a list of named fields (i.e., for struct-like struct/enum ADTs) into FieldExpr.
-    fn field_refs(&mut self, fields: &'tcx [hir::ExprField<'tcx>]) -> Box<[FieldExpr]> {
+    fn field_refs(
+        &mut self,
+        fields: &'tcx [hir::ExprField<'tcx>],
+        spec: bool,
+        spec_args: &crate::verus::ExpectSpecArgs,
+    ) -> Box<[FieldExpr]> {
         fields
             .iter()
-            .map(|field| FieldExpr {
+            .enumerate()
+            .map(|(i, field)| FieldExpr {
                 name: self.typeck_results.field_index(field.hir_id),
-                expr: self.mirror_expr(field.expr),
+                expr: self.mirror_expr(field.expr, spec_args.get(i).apply(spec)),
             })
             .collect()
     }

@@ -259,7 +259,7 @@ test_verify_one_file! {
             test(Tracked(pt));
             test(Tracked(pt));
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `pt`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `pt`")
 }
 
 test_verify_one_file! {
@@ -279,7 +279,7 @@ test_verify_one_file! {
 
             let z = *y;
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `pt` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `pt` because it is borrowed")
 }
 
 test_verify_one_file! {

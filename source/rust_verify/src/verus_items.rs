@@ -373,6 +373,15 @@ pub(crate) enum VerusItem {
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
     External(ExternalItem),
+    ErasedGhostValue,
+    DummyCapture(DummyCaptureItem),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum DummyCaptureItem {
+    Struct,
+    New,
+    Consume,
 }
 
 #[rustfmt::skip]
@@ -497,6 +506,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
         ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
+
+        ("verus::builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
+        ("verus::builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
+        ("verus::builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
+        ("verus::builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),
 
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),

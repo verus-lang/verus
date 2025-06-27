@@ -1077,6 +1077,7 @@ fn erase_call<'tcx>(
                 mk_exp(ExpX::Call(target, typ_args, exps))
             }
         }
+        ResolvedCall::BracesCtor(..) => unreachable!(),
         ResolvedCall::Ctor(path, variant_name) => {
             assert!(receiver.is_none());
             if expect_spec {

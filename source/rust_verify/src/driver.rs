@@ -240,6 +240,7 @@ pub fn run(
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         verus_externs,
+        spans: None,
     };
     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
