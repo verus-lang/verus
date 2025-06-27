@@ -38,6 +38,9 @@ mod check_unsafety;
 mod errors;
 pub mod thir;
 
+#[path = "../../rustc_mir_build_additional_files/verus.rs"]
+pub mod verus;
+
 use rustc_middle::util::Providers;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
