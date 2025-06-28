@@ -525,8 +525,12 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::LoopIsolation(false))
                 }
                 AttrTree::Fun(span, arg, Some(places)) if arg == "auto_ext_equal" => {
-                    let mut auto_ext_equal =
-                        vir::ast::AutoExtEqual { assert: false, assert_by: false, ensures: false };
+                    let mut auto_ext_equal = vir::ast::AutoExtEqual {
+                        assert: false,
+                        assert_by: false,
+                        ensures: false,
+                        invariant: false,
+                    };
                     for place in places.into_iter() {
                         if let AttrTree::Fun(_, r, None) = place {
                             match &**r {
@@ -540,6 +544,10 @@ pub(crate) fn parse_attrs(
                                 }
                                 "ensures" => {
                                     auto_ext_equal.ensures = true;
+                                    continue;
+                                }
+                                "invariant" => {
+                                    auto_ext_equal.invariant = true;
                                     continue;
                                 }
                                 _ => {}

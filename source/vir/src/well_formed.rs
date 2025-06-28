@@ -1,7 +1,8 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait,
-    TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
+    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    Pattern, PatternX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
+    Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -26,21 +27,26 @@ struct Ctxt {
 }
 
 #[warn(unused_must_use)]
-fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &crate::messages::Span) -> Result<(), VirErr> {
-    crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
-        if let TypX::Datatype(Dt::Path(path), _, _) = &**t {
+fn check_one_typ(ctxt: &Ctxt, typ: &Typ, span: &crate::messages::Span) -> Result<(), VirErr> {
+    match &**typ {
+        TypX::Datatype(Dt::Path(path), _, _) => {
             check_path_and_get_datatype(ctxt, path, span)?;
             Ok(())
-        } else if let TypX::FnDef(fun, _typs, opt_res_fun) = &**t {
+        }
+        TypX::FnDef(fun, _typs, opt_res_fun) => {
             check_path_and_get_function(ctxt, fun, None, span)?;
             if let Some(res_fun) = opt_res_fun {
                 check_path_and_get_function(ctxt, res_fun, None, span)?;
             }
             Ok(())
-        } else {
-            Ok(())
         }
-    })
+        _ => Ok(()),
+    }
+}
+
+#[warn(unused_must_use)]
+fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &crate::messages::Span) -> Result<(), VirErr> {
+    crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span))
 }
 
 #[warn(unused_must_use)]
@@ -486,12 +492,7 @@ fn check_one_expr(
             }
             _ => {}
         },
-        ExprX::NonSpecClosure { params, ret, proof_fn_modes, .. } => {
-            for p in params.iter() {
-                check_typ(ctxt, &p.a, &expr.span)?;
-            }
-            check_typ(ctxt, &ret.a, &expr.span)?;
-
+        ExprX::NonSpecClosure { params: _, ret: _, proof_fn_modes, .. } => {
             crate::closures::check_closure_well_formed(expr, proof_fn_modes.is_some())?;
         }
         ExprX::Fuel(f, fuel, is_broadcast_use) => {
@@ -545,25 +546,6 @@ fn check_one_expr(
                     ));
                 }
             }
-
-            let u_expr_typ = match &*expr.typ {
-                TypX::Decorate(crate::ast::TypDecoration::Ref, None, typ) => &typ,
-                _ => &expr.typ,
-            };
-            let typs = match &**u_expr_typ {
-                TypX::FnDef(_fun, typs, _resolved_fun) => typs,
-                _ => {
-                    return Err(error(
-                        &expr.span,
-                        "internal Verus error: expected FnDef type here",
-                    ));
-                }
-            };
-            for typ in typs.iter() {
-                check_typ(ctxt, typ, &expr.span)?;
-            }
-
-            check_typ(ctxt, &expr.typ, &expr.span)?;
         }
         ExprX::ProofInSpec(_) => {
             // At the moment, spec termination checking is the only place set up to handle
@@ -596,6 +578,28 @@ fn check_one_expr(
     Ok(())
 }
 
+fn check_one_pattern(
+    ctxt: &Ctxt,
+    function: &Function,
+    pattern: &Pattern,
+    disallow_private_access: Option<(&Visibility, &str)>,
+) -> Result<(), VirErr> {
+    match &pattern.x {
+        PatternX::Constructor(Dt::Path(path), _id, _binders) => {
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &pattern.span,
+                "pattern constructor",
+            )?;
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Place {
     PreState(&'static str),
@@ -611,9 +615,17 @@ fn check_expr(
     place: Place,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
-    crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
-    })
+    crate::ast_visitor::ast_visitor_check(
+        expr,
+        &mut |_scope_map, expr| {
+            check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
+        },
+        &mut |_scope_map, _stmt| Ok(()),
+        &mut |_scope_map, pattern| {
+            check_one_pattern(ctxt, function, pattern, disallow_private_access)
+        },
+        &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
+    )
 }
 
 fn check_function(
@@ -1476,7 +1488,10 @@ pub fn check_crate(
             } else {
                 return Err(error(
                     &function.span,
-                    "cannot find function referred to in when_used_as_spec",
+                    format!(
+                        "cannot find function referred to in when_used_as_spec: {}",
+                        fun_as_friendly_rust_name(spec_fun),
+                    ),
                 ));
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
@@ -1486,7 +1501,29 @@ pub fn check_crate(
                 )
                 .secondary_span(&function.span));
             }
-
+            match (&function.x.kind, &spec_function.x.kind) {
+                (
+                    FunctionKind::TraitMethodDecl { trait_path: p1, .. },
+                    FunctionKind::TraitMethodDecl { trait_path: p2, .. },
+                ) if p1 == p2 => {}
+                (FunctionKind::TraitMethodDecl { .. }, _) => {
+                    return Err(error(
+                        &spec_function.span,
+                        "when_used_as_spec on trait declaration must refer to a spec function in the same trait",
+                    )
+                    .secondary_span(&function.span));
+                }
+                (_, FunctionKind::Static) => {}
+                (_, _) => {
+                    // We can't yet handle FunctionKind::TraitMethodImpl because we don't
+                    // have the corresponding Dynamic info (typs, impl_paths) in general.
+                    return Err(error(
+                        &spec_function.span,
+                        "when_used_as_spec must point to a non-trait spec function",
+                    )
+                    .secondary_span(&function.span));
+                }
+            }
             if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
             {
                 return Err(error(

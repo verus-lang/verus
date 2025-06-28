@@ -1,5 +1,6 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
@@ -14,7 +15,7 @@ use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
     ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTree,
+    TypeVisitableExt, TypingMode, ValTreeKind, Value,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -1059,9 +1060,17 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                     }
 
-                    let trait_typ_args = Arc::new(trait_typ_args);
-                    let proj = TypX::Projection { trait_typ_args, trait_path, name };
-                    return Ok((Arc::new(proj), false));
+                    if Some(trait_def) == tcx.lang_items().pointee_trait()
+                        && name.as_str() == "Metadata"
+                    {
+                        assert!(trait_typ_args.len() == 1);
+                        let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());
+                        return Ok((Arc::new(proj), false));
+                    } else {
+                        let trait_typ_args = Arc::new(trait_typ_args);
+                        let proj = TypX::Projection { trait_typ_args, trait_path, name };
+                        return Ok((Arc::new(proj), false));
+                    }
                 }
                 _ => {
                     unsupported_err!(span, "projection type")
@@ -1075,23 +1084,32 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
-            let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
-            let normalized_substs = tcx.normalize_erasing_regions(typing_env, *args);
-            // TODO: replace with crate::resolve_traits::resolve_trait_item
-            let inst = rustc_middle::ty::Instance::try_resolve(
-                tcx,
-                typing_env,
-                *def_id,
-                normalized_substs,
-            );
-            let mut resolved = None;
-            if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
-                    let path = def_id_to_vir_path(tcx, verus_items, did);
-                    let fun = Arc::new(vir::ast::FunX { path });
-                    resolved = Some(fun);
+            let resolved = if tcx.trait_of_item(*def_id).is_none() {
+                None
+            } else {
+                let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
+                let resolution_result = crate::resolve_traits::resolve_trait_item(
+                    span, tcx, typing_env, *def_id, args,
+                )?;
+                match resolution_result {
+                    ResolutionResult::Unresolved => None,
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromImpl(did, _args),
+                        ..
+                    } => {
+                        let path = def_id_to_vir_path(tcx, verus_items, did);
+                        let fun = Arc::new(vir::ast::FunX { path });
+                        Some(fun)
+                    }
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromTrait(..),
+                        ..
+                    } => None,
+                    ResolutionResult::Builtin(b) => {
+                        unsupported_err!(span, format!("built-in instance {:?}", b));
+                    }
                 }
-            }
+            };
 
             let mut typ_args: Vec<(Typ, bool)> = Vec::new();
             for arg in args.iter() {
@@ -1181,14 +1199,20 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 
     match cnst.kind() {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(ty, ValTree::Leaf(i))
-            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
-        {
-            let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-            Ok(Arc::new(TypX::ConstInt(c)))
-        }
-        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+        ConstKind::Value(Value { ty, valtree }) => {
+            let ValTreeKind::Leaf(i) = *valtree else {
+                unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
+            };
+            match ty.kind() {
+                TyKind::Uint(_) | TyKind::Int(_) => {
+                    let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                    Ok(Arc::new(TypX::ConstInt(c)))
+                }
+                TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
+                _ => {
+                    unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+                }
+            }
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1623,10 +1647,14 @@ pub(crate) fn check_item_external_generics<'tcx>(
     let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
     substs_ref.retain(|arg| match arg.unpack() {
         GenericArgKind::Const(cnst) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if let ValTreeKind::Leaf(ScalarInt::TRUE) = *valtree {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    true
                 }
             } else {
                 true
@@ -1932,15 +1960,31 @@ pub(crate) fn check_generics_bounds_with_polarity<'tcx>(
     )
 }
 
+/// Returns if auto-dereferencing is supported for the given type.
+///
+/// Currently, this checks if the type is a `Box`, `Rc`, or `Arc`. Also, a
+/// reference of a `Box`, `Rc`, or `Arc` is supported since it should be the
+/// argument to the `deref` call.
 pub(crate) fn auto_deref_supported_for_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     ty: &rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
+    fn is_supported_adt<'tcx>(tcx: TyCtxt<'tcx>, adt_def: &rustc_middle::ty::AdtDefData) -> bool {
+        let did = adt_def.did;
+        matches!(
+            verus_items::get_rust_item(tcx, did),
+            Some(RustItem::Box | RustItem::Rc | RustItem::Arc)
+        )
+    }
+
     match ty.kind() {
-        TyKind::Adt(AdtDef(adt_def_data), _args) => {
-            let did = adt_def_data.did;
-            let rust_item = verus_items::get_rust_item(tcx, did);
-            return matches!(rust_item, Some(RustItem::Box | RustItem::Rc | RustItem::Arc));
+        TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
+        TyKind::Ref(_, t, _) => {
+            // Only one-level of recursion.
+            match t.kind() {
+                TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
+                _ => false,
+            }
         }
         _ => false,
     }

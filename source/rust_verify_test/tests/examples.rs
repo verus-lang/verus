@@ -16,6 +16,7 @@ enum Mode {
 
 examples_in_dir!("../../examples");
 examples_in_dir!("../../examples/guide");
+examples_in_dir!("../../examples/pcm");
 examples_in_dir!("../../examples/state_machines");
 examples_in_dir!("../../examples/summer_school");
 examples_in_dir!("../../examples/state_machines/tutorial");

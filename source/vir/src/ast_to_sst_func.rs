@@ -282,10 +282,9 @@ fn req_ens_to_sst(
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
+    let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        let mut ps = (*pars).clone();
-        ps.push(param_to_par(&function.x.ret, false));
-        pars = Arc::new(ps);
+        pars_mut.push(param_to_par(&function.x.ret, false));
     }
     let mut exps: Vec<Exp> = Vec::new();
     for e in specs.iter() {
@@ -305,7 +304,6 @@ pub fn func_decl_to_sst(
     let (ens_pars, enss0) =
         req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.0, false)?;
     let (_, enss1) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.1, false)?;
-    let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
@@ -389,7 +387,6 @@ pub fn func_decl_to_sst(
     Ok(FuncDeclSst {
         req_inv_pars: pars,
         ens_pars,
-        post_pars,
         reqs: Arc::new(reqs),
         enss: (Arc::new(enss0), Arc::new(enss1)),
         inv_masks: Arc::new(inv_masks),

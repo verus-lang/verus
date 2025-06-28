@@ -63,6 +63,7 @@ mod rust_intrinsics_to_vir;
 pub mod rust_to_vir;
 pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;
+pub mod rust_to_vir_ctor;
 pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
 pub mod rust_to_vir_global;

@@ -65,6 +65,8 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
+pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 pub(crate) const SIZED_BOUND: &str = "sized";
@@ -149,15 +151,17 @@ pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
-pub const TYPE_ID_CHAR: &str = "CHAR";
 pub const TYPE_ID_NAT: &str = "NAT";
+pub const TYPE_ID_CHAR: &str = "CHAR";
+pub const TYPE_ID_USIZE: &str = "USIZE";
+pub const TYPE_ID_ISIZE: &str = "ISIZE";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
-pub const DECORATE_NIL_SLICE: &str = "$slice";
+pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
@@ -462,6 +466,14 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn projection_pointee_metadata(decoration: bool) -> Ident {
+    if decoration {
+        Arc::new(PROJECT_POINTEE_METADATA_DECORATION.to_string())
+    } else {
+        Arc::new(PROJECT_POINTEE_METADATA.to_string())
+    }
 }
 
 pub fn proj_param(i: usize) -> Ident {

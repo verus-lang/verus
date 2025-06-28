@@ -690,7 +690,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         }
         // typing invariants for synthetic out-params for &mut params
         for param in
-            func_decl_sst.post_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost))
+            func_decl_sst.ens_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost))
         {
             if let Some(expr) = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()))
             {

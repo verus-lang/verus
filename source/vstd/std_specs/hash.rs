@@ -25,19 +25,24 @@ use super::super::prelude::*;
 
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
+use core::marker::PhantomData;
 use core::option::Option;
 use core::option::Option::None;
+use std::collections::hash_map;
 use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
-use std::collections::hash_set::Iter;
+use std::collections::hash_set;
 use std::collections::{HashMap, HashSet};
 
 verus! {
 
-// We model a `DefaultHasher` as having a view (i.e., an abstract
-// state) of type `Seq<Seq<u8>>`. This reflects the sequence of write
-// operations performed so far, where each write is modeled as having
-// written a sequence of bytes. There's also a specification for
-// how a view will be transformed by `finish` into a `u64`.
+/// Specifications for the behavior of
+/// [`std::collections::hash_map::DefaultHasher`](https://doc.rust-lang.org/std/collections/hash_map/struct.DefaultHasher.html).
+///
+/// We model a `DefaultHasher` as having a view (i.e., an abstract
+/// state) of type `Seq<Seq<u8>>`. This reflects the sequence of write
+/// operations performed so far, where each write is modeled as having
+/// written a sequence of bytes. There's also a specification for
+/// how a view will be transformed by `finish` into a `u64`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExDefaultHasher(DefaultHasher);
@@ -76,13 +81,22 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
         result == DefaultHasher::spec_finish(state@),
 ;
 
-// This function specifies whether a type obeys the requirements
-// to be a key in a hash table and have that hash table conform to our
-// hash-table model. The two requirements are (1) the hash function
-// has to be deterministic and (2) any two elements considered equal
-// by the executable `==` operator must be identical. Requirement (1)
-// isn't satisfied by having `Key` implement `Hash`, since this trait
-// doesn't mandate determinism.
+/// Specifies whether a type conforms to our requirements to be a key
+/// in our hash table (and hash set) model.
+///
+/// The two requirements are (1) the hash function
+/// has to be deterministic and (2) any two elements considered equal
+/// by the executable `==` operator must be identical. Requirement (1)
+/// isn't satisfied by having `Key` implement `Hash`, since this trait
+/// doesn't mandate determinism.
+///
+/// The standard library has axioms that all primitive types and `Box`es
+/// thereof obey this model. If you want to use some other key
+/// type `MyKey`, you need to explicitly state your assumption that it
+/// does so with
+/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>())`.
+/// In the future, we plan to devise a way for you to prove that it
+/// does so, so that you don't have to make such an assumption.
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
@@ -217,12 +231,28 @@ pub trait ExBuildHasher {
     type Hasher: Hasher;
 }
 
+/// Specifies whether a type conforms to our requirements to be a hash builder
+/// in our hash table (and hash set) model.
+///
+/// Our model requires that for any two `Hasher`s that the `BuildHasher` builds,
+/// if they're both given the same write sequence
+/// then their states will match and they'll produce the same digest
+/// when invoked with `finish()`.
+///
+/// The standard library has an axiom that `RandomState`, the default `BuildHasher`
+/// used by `HashMap` and `HashSet`, implements this model.
+/// If you want to use some other hash builder type `MyHashBuilder`,
+/// you need to explicitly state your assumption that it does so with
+/// `assume(vstd::std_specs::hash::builds_valid_hashers::<MyHashBuilder>())`.
 #[verifier::external_body]
 pub uninterp spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
-// A commonly used type of trait `BuildHasher` is `RandomState`. We
-// model that type here. In particular, we have an axiom that
-// `RandomState` conforms to our model of how `BuildHasher` behaves.
+/// Specifications for the behavior of
+/// [`std::hash::RandomState`](https://doc.rust-lang.org/std/hash/struct.RandomState.html).
+///
+/// `RandomState` is the default `BuildHasher` used by Rust's `HashMap` and `HashSet` implementations.
+/// We have an axiom that `RandomState` satisfies [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
+/// and thereby conforms to our model of how `BuildHasher` behaves.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExRandomState(RandomState);
@@ -234,8 +264,8 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
     admit();
 }
 
-// The `keys` method of a `HashMap` returns an iterator of type `Keys`,
-// so we specify that type here.
+/// Specifications for the behavior of
+/// [`std::collections::hash_map::Keys`](https://doc.rust-lang.org/std/collections/hash_map/struct.Keys.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -343,8 +373,8 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
     }
 }
 
-// The `values` method of a `HashMap` returns an iterator of type `Values`,
-// so we specify that type here.
+/// Specifications for the behavior of
+/// [`std::collections::hash_map::Values`](https://doc.rust-lang.org/std/collections/hash_map/struct.Values.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -452,7 +482,169 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
     }
 }
 
-// We now specify the behavior of `HashMap`.
+// The `iter` method of a `HashMap` returns an iterator of type `hash_map::Iter`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
+
+pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
+}
+
+impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
+    'a,
+    Key,
+    Value,
+> {
+    uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
+}
+
+pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next ](
+    iter: &mut hash_map::Iter<'a, Key, Value>,
+) -> (r: Option<(&'a Key, &'a Value)>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(iter)@;
+            match r {
+                None => {
+                    &&& iter@ == old(iter)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some((k, v)) => {
+                    let (new_index, new_seq) = iter@;
+                    let (old_k, old_v) = old_seq[old_index];
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& k == old_k
+                    &&& v == old_v
+                    &&& old_seq.to_set().contains((*k, *v))
+                },
+            }
+        }),
+;
+
+pub struct MapIterGhostIterator<'a, Key, Value> {
+    pub pos: int,
+    pub kv_pairs: Seq<(Key, Value)>,
+    pub _marker: PhantomData<&'a Key>,
+}
+
+impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for hash_map::Iter<
+    'a,
+    Key,
+    Value,
+> {
+    type GhostIter = MapIterGhostIterator<'a, Key, Value>;
+
+    open spec fn ghost_iter(&self) -> MapIterGhostIterator<'a, Key, Value> {
+        MapIterGhostIterator { pos: self@.0, kv_pairs: self@.1, _marker: PhantomData }
+    }
+}
+
+impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for MapIterGhostIterator<
+    'a,
+    Key,
+    Value,
+> {
+    type ExecIter = hash_map::Iter<'a, Key, Value>;
+
+    type Item = (Key, Value);
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &hash_map::Iter<'a, Key, Value>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.kv_pairs == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.kv_pairs == self.kv_pairs
+            &&& 0 <= self.pos <= self.kv_pairs.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.kv_pairs.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.kv_pairs.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<(Key, Value)> {
+        if 0 <= self.pos < self.kv_pairs.len() {
+            Some(self.kv_pairs[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(
+        &self,
+        _exec_iter: &hash_map::Iter<'a, Key, Value>,
+    ) -> MapIterGhostIterator<'a, Key, Value> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
+    type V = Seq<(Key, Value)>;
+
+    open spec fn view(&self) -> Seq<(Key, Value)> {
+        self.kv_pairs.take(self.pos)
+    }
+}
+
+// To allow reasoning about the ghost iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
+    hash_map::Iter<'a, Key, Value>);
+
+pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
+    ensures
+        ({
+            let (pos, v) = #[trigger] spec_hash_map_iter(m)@;
+            &&& pos == 0int
+            &&& forall|i: int| 0 <= i < v.len() ==> #[trigger] m@[v[i].0] == v[i].1
+        }),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_hash_map_iter)]
+pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
+    m: &'a HashMap<Key, Value, S>,
+) -> (iter: hash_map::Iter<'a, Key, Value>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            let (index, s) = iter@;
+            &&& index == 0
+            &&& s.to_set() == m@.kv_pairs()
+            &&& s.no_duplicates()
+        },
+;
+
+/// Specifications for the behavior of [`std::collections::HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html).
+///
+/// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
+///
+/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
+/// for information on use with primitive types and other types,
+/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
+/// for information on use with Rust's default implementation and custom implementations.
+///
+/// Axioms about the behavior of HashMap are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -867,23 +1059,24 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
         },
 ;
 
-// The `iter` method of a `HashSet` returns an iterator of type `Iter`,
+// The `iter` method of a `HashSet` returns an iterator of type `hash_set::Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
-pub struct ExIter<'a, Key: 'a>(Iter<'a, Key>);
+pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait IterAdditionalSpecFns<'a, Key: 'a> {
+pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
     spec fn view(self: &Self) -> (int, Seq<Key>);
 }
 
-impl<'a, Key: 'a> IterAdditionalSpecFns<'a, Key> for Iter<'a, Key> {
-    uninterp spec fn view(self: &Iter<'a, Key>) -> (int, Seq<Key>);
+impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
+    uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
-pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'a, Key>) -> (r:
-    Option<&'a Key>)
+pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
+    elements: &mut hash_set::Iter<'a, Key>,
+) -> (r: Option<&'a Key>)
     ensures
         ({
             let (old_index, old_seq) = old(elements)@;
@@ -903,28 +1096,28 @@ pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'
         }),
 ;
 
-pub struct IterGhostIterator<'a, Key> {
+pub struct SetIterGhostIterator<'a, Key> {
     pub pos: int,
     pub elements: Seq<Key>,
     pub phantom: Option<&'a Key>,
 }
 
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for Iter<'a, Key> {
-    type GhostIter = IterGhostIterator<'a, Key>;
+impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
+    type GhostIter = SetIterGhostIterator<'a, Key>;
 
-    open spec fn ghost_iter(&self) -> IterGhostIterator<'a, Key> {
-        IterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
+    open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
+        SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
     }
 }
 
-impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIterator<'a, Key> {
-    type ExecIter = Iter<'a, Key>;
+impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
+    type ExecIter = hash_set::Iter<'a, Key>;
 
     type Item = Key;
 
     type Decrease = int;
 
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, Key>) -> bool {
+    open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
         &&& self.pos == exec_iter@.0
         &&& self.elements == exec_iter@.1
     }
@@ -953,12 +1146,15 @@ impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIte
         }
     }
 
-    open spec fn ghost_advance(&self, _exec_iter: &Iter<'a, Key>) -> IterGhostIterator<'a, Key> {
+    open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
+        'a,
+        Key,
+    > {
         Self { pos: self.pos + 1, ..*self }
     }
 }
 
-impl<'a, Key> View for IterGhostIterator<'a, Key> {
+impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
     type V = Seq<Key>;
 
     open spec fn view(&self) -> Seq<Key> {
@@ -966,7 +1162,17 @@ impl<'a, Key> View for IterGhostIterator<'a, Key> {
     }
 }
 
-// We now specify the behavior of `HashSet`.
+/// Specifications for the behavior of [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html).
+///
+/// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
+///
+/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
+/// for information on use with primitive types and custom types,
+/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
+/// for information on use with Rust's default implementation and custom implementations.
+///
+/// Axioms about the behavior of HashSet are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -1173,10 +1379,8 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r: Iter<
-    'a,
-    Key,
->)
+pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
+    hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = r@;
@@ -1219,6 +1423,7 @@ pub broadcast group group_hash_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
+    axiom_spec_hash_map_iter,
 }
 
 } // verus!

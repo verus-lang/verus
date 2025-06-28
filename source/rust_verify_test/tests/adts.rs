@@ -1926,3 +1926,22 @@ test_verify_one_file! {
         }
     } => Err(_e) => todo!() //assert_rust_error_msg(e, todo!())
 }
+
+test_verify_one_file! {
+    #[test] struct_brace_syntax_with_associated_type_issue1761 verus_code! {
+        pub struct I;
+        pub trait T {
+            type Output;
+            fn execute() -> Self::Output;
+        }
+        pub struct Out {}
+        impl T for I {
+            type Output = Out;
+            fn execute() -> (res: Self::Output)
+                ensures res == (Self::Output {})
+            {
+                Self::Output {}
+            }
+        }
+    } => Ok(())
+}

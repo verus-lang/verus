@@ -1,4 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 use builtin::*;
 use builtin_macros::*;
 
@@ -47,6 +46,7 @@ fn test_loop() {
             10 <= i,
             i <= 100,
             b1 == i * 2,
+        decreases 100 - i,
     {
         assert(b2 <= 255);
         i = i + 1;

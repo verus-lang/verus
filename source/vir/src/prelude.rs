@@ -91,8 +91,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
     let type_id_int = str_to_node(TYPE_ID_INT);
-    let type_id_char = str_to_node(TYPE_ID_CHAR);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
+    let type_id_char = str_to_node(TYPE_ID_CHAR);
+    let type_id_usize = str_to_node(TYPE_ID_USIZE);
+    let type_id_isize = str_to_node(TYPE_ID_ISIZE);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
@@ -117,6 +119,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let const_int = str_to_node(CONST_INT);
     let const_bool = str_to_node(CONST_BOOL);
     let ext_eq = str_to_node(EXT_EQ);
+
+    let type_id_unit = str_to_node(&prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
 
     let bit_xor = str_to_node(BIT_XOR);
     let bit_and = str_to_node(BIT_AND);
@@ -167,6 +171,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_char] [typ])
+        (declare-const [type_id_usize] [typ])
+        (declare-const [type_id_isize] [typ])
+        (declare-const [type_id_unit] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
@@ -197,8 +204,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [const_bool] ([typ]) Bool)
 
         // The sized-ness of a type is determined by its decoration.
-        // Ref, Box, etc. are all typed.
-        // For the "base" decorations, we can use either decoration_nil_sized (sized)
+        // Ref, Box, etc. are all sized.
+        // For the "base" decorations, we can use either decorate_nil_sized (sized)
         // or decoration_nil_slice (unsized). For new DST types, add a new decoration_nil_X kind.
         //
         // A struct is usually decoration_nil (sized). However, some structs may have their
@@ -344,6 +351,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] x [type_id_nat]))
             :qid prelude_box_unbox_nat
             :skolemid skolem_prelude_box_unbox_nat
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_usize])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_usize]))
+            :qid prelude_box_unbox_usize
+            :skolemid skolem_prelude_box_unbox_usize
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_isize])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_isize]))
+            :qid prelude_box_unbox_isize
+            :skolemid skolem_prelude_box_unbox_isize
         )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
@@ -514,6 +539,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_has_type_nat
             :skolemid skolem_prelude_has_type_nat
         )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                ([u_inv] [arch_size] x)
+                ([has_type] ([box_int] x) [type_id_usize])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_usize]))
+            :qid prelude_has_type_usize
+            :skolemid skolem_prelude_has_type_usize
+        )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                ([i_inv] [arch_size] x)
+                ([has_type] ([box_int] x) [type_id_isize])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_isize]))
+            :qid prelude_has_type_isize
+            :skolemid skolem_prelude_has_type_isize
+        )))
         (axiom (forall ((bits Int) (x Int)) (!
             (=>
                 ([u_inv] bits x)
@@ -549,6 +592,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] x [type_id_nat]))
             :qid prelude_unbox_int
             :skolemid skolem_prelude_unbox_int
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_usize])
+                ([u_inv] [arch_size] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_usize]))
+            :qid prelude_unbox_usize
+            :skolemid skolem_prelude_unbox_usize
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_isize])
+                ([i_inv] [arch_size] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_isize]))
+            :qid prelude_unbox_isize
+            :skolemid skolem_prelude_unbox_isize
         )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
@@ -923,6 +984,85 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
             :qid prelude_strlit_injective
             :skolemid skolem_prelude_strlit_injective
         )))
+    )
+}
+
+pub(crate) fn pointee_metadata_prelude() -> Vec<Node> {
+    let typ = str_to_node(TYPE);
+    let decoration = str_to_node(DECORATION);
+    let sized = str_to_node(SIZED_BOUND);
+
+    let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
+    let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
+    let decorate_dst_inherit = str_to_node(DECORATE_DST_INHERIT);
+
+    let project_pointee_metadata = str_to_node(PROJECT_POINTEE_METADATA);
+    let project_pointee_metadata_decoration = str_to_node(PROJECT_POINTEE_METADATA_DECORATION);
+
+    let type_id_usize = str_to_node(TYPE_ID_USIZE);
+    let type_id_unit = str_to_node(&prefix_type_id(&encode_dt_as_path(&crate::ast::Dt::Tuple(0))));
+
+    nodes_vec!(
+        (declare-fun [project_pointee_metadata] ([decoration]) [typ])
+        (declare-fun [project_pointee_metadata_decoration] ([decoration]) [decoration])
+
+        // The <T as Pointee>::Metadata projection type is special. Like Sized-ness, it depends
+        // only on the decoration.
+
+        // For Sized types: Metadata = ()
+        (axiom (forall ((d [decoration])) (!
+            (=>
+                ([sized] d)
+                (=
+                  ([project_pointee_metadata] d)
+                  [type_id_unit]
+                )
+            )
+            :pattern (([project_pointee_metadata] d))
+            :qid prelude_project_pointee_metadata_sized
+            :skolemid skolem_prelude_project_pointee_metadata_sized
+        )))
+        (axiom (forall ((d [decoration])) (!
+            (=>
+                ([sized] d)
+                (=
+                  ([project_pointee_metadata_decoration] d)
+                  [decorate_nil_sized]
+                )
+            )
+            :pattern (([project_pointee_metadata_decoration] d))
+            :qid prelude_project_pointee_metadata_decoration_sized
+            :skolemid skolem_prelude_project_pointee_metadata_decoration_sized
+        )))
+        // For slice and str types: Metadata = usize
+        (axiom (=
+            ([project_pointee_metadata] [decorate_nil_slice])
+            [type_id_usize]
+        ))
+        (axiom (=
+            ([project_pointee_metadata_decoration] [decorate_nil_slice])
+            [decorate_nil_sized]
+        ))
+        // For dst structs: Metadata is inherited same as the Sized trait
+        (axiom (forall ((d [decoration])) (!
+            (=
+                ([project_pointee_metadata] ([decorate_dst_inherit] d))
+                ([project_pointee_metadata] d)
+            )
+            :pattern (([project_pointee_metadata] ([decorate_dst_inherit] d)))
+            :qid prelude_project_pointee_metadata_decorate_struct_inherit
+            :skolemid skolem_prelude_project_pointee_metadata_decorate_struct_inherit
+        )))
+        (axiom (forall ((d [decoration])) (!
+            (=
+                ([project_pointee_metadata_decoration] ([decorate_dst_inherit] d))
+                ([project_pointee_metadata_decoration] d)
+            )
+            :pattern (([project_pointee_metadata_decoration] ([decorate_dst_inherit] d)))
+            :qid prelude_project_pointee_metadata_decoration_decorate_struct_inherit
+            :skolemid skolem_prelude_project_pointee_metadata_decoration_decorate_struct_inherit
+        )))
+
     )
 }
 

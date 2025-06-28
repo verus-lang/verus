@@ -1,4 +1,3 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::seq_lib::group_seq_properties;
@@ -11,28 +10,25 @@ pub open spec fn is_sorted(v: &Vec<u64>) -> bool {
 
 fn extend_from_idx(r: &mut Vec<u64>, v: &Vec<u64>, start: usize)
     requires
-        (start < v.len()),
+        start < v.len(),
     ensures
-        (r@ == old(r)@ + v@.subrange(start as int, v.len() as int)),
+        r@ == old(r)@ + v@.subrange(start as int, v.len() as int),
 {
-    let mut i: usize = start;
-    while (i < v.len())
+    for i in start..v.len()
         invariant
-            (start <= i <= v.len()),
-            (r@ =~= old(r)@ + v@.subrange(start as int, i as int)),
+            r@ =~= old(r)@ + v@.subrange(start as int, i as int),
     {
         r.push(v[i]);
-        i += 1;
     }
 }
 
 pub broadcast proof fn lemma_to_multiset_distributes_over_add(s1: Seq<u64>, s2: Seq<u64>)
     ensures
-        (#[trigger] (s1 + s2).to_multiset() =~= s1.to_multiset().add(s2.to_multiset())),
+        #[trigger] (s1 + s2).to_multiset() =~= s1.to_multiset().add(s2.to_multiset()),
     decreases s2.len(),
 {
     s2.to_multiset_ensures();
-    if (s2.len() == 0) {
+    if s2.len() == 0 {
         assert((s1 + s2).to_multiset() =~= s1.to_multiset());
         assert(s2.to_multiset() =~= Multiset::<u64>::empty());
     } else {
@@ -68,7 +64,7 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
         is_sorted(v1),
         is_sorted(v2),
     ensures
-        (r@.to_multiset() == (v1@ + v2@).to_multiset()),
+        r@.to_multiset() == (v1@ + v2@).to_multiset(),
         is_sorted(&r),
 {
     broadcast use lemma_to_multiset_distributes_over_add;
@@ -78,7 +74,7 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
     let mut i2: usize = 0;
     assert(v1@.subrange(0 as int, i1 as int) == Seq::<u64>::empty());
 
-    while (i1 < v1.len() && i2 < v2.len())
+    while i1 < v1.len() && i2 < v2.len()
         invariant
             0 <= i1 <= v1.len(),
             0 <= i2 <= v2.len(),
@@ -91,6 +87,7 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
                 i2 as int,
             )).to_multiset(),
             is_sorted(&r),
+        decreases v1.len() + v2.len() - i1 - i2,
     {
         proof {
             r@.to_multiset_ensures();
@@ -149,8 +146,9 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
 
 fn merge_sort(v: &Vec<u64>) -> (r: Vec<u64>)
     ensures
-        (r@.to_multiset() == (*v)@.to_multiset()),
+        r@.to_multiset() == (*v)@.to_multiset(),
         is_sorted(&r),
+    decreases v.len(),
 {
     let n = v.len();
     let mut v1 = v.clone();

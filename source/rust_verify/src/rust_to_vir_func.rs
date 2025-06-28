@@ -12,12 +12,12 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner,
-    Param, Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv,
+    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -65,13 +65,17 @@ fn handle_autospec<'tcx>(
                 format!("a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'"),
             );
         }
-        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
             ctxt.tcx, def_id,
         );
+        if matches!(&functionx.kind, FunctionKind::TraitMethodImpl { .. }) {
+            // pop off impl&%n:: (we want method_name, not Self::method_name)
+            this_path = this_path.pop_segment();
+        }
         let path = autospec_fun(&this_path, method_name.clone());
         Ok(Autospec { redirect_to: Some(Arc::new(FunX { path })), new_func: None })
     } else if vattrs.allow_in_spec {
-        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+        let mut this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
             ctxt.tcx, def_id,
         );
         if functionx.mode != Mode::Exec {
@@ -126,6 +130,11 @@ fn handle_autospec<'tcx>(
             },
         );
 
+        if functionx.proxy.is_some() {
+            // Naively, this_path may contain a mangled _verus_external_fn_specification_ name.
+            // Clean this up before sending it to autospec_return_clause_spec_fn_name:
+            this_path = this_path.pop_segment().push_segment(functionx.name.path.last_segment());
+        }
         let new_func = ctxt.spanned_new(
             span,
             FunctionX {
@@ -215,6 +224,7 @@ pub(crate) fn body_to_vir<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
+        loop_isolation: false,
     };
     let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -930,7 +940,11 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        (this_path.clone(), None, visibility, kind, has_self_param, sig.header.safety)
+        let safety = match sig.header.safety {
+            HeaderSafety::Normal(s) => s,
+            _ => Safety::Unsafe,
+        };
+        (this_path.clone(), None, visibility, kind, has_self_param, safety)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -959,7 +973,7 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            if mode != Mode::Exec && safety == &Safety::Unsafe {
+            if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
@@ -1712,7 +1726,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     preds: &mut Vec<Clause<'tcx>>,
 ) {
     use rustc_middle::ty;
-    use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
+    use rustc_middle::ty::{ConstKind, ScalarInt};
     let tcx = ctxt.tcx;
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
@@ -1749,10 +1763,14 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
             }
         }
         rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if *valtree == &ValTreeKind::Leaf(ScalarInt::TRUE) {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    false
                 }
             } else {
                 false

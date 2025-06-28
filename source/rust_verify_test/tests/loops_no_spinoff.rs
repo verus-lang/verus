@@ -1171,10 +1171,10 @@ test_verify_one_file_with_options! {
                     n == iter.cur * 3,
                     end == 10,
             {
-                assert(x < 10); // FAILS
+                assert(x < 10);
                 assert(x == iter.cur);
                 n += 3;
-                end = end + 0; // causes end to be non-constant, so loop needs more invariants
+                end = end + 0; // causes end to be non-constant, but ok with loop_isolation(false)
             }
         }
 
@@ -1194,7 +1194,7 @@ test_verify_one_file_with_options! {
                 end = end + 0; // causes end to be non-constant
             }
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

@@ -892,3 +892,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] assoc_trait_bound_overflow verus_code! {
+        // https://github.com/verus-lang/verus/issues/1708 , part 2 (trait overflow)
+        trait View {
+            type V;
+        }
+
+        trait T: Sized {
+        }
+
+        trait U
+        where
+            Self::K: View,
+            <Self::K as View>::V: T,
+        {
+            type K;
+        }
+
+        struct Q;
+        struct R;
+        struct S;
+        impl T for Q {
+        }
+        impl View for R {
+            type V = Q;
+        }
+        impl U for S {
+            type K = R;
+        }
+    } => Ok(())
+}

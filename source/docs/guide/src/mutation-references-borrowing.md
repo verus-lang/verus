@@ -1,27 +1,59 @@
 # Mutation, references, and borrowing
 
-The Rust documentation provides a comprehensive overview of ownership, references, and borrowing [here](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html).
+The cornerstone of Rust's type system is its formulation of [ownership, references, and borrowing](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html).
+In this section, we'll discuss how Verus handles these concepts.
 
-In short, ownership is Rust's way of managing memory safely. Every piece of memory that is allocated and used in a Rust program has one owner. For example, when assigning 42 to the variable x, x is the owner of that particular numerical value. Owners can be variables, structures, inputs to functions, etc. Owners can change through an action called move - but, at any given time, a particular piece of memory can only have one owner. Finally, when a piece of memory's owner goes out of scope, the piece of memory is no longer considered valid and cannot be accessed in the program.
+## Rust review
 
-Needing to move ownership between variables or make explicit copies of pieces of memory in order for multiple parts of the program to access to a particular piece of memory can be cumbersome. Therefore, in practice, references are used. References are like pointers to the particular piece of memory, but with additional memory-safety guarantees. Every piece of memory that is allocated and used in a Rust program has either no references, one or more immutable references, OR one mutable references - these three scenarios are exclusive. There are two types of references - mutable and immutable references. 
+In short, ownership is Rust's way of managing memory safely. Every piece of memory that is allocated and used in a Rust program has one owner. For example, when assigning 42 to the variable x, x is the owner of that particular numerical value. Owners can be variables, structs, inputs to functions, etc. Owners can change through an action called move — but, at any given time, a particular piece of memory can only have one owner. Finally, when a piece of memory's owner goes out of scope, the piece of memory is no longer considered valid and cannot be accessed in the program.
 
-Immutable references grant read-only access to a particular piece of memory. As such, a particular piece of memory can have any number of immutable references at a time. Mutable references grant read-and-write access to a particular piece of memory. However, they do not have the same power as owners - for example, they cannot deallocate or free a particular piece of memory. Since mutable references can modify pieces of memory, a particular piece of memory can only have *one* mutable reference and no immutable references. This is to avoid data races, where multiple parties are reading or writing to a singular piece of memory and depending on the, at the time unknown, ordering of these operations, can yield very different results. 
+Since it can often be cumbersome or expensive to transfer ownership and make copies of data,
+Rust also provides a _reference_ system to allow access to data via pointers
+without obtaining full ownership.
+To maintain memory safety, Rust enforces several restrictions on their use:
+every memory location in a Rust program (e.g., stack variable, heap-allocated memory)
+will always, at any point in time, have either:
 
-The action of creating a reference is called borrowing - since the reference is "borrowing" some access to the piece of memory from the owner. This reference will have a lifetime, which determines for which part of the program it is a valid reference that can be used. This lifetime is determined by Rust's borrow checker and corresponds to where the reference is declared up until the last time that the reference is used in the program. In certain cases, Rust will require that this lifetime is marked manually, to make sure that the reference rules, for example, of having only one mutable reference at a time or no co-existing mutable and immutable references, are upheld.
+ * No live references
+ * One or more **immutable** references (denoted by the type `&T`)
+ * Exactly one **mutable** reference (denoted by the type `&mut T`)
 
-The Rust documentation linked above provides many examples for these concepts. 
+As suggested by the name, immutable references only grant read-only access to a particular
+piece of memory, while mutable references grant write-access. However, even mutable references
+don't have the same power as full ownership, for example, they cannot _deallocate_ the memory
+being pointed to.
 
-Currently, Verus fully supports the use of immutable references and partially supports the use of mutable references. 
+Though the system may seem restrictive, it has a number of compelling consequences,
+such as the enforcement of temporal memory safety and data-race-freedom. It also has signficant
+advantages for Verus, greatly simplifying the verification conditions needed to prove code correct.
+
+## Borrowing in Verus
+
+### Immutable borrows
+
+Verus has full support for immutable borrows. These are the easiest to use, as Verus treats
+them the same as non-references, e.g., to Verus, a `&u32` is the same as a `u32`.
+In nearly all situations, there is no need to reason about the pointer address.
 
 ```rust
 {{#include ../../../../examples/guide/references.rs:immut}}
 ```
 
-Currently, Verus only supports the use of mutable references as arguments to a function, such as in the following example. 
+### Mutable borrows
+
+Currently, Verus only supports the use of mutable references as arguments to a function, such as in the following example.
 
 ```rust
 {{#include ../../../../examples/guide/references.rs:mut}}
 ```
 
-Given that the pieces of memory to which mutable references point can be modified during function calls, we need a particular way to talk about their old and updated in Verus spec code, particularly in function `requires` and `ensures` clauses and in `assert` statements.
+In the subsequent chapters, we'll discuss more how to verify code with mutable references,
+e.g., how to write specifications on functions that take mutable arguments.
+
+### Lifetime variables
+
+Rust's type system sometimes requires the use of [lifetime variables](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html?highlight=lifetime) to check that borrows are used correctly
+(i.e., that they obey the mutual-exclusivity rules discussed above).
+Fortunately, these have essentially no impact on verification.
+Besides the lifetime checks that Rust always does, Verus ignores lifetime variables for the sake
+of theorem-proving.

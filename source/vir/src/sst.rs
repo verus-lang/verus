@@ -273,7 +273,6 @@ pub struct PostConditionSst {
 pub struct FuncDeclSst {
     pub req_inv_pars: Pars,
     pub ens_pars: Pars,
-    pub post_pars: Pars,
     pub reqs: Exps,
     /// (regular ensures, trait-default ensures)
     pub enss: (Exps, Exps),

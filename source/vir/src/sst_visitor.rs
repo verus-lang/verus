@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOpr, GenericBound, GenericBoundX, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder,
     VarIdent, VirErr,
 };
-use crate::ast_visitor::TypVisitor;
+use crate::ast_visitor::AstVisitor;
 use crate::def::Spanned;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
@@ -189,18 +189,18 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let typ = self.visit_typ(&exp.typ)?;
         let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &R::get(typ), e);
         match &exp.x {
-            ExpX::Const(_) => R::ret(|| exp.clone()),
-            ExpX::Var(..) => R::ret(|| exp.clone()),
-            ExpX::VarAt(..) => R::ret(|| exp.clone()),
-            ExpX::VarLoc(..) => R::ret(|| exp.clone()),
-            ExpX::StaticVar(..) => R::ret(|| exp.clone()),
-            ExpX::ExecFnByName(_) => R::ret(|| exp.clone()),
-            ExpX::FuelConst(_) => R::ret(|| exp.clone()),
+            ExpX::Const(_) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::Var(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::VarAt(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::VarLoc(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::StaticVar(..) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::ExecFnByName(_) => R::ret(|| exp_new(exp.x.clone())),
+            ExpX::FuelConst(_) => R::ret(|| exp_new(exp.x.clone())),
             ExpX::Loc(e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Loc(R::get(e1))))
             }
-            ExpX::Old(..) => R::ret(|| exp.clone()),
+            ExpX::Old(..) => R::ret(|| exp_new(exp.x.clone())),
             ExpX::Call(fun, ts, es) => {
                 use crate::sst::CallFun;
                 let fun = match fun {
@@ -253,7 +253,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
                 })
             }
-            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => R::ret(|| exp.clone()),
+            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => {
+                R::ret(|| exp_new(exp.x.clone()))
+            }
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Unary(*op, R::get(e1))))
@@ -359,7 +361,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let es = self.visit_exps(es)?;
                 R::ret(|| exp_new(ExpX::ArrayLiteral(R::get_vec_a(es))))
             }
-            ExpX::Interp(_) => R::ret(|| exp.clone()),
+            ExpX::Interp(_) => R::ret(|| exp_new(exp.x.clone())),
         }
     }
 
@@ -603,7 +605,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_func_decl(&mut self, func_decl: &FuncDeclSst) -> Result<R::Ret<FuncDeclSst>, Err> {
         let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
         let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
-        let post_pars = self.visit_pars(&func_decl.post_pars)?;
         let reqs = self.visit_exps(&func_decl.reqs)?;
         let enss0 = self.visit_exps(&func_decl.enss.0)?;
         let enss1 = self.visit_exps(&func_decl.enss.1)?;
@@ -618,7 +619,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
-            post_pars: R::get_vec_a(post_pars),
             reqs: R::get_vec_a(reqs),
             enss: (R::get_vec_a(enss0), R::get_vec_a(enss1)),
             inv_masks: R::get_vec_a(inv_masks),
@@ -1069,7 +1069,7 @@ where
     }
 }
 
-impl<'a, T, Env, FE, FT> crate::ast_visitor::TypVisitor<Walk, T>
+impl<'a, T, Env, FE, FT> crate::ast_visitor::AstVisitor<Walk, T, crate::ast_visitor::NoScoper>
     for ExpTypVisitorDfs<'a, Env, FE, FT>
 where
     FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,

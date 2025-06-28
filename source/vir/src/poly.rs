@@ -154,6 +154,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
     }
 }
 
@@ -197,7 +198,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => true,
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            true
+        }
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
@@ -229,7 +232,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
         TypX::Boxed(_) => panic!("Boxed unexpected here"),
-        TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
+        TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => typ.clone(),
         TypX::Primitive(_, _) => {
             if typ_as_mono(typ).is_none() {
                 Arc::new(TypX::Boxed(typ.clone()))
@@ -256,7 +259,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            typ.clone()
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),
@@ -287,7 +292,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
                 SpannedTyped::new(&exp.span, typ, expx)
             }
         }
-        TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
+        TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
@@ -946,7 +951,6 @@ fn visit_func_decl_sst(
     let FuncDeclSst {
         req_inv_pars,
         ens_pars,
-        post_pars,
         reqs,
         enss: (enss0, enss1),
         inv_masks,
@@ -968,15 +972,10 @@ fn visit_func_decl_sst(
     let enss1 = visit_exps_native(ctx, state, enss1);
     state.types.pop_scope();
 
-    state.types.push_scope(true);
-    let post_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, post_pars);
-    state.types.pop_scope();
-
     let fndef_axioms = visit_exps_native(ctx, state, fndef_axioms);
     FuncDeclSst {
         req_inv_pars,
         ens_pars,
-        post_pars,
         reqs,
         enss: (enss0, enss1),
         inv_masks,

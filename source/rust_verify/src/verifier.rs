@@ -1937,7 +1937,7 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, uses_array, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1959,7 +1959,7 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
-            uses_array,
+            used_builtins,
             fndef_types,
             self.args.debugger,
         )?;
@@ -2632,10 +2632,10 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id));
-        tcx.ensure().check_private_in_public(());
+        hir.par_body_owners(|def_id| tcx.ensure_ok().check_match(def_id));
+        tcx.ensure_ok().check_private_in_public(());
         hir.par_for_each_module(|module| {
-            tcx.ensure().check_mod_privacy(module);
+            tcx.ensure_ok().check_mod_privacy(module);
         });
 
         self.air_no_span = {
@@ -2881,8 +2881,6 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// end time of lifetime analysys
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
-    pub(crate) file_loader:
-        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
     pub(crate) verus_externs: Option<VerusExterns>,
 }
 
@@ -3073,11 +3071,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         // We could print them immediately, but instead,
                         // let's first run rustc's standard lifetime checking
                         // because the error messages are likely to be better.
-                        let file_loader =
-                            std::mem::take(&mut self.file_loader).expect("file_loader");
                         let compile_status = crate::driver::run_with_erase_macro_compile(
                             self.rustc_args.clone(),
-                            file_loader,
                             false,
                             self.verifier.args.vstd,
                         );

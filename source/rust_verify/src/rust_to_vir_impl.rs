@@ -547,8 +547,13 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     all_trait_ids.extend(external_info.local_trait_ids.iter().cloned());
     external_info.trait_id_set.extend(all_trait_ids.iter().cloned());
 
-    let trait_map: HashMap<Path, Trait> =
-        krate.traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect();
+    let mut trait_map: HashMap<Path, Vec<Trait>> =
+        krate.traits.iter().map(|t| (t.x.name.clone(), vec![t.clone()])).collect();
+    for k in imported {
+        for t in k.traits.iter() {
+            trait_map.entry(t.x.name.clone()).or_default().push(t.clone());
+        }
+    }
 
     // Next, collect all possible new implementations of traits known to Verus:
     let mut auto_import_impls: Vec<DefId> = Vec::new();
@@ -605,7 +610,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 match assoc_item.kind {
                     rustc_middle::ty::AssocKind::Type => {
                         let name = Arc::new(assoc_item.ident(tcx).to_string());
-                        if !trait_map[&trait_path].x.assoc_typs.contains(&name) {
+                        if !trait_map[&trait_path].iter().any(|t| t.x.assoc_typs.contains(&name)) {
                             continue;
                         }
                         if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(

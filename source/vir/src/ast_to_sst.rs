@@ -2082,6 +2082,8 @@ pub(crate) fn expr_to_stm_opt(
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
                 let (rec, exp) = expr_to_pure_exp_check(ctx, state, &inv.inv)?;
+                let exp =
+                    crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.invariant);
                 check_recommends.extend(rec);
                 let (at_entry, at_exit) = match inv.kind {
                     LoopInvariantKind::InvariantExceptBreak => (true, false),
