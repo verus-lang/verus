@@ -233,6 +233,7 @@ pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
         m.dom().contains(v),
     ensures
 //         #[trigger] Multiset::from_map(m).dom().contains(v),
+
         #[trigger] Multiset::from_map(m).count(v) == m[v],
 ;
 
@@ -246,13 +247,19 @@ pub broadcast axiom fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
         #[trigger] Multiset::from_map(m).count(v) == 0,
 ;
 
-pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V,nat>)
-requires forall |k| #[trigger] mymap.contains_key(k) ==> mymap[k]>0,
-ensures
-    #[trigger] Multiset::from_map(mymap).dom() == mymap.dom()
+pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
+    requires
+        forall|k| #[trigger] mymap.contains_key(k) ==> mymap[k] > 0,
+    ensures
+        #[trigger] Multiset::from_map(mymap).dom() == mymap.dom(),
 {
-    broadcast use {Multiset::dom_ensures, axiom_multiset_contained, axiom_multiset_new_not_contained};
-    assert( Multiset::from_map(mymap).dom() == mymap.dom() );   // trigger ensures extn
+    broadcast use {
+        Multiset::dom_ensures,
+        axiom_multiset_contained,
+        axiom_multiset_new_not_contained,
+    };
+
+    assert(Multiset::from_map(mymap).dom() == mymap.dom());  // trigger ensures extn
 }
 
 // Specification of `singleton`
