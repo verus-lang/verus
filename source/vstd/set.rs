@@ -363,7 +363,8 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             self.finite(),
         ensures
             #![trigger self.to_infinite()]
-            forall|a: A| self.contains(a) <==> #[trigger] self.to_infinite().contains(a),
+            forall|a: A|
+                self.contains(a) <==> #[trigger] self.to_infinite().contains(a),
             self.len() == self.to_infinite().len(),
             self.to_infinite().finite(),
     {
