@@ -635,32 +635,32 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_multiset_finite_false_1 verus_code! {
         use vstd::{map::*, multiset::*};
-        proof fn test(mymap: Map<nat, nat>)
-            requires !mymap.dom().finite() {
+        // This test was originally intended to ensure we couldn't use an
+        // infinite Map to construct a multiset, which is axiomatically finite.
+        // Now, Multiset::from_map requires a Finite Map as its argument,
+        // so finiteness is preserved by type construction.
+        // TODO(discuss): so shall we delete the test?
+        proof fn test(mymap: Map<nat, nat>) {
+            assert(mymap.dom().finite());
 
             let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
-
-            assert(!m.dom().finite()); // FAILS
-            // assert(false);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_multiset_finite_false_2 verus_code! {
         use vstd::{map::*, multiset::*};
+        // Obsoleted by same situation as _1 above.
         proof fn test(mymap: Map<nat, nat>)
-            requires !mymap.dom().finite() {
-
+            requires forall |k| mymap.contains_key(k) ==> mymap[k]>0,
+        {
+            assert(mymap.dom().finite());
             let m = Multiset::from_map(mymap);
-            assert(m.dom().finite());
-
-            assert(m.dom() =~= mymap.dom()); // FAILS
-            // assert(!m.dom().finite());
-            // assert(false);
+            assert(m.dom() =~= mymap.dom());
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
