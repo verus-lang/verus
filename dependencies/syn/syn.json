@@ -337,6 +337,11 @@
             "syn": "Ensures"
           }
         },
+        "default_ensures": {
+          "option": {
+            "syn": "DefaultEnsures"
+          }
+        },
         "returns": {
           "option": {
             "syn": "Returns"
@@ -786,6 +791,11 @@
             }
           ]
         },
+        "brace_token": {
+          "option": {
+            "group": "Brace"
+          }
+        },
         "paths": {
           "punctuated": {
             "element": {
@@ -796,6 +806,9 @@
         },
         "semi": {
           "token": "Semi"
+        },
+        "warning": {
+          "std": "bool"
         }
       }
     },
@@ -1033,6 +1046,20 @@
       "fields": {
         "token": {
           "token": "Decreases"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "DefaultEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "DefaultEnsures"
         },
         "exprs": {
           "syn": "Specification"
@@ -6207,6 +6234,11 @@
             "syn": "Ensures"
           }
         },
+        "default_ensures": {
+          "option": {
+            "syn": "DefaultEnsures"
+          }
+        },
         "returns": {
           "option": {
             "syn": "Returns"
@@ -7638,6 +7670,7 @@
     "Crate": "crate",
     "Decreases": "decreases",
     "Default": "default",
+    "DefaultEnsures": "default_ensures",
     "Do": "do",
     "Dollar": "$",
     "Dot": ".",
