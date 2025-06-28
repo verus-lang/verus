@@ -368,7 +368,17 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_stm_rec(&mut self, stm: &Stm) -> Result<R::Ret<Stm>, Err> {
         let stm_new = |s: StmX| Spanned::new(stm.span.clone(), s);
         match &stm.x {
-            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
+            StmX::Call {
+                fun,
+                resolved_method,
+                is_trait_default,
+                mode,
+                typ_args,
+                args,
+                split,
+                dest,
+                assert_id,
+            } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
                     R::ret(|| Some((f.clone(), R::get_vec_a(ts))))
@@ -382,6 +392,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
                         resolved_method: R::get(resolved_method),
+                        is_trait_default: *is_trait_default,
                         mode: *mode,
                         typ_args: R::get_vec_a(typ_args),
                         args: R::get_vec_a(args),
@@ -595,7 +606,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
         let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
         let reqs = self.visit_exps(&func_decl.reqs)?;
-        let enss = self.visit_exps(&func_decl.enss)?;
+        let enss0 = self.visit_exps(&func_decl.enss.0)?;
+        let enss1 = self.visit_exps(&func_decl.enss.1)?;
         let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
         let mut inv_masks = R::vec();
         for es in func_decl.inv_masks.iter() {
@@ -608,7 +620,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
             reqs: R::get_vec_a(reqs),
-            enss: R::get_vec_a(enss),
+            enss: (R::get_vec_a(enss0), R::get_vec_a(enss1)),
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
             fndef_axioms: R::get_vec_a(fndef_axioms),

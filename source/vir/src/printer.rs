@@ -308,7 +308,9 @@ impl ToDebugSNode for FunctionX {
                 {Node::Atom(":require".to_string())}
                 {self.require.to_node(opts)}
                 {Node::Atom(":ensure".to_string())}
-                {self.ensure.to_node(opts)}
+                {self.ensure.0.to_node(opts)}
+                {Node::Atom(":d".to_string())}
+                {self.ensure.1.to_node(opts)}
                 {Node::Atom(":body".to_string())}
                 {self.body.to_node(opts)}
             )

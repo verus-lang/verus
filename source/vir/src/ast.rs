@@ -547,7 +547,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -673,6 +674,8 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
+    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -700,6 +703,8 @@ pub enum CallTargetKind {
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
+    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
+    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1135,7 +1140,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

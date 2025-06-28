@@ -177,6 +177,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     is_trait_default: *is_trait_default,
                 })
             }
+            CallTargetKind::ExternalTraitDefault => R::ret(|| call_target_kind.clone()),
         }
     }
 
@@ -1125,7 +1126,7 @@ where
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
-    for e in ensure.iter() {
+    for e in ensure.0.iter().chain(ensure.1.iter()) {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
@@ -1354,7 +1355,7 @@ where
         ret,
         ens_has_return,
         require,
-        ensure,
+        ensure: (ensure0, ensure1),
         returns,
         decrease,
         decrease_when,
@@ -1416,8 +1417,10 @@ where
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
-    let ensure =
-        Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let ensure0 =
+        Arc::new(vec_map_result(ensure0, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let ensure1 =
+        Arc::new(vec_map_result(ensure1, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
 
     let returns = match returns {
@@ -1487,7 +1490,7 @@ where
         ret,
         ens_has_return: *ens_has_return,
         require,
-        ensure,
+        ensure: (ensure0, ensure1),
         returns,
         decrease,
         decrease_when,

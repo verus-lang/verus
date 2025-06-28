@@ -1974,7 +1974,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut body)?;
+            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
             let allow_no_decreases =
@@ -2045,7 +2045,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             assert!(modifier == ExprModifier::REGULAR);
             let cond = Some(expr_to_vir(bctx, cond, ExprModifier::REGULAR)?);
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut body)?;
+            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             Ok(bctx.spanned_typed_new(
                 *header_span,
@@ -2775,11 +2775,12 @@ pub(crate) fn closure_to_vir<'tcx>(
             .collect::<Result<Vec<_>, _>>()?;
         let mut body = expr_to_vir(bctx, &body.value, modifier)?;
 
-        let header = vir::headers::read_header(&mut body)?;
+        let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
+        assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
-            if require.len() > 0 || ensure.len() > 0 {
+            if require.len() > 0 || ensure.0.len() > 0 {
                 return err_span(
                     closure_expr.span,
                     "SpecFn should not have `requires` clause or `ensures` clause",
@@ -2812,7 +2813,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 proof_fn_modes,
                 body,
                 requires: require,
-                ensures: ensure,
+                ensures: ensure.0,
                 ret: ret,
                 external_spec: None, // filled in by ast_simplify
             }
