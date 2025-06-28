@@ -175,36 +175,36 @@ lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
 
-macro_rules! lemma_mul_pow2_no_overflow_iff_shr {
+macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
     ($name:ident, $shr_is_div:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        #[doc = "Proof that for x and n of type "]
+        #[doc = "Proof that for x, n and max of type "]
         #[doc = stringify!($uN)]
-        #[doc = ", multiplication of x by 2^n does not overflow if and only if x does not exceed shifting MAX right by n."]
-        pub proof fn $name(x: $uN, shift: $uN)
+        #[doc = ", multiplication of x by 2^n is less than or equal to max if and only if x is less than or equal to shifting max right by n."]
+        pub proof fn $name(x: $uN, shift: $uN, max: $uN)
         requires
             0 <= shift < <$uN>::BITS,
         ensures
-            x * pow2(shift as nat) <= <$uN>::MAX <==> x <= (<$uN>::MAX >> shift),
+            x * pow2(shift as nat) <= max <==> x <= (max >> shift),
     {
-        assert(<$uN>::MAX >> shift == <$uN>::MAX as nat / pow2(shift as nat)) by {
-            $shr_is_div(<$uN>::MAX, shift as $uN);
+        assert(max >> shift == max as nat / pow2(shift as nat)) by {
+            $shr_is_div(max, shift as $uN);
         };
 
         lemma_pow2_pos(shift as nat);
 
-        if x * pow2(shift as nat) <= <$uN>::MAX {
-            assert(x <= (<$uN>::MAX as nat) / pow2(shift as nat)) by {
-                lemma_div_is_ordered(x as int * pow2(shift as nat) as int, <$uN>::MAX as int, pow2(shift as nat) as int);
+        if x * pow2(shift as nat) <= max {
+            assert(x <= (max as nat) / pow2(shift as nat)) by {
+                lemma_div_is_ordered(x as int * pow2(shift as nat) as int, max as int, pow2(shift as nat) as int);
                 lemma_div_by_multiple(x as int, pow2(shift as nat) as int);
             };
         }
-        if x <= (<$uN>::MAX >> shift) {
-            assert(x * pow2(shift as nat) <= <$uN>::MAX as nat) by {
-                lemma_mul_inequality(x as int, <$uN>::MAX as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
-                lemma_remainder_lower(<$uN>::MAX as int, pow2(shift as nat) as int);
-                lemma_mul_is_commutative(<$uN>::MAX as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
+        if x <= (max >> shift) {
+            assert(x * pow2(shift as nat) <= max as nat) by {
+                lemma_mul_inequality(x as int, max as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
+                lemma_remainder_lower(max as int, pow2(shift as nat) as int);
+                lemma_mul_is_commutative(max as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
             };
         }
     }
@@ -212,22 +212,22 @@ macro_rules! lemma_mul_pow2_no_overflow_iff_shr {
     };
 }
 
-lemma_mul_pow2_no_overflow_iff_shr!(
-    lemma_u64_mul_pow2_no_overflow_iff_shr,
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u64_mul_pow2_le_max_iff_max_shr,
     lemma_u64_shr_is_div,
     u64
 );
-lemma_mul_pow2_no_overflow_iff_shr!(
-    lemma_u32_mul_pow2_no_overflow_iff_shr,
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u32_mul_pow2_le_max_iff_max_shr,
     lemma_u32_shr_is_div,
     u32
 );
-lemma_mul_pow2_no_overflow_iff_shr!(
-    lemma_u16_mul_pow2_no_overflow_iff_shr,
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u16_mul_pow2_le_max_iff_max_shr,
     lemma_u16_shr_is_div,
     u16
 );
-lemma_mul_pow2_no_overflow_iff_shr!(lemma_u8_mul_pow2_no_overflow_iff_shr, lemma_u8_shr_is_div, u8);
+lemma_mul_pow2_le_max_iff_max_shr!(lemma_u8_mul_pow2_le_max_iff_max_shr, lemma_u8_shr_is_div, u8);
 
 verus! {
 
