@@ -29,7 +29,7 @@ test_verify_one_file! {
         use vstd::set_lib::*;
 
         proof fn test_set() {
-            let nonneg = Set::new(|i: int| i >= 0);
+            let nonneg = ISet::new(|i: int| i >= 0);
             assert(forall|i: int| nonneg.contains(i) == (i >= 0));
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall|i: int| pos1.contains(i) == (i > 0));
@@ -48,12 +48,12 @@ test_verify_one_file! {
     #[test] test1_fails1 verus_code! {
         use vstd::set::*;
 
-        pub closed spec fn set_map<A>(s: Set<A>, f: spec_fn(A) -> A) -> Set<A> {
-            Set::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
+        pub closed spec fn set_map<A>(s: ISet<A>, f: spec_fn(A) -> A) -> ISet<A> {
+            ISet::new(|a: A| exists|x: A| s.contains(x) && a === f(x))
         }
 
         proof fn test_set() {
-            let nonneg = Set::new(|i: int| i >= 0);
+            let nonneg = ISet::new(|i: int| i >= 0);
             assert(forall|i: int| nonneg.contains(i) == (i >= 0));
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall|i: int| pos1.contains(i) == (i > 0));
@@ -78,7 +78,7 @@ test_verify_one_file! {
         proof fn test_witness() {
             assume(exists|x: int| f(x));
 
-            let s = Set::new(|x: int| f(x));
+            let s = ISet::new(|x: int| f(x));
             assert(exists|x: int| f(x) && s.contains(x));
 
             assert(s.contains(s.choose()));
@@ -98,7 +98,7 @@ test_verify_one_file! {
         proof fn test_witness() {
             assume(exists|x: int| f(x));
 
-            let s = Set::new(|x: int| f(x));
+            let s = ISet::new(|x: int| f(x));
 
             assert(s.contains(s.choose())); // FAILS
         }
