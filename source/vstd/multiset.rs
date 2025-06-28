@@ -232,6 +232,7 @@ pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         m.dom().contains(v),
     ensures
+//         #[trigger] Multiset::from_map(m).dom().contains(v),
         #[trigger] Multiset::from_map(m).count(v) == m[v],
 ;
 
@@ -244,6 +245,15 @@ pub broadcast axiom fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
     ensures
         #[trigger] Multiset::from_map(m).count(v) == 0,
 ;
+
+pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V,nat>)
+requires forall |k| #[trigger] mymap.contains_key(k) ==> mymap[k]>0,
+ensures
+    #[trigger] Multiset::from_map(mymap).dom() == mymap.dom()
+{
+    broadcast use {Multiset::dom_ensures, axiom_multiset_contained, axiom_multiset_new_not_contained};
+    assert( Multiset::from_map(mymap).dom() == mymap.dom() );   // trigger ensures extn
+}
 
 // Specification of `singleton`
 /// A call to Multiset::singleton with input value `v` will return a multiset that maps
@@ -362,6 +372,7 @@ pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,
     axiom_multiset_new_not_contained,
+    lemma_from_map_dom,
     axiom_multiset_singleton,
     axiom_multiset_singleton_different,
     axiom_multiset_add,
