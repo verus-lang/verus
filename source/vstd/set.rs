@@ -358,10 +358,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         }
     }
 
-    pub proof fn to_infinite_ensures(self)
+    pub broadcast proof fn to_infinite_ensures(self)
         requires
             self.finite(),
         ensures
+            #![trigger self.to_infinite()]
             forall|a: A| self.contains(a) <==> #[trigger] self.to_infinite().contains(a),
             self.len() == self.to_infinite().len(),
             self.to_infinite().finite(),
@@ -1677,6 +1678,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_subset,
     lemma_set_map_finite,
     lemma_set_filter_finite,
+    GSet::to_infinite_ensures,
     lemma_set_map_len,
     lemma_set_map_insert,
     lemma_set_int_range_ensures,
