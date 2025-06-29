@@ -33,11 +33,14 @@ test_verify_one_file! {
             v1.push(9u32);
             assert(v1@ == seq![3u32, 4u32, 6u32, 7u32, 8u32, 9u32]);
 
+            v1.swap_remove(5);
+            assert(v1@ == seq![3u32, 4u32, 6u32, 7u32, 8u32]);
+
             let mut i: usize = 0;
             for x in it: v1
                 invariant
                     i == it.pos,
-                    it.elements == seq![3u32, 4u32, 6u32, 7u32, 8u32, 9u32],
+                    it.elements == seq![3u32, 4u32, 6u32, 7u32, 8u32],
             {
                 assert(x > 2);
                 assert(x < 10);
