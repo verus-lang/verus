@@ -2814,7 +2814,7 @@ impl Visitor {
             quote_spanned_builtin!(builtin, span => {#builtin::assert_forall_by(|#inputs| #block);}),
         );
 
-        self.auto_proof_block(expr, span);
+        //self.auto_proof_block(expr, span);
 
         true
     }

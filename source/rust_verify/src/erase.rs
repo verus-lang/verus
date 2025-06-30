@@ -161,6 +161,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
 
     let mut vars = HashMap::<HirId, VarErasure>::new();
     for (span, mode) in erasure_hints.erasure_modes.var_modes.iter() {
+        if !id_to_hir.contains_key(&span.id) {
+            dbg!(span);
+            dbg!(mode);
+        }
         for hir_id in &id_to_hir[&span.id] {
             vars.insert(*hir_id, mode_to_var_erase(*mode));
         }
