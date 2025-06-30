@@ -155,6 +155,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
         TypX::PointeeMetadata(_) => None,
+        TypX::Opaque { .. } => None,
     }
 }
 
@@ -206,6 +207,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Opaque { .. } => true,
     }
 }
 
@@ -244,6 +246,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Opaque { .. } => typ.clone(),
     }
 }
 
@@ -266,6 +269,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstInt(_) => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Opaque { .. } => typ.clone(),
     }
 }
 
@@ -293,6 +297,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
             }
         }
         TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => exp.clone(),
+        TypX::Opaque { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
@@ -1249,11 +1254,19 @@ fn visit_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
-    let KrateSstX { functions, datatypes, traits, trait_impls, assoc_type_impls, reveal_groups } =
-        &**krate;
+    let KrateSstX {
+        functions,
+        datatypes,
+        opaque_types,
+        traits,
+        trait_impls,
+        assoc_type_impls,
+        reveal_groups,
+    } = &**krate;
     let kratex = KrateSstX {
         functions: functions.iter().map(|f| visit_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| visit_datatype(ctx, d)).collect(),
+        opaque_types: opaque_types.clone(),
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| visit_assoc_type_impl(ctx, a)).collect(),
