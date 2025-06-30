@@ -68,7 +68,7 @@ test_verify_one_file! {
         const fn y() {
             x()
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const fn `x` in constant functions")
+    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const function `x` in constant functions")
 }
 
 test_verify_one_file! {

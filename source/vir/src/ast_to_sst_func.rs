@@ -4,16 +4,16 @@ use crate::ast::{
     VirErr,
 };
 use crate::ast_to_sst::{
-    expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
+    State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
     expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
-    stms_to_one_stm, State,
+    stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, Message};
+use crate::messages::{Message, error};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
@@ -74,6 +74,7 @@ pub fn mk_fun_ctx_dec<F: FunctionCommon>(
     checking_spec_preconditions: bool,
     checking_spec_decreases: bool,
 ) -> Option<FunctionCtx> {
+    assert!(!(checking_spec_preconditions && checking_spec_decreases));
     Some(FunctionCtx {
         checking_spec_preconditions,
         checking_spec_preconditions_for_non_spec: checking_spec_preconditions
@@ -259,6 +260,14 @@ fn func_body_to_sst(
             };
             Some(termination_check)
         } else {
+            if function.x.decrease.len() > 0 {
+                let msg = "proof blocks inside spec code is currently supported only for recursion";
+                // TODO: remove this restriction when we generalize ProofInSpec beyond termination
+                ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
+                    ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
+                    _ => Ok(()),
+                })?;
+            }
             None
         };
 
@@ -273,10 +282,9 @@ fn req_ens_to_sst(
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
+    let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        let mut ps = (*pars).clone();
-        ps.push(param_to_par(&function.x.ret, false));
-        pars = Arc::new(ps);
+        pars_mut.push(param_to_par(&function.x.ret, false));
     }
     let mut exps: Vec<Exp> = Vec::new();
     for e in specs.iter() {
@@ -293,8 +301,9 @@ pub fn func_decl_to_sst(
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
-    let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
-    let post_pars = params_to_pre_post_pars(&function.x.params, false);
+    let (ens_pars, enss0) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.0, false)?;
+    let (_, enss1) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.1, false)?;
 
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
@@ -378,9 +387,8 @@ pub fn func_decl_to_sst(
     Ok(FuncDeclSst {
         req_inv_pars: pars,
         ens_pars,
-        post_pars,
         reqs: Arc::new(reqs),
-        enss: Arc::new(enss),
+        enss: (Arc::new(enss0), Arc::new(enss1)),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
@@ -428,7 +436,8 @@ pub fn func_axioms_to_sst(
                 reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
                 reqs.extend((*function.x.require).clone());
                 let req = crate::ast_util::conjoin(span, &reqs);
-                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                assert!(function.x.ensure.1.len() == 0);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure.0);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
                 let params = params_to_pre_post_pars(&function.x.params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
@@ -714,13 +723,9 @@ pub fn func_def_to_sst(
 
     // For most kinds of specs (requires, unwind, mask), we always use the trait method
     // if it exists and otherwise use the original method.
-    // This macro returns the appropriate Lowerer object.
-    macro_rules! lo_specs {
-        () => {
-            if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current }
-        };
-    }
-    let specs_function = lo_specs!().function.clone();
+    // The `lo_specs` is the appropriate Lowerer object for this case.
+    let lo_specs = if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current };
+    let specs_function = lo_specs.function.clone();
 
     // These are used for the normal case (no recommends-checking)
     let mut reqs: Vec<Exp> = Vec::new();
@@ -733,7 +738,7 @@ pub fn func_def_to_sst(
     // Requires: take from trait method if it exists
     let requires = specs_function.x.require.clone();
     for r in requires.iter() {
-        let r = lo_specs!().lower_pure(ctx, &mut state, r, &mut req_stms)?;
+        let r = lo_specs.lower_pure(ctx, &mut state, r, &mut req_stms)?;
         if ctx.checking_spec_preconditions() {
             req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
         } else {
@@ -744,13 +749,13 @@ pub fn func_def_to_sst(
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
     let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
     state.mask = Some(mask_sst);
 
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
 
     // Decreases: add recommends if necessary; otherwise nothing to do
     if ctx.checking_spec_preconditions() {
@@ -760,15 +765,10 @@ pub fn func_def_to_sst(
     }
 
     // Ensures: combine from both sources
-    for expr in lo_current.function.x.ensure.iter() {
-        let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
-        if !ctx.checking_spec_preconditions() {
-            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
-        }
-    }
     if let Some(lo_inheritance) = &lo_inheritance {
-        for expr in lo_inheritance.function.x.ensure.clone().iter() {
+        // We're overriding req_ens_function, so we only inherit the non-default-ensures
+        let non_default_ensure = &lo_inheritance.function.x.ensure.0.clone();
+        for expr in non_default_ensure.iter() {
             let exp = lo_inheritance.lower_pure(
                 ctx,
                 &mut state,
@@ -779,6 +779,13 @@ pub fn func_def_to_sst(
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
+        }
+    }
+    for expr in lo_current.function.x.ensure.0.iter().chain(lo_current.function.x.ensure.1.iter()) {
+        let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
+        if !ctx.checking_spec_preconditions() {
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
+            enss.push(exp);
         }
     }
 
@@ -871,7 +878,7 @@ pub fn function_to_sst(
     let func_decl_sst = crate::ast_to_sst_func::func_decl_to_sst(ctx, diagnostics, function)?;
     ctx.fun = None;
 
-    ctx.fun = mk_fun_ctx_dec(&function, true, true);
+    ctx.fun = mk_fun_ctx_dec(&function, false, true);
     let func_axioms_sst = crate::ast_to_sst_func::func_axioms_to_sst(
         ctx,
         diagnostics,
@@ -918,7 +925,7 @@ pub fn function_to_sst(
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
         has_requires: function.x.require.len() > 0,
-        has_ensures: function.x.ensure.len() > 0,
+        has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
         has_return_name: function.x.ens_has_return,

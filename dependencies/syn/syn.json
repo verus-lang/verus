@@ -337,6 +337,11 @@
             "syn": "Ensures"
           }
         },
+        "default_ensures": {
+          "option": {
+            "syn": "DefaultEnsures"
+          }
+        },
         "returns": {
           "option": {
             "syn": "Returns"
@@ -786,6 +791,11 @@
             }
           ]
         },
+        "brace_token": {
+          "option": {
+            "group": "Brace"
+          }
+        },
         "paths": {
           "punctuated": {
             "element": {
@@ -796,6 +806,9 @@
         },
         "semi": {
           "token": "Semi"
+        },
+        "warning": {
+          "std": "bool"
         }
       }
     },
@@ -1033,6 +1046,20 @@
       "fields": {
         "token": {
           "token": "Decreases"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "DefaultEnsures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "DefaultEnsures"
         },
         "exprs": {
           "syn": "Specification"
@@ -2988,6 +3015,11 @@
         "Proof": [
           {
             "syn": "ModeProof"
+          }
+        ],
+        "ProofAxiom": [
+          {
+            "syn": "ModeProofAxiom"
           }
         ],
         "Exec": [
@@ -5082,6 +5114,17 @@
       }
     },
     {
+      "ident": "ModeProofAxiom",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "axiom_token": {
+          "token": "Axiom"
+        }
+      }
+    },
+    {
       "ident": "ModeSpec",
       "features": {
         "any": []
@@ -6189,6 +6232,11 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "default_ensures": {
+          "option": {
+            "syn": "DefaultEnsures"
           }
         },
         "returns": {
@@ -7602,6 +7650,7 @@
     "At": "@",
     "Auto": "auto",
     "Await": "await",
+    "Axiom": "axiom",
     "Become": "become",
     "BigAnd": "&&&",
     "BigOr": "|||",
@@ -7621,6 +7670,7 @@
     "Crate": "crate",
     "Decreases": "decreases",
     "Default": "default",
+    "DefaultEnsures": "default_ensures",
     "Do": "do",
     "Dollar": "$",
     "Dot": ".",

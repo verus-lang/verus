@@ -33,16 +33,16 @@
 /// - Use of tracked variable is possible but in a different style.
 ///
 /// Example:
-/// - Refer to `example/syntax_attr.rs`.
+/// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, Expr, Item};
+use quote::{ToTokens, quote, quote_spanned};
+use syn::{Expr, Item, parse2, spanned::Spanned};
 
 use crate::{
+    EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
     syntax,
     syntax::mk_verus_attr_syn,
-    EraseGhost,
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
@@ -270,6 +270,12 @@ pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
     let mut replacer = ExecReplacer { erase };
     replacer.visit_block_mut(fblock);
 }
+
+pub fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
+    let mut replacer = ExecReplacer { erase };
+    replacer.visit_expr_mut(expr);
+}
+
 pub fn rewrite_verus_spec(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
@@ -298,6 +304,46 @@ pub fn rewrite_verus_spec(
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
         }
+    }
+}
+
+fn closure_to_fn_sig(closure: &syn::ExprClosure) -> syn::Signature {
+    let infer_type = |span| {
+        Box::new(syn::Type::Infer(syn::TypeInfer { underscore_token: syn::Token![_](span) }))
+    };
+    syn::Signature {
+        constness: closure.constness,
+        asyncness: closure.asyncness,
+        unsafety: None,
+        abi: None,
+        fn_token: syn::Token![fn](closure.span()),
+        ident: syn::Ident::new("closure", closure.span()),
+        generics: syn::Generics::default(),
+        inputs: closure
+            .inputs
+            .iter()
+            .map(|arg| {
+                let (pat, ty) = match arg {
+                    syn::Pat::Type(pat_ty) => (pat_ty.pat.clone(), pat_ty.ty.clone()),
+                    syn::Pat::Ident(pat_ident) => {
+                        let ty = infer_type(pat_ident.span());
+                        (Box::new(syn::Pat::Ident(pat_ident.clone())), ty)
+                    }
+                    _ => {
+                        panic!("unexpected pattern in closure argument: {:?}", arg);
+                    }
+                };
+                syn::FnArg::Typed(syn::PatType {
+                    attrs: vec![],
+                    pat: pat,
+                    colon_token: syn::Token![:](arg.span()),
+                    ty: ty,
+                })
+            })
+            .collect(),
+        variadic: None,
+        output: closure.output.clone(),
+        paren_token: syn::token::Paren::default(),
     }
 }
 
@@ -330,6 +376,35 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
+        }
+        AnyFnOrLoop::Closure(mut closure) => {
+            replace_expr(erase, &mut closure.body);
+            let mut spec_attr =
+                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+            if let Some(_) = &spec_attr.spec.with {
+                return quote_spanned! {spec_attr.span() => compile_error!("`with` does not support closure")}.into();
+            }
+            if let Some((syn_verus::Pat::Type(pat_ty), ar)) = spec_attr.ret_pat {
+                spec_attr.ret_pat = Some((*pat_ty.pat.clone(), ar));
+                closure.output = syn::ReturnType::Type(
+                    syn::Token![->](pat_ty.span()),
+                    Box::new(syn::Type::Verbatim(pat_ty.ty.to_token_stream())),
+                );
+            }
+            if matches!(closure.output, syn::ReturnType::Default) {
+                return quote_spanned! {closure.span() =>
+                    compile_error!("Closure must have a return type, or add `$ret: $type =>` in verus_spec");
+                }.into();
+            }
+            let mut signature = closure_to_fn_sig(&closure);
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut signature);
+            let body = &closure.body;
+            let new_body = quote_spanned!(closure.body.span() =>
+                #(#spec_stmts)*
+                {#body}
+            );
+            closure.body = Box::new(Expr::Verbatim(new_body));
+            closure.to_token_stream().into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here

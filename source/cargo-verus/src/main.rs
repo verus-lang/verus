@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::str;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
 use colored::Colorize;
 use serde::Deserialize;
@@ -40,9 +40,16 @@ pub fn main() -> Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    if args.iter().any(|a| a == "--version" || a == "-V") {
-        show_version();
-        return Ok(ExitCode::SUCCESS);
+    for arg in args.iter() {
+        match arg.as_str() {
+            "--" => break,
+            _ => {
+                if arg == "--version" || arg == "-V" {
+                    show_version();
+                    return Ok(ExitCode::SUCCESS);
+                }
+            }
+        }
     }
 
     process(&args)

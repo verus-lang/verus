@@ -121,6 +121,7 @@ impl Clone for crate::AssumeSpecification {
             output: self.output.clone(),
             requires: self.requires.clone(),
             ensures: self.ensures.clone(),
+            default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
@@ -245,8 +246,10 @@ impl Clone for crate::BroadcastUse {
         crate::BroadcastUse {
             attrs: self.attrs.clone(),
             broadcast_use_tokens: self.broadcast_use_tokens.clone(),
+            brace_token: self.brace_token.clone(),
             paths: self.paths.clone(),
             semi: self.semi.clone(),
+            warning: self.warning.clone(),
         }
     }
 }
@@ -364,6 +367,15 @@ impl Clone for crate::DataUnion {
 impl Clone for crate::Decreases {
     fn clone(&self) -> Self {
         crate::Decreases {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::DefaultEnsures {
+    fn clone(&self) -> Self {
+        crate::DefaultEnsures {
             token: self.token.clone(),
             exprs: self.exprs.clone(),
         }
@@ -1152,6 +1164,7 @@ impl Clone for crate::FnMode {
             crate::FnMode::Spec(v0) => crate::FnMode::Spec(v0.clone()),
             crate::FnMode::SpecChecked(v0) => crate::FnMode::SpecChecked(v0.clone()),
             crate::FnMode::Proof(v0) => crate::FnMode::Proof(v0.clone()),
+            crate::FnMode::ProofAxiom(v0) => crate::FnMode::ProofAxiom(v0.clone()),
             crate::FnMode::Exec(v0) => crate::FnMode::Exec(v0.clone()),
             crate::FnMode::Default => crate::FnMode::Default,
         }
@@ -2002,6 +2015,14 @@ impl Clone for crate::ModeProof {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ModeProofAxiom {
+    fn clone(&self) -> Self {
+        crate::ModeProofAxiom {
+            axiom_token: self.axiom_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ModeSpec {
     fn clone(&self) -> Self {
         crate::ModeSpec {
@@ -2459,6 +2480,7 @@ impl Clone for crate::SignatureSpec {
             requires: self.requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
+            default_ensures: self.default_ensures.clone(),
             returns: self.returns.clone(),
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),

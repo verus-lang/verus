@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
@@ -149,6 +149,7 @@ struct State {
     // are allowed between "let x1" and "x1 = x2;"
     pub(crate) vars: ScopeMap<VarIdent, VarMode>,
     pub(crate) in_forall_stmt: bool,
+    pub(crate) in_proof_in_spec: bool,
     // Are we in a syntactic ghost block?
     // If not, Ghost::Exec (corresponds to exec mode).
     // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
@@ -218,6 +219,19 @@ mod typing {
                 internal_state: self.internal_state,
                 internal_undo: Some(Box::new(move |state| {
                     state.in_forall_stmt = in_forall_stmt;
+                })),
+            }
+        }
+
+        pub(super) fn push_in_proof_in_spec<'a>(
+            &'a mut self,
+            mut in_proof_in_spec: bool,
+        ) -> Typing<'a> {
+            swap(&mut in_proof_in_spec, &mut self.internal_state.in_proof_in_spec);
+            Typing {
+                internal_state: self.internal_state,
+                internal_undo: Some(Box::new(move |state| {
+                    state.in_proof_in_spec = in_proof_in_spec;
                 })),
             }
         }
@@ -725,7 +739,7 @@ fn check_expr_handle_mut_arg(
     let mode = match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
         ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
-            if typing.in_forall_stmt {
+            if typing.in_forall_stmt || typing.in_proof_in_spec {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
@@ -888,6 +902,12 @@ fn check_expr_handle_mut_arg(
                         return Err(error(
                             &arg.span,
                             "cannot call function with &mut parameter inside 'assert ... by' statements",
+                        ));
+                    }
+                    if typing.in_proof_in_spec {
+                        return Err(error(
+                            &arg.span,
+                            "cannot call function with &mut parameter inside spec",
                         ));
                     }
                     let (arg_mode_read, arg_mode_write) =
@@ -1241,6 +1261,9 @@ fn check_expr_handle_mut_arg(
                     "assignment is not allowed in 'assert ... by' statement",
                 ));
             }
+            if typing.in_proof_in_spec {
+                return Err(error(&expr.span, "assignment is not allowed inside spec"));
+            }
             if let (ExprX::VarLoc(xl), ExprX::Var(xr)) = (&lhs.x, &rhs.x) {
                 // Special case mode inference just for our encoding of "let tracked pat = ..."
                 // in Rust as "let xl; ... { let pat ... xl = xr; }".
@@ -1443,6 +1466,9 @@ fn check_expr_handle_mut_arg(
                     "return is not allowed in 'assert ... by' statements",
                 ));
             }
+            if typing.in_proof_in_spec {
+                return Err(error(&expr.span, "return is not allowed inside spec"));
+            }
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (Some(v), None) if is_unit(&v.typ) => {}
@@ -1508,6 +1534,23 @@ fn check_expr_handle_mut_arg(
                 inner_mode
             };
             return Ok(mode);
+        }
+        ExprX::ProofInSpec(e1) => {
+            match (typing.block_ghostness, outer_mode) {
+                (Ghost::Ghost, Mode::Spec) => {}
+                (Ghost::Ghost, Mode::Proof) => {
+                    return Err(error(&expr.span, "already in proof mode"));
+                }
+                _ => {
+                    // The syntax macro should never lead us to this case
+                    return Err(error(&expr.span, "unexpected proof block"));
+                }
+            }
+            if !is_unit(&e1.typ) {
+                return Err(error(&expr.span, "proof block must have type ()"));
+            }
+            let mut typing = typing.push_in_proof_in_spec(true);
+            check_expr(ctxt, record, &mut typing, Mode::Proof, e1)
         }
         ExprX::Block(ss, Some(e1)) if ss.len() == 0 => {
             return check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, e1);
@@ -1722,7 +1765,7 @@ fn check_function(
     if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
-    for expr in function.x.ensure.iter() {
+    for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
         let mut ens_typing = ens_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, expr, Mode::Spec)?;
@@ -1873,6 +1916,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     let mut state = State {
         vars: ScopeMap::new(),
         in_forall_stmt: false,
+        in_proof_in_spec: false,
         block_ghostness: Ghost::Exec,
         ret_mode: None,
         atomic_insts: None,

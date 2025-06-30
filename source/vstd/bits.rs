@@ -4,19 +4,25 @@ use super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
+use super::arithmetic::power::pow;
+#[cfg(verus_keep_ghost)]
 use super::arithmetic::power2::{
     pow2,
     lemma_pow2_unfold,
     lemma_pow2_adds,
     lemma_pow2_pos,
     lemma2_to64,
+    lemma2_to64_rest,
     lemma_pow2_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::div_mod::{
+    lemma_div_by_multiple,
     lemma_div_denominator,
+    lemma_div_is_ordered,
     lemma_mod_breakdown,
     lemma_mod_multiples_vanish,
+    lemma_remainder_lower,
 };
 #[cfg(verus_keep_ghost)]
 use super::arithmetic::mul::{
@@ -46,6 +52,7 @@ macro_rules! lemma_shr_is_div {
             reveal(pow2);
             if shift == 0 {
                 assert(x >> 0 == x) by (bit_vector);
+                reveal(pow);
                 assert(pow2(0) == 1) by (compute_only);
             } else {
                 assert(x >> shift == (x >> ((sub(shift, 1)) as $uN)) / 2) by (bit_vector)
@@ -92,10 +99,11 @@ macro_rules! lemma_pow2_no_overflow {
             requires
                 0 <= n < <$uN>::BITS,
             ensures
-                #[trigger] pow2(n) <= <$uN>::MAX,
+                0 < #[trigger] pow2(n) < <$uN>::MAX,
         {
-            lemma_pow2_strictly_increases(n, <$uN>::BITS as nat);
+            lemma_pow2_pos(n);
             lemma2_to64();
+            lemma2_to64_rest();
         }
         }
     };
@@ -166,6 +174,60 @@ lemma_shl_is_mul!(lemma_u64_shl_is_mul, lemma_u64_pow2_no_overflow, u64);
 lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
+
+macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
+    ($name:ident, $shr_is_div:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
+        verus! {
+        #[doc = "Proof that for x, n and max of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", multiplication of x by 2^n is less than or equal to max if and only if x is less than or equal to shifting max right by n."]
+        pub proof fn $name(x: $uN, shift: $uN, max: $uN)
+        requires
+            0 <= shift < <$uN>::BITS,
+        ensures
+            x * pow2(shift as nat) <= max <==> x <= (max >> shift),
+    {
+        assert(max >> shift == max as nat / pow2(shift as nat)) by {
+            $shr_is_div(max, shift as $uN);
+        };
+
+        lemma_pow2_pos(shift as nat);
+
+        if x * pow2(shift as nat) <= max {
+            assert(x <= (max as nat) / pow2(shift as nat)) by {
+                lemma_div_is_ordered(x as int * pow2(shift as nat) as int, max as int, pow2(shift as nat) as int);
+                lemma_div_by_multiple(x as int, pow2(shift as nat) as int);
+            };
+        }
+        if x <= (max >> shift) {
+            assert(x * pow2(shift as nat) <= max as nat) by {
+                lemma_mul_inequality(x as int, max as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
+                lemma_remainder_lower(max as int, pow2(shift as nat) as int);
+                lemma_mul_is_commutative(max as int / pow2(shift as nat) as int,  pow2(shift as nat) as int);
+            };
+        }
+    }
+    }
+    };
+}
+
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u64_mul_pow2_le_max_iff_max_shr,
+    lemma_u64_shr_is_div,
+    u64
+);
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u32_mul_pow2_le_max_iff_max_shr,
+    lemma_u32_shr_is_div,
+    u32
+);
+lemma_mul_pow2_le_max_iff_max_shr!(
+    lemma_u16_mul_pow2_le_max_iff_max_shr,
+    lemma_u16_shr_is_div,
+    u16
+);
+lemma_mul_pow2_le_max_iff_max_shr!(lemma_u8_mul_pow2_le_max_iff_max_shr, lemma_u8_shr_is_div, u8);
 
 verus! {
 

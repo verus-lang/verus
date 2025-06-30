@@ -617,3 +617,27 @@ test_verify_one_file! {
         impl T for S { }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_external_trait_impl_issue1627 verus_code! {
+        use vstd::*;
+
+        pub struct Foo {
+            pub vals: Vec<u32>
+        }
+
+        fn main() {}
+
+        #[verifier::external]
+        impl IntoIterator for Foo {
+            type Item = u32;
+
+            type IntoIter = std::vec::IntoIter<u32>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                self.vals.into_iter()
+            }
+        }
+
+    } => Ok(())
+}

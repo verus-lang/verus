@@ -11,7 +11,7 @@ pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vir_macros::{to_node_impl, ToDebugSNode};
+use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,6 +263,10 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
@@ -542,7 +547,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -668,6 +674,8 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
+    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -695,6 +703,8 @@ pub enum CallTargetKind {
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
+    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
+    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -863,6 +873,8 @@ pub enum ExprX {
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    /// Enter a proof block from inside spec-mode code
+    ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
@@ -952,6 +964,7 @@ pub struct AutoExtEqual {
     pub assert: bool,
     pub assert_by: bool,
     pub ensures: bool,
+    pub invariant: bool,
 }
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
@@ -1127,7 +1140,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

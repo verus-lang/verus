@@ -183,6 +183,15 @@ pub fn reveal_hide_internal_path_<A>(_x: A) {
     unimplemented!();
 }
 
+/// Mark an ensures clause in a trait as applying just to the default implementation,
+/// not the trait declaration in general
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::default_ensures"]
+#[verifier::spec]
+pub fn default_ensures(_b: bool) -> bool {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::imply"]
 #[verifier::spec]
@@ -724,6 +733,8 @@ impl_structural! {
     // TODO: support f32 f64 ?
     bool char
 }
+
+unsafe impl<T: Structural> Structural for Option<T> {}
 
 pub struct NoCopy {}
 #[cfg(verus_keep_ghost)]
@@ -1753,7 +1764,7 @@ pub use decreases_to_internal;
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
+pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
     unimplemented!()
 }
 

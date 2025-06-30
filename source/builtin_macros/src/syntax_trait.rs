@@ -1,4 +1,4 @@
-use crate::syntax::{mk_rust_attr, mk_verus_attr, VERUS_SPEC};
+use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_verus_attr};
 use quote::quote_spanned;
 use syn_verus::parse_quote_spanned;
 use syn_verus::{

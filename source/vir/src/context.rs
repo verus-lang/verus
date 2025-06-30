@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -56,22 +56,25 @@ pub struct GlobalCtx {
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
     pub check_api_safety: bool,
+    pub axiom_usage_info: bool,
 }
 
 // Context for verifying one function
 #[derive(Debug)]
 pub struct FunctionCtx {
     // false normally, true if we're just checking spec preconditions
-    pub checking_spec_preconditions: bool,
+    pub(crate) checking_spec_preconditions: bool,
     // false normally, true if we're just checking spec preconditions for a non-spec function
-    pub checking_spec_preconditions_for_non_spec: bool,
+    // checking_spec_preconditions_for_non_spec <==> checking_spec_preconditions && mode != Spec
+    pub(crate) checking_spec_preconditions_for_non_spec: bool,
     // false normally, true if we're just checking decreases of recursive spec function
-    pub checking_spec_decreases: bool,
+    // Note: !(checking_spec_preconditions && checking_spec_decreases)
+    pub(crate) checking_spec_decreases: bool,
     // used to print diagnostics for triggers
-    pub module_for_chosen_triggers: Option<Path>,
+    pub(crate) module_for_chosen_triggers: Option<Path>,
     // used to create quantifier identifiers and for checking_spec_preconditions
     pub current_fun: Fun,
-    pub current_fun_attrs: crate::ast::FunctionAttrs,
+    pub(crate) current_fun_attrs: crate::ast::FunctionAttrs,
 }
 
 // Context for verifying one module
@@ -81,7 +84,7 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
-    pub(crate) uses_array: bool,
+    pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
@@ -108,22 +111,30 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn checking_spec_preconditions(&self) -> bool {
+    pub(crate) fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             _ => false,
         }
     }
 
-    pub fn checking_spec_preconditions_for_non_spec(&self) -> bool {
+    pub(crate) fn checking_spec_preconditions_for_non_spec(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions_for_non_spec: true, .. }) => true,
             _ => false,
         }
     }
 
-    pub fn checking_spec_decreases(&self) -> bool {
+    pub(crate) fn checking_spec_decreases(&self) -> bool {
         match self.fun {
+            Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn checking_spec_general(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
         }
@@ -162,7 +173,10 @@ fn datatypes_invs(
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
-                        TypX::Int(_) | TypX::TypParam(_) | TypX::Projection { .. } => {
+                        TypX::Int(_)
+                        | TypX::TypParam(_)
+                        | TypX::Projection { .. }
+                        | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
                         TypX::SpecFn(..) => {
@@ -251,6 +265,7 @@ impl GlobalCtx {
         solver: SmtSolver,
         after_simplify: bool,
         check_api_safety: bool,
+        axiom_usage_info: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -635,6 +650,7 @@ impl GlobalCtx {
             func_call_graph_log,
             solver,
             check_api_safety,
+            axiom_usage_info,
         })
     }
 
@@ -662,6 +678,7 @@ impl GlobalCtx {
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
+            axiom_usage_info: self.axiom_usage_info,
         }
     }
 
@@ -690,7 +707,7 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
-        uses_array: bool,
+        used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
@@ -735,7 +752,7 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
-            uses_array,
+            used_builtins,
             fndef_types,
             fndef_type_set,
             functions,

@@ -53,6 +53,7 @@ ast_enum_of_structs! {
         Spec(ModeSpec),
         SpecChecked(ModeSpecChecked),
         Proof(ModeProof),
+        ProofAxiom(ModeProofAxiom),
         Exec(ModeExec),
         Default,
     }
@@ -82,6 +83,12 @@ ast_struct! {
 ast_struct! {
     pub struct ModeProof {
         pub proof_token: Token![proof],
+    }
+}
+
+ast_struct! {
+    pub struct ModeProofAxiom {
+        pub axiom_token: Token![axiom],
     }
 }
 
@@ -138,6 +145,13 @@ ast_struct! {
     pub struct Ensures {
         pub attrs: Vec<Attribute>,
         pub token: Token![ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct DefaultEnsures {
+        pub token: Token![default_ensures],
         pub exprs: Specification,
     }
 }
@@ -257,6 +271,7 @@ ast_struct! {
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
@@ -271,6 +286,7 @@ impl SignatureSpec {
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
+        self.default_ensures = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
@@ -350,8 +366,10 @@ ast_struct! {
     pub struct BroadcastUse {
         pub attrs: Vec<Attribute>,
         pub broadcast_use_tokens: (Token![broadcast], Token![use]),
+        pub brace_token: Option<token::Brace>,
         pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
+        pub warning: bool,
     }
 }
 
@@ -370,6 +388,7 @@ ast_struct! {
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -659,6 +678,9 @@ pub mod parsing {
             } else if input.peek(Token![proof]) {
                 let proof_token: Token![proof] = input.parse()?;
                 Ok(FnMode::Proof(ModeProof { proof_token }))
+            } else if input.peek(Token![axiom]) {
+                let axiom_token: Token![axiom] = input.parse()?;
+                Ok(FnMode::ProofAxiom(ModeProofAxiom { axiom_token }))
             } else if input.peek(Token![exec]) {
                 let exec_token: Token![exec] = input.parse()?;
                 Ok(FnMode::Exec(ModeExec { exec_token }))
@@ -679,10 +701,12 @@ pub mod parsing {
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
                 || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
                 || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -700,7 +724,7 @@ pub mod parsing {
                 if input.peek2(token::Comma) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![ensures]) {
+                if input.peek2(Token![ensures]) || input.peek2(Token![default_ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![opens_invariants]) {
@@ -770,6 +794,17 @@ pub mod parsing {
             attr::parsing::parse_inner(input, &mut attrs)?;
             Ok(Ensures {
                 attrs,
+                token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for DefaultEnsures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            Ok(DefaultEnsures {
                 token,
                 exprs: input.parse()?,
             })
@@ -994,6 +1029,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<DefaultEnsures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![default_ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Returns> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![returns]) {
@@ -1078,6 +1124,7 @@ pub mod parsing {
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1088,6 +1135,7 @@ pub mod parsing {
                 requires,
                 recommends,
                 ensures,
+                default_ensures,
                 returns,
                 decreases,
                 invariants,
@@ -1100,13 +1148,24 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureSpecAttr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let ret_pat = if input.peek2(Token![=>]) {
-                let pat = Pat::parse_single(&input)?;
-                let token = input.parse()?;
-                Some((pat, token))
-            } else {
-                None
-            };
+            let ret_pat =
+                if input.peek2(Token![=>]) || (input.peek2(Token![:]) && input.peek4(Token![=>])) {
+                    let mut pat = Pat::parse_single(&input)?;
+                    if input.peek(Token![:]) {
+                        let colon_token = input.parse()?;
+                        let ty = input.parse()?;
+                        pat = Pat::Type(PatType {
+                            attrs: vec![],
+                            pat: Box::new(pat),
+                            colon_token,
+                            ty,
+                        });
+                    }
+                    let token = input.parse()?;
+                    Some((pat, token))
+                } else {
+                    None
+                };
             let spec = input.parse()?;
 
             Ok(SignatureSpecAttr { ret_pat, spec })
@@ -1300,27 +1359,43 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for BroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
+            let mut warning = false;
             let attrs = Vec::new();
             let broadcast_use_tokens: (Token![broadcast], Token![use]) =
                 (input.parse()?, input.parse()?);
-            let mut paths = Punctuated::new();
-            let semi = loop {
-                let path: ExprPath = input.parse()?;
+            let (brace_token, paths) = if input.peek(token::Brace) {
+                let brace_content;
+                let brace = braced!(brace_content in input);
+                let paths = brace_content.parse_terminated(ExprPath::parse, Token![,])?;
+                (Some(brace), paths)
+            } else {
+                let path = input.parse()?;
+                let mut paths = Punctuated::new();
                 paths.push(path);
-                if input.peek(Token![,]) {
-                    let _: Token![,] = input.parse()?;
-                    continue;
-                } else {
-                    let semi: Token![;] = input.parse()?;
-                    break semi;
+                loop {
+                    if input.peek(Token![;]) {
+                        break;
+                    }
+                    warning = true;
+                    if input.peek(Token![,]) {
+                        let _: Token![,] = input.parse()?;
+                        continue;
+                    }
+                    let path = input.parse()?;
+                    paths.push(path);
                 }
+                (None, paths)
             };
+
+            let semi: Token![;] = input.parse()?;
 
             Ok(BroadcastUse {
                 attrs,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning,
             })
         }
     }
@@ -1350,6 +1425,7 @@ pub mod parsing {
 
             let requires: Option<Requires> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1369,6 +1445,7 @@ pub mod parsing {
                 output,
                 requires,
                 ensures,
+                default_ensures,
                 returns,
                 invariants,
                 unwind,
@@ -1565,6 +1642,13 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ModeProofAxiom {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.axiom_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ModeTracked {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.tracked_token.to_tokens(tokens);
@@ -1623,6 +1707,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for DefaultEnsures {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);
@@ -1740,6 +1832,7 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
@@ -1838,12 +1931,20 @@ mod printing {
             let BroadcastUse {
                 attrs: _,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning: _,
             } = self;
             broadcast_use_tokens.0.to_tokens(tokens);
             broadcast_use_tokens.1.to_tokens(tokens);
-            paths.to_tokens(tokens);
+            if let Some(brace_token) = brace_token {
+                brace_token.surround(tokens, |tokens| {
+                    paths.to_tokens(tokens);
+                });
+            } else {
+                paths.to_tokens(tokens);
+            }
             semi.to_tokens(tokens);
         }
     }
@@ -2076,6 +2177,7 @@ mod printing {
 
             self.requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);

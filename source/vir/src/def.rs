@@ -34,7 +34,7 @@ For VIR -> AIR, we use these suffixes:
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
-const SUFFIX_PARAM: &str = "!";
+pub const SUFFIX_PARAM: &str = "!";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
@@ -65,6 +65,8 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
+pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 pub(crate) const SIZED_BOUND: &str = "sized";
@@ -103,6 +105,8 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
 
+pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
+
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
 
@@ -116,6 +120,7 @@ pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
+pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
 pub const I_HI: &str = "iHi";
@@ -146,15 +151,17 @@ pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
-pub const TYPE_ID_CHAR: &str = "CHAR";
 pub const TYPE_ID_NAT: &str = "NAT";
+pub const TYPE_ID_CHAR: &str = "CHAR";
+pub const TYPE_ID_USIZE: &str = "USIZE";
+pub const TYPE_ID_ISIZE: &str = "ISIZE";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
-pub const DECORATE_NIL_SLICE: &str = "$slice";
+pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
@@ -182,6 +189,8 @@ pub const HEIGHT_LT: &str = "height_lt";
 pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
+pub const DEFAULT_ENS: &str = "default_ens";
+const CLOSURE_PARAM: &str = "closure%";
 pub const EXT_EQ: &str = "ext_eq";
 
 pub const BIT_XOR: &str = "bitxor";
@@ -459,6 +468,14 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     ))
 }
 
+pub fn projection_pointee_metadata(decoration: bool) -> Ident {
+    if decoration {
+        Arc::new(PROJECT_POINTEE_METADATA_DECORATION.to_string())
+    } else {
+        Arc::new(PROJECT_POINTEE_METADATA.to_string())
+    }
+}
+
 pub fn proj_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
 }
@@ -535,6 +552,10 @@ pub fn simplify_temp_var(n: u64) -> VarIdent {
         PREFIX_SIMPLIFY_TEMP_VAR,
         crate::ast::VarIdentDisambiguate::VirTemp(n),
     )
+}
+
+pub fn closure_param_var() -> VarIdent {
+    crate::ast_util::str_unique_var(CLOSURE_PARAM, crate::ast::VarIdentDisambiguate::AirLocal)
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {
@@ -1038,4 +1059,10 @@ pub(crate) fn dummy_param_name() -> VarIdent {
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
     v.0.to_string() == DUMMY_PARAM
+}
+
+pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    Arc::new(FunX { path: p })
 }

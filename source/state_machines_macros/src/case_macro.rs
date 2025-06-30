@@ -5,8 +5,8 @@ use syn_verus::parse_macro_input;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
-use syn_verus::{braced, parenthesized, Error, Expr, ExprBlock, ExprPath, Ident, Path, Token};
-use syn_verus::{parse, PathArguments};
+use syn_verus::{Error, Expr, ExprBlock, ExprPath, Ident, Path, Token, braced, parenthesized};
+use syn_verus::{PathArguments, parse};
 
 pub fn case_on(
     input: proc_macro::TokenStream,

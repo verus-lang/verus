@@ -163,6 +163,9 @@ pub trait Visit<'ast> {
     fn visit_decreases(&mut self, i: &'ast crate::Decreases) {
         visit_decreases(self, i);
     }
+    fn visit_default_ensures(&mut self, i: &'ast crate::DefaultEnsures) {
+        visit_default_ensures(self, i);
+    }
     #[cfg(feature = "derive")]
     #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
     fn visit_derive_input(&mut self, i: &'ast crate::DeriveInput) {
@@ -746,6 +749,9 @@ pub trait Visit<'ast> {
     fn visit_mode_proof(&mut self, i: &'ast crate::ModeProof) {
         visit_mode_proof(self, i);
     }
+    fn visit_mode_proof_axiom(&mut self, i: &'ast crate::ModeProofAxiom) {
+        visit_mode_proof_axiom(self, i);
+    }
     fn visit_mode_spec(&mut self, i: &'ast crate::ModeSpec) {
         visit_mode_spec(self, i);
     }
@@ -1305,6 +1311,9 @@ where
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
     }
+    if let Some(it) = &node.default_ensures {
+        v.visit_default_ensures(it);
+    }
     if let Some(it) = &node.returns {
         v.visit_returns(it);
     }
@@ -1555,11 +1564,13 @@ where
     }
     skip!((node.broadcast_use_tokens).0);
     skip!((node.broadcast_use_tokens).1);
+    skip!(node.brace_token);
     for el in Punctuated::pairs(&node.paths) {
         let it = el.value();
         v.visit_expr_path(it);
     }
     skip!(node.semi);
+    skip!(node.warning);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1691,6 +1702,13 @@ where
     v.visit_fields_named(&node.fields);
 }
 pub fn visit_decreases<'ast, V>(v: &mut V, node: &'ast crate::Decreases)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_default_ensures<'ast, V>(v: &mut V, node: &'ast crate::DefaultEnsures)
 where
     V: Visit<'ast> + ?Sized,
 {
@@ -2721,6 +2739,9 @@ where
         }
         crate::FnMode::Proof(_binding_0) => {
             v.visit_mode_proof(_binding_0);
+        }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            v.visit_mode_proof_axiom(_binding_0);
         }
         crate::FnMode::Exec(_binding_0) => {
             v.visit_mode_exec(_binding_0);
@@ -3827,6 +3848,12 @@ where
 {
     skip!(node.proof_token);
 }
+pub fn visit_mode_proof_axiom<'ast, V>(v: &mut V, node: &'ast crate::ModeProofAxiom)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.axiom_token);
+}
 pub fn visit_mode_spec<'ast, V>(v: &mut V, node: &'ast crate::ModeSpec)
 where
     V: Visit<'ast> + ?Sized,
@@ -4404,6 +4431,9 @@ where
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.default_ensures {
+        v.visit_default_ensures(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);

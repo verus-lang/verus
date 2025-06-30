@@ -2,14 +2,14 @@ use crate::ast::{
     DatatypeTransparency, Dt, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
 };
 use crate::ast_util::{
-    air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
+    LowerUniqueVar, air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name,
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
-    prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
-    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM, Spanned, encode_dt_as_path,
+    is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param, prefix_type_id,
+    prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
@@ -87,6 +87,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
+        TypX::PointeeMetadata(_) => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::ConstBool(_) => false,
@@ -135,8 +136,9 @@ fn datatype_or_fun_to_air_commands(
     let x_var = ident_var(&x.lower());
     let apolytyp = str_typ(crate::def::POLY);
 
-    if dtyp_id.is_none() {
+    if dtyp_id.is_none() && !matches!(kind, EncodedDtKind::Dt(Dt::Tuple(0))) {
         // datatype TYPE identifiers
+        // We skip this for Dt::Tuple(0) because the prelude already emits the identifier
         let mut args: Vec<air::ast::Typ> = Vec::new();
         for _ in tparams.iter() {
             args.extend(crate::def::types().iter().map(|s| str_typ(s)));
@@ -198,7 +200,7 @@ fn datatype_or_fun_to_air_commands(
         //   forall x. x == unbox(box(x))
         // trigger on box(x)
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_BOX_AXIOM);
-        let bind = func_bind(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &box_x, false);
+        let bind = func_bind(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &box_x, None);
         let forall = mk_bind_expr(&bind, &mk_eq(&x_var, &unbox_box_x));
         axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
 
@@ -206,7 +208,7 @@ fn datatype_or_fun_to_air_commands(
         //   forall typs, x. has_type(x, T(typs)) => x == box(unbox(x))
         // trigger on has_type(x, T(typs))
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_UNBOX_AXIOM);
-        let bind = func_bind(ctx, name, tparams, &x_params(&vpolytyp), &has, false);
+        let bind = func_bind(ctx, name, tparams, &x_params(&vpolytyp), &has, None);
         let forall = mk_bind_expr(&bind, &mk_implies(&has, &mk_eq(&x_var, &box_unbox_x)));
         axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
     }
@@ -256,7 +258,7 @@ fn datatype_or_fun_to_air_commands(
             &Arc::new(vec![]),
             &Arc::new(params.clone()),
             &inner_trigs,
-            false,
+            None,
         );
         let inner_pre = mk_and(&pre);
         fun_has = Some(inner_pre.clone());
@@ -268,7 +270,7 @@ fn datatype_or_fun_to_air_commands(
         let trigs = vec![has_box_mk_fun.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
         let bind =
-            func_bind_trig(ctx, name, tparams, &Arc::new(vec![x_param(&datatyp)]), &trigs, false);
+            func_bind_trig(ctx, name, tparams, &Arc::new(vec![x_param(&datatyp)]), &trigs, None);
         let imply = mk_implies(&inner_forall, &has_box_mk_fun);
         let forall = mk_bind_expr(&bind, &imply);
         let axiom = mk_unnamed_axiom(forall);
@@ -283,7 +285,7 @@ fn datatype_or_fun_to_air_commands(
         let trigs = vec![app.clone(), has_box.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_APPLY);
         let aparams = Arc::new(params.clone());
-        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, None);
         let imply = mk_implies(&mk_and(&pre), &has_app);
         let forall = mk_bind_expr(&bind, &imply);
         let axiom = mk_unnamed_axiom(forall);
@@ -301,7 +303,7 @@ fn datatype_or_fun_to_air_commands(
         let trigs = vec![height_app, has_box.clone()];
         let name =
             format!("{}_{}", path_as_friendly_rust_name(dpath), crate::def::QID_HEIGHT_APPLY);
-        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
+        let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, None);
         let imply = mk_implies(&mk_and(&pre), &height_lt);
         let forall = mk_bind_expr(&bind, &imply);
         let axiom = mk_unnamed_axiom(forall);
@@ -335,7 +337,7 @@ fn datatype_or_fun_to_air_commands(
                     }
                 }
                 let name = format!("{}_{}", &variant_ident(&dt, &variant.name), QID_CONSTRUCTOR);
-                let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
+                let bind = func_bind(ctx, name, tparams, &params, &has_ctor, None);
                 let imply = mk_implies(&mk_and(&pre), &has_ctor);
                 let forall = mk_bind_expr(&bind, &imply);
                 let axiom = mk_unnamed_axiom(forall);
@@ -377,7 +379,7 @@ fn datatype_or_fun_to_air_commands(
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
             let name = format!("{}_{}", id, QID_ACCESSOR);
-            let bind = func_bind_trig(ctx, name, &tparams_opt, &x_params(&datatyp), &trigs, false);
+            let bind = func_bind_trig(ctx, name, &tparams_opt, &x_params(&datatyp), &trigs, None);
             let eq = mk_eq(&xfield, &xfield_internal);
             let vid = is_variant_ident(&Dt::Path(dpath.clone()), &*variant.name);
             let is_variant = ident_apply(&vid, &vec![x_var.clone()]);
@@ -395,7 +397,7 @@ fn datatype_or_fun_to_air_commands(
                         let trigs = vec![xfield_unbox.clone(), has.clone()];
                         let name = format!("{}_{}", id, QID_INVARIANT);
                         let bind =
-                            func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
+                            func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, None);
                         let imply = mk_implies(&has, &inv_f);
                         let forall = mk_bind_expr(&bind, &imply);
                         let axiom = mk_unnamed_axiom(forall);
@@ -418,7 +420,7 @@ fn datatype_or_fun_to_air_commands(
     };
     if declare_box && has_type_always_holds {
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
-        let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, false);
+        let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, None);
         let forall = mk_bind_expr(&bind, &has_box);
         axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
     }
@@ -548,7 +550,7 @@ fn datatype_or_fun_to_air_commands(
             args.push(x_var.clone());
             args.push(y_var.clone());
             let ext_eq_xy = str_apply(crate::def::EXT_EQ, &args);
-            let bind = func_bind(ctx, name, tparams, &params, &ext_eq_xy, false);
+            let bind = func_bind(ctx, name, tparams, &params, &ext_eq_xy, None);
             let imply = mk_implies(&mk_and(pre), &ext_eq_xy);
             let forall = mk_bind_expr(&bind, &imply);
             let axiom = mk_unnamed_axiom(forall);
@@ -649,7 +651,7 @@ fn datatype_or_fun_to_air_commands(
                 &Arc::new(vec![]),
                 &Arc::new(params.clone()),
                 &vec![ext_eq.clone()],
-                false,
+                None,
             );
             pre.push(mk_bind_expr(&bind, &imply));
             axiom_commands.push(eq_command(&path_as_friendly_rust_name(dpath), &pre));
@@ -689,7 +691,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
-    if ctx.uses_array {
+    if ctx.used_builtins.uses_array {
         datatype_or_fun_to_air_commands(
             ctx,
             &mut field_commands,
@@ -790,7 +792,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
-    let array_commands = if ctx.uses_array {
+    let array_commands = if ctx.used_builtins.uses_array {
         let nodes = crate::prelude::array_functions(&prefix_box(&crate::def::array_type()));
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
             .nodes_to_commands(&nodes)
@@ -815,7 +817,18 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let pointee_metadata_commands = if ctx.used_builtins.uses_pointee_metadata {
+        let nodes = crate::prelude::pointee_metadata_prelude();
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed pointee metadata axioms");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let mut commands: Vec<Command> = Vec::new();
+    commands.extend(pointee_metadata_commands);
     commands.append(&mut opaque_sort_commands);
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         transparent_air_datatypes,

@@ -115,6 +115,7 @@ impl Hash for crate::AssumeSpecification {
         self.output.hash(state);
         self.requires.hash(state);
         self.ensures.hash(state);
+        self.default_ensures.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
@@ -357,7 +358,9 @@ impl Hash for crate::BroadcastUse {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.brace_token.hash(state);
         self.paths.hash(state);
+        self.warning.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -503,6 +506,15 @@ impl Hash for crate::DataUnion {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Decreases {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::DefaultEnsures {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -1497,12 +1509,16 @@ impl Hash for crate::FnMode {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::FnMode::Exec(v0) => {
+            crate::FnMode::ProofAxiom(v0) => {
                 state.write_u8(3u8);
                 v0.hash(state);
             }
-            crate::FnMode::Default => {
+            crate::FnMode::Exec(v0) => {
                 state.write_u8(4u8);
+                v0.hash(state);
+            }
+            crate::FnMode::Default => {
+                state.write_u8(5u8);
             }
         }
     }
@@ -2526,6 +2542,13 @@ impl Hash for crate::ModeProof {
     {}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ModeProofAxiom {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ModeSpec {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -3074,6 +3097,7 @@ impl Hash for crate::SignatureSpec {
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
+        self.default_ensures.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);

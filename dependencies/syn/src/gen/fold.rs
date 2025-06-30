@@ -173,6 +173,12 @@ pub trait Fold {
     fn fold_decreases(&mut self, i: crate::Decreases) -> crate::Decreases {
         fold_decreases(self, i)
     }
+    fn fold_default_ensures(
+        &mut self,
+        i: crate::DefaultEnsures,
+    ) -> crate::DefaultEnsures {
+        fold_default_ensures(self, i)
+    }
     #[cfg(feature = "derive")]
     #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
     fn fold_derive_input(&mut self, i: crate::DeriveInput) -> crate::DeriveInput {
@@ -819,6 +825,12 @@ pub trait Fold {
     fn fold_mode_proof(&mut self, i: crate::ModeProof) -> crate::ModeProof {
         fold_mode_proof(self, i)
     }
+    fn fold_mode_proof_axiom(
+        &mut self,
+        i: crate::ModeProofAxiom,
+    ) -> crate::ModeProofAxiom {
+        fold_mode_proof_axiom(self, i)
+    }
     fn fold_mode_spec(&mut self, i: crate::ModeSpec) -> crate::ModeSpec {
         fold_mode_spec(self, i)
     }
@@ -1405,6 +1417,7 @@ where
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
@@ -1577,8 +1590,10 @@ where
             (node.broadcast_use_tokens).0,
             (node.broadcast_use_tokens).1,
         ),
+        brace_token: node.brace_token,
         paths: crate::punctuated::fold(node.paths, f, F::fold_expr_path),
         semi: node.semi,
+        warning: node.warning,
     }
 }
 #[cfg(feature = "full")]
@@ -1716,6 +1731,18 @@ where
     F: Fold + ?Sized,
 {
     crate::Decreases {
+        token: node.token,
+        exprs: f.fold_specification(node.exprs),
+    }
+}
+pub fn fold_default_ensures<F>(
+    f: &mut F,
+    node: crate::DefaultEnsures,
+) -> crate::DefaultEnsures
+where
+    F: Fold + ?Sized,
+{
+    crate::DefaultEnsures {
         token: node.token,
         exprs: f.fold_specification(node.exprs),
     }
@@ -2648,6 +2675,9 @@ where
         }
         crate::FnMode::Proof(_binding_0) => {
             crate::FnMode::Proof(f.fold_mode_proof(_binding_0))
+        }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            crate::FnMode::ProofAxiom(f.fold_mode_proof_axiom(_binding_0))
         }
         crate::FnMode::Exec(_binding_0) => {
             crate::FnMode::Exec(f.fold_mode_exec(_binding_0))
@@ -3783,6 +3813,17 @@ where
         proof_token: node.proof_token,
     }
 }
+pub fn fold_mode_proof_axiom<F>(
+    f: &mut F,
+    node: crate::ModeProofAxiom,
+) -> crate::ModeProofAxiom
+where
+    F: Fold + ?Sized,
+{
+    crate::ModeProofAxiom {
+        axiom_token: node.axiom_token,
+    }
+}
 pub fn fold_mode_spec<F>(f: &mut F, node: crate::ModeSpec) -> crate::ModeSpec
 where
     F: Fold + ?Sized,
@@ -4324,6 +4365,7 @@ where
         requires: (node.requires).map(|it| f.fold_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),

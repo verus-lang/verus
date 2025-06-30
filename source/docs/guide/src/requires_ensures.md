@@ -4,7 +4,7 @@ Let's start with a small example.
 Suppose we want to verify a function `octuple` that multiplies a number by 8:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:init}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:init}}
 ```
 
 If we ask Verus to verify this code, Verus immediately reports errors about `octuple`:
@@ -26,7 +26,7 @@ In Verus, preconditions are written with a `requires` followed by zero or more b
 separated by commas:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:pre1}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:pre1}}
 ```
 
 The two preconditions above say that x1 must be at least `-64` and less than `64`,
@@ -43,7 +43,7 @@ error: possible arithmetic underflow/overflow
 If we want `x1 + x1`, `x2 + x2`, and `x4 + x4` to all succeed, we need a tighter bound on `x1`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:pre2}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:pre2}}
 ```
 
 This time, verification is successful.
@@ -51,7 +51,7 @@ This time, verification is successful.
 Now suppose we try to call `octuple` with a value that does not satisfy `octuple`'s precondition:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:pre3}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:pre3}}
 ```
 
 For this call, Verus reports an error, since `20` is not less than `16`:
@@ -69,7 +69,7 @@ error: precondition not satisfied
 If we pass `10` instead of `20`, verification succeeds:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:pre4}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:pre4}}
 ```
 
 # Postconditions (ensures clauses)
@@ -80,7 +80,7 @@ is 8 times as large as the argument passed to `octuple`.
 Let's try putting an assertion in `main` that the result of calling `octuple(10)` is `80`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:post1}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:post1}}
 ```
 
 Although `octuple(10)` really does return `80`,
@@ -99,7 +99,7 @@ To do this, we can add postconditions (`ensures` clauses) to `octuple` specifyin
 some properties of `octuple`'s return value:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures_edit.rs:post2}}
+{{#include ../../../../examples/guide/requires_ensures_edit.rs:post2}}
 ```
 
 To write a property about the return value, we need to give a name to the return value.
@@ -163,7 +163,7 @@ to help prove properties about [bit vectors](bitvec.md), [nonlinear integer arit
 Let's put everything from this section together into a final version of our example program:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/requires_ensures.rs}}
+{{#include ../../../../examples/guide/requires_ensures.rs}}
 ```
 
 Here, we've made a few final adjustments.
@@ -188,7 +188,7 @@ and `#[verifier::external_body]` can be used to mark this boundary.
 We can now compile the program above using the `--compile` option to Verus:
 
 ```
-./tools/rust-verify.sh --compile rust_verify/example/guide/requires_ensures.rs
+./target-verus/release/verus --compile ../examples/guide/requires_ensures.rs
 ```
 
 This will produce an executable that prints a message when run:

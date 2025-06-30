@@ -5,32 +5,32 @@ use crate::ast::{
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ, undecorate_typ,
-    LowerUniqueVar,
+    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
+    undecorate_typ,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
-    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
-    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, ProverChoice, SNAPSHOT_CALL,
+    SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos,
+    SpanKind, Spanned, U_HI, encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid,
+    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
+    prefix_unbox, snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
+    suffix_typ_param_ids, unique_local, variant_field_ident, variant_field_ident_internal,
+    variant_ident,
 };
-use crate::messages::{error, error_with_label, Span};
-use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX, MonoTyps};
+use crate::messages::{Span, error, error_with_label};
+use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_util::subst_typ_for_datatype;
-use crate::sst_vars::{get_loc_var, AssignMap};
+use crate::sst_vars::{AssignMap, get_loc_var};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
@@ -164,7 +164,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed {:?}", typ),
+                    None => {
+                        // this probably means you forgot to call coerce_typ_to_poly
+                        // or coerce_typ_to_native for this type during the poly pass
+                        panic!("abstract datatype should be boxed {:?}", typ)
+                    }
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -181,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
         },
         TypX::Projection { .. } => str_typ(POLY),
+        TypX::PointeeMetadata(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
@@ -193,12 +198,10 @@ pub fn range_to_id(range: &IntRange) -> Expr {
         IntRange::Int => str_var(crate::def::TYPE_ID_INT),
         IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
         IntRange::Char => str_var(crate::def::TYPE_ID_CHAR),
-        IntRange::U(_) | IntRange::USize => {
-            apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
-        }
-        IntRange::I(_) | IntRange::ISize => {
-            apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
-        }
+        IntRange::USize => str_var(crate::def::TYPE_ID_USIZE),
+        IntRange::ISize => str_var(crate::def::TYPE_ID_ISIZE),
+        IntRange::U(_) => apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![]),
+        IntRange::I(_) => apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![]),
     }
 }
 
@@ -372,6 +375,16 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let pt = ident_apply(&crate::def::projection(false, trait_path, name), &args);
             vec![pd, pt]
         }
+        TypX::PointeeMetadata(t) => {
+            let ids = typ_to_ids(ctx, t);
+            let id = ids[0].clone(); // Metadata is a function of just the decoration
+            let args = vec![id];
+
+            let pd = ident_apply(&crate::def::projection_pointee_metadata(true), &args);
+            let pt = ident_apply(&crate::def::projection_pointee_metadata(false), &args);
+
+            vec![pd, pt]
+        }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
         TypX::ConstInt(c) => {
             mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
@@ -499,6 +512,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                 }
             } else {
                 if typ_as_mono(typ).is_none() {
+                    // this probably means you forgot to call coerce_typ_to_poly
+                    // or coerce_typ_to_native for this type during the poly pass
                     panic!("abstract datatype should be boxed")
                 } else {
                     None
@@ -509,6 +524,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -577,6 +593,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -609,6 +626,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -824,7 +842,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
             let skip_first_decoration = match func {
-                InternalFun::ClosureReq | InternalFun::ClosureEns => true,
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns => true,
                 _ => false,
             };
 
@@ -839,6 +857,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 match func {
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::DefaultEns => str_ident(crate::def::DEFAULT_ENS),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
@@ -1605,7 +1624,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args: typs,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
             // `call_requires(f, (args...))` and `call_ensures(f, (args...), ret)`
@@ -1627,7 +1656,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if func.x.require.len() > 0
                 && (!ctx.checking_spec_preconditions_for_non_spec() || *mode == Mode::Spec)
                 // don't check recommends during decreases checking; these are separate passes:
-                && !ctx.checking_spec_decreases()
+                && (!ctx.checking_spec_decreases() || *mode != Mode::Spec)
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
 
@@ -1683,13 +1712,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
                         "cannot show this call will not unwind, in function marked 'no_unwind'",
-                        "this call might unwind",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
                         error_with_label(
                             &stm.span,
                             "cannot show this call will not unwind",
-                            "this call might unwind",
+                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                         )
                         .secondary_label(span, "unwinding is not allowed in this invariant block")
                     }
@@ -1800,19 +1829,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
+            let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
                     let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
-                    (true, res_fun, res_typ_args)
+                    (true, true, res_fun, res_typ_args)
                 }
                 _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
                     // Use ens predicate for the generic function
-                    (true, &func.x.name, typ_args)
+                    (true, false, &func.x.name, typ_args)
                 }
                 _ => {
                     // No ens predicate
-                    (false, &func.x.name, typ_args)
+                    (false, false, &func.x.name, typ_args)
                 }
             };
 
@@ -1837,6 +1866,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 } else {
                     crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                }
+            }
+            if let Some(is_trait_default) = is_trait_default {
+                if !resolved_ens {
+                    ens_args.insert(0, air::ast_util::mk_const_bool(*is_trait_default));
                 }
             }
             if has_ens {
@@ -2071,12 +2105,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             // TODO(andrea) move this to poly.rs once we have general support for mutable references
-            if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+            let boxed = if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
                 value = try_box(ctx, value, &value_typ).expect("box field update");
-            }
+                true
+            } else {
+                false
+            };
 
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
             stmts.push(a);
+            if fields.len() > 0 {
+                let mut var_exp = ident_var(&suffix_local_unique_id(&base_var));
+                if boxed {
+                    var_exp = try_unbox(ctx, var_exp, &value_typ).expect("assign try_unbox");
+                }
+                let typ_inv = typ_invariant(ctx, &value_typ, &var_exp);
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
+            }
 
             stmts
         }

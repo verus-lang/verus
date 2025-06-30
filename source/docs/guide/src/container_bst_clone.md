@@ -15,7 +15,7 @@ With this in mind, to simplify this example,
 we're going to prove the following signature for `TreeMap<K, V>::clone`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_signature}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:clone_signature}}
     {
         ...
     }
@@ -66,14 +66,14 @@ equals the input. As a result, we can deduce that cloning a `TreeMap::<u64, u32>
 preserve its `view` exactly. We can prove this using [extensional equality](./extensional_equality.md).
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_u32}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:clone_u32}}
 ```
 
 We can do the same for _any_ type where `clone` guarantees spec-equality. Here's another
 example with a user-defined type.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_int_wrapper}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:clone_int_wrapper}}
 ```
 
 This works because of the postcondition on `IntWrapper::clone`, that is, `ensures *s == self`.
@@ -85,7 +85,7 @@ indirectly via `TreeMap<u64, IntWrapper>:clone`.
 Let's do one more example, this time with a _less_ precise clone function.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_weird_int}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:clone_weird_int}}
 ```
 
 This example is a bit pathological; our struct, `WeirdInt`, has an extra field that doesn't
@@ -106,7 +106,7 @@ vstd). However, you can see that there are a few 'gotchas' that need
 to be worked around.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_full_impl}}
+{{#include ../../../../examples/guide/bst_map_generic.rs:clone_full_impl}}
 ```
 
 ## Full source

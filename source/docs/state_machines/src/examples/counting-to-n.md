@@ -13,7 +13,7 @@ the equivalent of the following Rust program:
 **Our objective:** Prove the counter read in the final step has value `num_threads`.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_counting_to_n.rs:full}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_counting_to_n.rs:full}}
 ```
 
 ## Verified implementation
@@ -33,7 +33,7 @@ Let's start with the updated state machine, but ignore the tokenization aspect f
 Here's the updated state machine as an atomic state machine:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n_atomic.rs:main}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n_atomic.rs:main}}
 
         // ... invariant proofs here
     }
@@ -100,7 +100,7 @@ The abstract global state, then, has
 First, we mark the fields with the appropriate strategies, as we discussed:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:fields}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:fields}}
 ```
 
 Just by marking the strategies, we can already see how it impacts the generated token code.
@@ -159,9 +159,9 @@ The sharding strategies might affect the token method that gets generated, but t
 `init!` definition itself will remain the same.)
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:inv}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:inv}}
 
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:init}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:init}}
 ```
 
 The `tr_inc` definition is where it gets interesting. Let's take a closer look at the definition
@@ -212,7 +212,7 @@ To get Verus to accept it, we only need to write the transition using a special 
 the patterns involved.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:tr_inc}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:tr_inc}}
 ```
 
 Generally, a `remove` corresponds to destroying a token, while `add` corresponds to creating a token. Thus the generated exchange function takes an `unstamped_tickets` token as input
@@ -252,7 +252,7 @@ pub fn tr_inc(
 The `finalize` transition needs to be updated in a similar way:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:finalize}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:finalize}}
 ```
 
 The `have` statement is similar to `remove`, except that it doesn't do the remove.
@@ -298,7 +298,7 @@ exchanging an `unstamped_ticket` for a `stamped_ticket`, rather than updating a
 boolean field.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:thread_run}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:thread_run}}
 ```
 
 Perhaps more interesting now is the `main` function which does the spawning and joining.
@@ -307,14 +307,14 @@ It has to spawn threads in a loop. Note that we start with a `stamped_tokens` co
 and pass it into the newly spawned thread.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:loop_spawn}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:loop_spawn}}
 ```
 
 Then, when we join the threads, we do the opposite: we collect the "stamped ticket" tokens
 until we have collected all `num_threads` of them.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_n.rs:loop_join}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_n.rs:loop_join}}
 ```
 
 See [the full verified source](src-counting-to-n.md) for more detail.

@@ -109,8 +109,7 @@ If you require manual proof to prove the inherent safety condition, you can add
 an optional `by` clause:
 
 ```rust
-deposit field += [ k => tok ];
-by {
+deposit field += [ k => tok ] by {
     // proof goes here
 };
 ```
@@ -132,8 +131,7 @@ The `withdraw` instruction has an inherent safety condition that `field` contain
 an optional `by` clause:
 
 ```rust
-withdraw field -= [ k => tok ];
-by {
+withdraw field -= [ k => tok ] by {
     // proof goes here
 };
 ```
@@ -183,23 +181,25 @@ by {
 
 ### Operations that manipulate collections of tokens
 
-You can also write versions of the above operations that operate on optional tokens.
+You can also write versions of the above operations that 
+use a map `map_toks`: <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>,
+instead of an individual key-value pair (typically you'll need to pass `map_toks` in as an argument to your transition).
 The operations below are equivalent to the above versions whenever `map_toks == [ k => tok ]`,
 and they are all no-ops when `map_toks == map![]`.
 
-To deposit an <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
+To deposit `map_toks:` <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
 
 ```rust
 deposit field += (map_toks);
 ```
 
-To withdraw an <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
+To withdraw `map_toks:` <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
 
 ```rust
 remove field -= (map_toks);
 ```
 
-To obtain an <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
+To obtain `map_toks:` <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>:
 
 ```rust
 guard field >= (map_toks);

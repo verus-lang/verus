@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
@@ -348,11 +348,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 },
                 CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
                 CallFun::InternalFun(
-                    InternalFun::ClosureReq { .. } | InternalFun::ClosureEns { .. },
+                    InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
-                CallFun::InternalFun(_) => {
-                    (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
-                }
+                CallFun::InternalFun(
+                    InternalFun::CheckDecreaseInt
+                    | InternalFun::CheckDecreaseHeight
+                    | InternalFun::OpenInvariantMask(..),
+                ) => (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms)))),
             }
         }
         ExpX::CallLambda(e0, es) => {

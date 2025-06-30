@@ -1,15 +1,15 @@
-use crate::attributes::{get_ghost_block_opt, GhostBlockAttr};
+use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
-    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
-    get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, ExprModifier,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array,
+    extract_tuple, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -22,10 +22,10 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
@@ -196,50 +196,68 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let param_env = tcx.param_env(bctx.fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
-        let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
-        match inst {
-            Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
+        let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+        let res = resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
+        match res {
+            ResolutionResult::Resolved {
+                impl_def_id: _,
+                impl_args: _,
+                impl_item_args: _,
+                resolved_item: ResolvedItem::FromImpl(did, args),
+            } => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let mut f =
+                let impl_paths = get_impl_paths(bctx, did, args, None);
+
+                let f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
                 record_name = f.clone();
 
-                let mut self_trait_impl_path = None;
-                let mut remove_self_trait_bound = None;
-                let mut is_trait_default = false;
-                if let Some(trait_id) = tcx.trait_of_item(did) {
-                    // We resolved to the trait method itself, which means this must be
-                    // a default method implementation in the trait.
-                    // Redirect this to the appropriate per-instance copy of the default method.
-                    is_trait_default = true;
-                    remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
-                }
-                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
-                if tcx.trait_of_item(did).is_some() {
-                    if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
-                    {
-                        f = vir::def::trait_inherit_default_name(&f, &impl_path);
-                    } else {
-                        panic!(
-                            "{} {:?}",
-                            "could not resolve call to trait default method", &expr.span
-                        );
-                    }
-                }
                 vir::ast::CallTargetKind::DynamicResolved {
                     resolved: f,
                     typs,
                     impl_paths,
-                    is_trait_default,
+                    is_trait_default: false,
                 }
             }
-            Some(inst) => {
-                unsupported_err!(expr.span, format!("instance {:?}", &inst.def));
+            ResolutionResult::Resolved {
+                impl_def_id: _,
+                impl_args: _,
+                impl_item_args: _,
+                resolved_item: ResolvedItem::FromTrait(did, args),
+            } => {
+                // We resolved to the trait method itself, which means this must be
+                // a default method implementation in the trait.
+                // Redirect this to the appropriate per-instance copy of the default method.
+
+                let typs = mk_typ_args(bctx, args, did, expr.span)?;
+
+                let mut self_trait_impl_path = None;
+                let trait_id = tcx.trait_of_item(did).unwrap();
+                let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
+
+                let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
+                else {
+                    panic!("{} {:?}", "could not resolve call to trait default method", &expr.span);
+                };
+
+                let f =
+                    Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                record_name = f.clone();
+
+                let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+
+                vir::ast::CallTargetKind::DynamicResolved {
+                    resolved: f,
+                    typs,
+                    impl_paths,
+                    is_trait_default: true,
+                }
             }
-            None => {
+            ResolutionResult::Builtin(b) => {
+                unsupported_err!(expr.span, format!("built-in instance {:?}", b));
+            }
+            ResolutionResult::Unresolved => {
                 // Method is generic
                 vir::ast::CallTargetKind::Dynamic
             }
@@ -254,6 +272,63 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
+}
+
+pub(crate) fn deref_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    expr_typ: Typ,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+    span: Span,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
+    // reference for calling `deref`. We strip it for trait resolution.
+    //
+    // Otherwise, it may be `deref` coercion. Leave it as-is.
+    let arg_ty =
+        if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
+    let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
+
+    let trait_fun =
+        Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
+    let mut record_trait_fun = trait_fun.clone();
+
+    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
+    let target_kind = match res {
+        ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
+            let typs = mk_typ_args(bctx, args, did, span)?;
+            let impl_paths = get_impl_paths(bctx, did, args, None);
+            let resolved =
+                Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+
+            record_trait_fun = resolved.clone();
+
+            vir::ast::CallTargetKind::DynamicResolved {
+                resolved,
+                typs,
+                impl_paths,
+                is_trait_default: false,
+            }
+        }
+        ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
+        _ => crate::internal_err!(span, "unexpected deref"),
+    };
+
+    let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+
+    record_call(bctx, expr, ResolvedCall::Call(record_trait_fun, autospec_usage));
+
+    let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
+    let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
+    let args = Arc::new(vec![arg.clone()]);
+    let x = ExprX::Call(call_target, args);
+
+    Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
 
 fn verus_item_to_vir<'tcx, 'a>(
@@ -749,12 +824,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                     expr_item == &ExprItem::IsSmallerThanRecursiveFunctionField,
                 )
             }
+            ExprItem::DefaultEnsures => {
+                return err_span(expr.span, "default_ensures not allowed here");
+            }
             ExprItem::InferSpecForLoopIter => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                assert!(args.len() == 2);
-                let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+                assert!(args.len() == 3);
+                let arg = if bctx.loop_isolation {
+                    expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?
+                } else {
+                    expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?
+                };
                 let print_hint = matches!(
-                    &args[1],
+                    &args[2],
                     Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
                 );
                 mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
@@ -939,7 +1021,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                    let header = vir::headers::read_header(&mut vir_expr)?;
+                    use vir::headers::{HeaderAllow, HeaderAllows};
+                    let header = vir::headers::read_header(
+                        &mut vir_expr,
+                        &HeaderAllows::Some(vec![HeaderAllow::Require, HeaderAllow::Ensure]),
+                    )?;
                     let requires = if header.require.len() >= 1 {
                         header.require
                     } else {
@@ -949,13 +1035,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                             ExprX::Const(Constant::Bool(true)),
                         )])
                     };
-                    if header.ensure.len() == 0 {
+                    if header.ensure.0.len() == 0 {
                         return err_span(
                             expr.span,
                             "assert_nonlinear_by/assert_bitvector_by must have at least one ensures",
                         );
                     }
-                    let ensures = header.ensure;
+                    assert!(header.ensure.1.len() == 0);
+                    let ensures = header.ensure.0;
                     let proof = vir_expr;
 
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
@@ -1073,7 +1160,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
                     [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
                 let ty = bctx.types.node_type(args[0].hir_id);
-                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
+                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx)
+                    .build(rustc_type_ir::TypingMode::PostAnalysis);
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
                         .type_implements_trait(
@@ -1533,6 +1621,15 @@ fn extract_ensures<'tcx>(
 ) -> Result<HeaderExpr, VirErr> {
     let expr = skip_closure_coercion(bctx, expr);
     let tcx = bctx.ctxt.tcx;
+    use vir::ast::Exprs;
+    let get_args = |body_value: &'tcx Expr<'tcx>| -> Result<(Exprs, Exprs), VirErr> {
+        let args = vec_map_result(&extract_array(body_value), |e| get_ensures_arg(bctx, e))?;
+        let args0 =
+            args.iter().filter_map(|(b, e)| if !*b { Some(e.clone()) } else { None }).collect();
+        let args1 =
+            args.iter().filter_map(|(b, e)| if *b { Some(e.clone()) } else { None }).collect();
+        Ok((Arc::new(args0), Arc::new(args1)))
+    };
     match &expr.kind {
         ExprKind::Closure(closure) => {
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
@@ -1542,19 +1639,19 @@ fn extract_ensures<'tcx>(
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+            let args = get_args(expr)?;
             if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((xs[0].clone(), typs[0].clone()));
-                Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ, args)))
             } else if typs.len() == 0 && xs.len() == 0 {
-                Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
+                Ok(Arc::new(HeaderExprX::Ensures(None, args)))
             } else {
                 err_span(expr.span, "expected 1 parameter in closure")
             }
         }
         _ => {
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
-            Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
+            let args = get_args(expr)?;
+            Ok(Arc::new(HeaderExprX::Ensures(None, args)))
         }
     }
 }
@@ -1578,10 +1675,10 @@ fn extract_quant<'tcx>(
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut vir_expr)?;
-            if header.require.len() + header.ensure.len() > 0 {
-                return err_span(expr.span, "forall/ensures cannot have requires/ensures");
-            }
+            let _ = vir::headers::read_header(
+                &mut vir_expr,
+                &vir::headers::HeaderAllows::Some(vec![]),
+            )?;
             let typ = Arc::new(TypX::Bool);
             if !matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
                 return err_span(expr.span, "forall/ensures needs a bool expression");
@@ -1594,10 +1691,24 @@ fn extract_quant<'tcx>(
 
 fn get_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
+    mut expr: &Expr<'tcx>,
+) -> Result<(bool, vir::ast::Expr), VirErr> {
     if matches!(bctx.types.expr_ty_adjusted(expr).kind(), TyKind::Bool) {
-        expr_to_vir(bctx, expr, ExprModifier::REGULAR)
+        let mut default_ensures = false;
+        if let ExprKind::Call(fun, args) = &expr.kind {
+            if let ExprKind::Path(qpath) = &fun.kind {
+                let def = bctx.types.qpath_res(&qpath, fun.hir_id);
+                if let rustc_hir::def::Res::Def(_, def_id) = def {
+                    let verus_item = bctx.ctxt.verus_items.id_to_name.get(&def_id);
+                    if verus_item == Some(&VerusItem::Expr(ExprItem::DefaultEnsures)) {
+                        assert!(args.len() == 1);
+                        default_ensures = true;
+                        expr = &args[0];
+                    }
+                }
+            }
+        }
+        Ok((default_ensures, expr_to_vir(bctx, expr, ExprModifier::REGULAR)?))
     } else {
         err_span(expr.span, "ensures needs a bool expression")
     }
@@ -1621,11 +1732,16 @@ fn extract_assert_forall_by<'tcx>(
             }
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut vir_expr)?;
+            use vir::headers::{HeaderAllow, HeaderAllows};
+            let header = vir::headers::read_header(
+                &mut vir_expr,
+                &HeaderAllows::Some(vec![HeaderAllow::Require, HeaderAllow::Ensure]),
+            )?;
+            assert!(header.ensure.1.len() == 0);
             if header.require.len() > 1 {
                 return err_span(expr.span, "assert_forall_by can have at most one requires");
             }
-            if header.ensure.len() != 1 {
+            if header.ensure.0.len() != 1 {
                 return err_span(expr.span, "assert_forall_by must have exactly one ensures");
             }
             if header.ensure_id_typ.is_some() {
@@ -1642,7 +1758,7 @@ fn extract_assert_forall_by<'tcx>(
                     ExprX::Const(Constant::Bool(true)),
                 )
             };
-            let ensure = header.ensure[0].clone();
+            let ensure = header.ensure.0[0].clone();
             let forallx = ExprX::AssertBy { vars, require, ensure, proof: vir_expr };
             Ok(bctx.spanned_typed_new(span, &typ, forallx))
         }
@@ -1831,11 +1947,10 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
-    f: DefId,
+    _f: DefId,
     span: Span,
 ) -> Result<vir::ast::Typs, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let substs = remove_host_arg(tcx, f, substs, span)?;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
         match typ_arg.unpack() {

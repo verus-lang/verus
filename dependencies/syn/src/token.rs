@@ -745,6 +745,7 @@ define_keywords! {
     // verus
     "spec"        pub struct Spec
     "proof"       pub struct Proof
+    "axiom"       pub struct Axiom
     "exec"        pub struct Exec
     "open"        pub struct Open
     "closed"      pub struct Closed
@@ -754,6 +755,7 @@ define_keywords! {
     "requires"    pub struct Requires
     "recommends"  pub struct Recommends
     "ensures"     pub struct Ensures
+    "default_ensures" pub struct DefaultEnsures
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
     "with"        pub struct With
@@ -1033,6 +1035,7 @@ macro_rules! Token {
     // verus
     [spec]        => { $crate::token::Spec };
     [proof]       => { $crate::token::Proof };
+    [axiom]       => { $crate::token::Axiom };
     [exec]        => { $crate::token::Exec };
     [open]        => { $crate::token::Open };
     [closed]      => { $crate::token::Closed };
@@ -1042,6 +1045,7 @@ macro_rules! Token {
     [requires]    => { $crate::token::Requires };
     [recommends]  => { $crate::token::Recommends };
     [ensures]     => { $crate::token::Ensures };
+    [default_ensures] => { $crate::token::DefaultEnsures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
     [with]   => { $crate::token::With };

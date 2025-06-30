@@ -258,6 +258,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.default_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::DefaultEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("default_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -581,9 +595,13 @@ impl Debug for Lite<syn::BroadcastUse> {
         if !self.value.attrs.is_empty() {
             formatter.field("attrs", Lite(&self.value.attrs));
         }
+        if self.value.brace_token.is_some() {
+            formatter.field("brace_token", &Present);
+        }
         if !self.value.paths.is_empty() {
             formatter.field("paths", Lite(&self.value.paths));
         }
+        formatter.field("warning", Lite(&self.value.warning));
         formatter.finish()
     }
 }
@@ -759,6 +777,13 @@ impl Debug for Lite<syn::DataUnion> {
 impl Debug for Lite<syn::Decreases> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Decreases");
+        formatter.field("exprs", Lite(&self.value.exprs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::DefaultEnsures> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("DefaultEnsures");
         formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }
@@ -2927,6 +2952,13 @@ impl Debug for Lite<syn::FnMode> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::FnMode::ProofAxiom(_val) => {
+                formatter.write_str("FnMode::ProofAxiom")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::FnMode::Exec(_val) => {
                 formatter.write_str("FnMode::Exec")?;
                 formatter.write_str("(")?;
@@ -4805,6 +4837,12 @@ impl Debug for Lite<syn::ModeProof> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::ModeProofAxiom> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeProofAxiom");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ModeSpec> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ModeSpec");
@@ -5751,6 +5789,20 @@ impl Debug for Lite<syn::SignatureSpec> {
                 }
             }
             formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.default_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::DefaultEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("default_ensures", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
@@ -7110,6 +7162,11 @@ impl Debug for Lite<syn::token::Await> {
         formatter.write_str("Token![await]")
     }
 }
+impl Debug for Lite<syn::token::Axiom> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![axiom]")
+    }
+}
 impl Debug for Lite<syn::token::Become> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![become]")
@@ -7203,6 +7260,11 @@ impl Debug for Lite<syn::token::Decreases> {
 impl Debug for Lite<syn::token::Default> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![default]")
+    }
+}
+impl Debug for Lite<syn::token::DefaultEnsures> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![default_ensures]")
     }
 }
 impl Debug for Lite<syn::token::Do> {

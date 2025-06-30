@@ -205,7 +205,7 @@ impl<'a> OpGenerator<'a> {
         }
 
         for function in scc_functions.iter() {
-            self.ctx.fun = mk_fun_ctx_dec(function, true, true);
+            self.ctx.fun = mk_fun_ctx_dec(function, false, true);
             let verifying_owning_bucket = self.bucket.contains(&function.x.name);
 
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(

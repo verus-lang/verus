@@ -43,7 +43,7 @@ memory leaks.
 As usual, we'll start with an unverified implementation.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_rc.rs:full}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_rc.rs:full}}
 ```
 
 ## Verified implementation
@@ -80,7 +80,7 @@ to define the `ref` and `counter` tokens along with the relationship between the
 ![Graphic visualization of the ghost structure of the Rc](../graphics/rc-ghost-diagram-ghost-only.png)
 
 ```rust
-{{#include ../../../../rust_verify/example/state_machines/tutorial/rc.rs:fields}}
+{{#include ../../../../../examples/state_machines/tutorial/rc.rs:fields}}
 ```
 
 TODO - finish the rest of this tutorial

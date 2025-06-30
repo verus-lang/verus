@@ -1081,15 +1081,15 @@ test_verify_one_file_with_options! {
 
 // type well-formed
 
-test_verify_one_file! {
-    #[test] error_msg_use_external_type_closure_param verus_code! {
+test_verify_one_file_with_options! {
+    #[test] error_msg_use_external_type_closure_param ["vstd"] => verus_code! {
         #[verifier(external)]
         struct X { }
 
         proof fn stuff() {
             let tracked f = proof_fn|x: X| { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }
 
 // Omitting error_msg_use_external_type_closure_ret because it uses a loop

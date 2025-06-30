@@ -5,6 +5,8 @@ use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use syn_verus::Token;
+use syn_verus::TypeInfer;
 use syn_verus::buffer::Cursor;
 use syn_verus::parse;
 use syn_verus::parse::{Parse, ParseStream};
@@ -17,12 +19,10 @@ use syn_verus::visit;
 use syn_verus::visit::Visit;
 use syn_verus::visit_mut;
 use syn_verus::visit_mut::VisitMut;
-use syn_verus::Token;
-use syn_verus::TypeInfer;
 use syn_verus::{
-    braced, parenthesized, Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
-    GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
-    PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility,
+    Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
+    GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent, PatType,
+    PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -1191,7 +1191,7 @@ fn is_first_param_self(sig: &Signature) -> bool {
 fn is_spec(sig: &Signature) -> bool {
     match &sig.mode {
         FnMode::Spec(_) | FnMode::SpecChecked(_) => true,
-        FnMode::Proof(_) | FnMode::Exec(_) | FnMode::Default => false,
+        FnMode::Proof(_) | FnMode::ProofAxiom(_) | FnMode::Exec(_) | FnMode::Default => false,
     }
 }
 

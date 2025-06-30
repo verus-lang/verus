@@ -6,7 +6,7 @@ infinite recursive calls aren't allowed.
 To see why termination is important, consider the following nonterminating function definition:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:bogus}}
+{{#include ../../../../examples/guide/recursion.rs:bogus}}
 ```
 
 Verus rejects this definition because the recursive call loops infinitely, never terminating.
@@ -15,14 +15,14 @@ because, for example, the definition insists that `bogus(3) == bogus(3) + 1`,
 which implies that `0 == 1`, which is false:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:exploit_bogus}}
+{{#include ../../../../examples/guide/recursion.rs:exploit_bogus}}
 ```
 
 To help prove termination,
 Verus requires that each recursive `spec` function definition contain a `decreases` clause:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:spec}}
+{{#include ../../../../examples/guide/recursion.rs:spec}}
 ```
 
 Each recursive call must decrease the expression in the `decreases` clause by at least 1.
@@ -30,12 +30,15 @@ Furthermore, the call cannot cause the expression to decrease below 0.
 With these restrictions, the expression in the `decreases` clause serves as an upper bound on the
 depth of calls that `triangle` can make to itself, ensuring termination.
 
+While Verus can often complete these proofs of termination automatically,
+it sometimes needs [additional help with the proof](reference-decreases).
+
 # Fuel and reasoning about recursive functions
 
 Given the definition of `triangle` above, we can make some assertions about it:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:lacks_fuel}}
+{{#include ../../../../examples/guide/recursion.rs:lacks_fuel}}
 ```
 
 The first assertion, about `triangle(0)`, succeeds.
@@ -50,7 +53,7 @@ an SMT solver can reason about the functions simply by inlining them.
 For example, if we have a call `min(a + 1, 5)` to the [`min` function](spec_functions.md):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:min}}
+{{#include ../../../../examples/guide/recursion.rs:min}}
 ```
 
 the SMT solver can replace `min(a + 1, 5)` with:
@@ -91,7 +94,7 @@ To increase the fuel to a larger amount,
 we can use the `reveal_with_fuel` directive:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:fuel}}
+{{#include ../../../../examples/guide/recursion.rs:fuel}}
 ```
 
 Here, 11 units of fuel is enough to inline the 11 calls
@@ -100,7 +103,7 @@ Note that even if we only wanted to supply 1 unit of fuel,
 we could still prove `assert(triangle(10) == 55)` through a long series of assertions:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:step_by_step}}
+{{#include ../../../../examples/guide/recursion.rs:step_by_step}}
 ```
 
 This works because 1 unit of fuel is enough to prove `assert(triangle(0) == 0)`,
@@ -125,5 +128,5 @@ and instead write a proof that makes it clear why the SMT proof fails by default
 (not enough fuel) and fixes exactly that problem:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:fuel_by}}
+{{#include ../../../../examples/guide/recursion.rs:fuel_by}}
 ```

@@ -1,14 +1,15 @@
 # Attributes
 
+ - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
- - `accept_recursive_types`
  - [`external`](#verifierexternal)
- - `external_body`
+ - [`external_body`](#verifierexternal_body)
  - `external_fn_specification`
  - `external_type_specification`
- - `ext_equal`
+ - [`ext_equal`](#verifierext_equal)
  - [`inline`](#verifierinline)
  - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
@@ -31,6 +32,12 @@ See [the trigger specification procedure](./trigger-annotations.md#selecting-tri
 for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
+
+## `#![verifier::allow_in_spec]`
+
+Can be applied to an executable function with a [`returns` clause](./reference-returns.md).
+This allows the function to be used in spec mode, where it is interpreted as equivalent
+to the specified return-value.
 
 ## `#[verifier::atomic]`
 
@@ -60,6 +67,22 @@ Tells Verus to ignore the given item. Verus will error if any verified code atte
 reference the given item.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
+## `#[verifier::external_body]`
+
+Tells Verus to only consider the function definition but not the function body, trusting that
+it correctly satisfies its specification.
+
+This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
+## `#[verifier::ext_equal]`
+
+Used to mark datatypes that need extensionality on `Seq`, `Set`, `Map`,
+`Multiset`, `spec_fn` fields or fields of other `#[verifier::ext_equal]`
+datatypes.
+
+See the [discussion of equality via extensionality](./extensional_equality.md#equality-via-extensionality)
+for more information.
 
 ## `#[verifier::inline]`
 

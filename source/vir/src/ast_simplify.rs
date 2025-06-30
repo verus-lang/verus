@@ -23,7 +23,7 @@ use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
 use crate::def::{
-    positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
+    Spanned, positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name,
 };
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -356,8 +356,13 @@ fn simplify_one_expr(
         ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
-            let is_trait_impl =
-                matches!(kind, CallTargetKind::Dynamic | CallTargetKind::DynamicResolved { .. });
+            let is_trait_impl = match kind {
+                CallTargetKind::Static => false,
+                CallTargetKind::ProofFn(..) => false,
+                CallTargetKind::Dynamic => true,
+                CallTargetKind::DynamicResolved { .. } => true,
+                CallTargetKind::ExternalTraitDefault => true,
+            };
             let args = if typs.len() == 0 && args.len() == 0 && !is_trait_impl {
                 // To simplify the AIR/SMT encoding, add a dummy argument to any function with 0 arguments
                 let typ = Arc::new(TypX::Int(IntRange::Int));
@@ -741,6 +746,7 @@ fn mk_closure_ens_call(
     fn_val: &Expr,
     arg_tuple: &Expr,
     ret_arg: &Expr,
+    builtin_spec_fun: BuiltinSpecFun,
 ) -> Expr {
     let bool_typ = Arc::new(TypX::Bool);
     SpannedTyped::new(
@@ -748,13 +754,26 @@ fn mk_closure_ens_call(
         &bool_typ,
         ExprX::Call(
             CallTarget::BuiltinSpecFun(
-                BuiltinSpecFun::ClosureEns,
+                builtin_spec_fun,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
             Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
         ),
     )
+}
+
+fn exec_closure_spec_param(
+    state: &mut State,
+    span: &Span,
+    params: &VarBinders<Typ>,
+) -> (VarIdent, Expr) {
+    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+    let tuple_path = state.tuple_type_name(params.len());
+    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs), Arc::new(vec![])));
+    let tuple_ident = crate::def::closure_param_var();
+    let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
+    (tuple_ident, tuple_var)
 }
 
 fn exec_closure_spec_requires(
@@ -777,11 +796,8 @@ fn exec_closure_spec_requires(
     // we need to use the most general one, and that means we need to
     // quantify over a tuple.)
 
-    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
-    let tuple_path = state.tuple_type_name(params.len());
-    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs), Arc::new(vec![])));
-    let tuple_ident = state.next_temp();
-    let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
+    let (tuple_ident, tuple_var) = exec_closure_spec_param(state, span, params);
+    let tuple_typ = tuple_var.typ.clone();
 
     let reqs = conjoin(span, requires);
 
@@ -824,7 +840,8 @@ fn exec_closure_spec_ensures(
     closure_var: &Expr,
     params: &VarBinders<Typ>,
     ret: &VarBinder<Typ>,
-    ensures: &Exprs,
+    ensures: &Vec<Expr>,
+    default_ens: bool,
 ) -> Result<Expr, VirErr> {
     // For ensures:
 
@@ -835,11 +852,8 @@ fn exec_closure_spec_ensures(
     //
     // with `closure.ensures(x)` as the trigger
 
-    let param_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
-    let tuple_path = state.tuple_type_name(params.len());
-    let tuple_typ = Arc::new(TypX::Datatype(tuple_path, Arc::new(param_typs), Arc::new(vec![])));
-    let tuple_ident = state.next_temp();
-    let tuple_var = SpannedTyped::new(span, &tuple_typ, ExprX::Var(tuple_ident.clone()));
+    let (tuple_ident, tuple_var) = exec_closure_spec_param(state, span, params);
+    let tuple_typ = tuple_var.typ.clone();
 
     let ret_ident = ret.clone();
     let ret_var = SpannedTyped::new(span, &ret.a, ExprX::Var(ret_ident.name.clone()));
@@ -868,6 +882,7 @@ fn exec_closure_spec_ensures(
         closure_var,
         &tuple_var,
         &ret_var,
+        if default_ens { BuiltinSpecFun::DefaultEns } else { BuiltinSpecFun::ClosureEns },
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
@@ -898,7 +913,8 @@ fn exec_closure_spec(
     let req_forall = exec_closure_spec_requires(state, span, closure_var, params, requires)?;
 
     if ensures.len() > 0 {
-        let ens_forall = exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures)?;
+        let ens_forall =
+            exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false)?;
         Ok(conjoin(span, &vec![req_forall, ens_forall]))
     } else {
         Ok(req_forall)
@@ -931,9 +947,9 @@ fn add_fndef_axioms_to_function(
         .collect();
     let params = Arc::new(params);
 
-    let (fun, typ_args, is_trait_method_impl) = match &function.x.kind {
-        FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
-            (method, trait_typ_args.clone(), true)
+    let (fun, typ_args, is_trait_method_impl, inherit) = match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, trait_typ_args, inherit_body_from, .. } => {
+            (method, trait_typ_args.clone(), true, inherit_body_from.is_some())
         }
         _ => {
             let typ_args: Vec<_> = function
@@ -943,7 +959,7 @@ fn add_fndef_axioms_to_function(
                 .map(|tp| Arc::new(TypX::TypParam(tp.clone())))
                 .collect();
             let typ_args = Arc::new(typ_args);
-            (&function.x.name, typ_args, false)
+            (&function.x.name, typ_args, false, false)
         }
     };
 
@@ -967,21 +983,39 @@ fn add_fndef_axioms_to_function(
         fndef_axioms.push(req_forall);
     }
 
-    if function.x.ensure.len() > 0 {
-        let ret = Arc::new(VarBinderX {
-            name: function.x.ret.x.name.clone(),
-            a: function.x.ret.x.typ.clone(),
-        });
-
-        let ens_forall = exec_closure_spec_ensures(
+    let ret = Arc::new(VarBinderX {
+        name: function.x.ret.x.name.clone(),
+        a: function.x.ret.x.typ.clone(),
+    });
+    let (mut closure_enss, default_enss) = function.x.ensure.clone();
+    if inherit {
+        assert!(closure_enss.len() + default_enss.len() == 0);
+        let (_, tuple_var) = exec_closure_spec_param(state, &function.span, &params);
+        let ret_var = SpannedTyped::new(&function.span, &ret.a, ExprX::Var(ret.name.clone()));
+        let default_expr = mk_closure_ens_call(
             state,
             &function.span,
-            &fndef_singleton,
             &params,
-            &ret,
-            &function.x.ensure,
-        )?;
-        fndef_axioms.push(ens_forall);
+            &fndef_singleton,
+            &tuple_var,
+            &ret_var,
+            BuiltinSpecFun::DefaultEns,
+        );
+        closure_enss = Arc::new(vec![default_expr]);
+    }
+    for (default_ens, enss) in [(false, closure_enss), (true, default_enss)] {
+        if enss.len() > 0 {
+            let ens_forall = exec_closure_spec_ensures(
+                state,
+                &function.span,
+                &fndef_singleton,
+                &params,
+                &ret,
+                &*enss,
+                default_ens,
+            )?;
+            fndef_axioms.push(ens_forall);
+        }
     }
 
     let mut functionx = function.x.clone();
@@ -1008,7 +1042,7 @@ fn simplify_function(
                 ExprX::Var(functionx.ret.x.name.clone()),
             );
             let eq = mk_eq(&r.span, &var, &r);
-            Arc::make_mut(&mut functionx.ensure).push(eq);
+            Arc::make_mut(&mut functionx.ensure.0).push(eq);
         } else {
             // For a unit return type, any returns clause is tautological so we
             // can just skip appending to the postconditions.
@@ -1325,6 +1359,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.solver.clone(),
         true,
         ctx.check_api_safety,
+        ctx.axiom_usage_info,
     )?;
     Ok(krate)
 }
