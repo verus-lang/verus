@@ -26,7 +26,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, kind, span, .. } = trait_item;
         match kind {
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -192,7 +192,7 @@ pub(crate) fn translate_trait<'tcx>(
     }
 
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
             trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
@@ -227,8 +227,12 @@ pub(crate) fn translate_trait<'tcx>(
             }
             let assoc_item = tcx.associated_item(owner_id.to_def_id());
             let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
-            let ex_assoc_item =
-                ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
+            let ex_assoc_item = ex_assoc_items.find_by_ident_and_kind(
+                tcx,
+                *ident,
+                assoc_item.as_tag(),
+                ex_trait_id_for,
+            );
             if is_verus_spec {
                 None
             } else if let Some(ex_assoc_item) = ex_assoc_item {
@@ -246,6 +250,8 @@ pub(crate) fn translate_trait<'tcx>(
 
         match kind {
             TraitItemKind::Fn(sig, fun) => {
+                // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
+                let param_names;
                 let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(
@@ -254,11 +260,14 @@ pub(crate) fn translate_trait<'tcx>(
                         );
                     }
                     TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
-                    TraitFn::Required(param_names) => {
-                        (CheckItemFnEither::ParamNames(*param_names), false)
+                    TraitFn::Required(opt_param_names) => {
+                        // REVIEW: Is filtering out `None`s the right thing to do here?
+                        param_names =
+                            opt_param_names.into_iter().flatten().cloned().collect::<Vec<_>>();
+                        (CheckItemFnEither::ParamNames(param_names.as_slice()), false)
                     }
                 };
-                let attrs = tcx.hir().attrs(trait_item.hir_id());
+                let attrs = tcx.hir_attrs(trait_item.hir_id());
                 let fun = check_item_fn(
                     ctxt,
                     &mut methods,

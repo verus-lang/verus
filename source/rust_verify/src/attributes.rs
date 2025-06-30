@@ -1,7 +1,7 @@
 use crate::util::{err_span, vir_err_span_str};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_hir::{AttrArgs, AttrKind, Attribute};
+use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
@@ -101,8 +101,8 @@ enum AttrPrefix {
 }
 
 fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
-    match &attr.kind {
-        AttrKind::Normal(item) => match &item.path.segments[..] {
+    match attr {
+        Attribute::Unparsed(item) => match &item.path.segments[..] {
             [segment] if segment.as_str() == "verifier" => match &item.args {
                 // TODO(main_new) MacArgs::Delimited(_, _, token_stream) => {
                 // TODO(main_new)     let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
@@ -116,12 +116,12 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 // TODO(main_new)         .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
                 // TODO(main_new)     Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
                 // TODO(main_new) }
-                _ => return err_span(attr.span, "invalid verifier attribute"),
+                _ => return err_span(attr.span(), "invalid verifier attribute"),
             },
             [prefix_segment, segment] if prefix_segment.as_str() == "verifier" => {
-                attr_args_to_tree(attr.span, segment.to_string(), &item.args)
-                    .map(|tree| Some((AttrPrefix::Verifier, attr.span, tree)))
-                    .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))
+                attr_args_to_tree(attr.span(), segment.to_string(), &item.args)
+                    .map(|tree| Some((AttrPrefix::Verifier, attr.span(), tree)))
+                    .map_err(|_| vir_err_span_str(attr.span(), "invalid verifier attribute"))
             }
             [prefix_segment, segment] if prefix_segment.as_str() == "verus" => {
                 let name = segment.to_string();
@@ -129,23 +129,23 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     "internal" => match &item.args {
                         AttrArgs::Delimited(delim) => {
                             let trees: Box<[AttrTree]> =
-                                token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
-                                    vir_err_span_str(attr.span, "invalid verus attribute")
-                                })?;
+                                token_stream_to_trees(attr.span(), &delim.tokens).map_err(
+                                    |_| vir_err_span_str(attr.span(), "invalid verus attribute"),
+                                )?;
                             if trees.len() != 1 {
-                                return err_span(attr.span, "invalid verus attribute");
+                                return err_span(attr.span(), "invalid verus attribute");
                             }
                             let mut trees = trees.into_vec().into_iter();
                             let tree: AttrTree = trees.next().ok_or_else(|| {
-                                vir_err_span_str(attr.span, "invalid verus attribute")
+                                vir_err_span_str(attr.span(), "invalid verus attribute")
                             })?;
-                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
+                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span(), tree)))
                         }
-                        _ => return err_span(attr.span, "invalid verus attribute"),
+                        _ => return err_span(attr.span(), "invalid verus attribute"),
                     },
-                    _ => attr_args_to_tree(attr.span, name, &item.args)
-                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span, tree)))
-                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute")),
+                    _ => attr_args_to_tree(attr.span(), name, &item.args)
+                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span(), tree)))
+                        .map_err(|_| vir_err_span_str(attr.span(), "invalid verifier attribute")),
                 }
             }
             [segment]
@@ -154,7 +154,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     || segment.as_str() == "exec" =>
             {
                 return err_span(
-                    attr.span,
+                    attr.span(),
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
             }
@@ -162,8 +162,8 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 if !RUSTC_ATTRS_OK_TO_IGNORE.contains(&segment.as_str()) {
                     Ok(Some((
                         AttrPrefix::Rustc,
-                        attr.span,
-                        AttrTree::Fun(attr.span, segment.as_str().into(), None),
+                        attr.span(),
+                        AttrTree::Fun(attr.span(), segment.as_str().into(), None),
                     )))
                 } else {
                     Ok(None)
@@ -783,7 +783,7 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     loop {
         if let Some(did) = def_id.as_local() {
             let hir_id = tcx.local_def_id_to_hir_id(did);
-            let attrs = tcx.hir().attrs(hir_id);
+            let attrs = tcx.hir_attrs(hir_id);
             vattrs.extend(parse_attrs_opt(attrs, None));
         }
         if let Some(id) = tcx.opt_parent(def_id) {
