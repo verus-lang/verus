@@ -4,12 +4,13 @@
 
 use std::collections::HashMap;
 use rustc_hir as hir;
-use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime};
+use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime, ExprId};
 use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use std::sync::{RwLock, Arc};
 use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace};
+use rustc_span::Span;
 
 #[derive(Debug)]
 pub enum VarErasure {
@@ -56,19 +57,33 @@ pub(crate) fn handle_var<'tcx>(
         return None;
     }
     let ty = cx.typeck_results.expr_ty(expr);
-    Some(erased_ghost_value(cx, &erasure_ctxt, expr, ty))
+    Some(erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty))
 }
 
 pub(crate) fn fix_upvars<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
+    closure_expr: &'tcx hir::Expr<'tcx>,
     upvars: &[ExprId],
-) -> Box<[ExprId]>,
+) -> Box<[ExprId]> {
     let erasure_ctxt = get_verus_erasure_ctxt();
-    let ty = cx.typeck_results.expr_ty(expr);
+
+    let mut res = vec![];
+
+    dbg!(upvars);
 
     for id in upvars.iter() {
+        let ty = cx.thir.exprs[*id].ty;
+        let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, ty);
+
+        let (temp_lifetime, backwards_incompatible) = cx
+            .rvalue_scopes
+            .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
+        let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: closure_expr.span, kind };
+
+        res.push(cx.thir.exprs.push(e));
     }
-    Some(erased_ghost_value(cx, &erasure_ctxt, &cx.thir.exprs[id], ty))
+
+    res.into_boxed_slice()
 }
 
 
@@ -76,7 +91,8 @@ pub(crate) fn fix_upvars<'tcx>(
 fn erased_ghost_value<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
-    expr: &'tcx hir::Expr<'tcx>,
+    hir_id: HirId,
+    span: Span,
     ty: Ty<'tcx>,
 ) -> ExprKind<'tcx> {
     let arg = GenericArg::from(ty);
@@ -89,11 +105,11 @@ fn erased_ghost_value<'tcx>(
     };
     let (temp_lifetime, backwards_incompatible) = cx
         .rvalue_scopes
-        .temporary_scope(cx.region_scope_tree, expr.hir_id.local_id);
+        .temporary_scope(cx.region_scope_tree, hir_id.local_id);
     let fun_expr = Expr {
         temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
         ty: fn_ty,
-        span: expr.span,
+        span: span,
         kind: fun_expr_kind,
     };
 
@@ -102,7 +118,7 @@ fn erased_ghost_value<'tcx>(
         fun: cx.thir.exprs.push(fun_expr),
         args: Box::new([]),
         from_hir_call: false,
-        fn_span: expr.span,
+        fn_span: span,
     }
 }
 
