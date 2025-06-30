@@ -321,12 +321,8 @@ impl ToDebugSNode for FunctionX {
 }
 
 impl ToDebugSNode for crate::messages::Span {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        if opts.no_span {
-            Node::Atom("".to_string())
-        } else {
-            Node::Atom(format!("\"{}\"", self.as_string))
-        }
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(format!("\"{}\"", self.as_string))
     }
 }
 
