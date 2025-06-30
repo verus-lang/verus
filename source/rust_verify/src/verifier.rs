@@ -2631,16 +2631,15 @@ impl Verifier {
             return Ok(false);
         }
 
-        let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure_ok().check_match(def_id));
+        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
         tcx.ensure_ok().check_private_in_public(());
-        hir.par_for_each_module(|module| {
+        tcx.hir_for_each_module(|module| {
             tcx.ensure_ok().check_mod_privacy(module);
         });
 
         self.air_no_span = {
-            let no_span = hir
-                .krate()
+            let no_span = tcx
+                .hir_crate(())
                 .owners
                 .iter()
                 .filter_map(|oi| {
@@ -2686,7 +2685,7 @@ impl Verifier {
         let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
             tcx,
-            krate: hir.krate(),
+            krate: tcx.hir_crate(()),
             erasure_info,
             spans: spans.clone(),
             verus_items,
@@ -2938,12 +2937,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
             providers.mir_borrowck = |tcx, _local_def_id| {
-                tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
-                    concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
-                    closure_requirements: None,
-                    used_mut_upvars: smallvec::SmallVec::new(),
-                    tainted_by_errors: None,
-                })
+                Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                    rustc_data_structures::fx::FxIndexMap::default(),
+                )))
             };
         });
     }

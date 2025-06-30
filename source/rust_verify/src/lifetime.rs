@@ -171,8 +171,7 @@ macro_rules! ldbg {
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
-    let hir = tcx.hir();
-    let krate = hir.krate();
+    let krate = tcx.hir_crate(());
     rustc_hir_analysis::check_crate(tcx);
     if tcx.dcx().err_count() != 0 {
         return;
@@ -438,7 +437,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
-    let krate = tcx.hir().krate();
+    let krate = tcx.hir_crate(());
     let mut emit_state = EmitState::new();
     let gen_state = emit_check_tracked_lifetimes(
         cmd_line_args,

@@ -16,8 +16,8 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
             match inner_owner.node() {
                 OwnerNode::Item(item) => {
                     match &item.kind {
-                        rustc_hir::ItemKind::Fn { body: body_id, .. } => {
-                            if item.ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
+                        rustc_hir::ItemKind::Fn { ident, body: body_id, .. } => {
+                            if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
                                 assert_eq!(inner_owner.nodes.bodies.len(), 1);
                                 let mut bodies = inner_owner.nodes.bodies.clone();
                                 let old_body = bodies[&body_id.hir_id.local_id];
@@ -183,6 +183,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     rustc_hir::AttributeMap {
                                         map: inner_owner.attrs.map.clone(),
                                         opt_hash: inner_owner.attrs.opt_hash,
+                                        define_opaque: None,
                                     };
                                 let owner_info = tcx.hir_arena.alloc(rustc_hir::OwnerInfo {
                                     nodes,
