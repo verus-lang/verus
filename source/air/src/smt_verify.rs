@@ -232,6 +232,9 @@ pub(crate) fn smt_check_assertion<'ctx>(
     };
     context.time_smt_run += smt_run_start_time.elapsed();
 
+    smt_update_statistics(context)
+        .expect("failed to update SMT statistics");
+
     #[derive(PartialEq, Eq)]
     enum SmtOutput {
         Unsat,
@@ -390,12 +393,14 @@ pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), Validit
             Ok((key, value))
         })
         .collect::<Result<HashMap<&str, &str>, ValidityResult>>()?;
-    let Some(rlimit_count) = stats_map["rlimit-count"].parse().ok() else {
+    let Some(rlimit_count): Option<u64> = stats_map["rlimit-count"].parse().ok() else {
         return Err(ValidityResult::UnexpectedOutput(format!(
             "expected rlimit-count in smt statistics"
         )));
     };
-    context.rlimit_count = Some(rlimit_count);
+    context.rlimit_count = Some(rlimit_count - context.rlimit_count.unwrap_or(0));
+
+    // context.rlimit_count = Some(rlimit_count);
 
     Ok(())
 }
