@@ -74,8 +74,6 @@ pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
         call_ensures(U::from, (a,), ret),
 ;
 
-// TODO: we can't declare `ne` until the default_ensures PR is merged; otherwise, string.rs fails
-//   fn ne(&self, other: &Rhs) -> bool;
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialEqSpec)]
 pub trait ExPartialEq<Rhs: ?Sized> {
@@ -84,6 +82,10 @@ pub trait ExPartialEq<Rhs: ?Sized> {
     spec fn spec_eq(&self, other: &Rhs) -> bool;
 
     fn eq(&self, other: &Rhs) -> bool;
+
+    fn ne(&self, other: &Rhs) -> (r: bool)
+        default_ensures
+            call_ensures(Self::eq, (self, other), !r);
 }
 
 #[verifier::external_trait_specification]
@@ -100,13 +102,47 @@ pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
 
     fn partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
 
-    fn lt(&self, other: &Rhs) -> bool;
+    fn lt(&self, other: &Rhs) -> (r: bool)
+        default_ensures
+            exists|o: Option<core::cmp::Ordering>|
+                {
+                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                    &&& r <==> o == Some(core::cmp::Ordering::Less)
+                }
+    ;
 
-    fn le(&self, other: &Rhs) -> bool;
+    fn le(&self, other: &Rhs) -> (r: bool)
+        default_ensures
+            exists|o: Option<core::cmp::Ordering>|
+                {
+                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                    &&& r <==> o matches Some(
+                        core::cmp::Ordering::Less
+                        | core::cmp::Ordering::Equal,
+                    )
+                }
+    ;
 
-    fn gt(&self, other: &Rhs) -> bool;
+    fn gt(&self, other: &Rhs) -> (r: bool)
+        default_ensures
+            exists|o: Option<core::cmp::Ordering>|
+                {
+                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                    &&& r <==> o == Some(core::cmp::Ordering::Greater)
+                }
+    ;
 
-    fn ge(&self, other: &Rhs) -> bool;
+    fn ge(&self, other: &Rhs) -> (r: bool)
+        default_ensures
+            exists|o: Option<core::cmp::Ordering>|
+                {
+                    &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                    &&& r <==> o matches Some(
+                        core::cmp::Ordering::Greater
+                        | core::cmp::Ordering::Equal,
+                    )
+                }
+    ;
 }
 
 #[verifier::external_trait_specification]
