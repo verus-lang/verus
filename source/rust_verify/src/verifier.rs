@@ -2962,6 +2962,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             config.override_queries = Some(|_session, providers| {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| { };
+                providers.check_liveness = |_, _| { };
+                providers.check_mod_deathness = |_, _| { };
                 rustc_mir_build_verus::verus_provide(providers);
             });
         }

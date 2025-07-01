@@ -8,6 +8,7 @@
 #![feature(if_let_guard)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
+#![feature(never_type)]
 // tidy-alphabetical-end
 
 extern crate rustc_abi;
@@ -40,6 +41,12 @@ pub mod thir;
 
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]
 pub mod verus;
+
+#[path = "../../rustc_mir_build_additional_files/expr_use_visitor.rs"]
+pub mod expr_use_visitor;
+
+#[path = "../../rustc_mir_build_additional_files/upvar.rs"]
+pub mod upvar;
 
 use rustc_middle::util::Providers;
 

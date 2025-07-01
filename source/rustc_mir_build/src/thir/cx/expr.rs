@@ -668,6 +668,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
+                crate::verus::get_upvars_accounting_for_ghost(self, expr, def_id);
+
                 let upvars = self
                     .tcx
                     .closure_captures(def_id)
