@@ -206,30 +206,49 @@ pub(crate) fn fix_closure<'tcx>(
 }
 */
 
-/*
-pub(crate) fn get_upvars<'tcx>(
+pub(crate) fn get_upvars_accounting_for_ghost<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
-    closure_expr: ClosureExpr<'tcx>,
+    closure_expr: &'tcx hir::Expr<'tcx>,
     closure_def_id: LocalDefId,
-) {
-    /*
+) { //-> (rustc_middle::ty::RootVariableMinCaptureList<'tcx>, Vec<(Place<'tcx>, FakeReadCause, HirId)>) {
+    let tcx = cx.tcx;
+
     let mut fn_ctxt = crate::upvar::FnCtxt {
         ph: std::marker::PhantomData,
-        tcx: cx.tcx,
-        param_env: cx.param_env,
+        tcx,
+        param_env: cx.typing_env,
         closure_def_id,
         typeck_results: cx.typeck_results,
         fake_reads: vec![],
         closure_min_captures: Some(Default::default()),
+        upvar_tys: vec![],
     };
 
     let hir::ExprKind::Closure(hir::Closure { body: body_id, capture_clause, .. }) = &closure_expr.kind else {
         unreachable!()
     };
 
-    fn_ctxt.analyze_closure(closure_def_id, closure_expr.span, body_id, body, capture_clause);
-    (self.closure_min_captures.unwrap(), self.fake_reads)
-    */
-    todo!()
+    let body = tcx.hir_body(*body_id);
+
+    fn_ctxt.analyze_closure(closure_expr.hir_id, closure_expr.span, *body_id, body, *capture_clause);
+    //(fn_ctxt.closure_min_captures.unwrap(), fn_ctxt.fake_reads)
+
+    let closure_min_captures = fn_ctxt.closure_min_captures;
+
+    //let closure_min_captures = Box::leak(Box::new(closure_min_captures));
+
+    let closure_min_captures = closure_min_captures.unwrap();
+    let closure_min_captures = Box::leak(Box::new(closure_min_captures));
+    let closure_min_captures = closure_min_captures.values().flat_map(|v| v.iter());
+
+    let captures = tcx.mk_captures_from_iter(closure_min_captures);
+
+    dbg!(captures);
 }
-*/
+
+pub(crate) fn skip_var_for_closure_capturing<'tcx>(
+    hir_id: HirId
+) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase))
+}

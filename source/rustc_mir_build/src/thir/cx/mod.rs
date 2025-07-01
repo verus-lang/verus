@@ -57,7 +57,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
     /// The THIR data that this context is building.
     pub(crate) thir: Thir<'tcx>,
 
-    typing_env: ty::TypingEnv<'tcx>,
+    pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
     pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,

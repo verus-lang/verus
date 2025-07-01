@@ -30,6 +30,10 @@
 //! then mean that all later passes would have to check for these figments
 //! and report an error, and it just seems like more mess in the end.)
 
+#![allow(unused_variables)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use std::iter;
 
 use rustc_abi::FIRST_VARIANT;
@@ -53,8 +57,49 @@ use rustc_span::{BytePos, Pos, Span, Symbol, sym};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument};
 
-use super::FnCtxt;
 use crate::expr_use_visitor as euv;
+
+use crate::expr_use_visitor::TypeInformationCtxt;
+use std::borrow::Borrow;
+
+pub(crate) struct FnCtxt<'a, 'tcx> {
+    pub ph: std::marker::PhantomData<&'a ()>,
+    pub tcx: TyCtxt<'tcx>,
+    pub param_env: rustc_middle::ty::TypingEnv<'tcx>,
+    pub closure_def_id: rustc_hir::def_id::LocalDefId,
+    pub typeck_results: &'tcx TypeckResults<'tcx>,
+
+    pub fake_reads: Vec<(Place<'tcx>, FakeReadCause, HirId)>,
+    pub closure_min_captures: Option<rustc_middle::ty::RootVariableMinCaptureList<'tcx>>,
+    pub upvar_tys: Vec<Ty<'tcx>>,
+}
+
+impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
+    pub(crate) fn node_ty(&self, hir_id: HirId) -> Ty<'tcx> {
+        self.typeck_results.node_type(hir_id)
+    }
+
+    pub(crate) fn closure_kind(&self, closure_ty: Ty<'tcx>) -> Option<rustc_middle::ty::ClosureKind> {
+        if let rustc_middle::ty::TyKind::Closure(_def_id, args) = closure_ty.kind() {
+            Some(args.as_closure().kind())
+        } else {
+            panic!("closure_kind failed");
+        }
+    }
+
+    pub(crate) fn closure_min_captures_flattened<'b>(
+        &'b self,
+        closure_def_id: LocalDefId,
+    ) -> impl Iterator<Item = &'b ty::CapturedPlace<'tcx>> {
+        assert!(closure_def_id == self.closure_def_id);
+        assert!(self.closure_min_captures.is_some());
+        self.closure_min_captures
+            .as_ref()
+            .map(|closure_min_captures| closure_min_captures.values().flat_map(|v| v.iter()))
+            .into_iter()
+            .flatten()
+     }
+}
 
 /// Describe the relationship between the paths of two places
 /// eg:
@@ -73,6 +118,7 @@ enum PlaceAncestryRelation {
 /// analysis pass.
 type InferredCaptureInformation<'tcx> = Vec<(Place<'tcx>, ty::CaptureInfo)>;
 
+/*
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     pub(crate) fn closure_analyze(&self, body: &'tcx hir::Body<'tcx>) {
         InferBorrowKindVisitor { fcx: self }.visit_body(body);
@@ -81,6 +127,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         assert!(self.deferred_call_resolutions.borrow().is_empty());
     }
 }
+*/
 
 /// Intermediate format to store the hir_id pointing to the use that resulted in the
 /// corresponding place being captured and a String which contains the captured value's
@@ -135,6 +182,7 @@ struct NeededMigration {
     diagnostics_info: Vec<MigrationLintNote>,
 }
 
+/*
 struct InferBorrowKindVisitor<'a, 'tcx> {
     fcx: &'a FnCtxt<'a, 'tcx>,
 }
@@ -158,17 +206,18 @@ impl<'a, 'tcx> Visitor<'tcx> for InferBorrowKindVisitor<'a, 'tcx> {
         self.visit_body(body);
     }
 }
+*/
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// Analysis starting point.
     #[instrument(skip(self, body), level = "debug")]
-    fn analyze_closure(
-        &self,
+    pub(crate) fn analyze_closure(
+        &mut self,
         closure_hir_id: HirId,
         span: Span,
         body_id: hir::BodyId,
         body: &'tcx hir::Body<'tcx>,
-        mut capture_clause: hir::CaptureBy,
+        capture_clause: hir::CaptureBy,
     ) {
         // Extract the type of the closure.
         let ty = self.node_ty(closure_hir_id);
@@ -193,7 +242,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 );
             }
         };
-        let args = self.resolve_vars_if_possible(args);
+        let args = (&*self).resolve_vars_if_possible(args);
         let closure_def_id = closure_def_id.expect_local();
 
         assert_eq!(self.tcx.hir_body_owner_def_id(body.id()), closure_def_id);
@@ -204,7 +253,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         };
 
         let _ = euv::ExprUseVisitor::new(
-            &FnCtxt::new(self, self.tcx.param_env(closure_def_id), closure_def_id),
+            //&FnCtxt::new(self, self.tcx.param_env(closure_def_id), closure_def_id),
+            &*self,
             &mut delegate,
         )
         .consume_body(body);
@@ -238,6 +288,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             && let hir::CaptureBy::Value { move_kw } =
                 self.tcx.hir_node(parent_hir_id).expect_closure().capture_clause
         {
+            unimplemented!(); /*
             // (1.) Closure signature inference forced this closure to `FnOnce`.
             if let Some(ty::ClosureKind::FnOnce) = self.closure_kind(parent_ty) {
                 capture_clause = hir::CaptureBy::Value { move_kw };
@@ -245,7 +296,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             // (2.) The way that the closure uses its upvars means it's `FnOnce`.
             else if self.coroutine_body_consumes_upvars(closure_def_id, body) {
                 capture_clause = hir::CaptureBy::Value { move_kw };
-            }
+            } */
         }
 
         // As noted in `lower_coroutine_body_with_moved_arguments`, we default the capture mode
@@ -304,7 +355,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             closure_def_id, delegate.capture_information
         );
 
-        self.log_capture_analysis_first_pass(closure_def_id, &delegate.capture_information, span);
+        //self.log_capture_analysis_first_pass(closure_def_id, &delegate.capture_information, span);
 
         let (capture_information, closure_kind, origin) = self
             .process_collected_capture_information(capture_clause, &delegate.capture_information);
@@ -313,9 +364,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let closure_hir_id = self.tcx.local_def_id_to_hir_id(closure_def_id);
 
-        if should_do_rust_2021_incompatible_closure_captures_analysis(self.tcx, closure_hir_id) {
-            self.perform_2229_migration_analysis(closure_def_id, body_id, capture_clause, span);
-        }
+        //if should_do_rust_2021_incompatible_closure_captures_analysis(self.tcx, closure_hir_id) {
+        //    self.perform_2229_migration_analysis(closure_def_id, body_id, capture_clause, span);
+        //}
 
         let after_feature_tys = self.final_upvar_tys(closure_def_id);
 
@@ -347,7 +398,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let before_feature_tys = self.final_upvar_tys(closure_def_id);
 
-        if infer_kind {
+        /*if infer_kind {
             // Unify the (as yet unbound) type variable in the closure
             // args with the kind we inferred.
             let closure_kind_ty = match args {
@@ -374,7 +425,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     .closure_kind_origins_mut()
                     .insert(closure_hir_id, origin);
             }
-        }
+        }*/
 
         // For coroutine-closures, we additionally must compute the
         // `coroutine_captures_by_ref_ty` type, which is used to generate the by-ref
@@ -395,7 +446,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 .tupled_inputs_ty
                 .tuple_fields()
                 .len();
-            let typeck_results = self.typeck_results.borrow();
+            let typeck_results = self.typeck_results;
 
             let tupled_upvars_ty_for_borrow = Ty::new_tup_from_iter(
                 self.tcx,
@@ -449,18 +500,18 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     )]),
                 ),
             );
-            self.demand_eqtype(
-                span,
-                args.as_coroutine_closure().coroutine_captures_by_ref_ty(),
-                coroutine_captures_by_ref_ty,
-            );
+            //self.demand_eqtype(
+            //    span,
+            //    args.as_coroutine_closure().coroutine_captures_by_ref_ty(),
+            //    coroutine_captures_by_ref_ty,
+            //);
 
             // Additionally, we can now constrain the coroutine's kind type.
             //
             // We only do this if `infer_kind`, because if we have constrained
             // the kind from closure signature inference, the kind inferred
             // for the inner coroutine may actually be more restrictive.
-            if infer_kind {
+            /*if infer_kind {
                 let ty::Coroutine(_, coroutine_args) =
                     *self.typeck_results.borrow().expr_ty(body.value).kind()
                 else {
@@ -471,10 +522,10 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     coroutine_args.as_coroutine().kind_ty(),
                     Ty::from_coroutine_closure_kind(self.tcx, closure_kind),
                 );
-            }
+            }*/
         }
 
-        self.log_closure_min_capture_info(closure_def_id, span);
+        //self.log_closure_min_capture_info(closure_def_id, span);
 
         // Now that we've analyzed the closure, we know how each
         // variable is borrowed, and we know what traits the closure
@@ -491,46 +542,49 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         // Equate the type variables for the upvars with the actual types.
         let final_upvar_tys = self.final_upvar_tys(closure_def_id);
         debug!(?closure_hir_id, ?args, ?final_upvar_tys);
+        self.upvar_tys = final_upvar_tys;
 
-        if self.tcx.features().unsized_locals() || self.tcx.features().unsized_fn_params() {
-            for capture in
-                self.typeck_results.borrow().closure_min_captures_flattened(closure_def_id)
-            {
-                if let UpvarCapture::ByValue = capture.info.capture_kind {
-                    self.require_type_is_sized(
-                        capture.place.ty(),
-                        capture.get_path_span(self.tcx),
-                        ObligationCauseCode::SizedClosureCapture(closure_def_id),
-                    );
-                }
-            }
-        }
+        //if self.tcx.features().unsized_locals() || self.tcx.features().unsized_fn_params() {
+        //    for capture in
+        //        self.typeck_results.borrow().closure_min_captures_flattened(closure_def_id)
+        //    {
+        //        if let UpvarCapture::ByValue = capture.info.capture_kind {
+        //            self.require_type_is_sized(
+        //                capture.place.ty(),
+        //                capture.get_path_span(self.tcx),
+        //                ObligationCauseCode::SizedClosureCapture(closure_def_id),
+        //            );
+        //        }
+        //    }
+        //}
 
         // Build a tuple (U0..Un) of the final upvar types U0..Un
         // and unify the upvar tuple type in the closure with it:
-        let final_tupled_upvars_type = Ty::new_tup(self.tcx, &final_upvar_tys);
-        self.demand_suptype(span, args.tupled_upvars_ty(), final_tupled_upvars_type);
+        //let final_tupled_upvars_type = Ty::new_tup(self.tcx, &final_upvar_tys);
+        //self.demand_suptype(span, args.tupled_upvars_ty(), final_tupled_upvars_type);
 
-        let fake_reads = delegate.fake_reads;
+        self.fake_reads = delegate.fake_reads;
 
-        self.typeck_results.borrow_mut().closure_fake_reads.insert(closure_def_id, fake_reads);
+        //self.typeck_results.borrow_mut().closure_fake_reads.insert(closure_def_id, fake_reads);
 
-        if self.tcx.sess.opts.unstable_opts.profile_closures {
-            self.typeck_results.borrow_mut().closure_size_eval.insert(
-                closure_def_id,
-                ClosureSizeProfileData {
-                    before_feature_tys: Ty::new_tup(self.tcx, &before_feature_tys),
-                    after_feature_tys: Ty::new_tup(self.tcx, &after_feature_tys),
-                },
-            );
-        }
+        //if self.tcx.sess.opts.unstable_opts.profile_closures {
+        //    self.typeck_results.borrow_mut().closure_size_eval.insert(
+        //        closure_def_id,
+        //        ClosureSizeProfileData {
+        //            before_feature_tys: Ty::new_tup(self.tcx, &before_feature_tys),
+        //            after_feature_tys: Ty::new_tup(self.tcx, &after_feature_tys),
+        //        },
+        //    );
+        //}
 
+        /*
         // If we are also inferred the closure kind here,
         // process any deferred resolutions.
         let deferred_call_resolutions = self.remove_deferred_call_resolutions(closure_def_id);
         for deferred_call_resolution in deferred_call_resolutions {
             deferred_call_resolution.resolve(self);
         }
+        */
     }
 
     /// Determines whether the body of the coroutine uses its upvars in a way that
@@ -567,7 +621,8 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         };
 
         let _ = euv::ExprUseVisitor::new(
-            &FnCtxt::new(self, self.tcx.param_env(coroutine_def_id), coroutine_def_id),
+            //&FnCtxt::new(self, self.tcx.param_env(coroutine_def_id), coroutine_def_id),
+            &*self,
             &mut delegate,
         )
         .consume_expr(body);
@@ -582,9 +637,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
     // Returns a list of `Ty`s for each upvar.
     fn final_upvar_tys(&self, closure_id: LocalDefId) -> Vec<Ty<'tcx>> {
-        self.typeck_results
-            .borrow()
-            .closure_min_captures_flattened(closure_id)
+        self.closure_min_captures_flattened(closure_id)
             .map(|captured_place| {
                 let upvar_ty = captured_place.place.ty();
                 let capture = captured_place.info.capture_kind;
@@ -762,7 +815,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
     /// }
     /// ```
     fn compute_min_captures(
-        &self,
+        &mut self,
         closure_def_id: LocalDefId,
         capture_information: InferredCaptureInformation<'tcx>,
         closure_span: Span,
@@ -771,10 +824,11 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             return;
         }
 
-        let mut typeck_results = self.typeck_results.borrow_mut();
+        let typeck_results = self.typeck_results;
 
-        let mut root_var_min_capture_list =
-            typeck_results.closure_min_captures.remove(&closure_def_id).unwrap_or_default();
+        let mut closure_min_captures = None;
+        std::mem::swap(&mut closure_min_captures, &mut self.closure_min_captures);
+        let mut root_var_min_capture_list = closure_min_captures.unwrap_or_default();
 
         for (mut place, capture_info) in capture_information.into_iter() {
             let var_hir_id = match place.base {
@@ -933,14 +987,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     }
                 }
 
-                self.dcx().span_delayed_bug(
-                    closure_span,
-                    format!(
-                        "two identical projections: ({:?}, {:?})",
-                        capture1.place.projections, capture2.place.projections
-                    ),
-                );
-                std::cmp::Ordering::Equal
+                //self.dcx().span_delayed_bug(
+                //    closure_span,
+                //    format!(
+                //        "two identical projections: ({:?}, {:?})",
+                //        capture1.place.projections, capture2.place.projections
+                //    ),
+                //);
+                //std::cmp::Ordering::Equal
+                panic!("two identical projections");
             });
         }
 
@@ -948,11 +1003,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             "For closure={:?}, min_captures after sorting={:#?}",
             closure_def_id, root_var_min_capture_list
         );
-        typeck_results.closure_min_captures.insert(closure_def_id, root_var_min_capture_list);
+        self.closure_min_captures = Some(root_var_min_capture_list);
     }
 
     /// Perform the migration analysis for RFC 2229, and emit lint
     /// `disjoint_capture_drop_reorder` if needed.
+    /*
     fn perform_2229_migration_analysis(
         &self,
         closure_def_id: LocalDefId,
@@ -1124,7 +1180,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             );
         }
     }
+    */
 
+    /*
     /// Combines all the reasons for 2229 migrations
     fn compute_2229_migrations_reasons(
         &self,
@@ -1136,7 +1194,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             drop_order,
         }
     }
+    */
 
+    /*
     /// Figures out the list of root variables (and their types) that aren't completely
     /// captured by the closure when `capture_disjoint_fields` is enabled and auto-traits
     /// differ between the root variable and the captured paths.
@@ -1238,7 +1298,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         }
         None
     }
+    */
 
+    /*
     /// Figures out the list of root variables (and their types) that aren't completely
     /// captured by the closure when `capture_disjoint_fields` is enabled and drop order of
     /// some path starting at that root variable **might** be affected.
@@ -1341,7 +1403,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         None
     }
+    */
 
+    /*
     /// Figures out the list of root variables (and their types) that aren't completely
     /// captured by the closure when `capture_disjoint_fields` is enabled and either drop
     /// order of some path starting at that root variable **might** be affected or auto-traits
@@ -1446,7 +1510,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             ),
         )
     }
+    */
 
+    /*
     /// This is a helper function to `compute_2229_migrations_precise_pass`. Provided the type
     /// of a root variable and a list of captured paths starting at this root variable (expressed
     /// using list of `Projection` slices), it returns true if there is a path that is not
@@ -1683,6 +1749,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             _ => unreachable!(),
         }
     }
+    */
 
     fn init_capture_kind_for_place(
         &self,
@@ -1744,6 +1811,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         self.tcx.has_attr(closure_def_id, sym::rustc_capture_analysis)
     }
 
+    /*
     fn log_capture_analysis_first_pass(
         &self,
         closure_def_id: LocalDefId,
@@ -1763,7 +1831,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             diag.emit();
         }
     }
+    */
 
+    /*
     fn log_closure_min_capture_info(&self, closure_def_id: LocalDefId, closure_span: Span) {
         if self.should_log_capture_analysis(closure_def_id) {
             if let Some(min_captures) =
@@ -1813,6 +1883,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             }
         }
     }
+    */
 
     /// A captured place is mutable if
     /// 1. Projections don't include a Deref of an immut-borrow, **and**
@@ -2123,7 +2194,7 @@ fn restrict_precision_for_drop_types<'a, 'tcx>(
     mut place: Place<'tcx>,
     mut curr_mode: ty::UpvarCapture,
 ) -> (Place<'tcx>, ty::UpvarCapture) {
-    let is_copy_type = fcx.infcx.type_is_copy_modulo_regions(fcx.param_env, place.ty());
+    let is_copy_type = fcx.type_is_copy_modulo_regions(place.ty());
 
     if let (false, UpvarCapture::ByValue) = (is_copy_type, curr_mode) {
         for i in 0..place.projections.len() {

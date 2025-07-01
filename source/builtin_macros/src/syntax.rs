@@ -2814,7 +2814,7 @@ impl Visitor {
             quote_spanned_builtin!(builtin, span => {#builtin::assert_forall_by(|#inputs| #block);}),
         );
 
-        //self.auto_proof_block(expr, span);
+        self.auto_proof_block(expr, span);
 
         true
     }
@@ -2883,7 +2883,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #[verus::internal(const_header_wrapper)]||{#inner}; } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { {#inner}; } ),
                 ),
             );
         }
