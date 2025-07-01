@@ -2842,6 +2842,16 @@ impl Verifier {
 
         Ok(true)
     }
+
+    pub fn get_function_mode(&self, f: &Fun) -> Option<&vir::ast::Mode> {
+        self.vir_crate.as_ref().and_then(|vir_krate| {
+            vir_krate
+                .functions
+                .iter()
+                .find(|function| function.x.name == *f)
+                .map(|function| &function.x.mode)
+        })
+    }
 }
 
 fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirErr> {
