@@ -3021,6 +3021,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             self.verus_externs.as_ref(),
         );
+
         {
             let reporter = Reporter::new(&spans, compiler);
             if self.verifier.args.trace {
