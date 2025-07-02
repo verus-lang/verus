@@ -1792,3 +1792,22 @@ pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
 pub fn erased_ghost_value<T>() -> T {
     unimplemented!()
 }
+/*
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::cons_dummy_capture_move"]
+pub fn cons_dummy_capture_move<'a, T>(_d: DummyCapture<'a>, _t: T) -> DummyCapture<'a> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::cons_dummy_capture_ref"]
+pub fn cons_dummy_capture_ref<'a, T>(_d: DummyCapture<'a>, _t: &'a T) -> DummyCapture<'a> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::cons_dummy_capture_mut_ref"]
+pub fn cons_dummy_capture_mut_ref<'a, T>(_d: DummyCapture<'a>, _t: &'a mut T) -> DummyCapture<'a> {
+    unimplemented!()
+}
+*/
