@@ -184,6 +184,8 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         vars,
         calls,
         erased_ghost_value_fn_def_id: *verus_items.name_to_id.get(&VerusItem::ErasedGhostValue).unwrap(),
+        dummy_capture_struct_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture).unwrap(),
+        dummy_capture_cons_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCaptureCons).unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 }

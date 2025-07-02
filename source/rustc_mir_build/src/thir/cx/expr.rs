@@ -668,20 +668,26 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
-                crate::verus::get_upvars_accounting_for_ghost(self, expr, def_id);
+                //let closure_captures_original = self
+                //    .tcx
+                //    .closure_captures(def_id);
+                let upvar_tys_original = args.upvar_tys();
 
-                let upvars = self
-                    .tcx
-                    .closure_captures(def_id)
+                let (closure_captures_new, upvar_tys_new, _fake_reads) = crate::verus::get_closure_captures_accounting_for_ghost(self, expr, def_id);
+
+                let upvars = closure_captures_new
                     .iter()
-                    .zip_eq(args.upvar_tys())
+                    .zip_eq(upvar_tys_new)
                     .map(|(captured_place, ty)| {
                         let upvars = self.capture_upvar(expr, captured_place, ty);
                         self.thir.exprs.push(upvars)
                     })
                     .collect::<Vec<_>>();
 
-                let upvars = crate::verus::fix_upvars(self, expr, &upvars);
+                let upvars = crate::verus::fix_upvars(self, expr, &upvars, upvar_tys_original);
+                let upvars = upvars.into();
+
+                //let upvars = crate::verus::fix_upvars(self, expr, &upvars);
                 //let upvars = upvars.into();
 
                 // Convert the closure fake reads, if any, from hir `Place` to ExprRef

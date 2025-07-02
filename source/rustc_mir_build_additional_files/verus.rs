@@ -9,7 +9,7 @@ use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use std::sync::{RwLock, Arc};
-use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace};
+use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace, Region, RegionKind};
 use rustc_span::Span;
 
 #[derive(Debug)]
@@ -31,6 +31,8 @@ pub struct VerusErasureCtxt {
     pub vars: HashMap<HirId, VarErasure>,
     pub calls: HashMap<HirId, CallErasure>,
     pub erased_ghost_value_fn_def_id: DefId,
+    pub dummy_capture_struct_def_id: DefId,
+    pub dummy_capture_cons_fn_def_id: DefId,
 }
 
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
@@ -63,6 +65,113 @@ pub(crate) fn handle_var<'tcx>(
 pub(crate) fn fix_upvars<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_expr: &'tcx hir::Expr<'tcx>,
+    upvars: &Vec<ExprId>,
+    tys: &'tcx [Ty<'tcx>],
+) -> Vec<ExprId>
+{
+    let erasure_ctxt = get_verus_erasure_ctxt();
+
+    if tys.len() == 0 {
+        assert!(upvars.len() == 0);
+        return vec![];
+    }
+
+    let upvar_dc_idx = get_upvar_dummy_capture_idx(cx, &erasure_ctxt, upvars);
+    let ty_dc_idx = get_ty_dummy_capture_idx(&erasure_ctxt, tys);
+
+    let mut new_dc_expr = upvars[upvar_dc_idx];
+    for (i, upvar) in upvars.iter().enumerate() {
+        if i != upvar_dc_idx {
+            let kind = dummy_capture_cons(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, new_dc_expr, *upvar);
+
+            let dc_ty = cx.thir.exprs[new_dc_expr].ty;
+
+            let (temp_lifetime, backwards_incompatible) = cx
+                .rvalue_scopes
+                .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
+            let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty: dc_ty, span: closure_expr.span, kind };
+
+            new_dc_expr = cx.thir.exprs.push(e);
+        }
+    }
+
+    let mut res = vec![];
+
+    for (i, ty) in tys.iter().enumerate() {
+        if i == ty_dc_idx {
+            res.push(new_dc_expr);
+        } else {
+            let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, *ty);
+
+            let (temp_lifetime, backwards_incompatible) = cx
+                .rvalue_scopes
+                .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
+            let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty: *ty, span: closure_expr.span, kind };
+
+            res.push(cx.thir.exprs.push(e));
+        }
+    }
+
+    /*for ty in tys.iter() {
+        let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, *ty);
+
+        let (temp_lifetime, backwards_incompatible) = cx
+            .rvalue_scopes
+            .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
+        let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty: *ty, span: closure_expr.span, kind };
+
+        res.push(cx.thir.exprs.push(e));
+    }*/
+
+    /*for (i, e) in cx.thir.exprs.iter().enumerate() {
+        dbg!((i, e));
+    }
+    dbg!(upvars);
+    dbg!(tys);
+    dbg!(&res);*/
+
+    res
+}
+
+fn get_upvar_dummy_capture_idx<'tcx>(
+    cx: &ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    upvars: &Vec<ExprId>,
+) -> usize {
+    for i in 0 .. upvars.len() {
+        match cx.thir.exprs[upvars[i]].ty.kind() {
+            TyKind::Adt(adt_def, _) => {
+                if adt_def.did() == erasure_ctxt.dummy_capture_struct_def_id {
+                    return i;
+                }
+            }
+            _ => { }
+        }
+    }
+    panic!("MISSING DummyCapture (upvar)");
+}
+
+fn get_ty_dummy_capture_idx<'tcx>(
+    erasure_ctxt: &VerusErasureCtxt,
+    tys: &'tcx [Ty<'tcx>],
+) -> usize {
+    for i in 0 .. tys.len() {
+        match tys[i].kind() {
+            TyKind::Adt(adt_def, _) => {
+                if adt_def.did() == erasure_ctxt.dummy_capture_struct_def_id {
+                    return i;
+                }
+            }
+            _ => { }
+        }
+    }
+    panic!("MISSING DummyCapture (ty)");
+}
+
+/*
+pub(crate) fn fix_upvars<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    closure_expr: &'tcx hir::Expr<'tcx>,
     upvars: &[ExprId],
 ) -> Box<[ExprId]> {
     let erasure_ctxt = get_verus_erasure_ctxt();
@@ -84,6 +193,48 @@ pub(crate) fn fix_upvars<'tcx>(
     }
 
     res.into_boxed_slice()
+}
+*/
+
+/// Produce an expression `builtin::erased_ghost_value::<T>()`
+fn dummy_capture_cons<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    hir_id: HirId,
+    span: Span,
+    dc_arg: ExprId,
+    second_arg: ExprId,
+) -> ExprKind<'tcx> {
+    let lt = Region::new_from_kind(cx.tcx, RegionKind::ReErased);
+    let lt_arg = GenericArg::from(lt);
+
+    let ty = cx.thir.exprs[second_arg].ty;
+    let ty_arg = GenericArg::from(ty);
+
+    let args = cx.tcx.mk_args(&[lt_arg, ty_arg]);
+    let fn_def_id = erasure_ctxt.dummy_capture_cons_fn_def_id;
+    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+
+    let fun_expr_kind = ExprKind::ZstLiteral {
+        user_ty: None,
+    };
+    let (temp_lifetime, backwards_incompatible) = cx
+        .rvalue_scopes
+        .temporary_scope(cx.region_scope_tree, hir_id.local_id);
+    let fun_expr = Expr {
+        temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
+        ty: fn_ty,
+        span: span,
+        kind: fun_expr_kind,
+    };
+
+    ExprKind::Call {
+        ty: fn_ty,
+        fun: cx.thir.exprs.push(fun_expr),
+        args: Box::new([dc_arg, second_arg]),
+        from_hir_call: false,
+        fn_span: span,
+    }
 }
 
 
@@ -206,11 +357,15 @@ pub(crate) fn fix_closure<'tcx>(
 }
 */
 
-pub(crate) fn get_upvars_accounting_for_ghost<'tcx>(
+pub(crate) fn get_closure_captures_accounting_for_ghost<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_expr: &'tcx hir::Expr<'tcx>,
     closure_def_id: LocalDefId,
-) { //-> (rustc_middle::ty::RootVariableMinCaptureList<'tcx>, Vec<(Place<'tcx>, FakeReadCause, HirId)>) {
+) ->
+(&'tcx rustc_middle::ty::List<&'tcx CapturedPlace<'tcx>>,
+Vec<Ty<'tcx>>,
+Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, HirId)>)
+{
     let tcx = cx.tcx;
 
     let mut fn_ctxt = crate::upvar::FnCtxt {
@@ -243,7 +398,7 @@ pub(crate) fn get_upvars_accounting_for_ghost<'tcx>(
 
     let captures = tcx.mk_captures_from_iter(closure_min_captures);
 
-    dbg!(captures);
+    (captures, fn_ctxt.upvar_tys, fn_ctxt.fake_reads)
 }
 
 pub(crate) fn skip_var_for_closure_capturing<'tcx>(

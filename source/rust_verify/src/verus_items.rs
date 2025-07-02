@@ -374,6 +374,8 @@ pub(crate) enum VerusItem {
     Global(GlobalItem),
     External(ExternalItem),
     ErasedGhostValue,
+    DummyCapture,
+    DummyCaptureCons,
 }
 
 #[rustfmt::skip]
@@ -500,6 +502,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
 
         ("verus::builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
+        ("verus::builtin::DummyCapture",            VerusItem::DummyCapture),
+        ("verus::builtin::dummy_capture_cons",      VerusItem::DummyCaptureCons),
 
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
