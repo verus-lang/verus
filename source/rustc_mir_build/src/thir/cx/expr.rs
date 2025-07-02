@@ -336,24 +336,44 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let kind = match expr.kind {
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
-                // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
-                let expr = self.method_callee(expr, segment.ident.span, None);
-                info!("Using method span: {:?}", expr.span);
-                let args = std::iter::once(receiver)
-                    .chain(args.iter())
-                    .map(|expr| self.mirror_expr(expr))
-                    .collect();
-                ExprKind::Call {
-                    ty: expr.ty,
-                    fun: self.thir.exprs.push(expr),
-                    args,
-                    from_hir_call: true,
-                    fn_span,
+                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+
+                let kind = if skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else {
+                    // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
+                    let expr = self.method_callee(expr, segment.ident.span, None);
+                    info!("Using method span: {:?}", expr.span);
+                    let args = std::iter::once(receiver)
+                        .chain(args.iter())
+                        .map(|expr| self.mirror_expr(expr))
+                        .collect();
+                    ExprKind::Call {
+                        ty: expr.ty,
+                        fun: self.thir.exprs.push(expr),
+                        args,
+                        from_hir_call: true,
+                        fn_span,
+                    }
+                };
+
+                if skip_call && !skip_all {
+                    crate::verus::erased_top_node(self, expr, kind)
+                } else {
+                    kind
                 }
             }
 
             hir::ExprKind::Call(fun, ref args) => {
-                if self.typeck_results.is_method_call(expr) {
+                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+
+                // If skip_all: skip everything, only create an erased_value
+                // If skip_call: run everything, but at the end, throw away the
+                //    top-level kind and just return an erased_value
+
+                let kind = if skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else if self.typeck_results.is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
                     // Find the actual method implementation being called and
                     // build the appropriate UFCS call expression with the
@@ -461,6 +481,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             fn_span: expr.span,
                         }
                     }
+                };
+                if skip_call && !skip_all {
+                    crate::verus::erased_top_node(self, expr, kind)
+                } else {
+                    kind
                 }
             }
 
@@ -668,16 +693,27 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
-                let upvars = self
-                    .tcx
-                    .closure_captures(def_id)
+                //let closure_captures_original = self
+                //    .tcx
+                //    .closure_captures(def_id);
+                let upvar_tys_original = args.upvar_tys();
+
+                let (closure_captures_new, upvar_tys_new, _fake_reads) = crate::verus::get_closure_captures_accounting_for_ghost(self, expr, def_id);
+
+                let upvars = closure_captures_new
                     .iter()
-                    .zip_eq(args.upvar_tys())
+                    .zip_eq(upvar_tys_new)
                     .map(|(captured_place, ty)| {
                         let upvars = self.capture_upvar(expr, captured_place, ty);
                         self.thir.exprs.push(upvars)
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
+
+                let upvars = crate::verus::fix_upvars(self, expr, &upvars, upvar_tys_original);
+                let upvars = upvars.into();
+
+                //let upvars = crate::verus::fix_upvars(self, expr, &upvars);
+                //let upvars = upvars.into();
 
                 // Convert the closure fake reads, if any, from hir `Place` to ExprRef
                 let fake_reads = match self.typeck_results.closure_fake_reads.get(&def_id) {
@@ -690,6 +726,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         .collect(),
                     None => Vec::new(),
                 };
+
 
                 ExprKind::Closure(Box::new(ClosureExpr {
                     closure_id: def_id,
@@ -1097,7 +1134,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             }
 
-            Res::Local(var_hir_id) => self.convert_var(var_hir_id),
+            Res::Local(var_hir_id) => {
+                match crate::verus::handle_var(self, expr, var_hir_id) {
+                    Some(expr) => expr,
+                    None => self.convert_var(var_hir_id),
+                }
+            }
 
             _ => span_bug!(expr.span, "res `{:?}` not yet implemented", res),
         }

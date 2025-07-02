@@ -60,7 +60,7 @@ impl<'a> PatMigration<'a> {
         let is_hard_error = spans.primary_spans().iter().any(|span| span.at_least_rust_2024());
         if is_hard_error {
             let mut err =
-                tcx.dcx().struct_span_err(spans, fluent::mir_build_rust_2024_incompatible_pat);
+                tcx.dcx().struct_span_err(spans, fluent::mir_build_verus_rust_2024_incompatible_pat);
             if let Some(info) = lint::builtin::RUST_2024_INCOMPATIBLE_PAT.future_incompatible {
                 // provide the same reference link as the lint
                 err.note(format!("for more information, see {}", info.reference));

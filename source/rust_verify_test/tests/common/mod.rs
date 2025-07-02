@@ -324,6 +324,7 @@ pub fn run_verus(
     if no_external_by_default {
         verus_args.push("--no-external-by-default".to_string());
     }
+    verus_args.push("--new-lifetime".to_string());
 
     verus_args.extend(
         vec![
@@ -591,7 +592,9 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
-    assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+    // usually we can use the existence of an error code to tell if something is a
+    // Rust error message, though some error messages don't come with error codes
+    assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true) || err.errors[0].message.contains("lifetime may not live long enough")); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
 }
 
