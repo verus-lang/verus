@@ -358,7 +358,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
 
                 if skip_call && !skip_all {
-                    crate::verus::erased_value(self, expr)
+                    crate::verus::erased_top_node(self, expr, kind)
                 } else {
                     kind
                 }
@@ -483,7 +483,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     }
                 };
                 if skip_call && !skip_all {
-                    crate::verus::erased_value(self, expr)
+                    crate::verus::erased_top_node(self, expr, kind)
                 } else {
                     kind
                 }

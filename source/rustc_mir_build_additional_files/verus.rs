@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use rustc_hir as hir;
-use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime, ExprId};
+use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime, ExprId, AdtExprBase, StmtId, Stmt, StmtKind, Block, BlockSafety};
 use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -256,6 +256,83 @@ pub(crate) fn erased_value<'tcx>(
     let erasure_ctxt = get_verus_erasure_ctxt();
     let ty = cx.typeck_results.expr_ty(expr);
     erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty)
+}
+
+pub(crate) fn erased_top_node<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+    kind: ExprKind<'tcx>
+) -> ExprKind<'tcx> {
+    let expr_ids = match kind {
+        ExprKind::Call {
+            ty: _, fun, args, from_hir_call: _, fn_span: _
+        } => {
+            let mut v = vec![];
+            v.push(fun);
+            for arg in args.iter() {
+                v.push(*arg);
+            }
+            v
+        }
+        ExprKind::Adt(adt) => {
+            assert!(matches!(adt.base, AdtExprBase::None));
+            let mut v = vec![];
+            for f in adt.fields.iter() {
+                v.push(f.expr);
+            }
+            v
+        }
+        _ => {
+            panic!("erased_top_node got unexpected kind");
+        }
+    };
+
+    if expr_ids.len() == 0 {
+        let erasure_ctxt = get_verus_erasure_ctxt();
+        let ty = cx.typeck_results.expr_ty(expr);
+        erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty)
+    } else {
+        let mut stmts: Vec<StmtId> = vec![];
+        for e in expr_ids.iter() {
+            let stmt = Stmt {
+                kind: StmtKind::Expr {
+                    scope: rustc_middle::middle::region::Scope {
+                        local_id: expr.hir_id.local_id,
+                        data: rustc_middle::middle::region::ScopeData::Node,
+                    },
+                    expr: *e,
+                },
+            };
+            stmts.push(cx.thir.stmts.push(stmt));
+        }
+
+        let block = Block {
+            targeted_by_break: false,
+            region_scope: rustc_middle::middle::region::Scope {
+                local_id: expr.hir_id.local_id,
+                data: rustc_middle::middle::region::ScopeData::Node,
+            },
+            span: expr.span,
+            stmts: stmts.into_boxed_slice(),
+            expr: {
+                let erasure_ctxt = get_verus_erasure_ctxt();
+                let ty = cx.typeck_results.expr_ty(expr);
+                let kind = erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty);
+
+                let (temp_lifetime, backwards_incompatible) = cx
+                    .rvalue_scopes
+                    .temporary_scope(cx.region_scope_tree, expr.hir_id.local_id);
+                let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: expr.span, kind };
+
+                Some(cx.thir.exprs.push(e))
+            },
+            safety_mode: BlockSafety::Safe,
+        };
+
+        ExprKind::Block {
+            block: cx.thir.blocks.push(block),
+        }
+    }
 }
 
 /// Produce an expression `builtin::erased_ghost_value::<T>()`

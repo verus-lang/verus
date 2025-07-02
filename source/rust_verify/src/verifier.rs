@@ -2896,6 +2896,7 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
+    pub(crate) spans: Option<SpanContext>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -3122,6 +3123,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
+        if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                &self.verifier.verus_items.as_ref().unwrap(),
+                self.verifier.erasure_hints.as_ref().unwrap(),
+            );
+
+            self.spans = Some(spans);
+            return rustc_driver::Compilation::Continue;
+        }
+
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
@@ -3146,25 +3157,42 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     ""
                 }
             );
-            if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
-                crate::erase::setup_verus_ctxt_for_thir_erasure(
-                    &self.verifier.verus_items.as_ref().unwrap(),
-                    self.verifier.erasure_hints.as_ref().unwrap(),
-                );
-                rustc_driver::Compilation::Continue
-            } else {
-                rustc_driver::Compilation::Stop
-            }
-        } else {
-            rustc_driver::Compilation::Stop
         }
+        rustc_driver::Compilation::Stop
     }
 
     fn after_analysis<'tcx>(
         &mut self,
-        _compiler: &Compiler,
+        compiler: &Compiler,
         _tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
+        let spans = self.spans.clone().unwrap();
+        match self.verifier.verify_crate(compiler, &spans) {
+            Ok(()) => {}
+            Err(err) => {
+                if let VerifyErr::Vir(err) = err {
+                    let reporter = Reporter::new(&spans, compiler);
+                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                }
+                self.verifier.encountered_vir_error = true;
+            }
+        }
+        if !self.verifier.args.output_json
+            && !self.verifier.encountered_error
+            && !self.verifier.encountered_vir_error
+        {
+            println!(
+                "verification results:: {} verified, {} errors{}",
+                self.verifier.count_verified,
+                self.verifier.count_errors,
+                if !crate::driver::is_verifying_entire_crate(&self.verifier) {
+                    " (partial verification with `--verify-*`)"
+                } else {
+                    ""
+                }
+            );
+        }
+
         rustc_driver::Compilation::Stop
     }
 }
