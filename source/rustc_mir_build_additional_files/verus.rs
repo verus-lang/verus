@@ -49,6 +49,19 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
     VERUS_ERASURE_CTXT.read().unwrap().as_ref().expect("Expected VerusErasureCtxt for THIR modification pass").clone()
 }
 
+pub(crate) fn handle_call<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> (bool, bool) {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    match erasure_ctxt.calls.get(&expr.hir_id) {
+        None => (false, false),
+        Some(CallErasure::Keep) => (false, false),
+        Some(CallErasure::EraseAll) => (true, true),
+        Some(CallErasure::EraseCallButNotArgs) => (false, true),
+    }
+}
+
 pub(crate) fn handle_var<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
@@ -196,7 +209,6 @@ pub(crate) fn fix_upvars<'tcx>(
 }
 */
 
-/// Produce an expression `builtin::erased_ghost_value::<T>()`
 fn dummy_capture_cons<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
@@ -237,6 +249,14 @@ fn dummy_capture_cons<'tcx>(
     }
 }
 
+pub(crate) fn erased_value<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> ExprKind<'tcx> {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let ty = cx.typeck_results.expr_ty(expr);
+    erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty)
+}
 
 /// Produce an expression `builtin::erased_ghost_value::<T>()`
 fn erased_ghost_value<'tcx>(
