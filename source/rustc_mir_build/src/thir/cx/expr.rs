@@ -353,7 +353,15 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
 
             hir::ExprKind::Call(fun, ref args) => {
-                if self.typeck_results.is_method_call(expr) {
+                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+
+                // If skip_all: skip everything, only create an erased_value
+                // If skip_call: run everything, but at the end, throw away the
+                //    top-level kind and just return an erased_value
+
+                let kind = if skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else if self.typeck_results.is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
                     // Find the actual method implementation being called and
                     // build the appropriate UFCS call expression with the
@@ -461,6 +469,11 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             fn_span: expr.span,
                         }
                     }
+                };
+                if skip_call && !skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else {
+                    kind
                 }
             }
 
