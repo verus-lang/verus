@@ -21,7 +21,7 @@ test_verify_one_file! {
             consume(a);
             consume(a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -30,7 +30,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked a: A) -> int {
             consume(a) + consume(a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -41,7 +41,7 @@ test_verify_one_file! {
             consume(a);
             consume(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -53,7 +53,7 @@ test_verify_one_file! {
             consume(x);
             consume(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -63,7 +63,7 @@ test_verify_one_file! {
             consume(a);
             a
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -72,7 +72,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked a: A) -> (tracked b: (A, A)) {
             (a, a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -82,7 +82,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked x: A) -> (tracked b: P<A, A>) {
             P { a: x, b: x }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -92,7 +92,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -102,7 +102,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode proof")
+    } => Err(err) => assert_rust_error_msg(err, "cannot call function `crate::f` with mode proof")
 }
 
 test_verify_one_file! {
@@ -124,7 +124,7 @@ test_verify_one_file! {
             consume(p.a);
             consume(p.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -135,7 +135,7 @@ test_verify_one_file! {
             consume(p.a);
             consume(p);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of partially moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {
@@ -154,7 +154,7 @@ test_verify_one_file! {
             let s = builtin::is_variant(id(Option::Some(x)), "None");
             let s = builtin::is_variant(id(Option::Some(x)), "None");
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -171,7 +171,7 @@ test_verify_one_file! {
             let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
             let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -180,7 +180,7 @@ test_verify_one_file! {
         proof fn g(tracked x: &mut u8, tracked y: &mut u8) {
             f(x, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -202,7 +202,7 @@ test_verify_one_file! {
             let tracked mut y = b;
             borrow(&mut x, &mut x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -215,7 +215,7 @@ test_verify_one_file! {
                 f(x.get(), x.get())
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -227,7 +227,7 @@ test_verify_one_file! {
                 f(x.borrow_mut(), x.borrow_mut());
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -252,7 +252,7 @@ test_verify_one_file! {
                 consume(a);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -265,7 +265,7 @@ test_verify_one_file! {
                 consume(a);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -278,7 +278,7 @@ test_verify_one_file! {
             }
             a2
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -292,7 +292,7 @@ test_verify_one_file! {
             }
             consume(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -303,7 +303,7 @@ test_verify_one_file! {
             if b { s = S {}; }
             s
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `s` is possibly-uninitialized")
 }
 
 test_verify_one_file! {
@@ -314,7 +314,7 @@ test_verify_one_file! {
             match b { _ if true => { s = S {}; } _ => {} }
             s
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `s` is possibly-uninitialized")
 }
 
 test_verify_one_file! {
@@ -322,7 +322,7 @@ test_verify_one_file! {
         proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             y
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
@@ -334,7 +334,7 @@ test_verify_one_file! {
         proof fn g<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             f(z, z, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
@@ -469,7 +469,7 @@ test_verify_one_file! {
         proof fn f(tracked x: S<Q, u8>) -> tracked (S<Q, u8>, S<Q, u8>) {
             (x, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -494,7 +494,7 @@ test_verify_one_file_with_options! {
             let x: u32 = 5;
             takesmut(&mut x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -506,7 +506,7 @@ test_verify_one_file! {
             }
             assert(a@ == 4);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
 }
 
 // TODO Currently this causes a panic. However, it definitely needs to error,
@@ -524,7 +524,7 @@ test_verify_one_file! {
             assert(a@ == 7);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -559,7 +559,7 @@ test_verify_one_file! {
             // a reference &'a to &'static)
             let y = vstd::modes::tracked_static_ref(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "borrowed data escapes outside of function")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -573,7 +573,7 @@ test_verify_one_file! {
             let _ = pptr.take(Tracked(&mut perm)); // this should invalidate the &perm borrow
             let z: u64 = *x; // but x is still available here
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `perm` as mutable because it is also borrowed as immutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `perm` as mutable because it is also borrowed as immutable")
 }
 
 test_verify_one_file! {
@@ -587,7 +587,7 @@ test_verify_one_file! {
             pptr.free(Tracked(perm));
             let z: u64 = *x; // but x is still available here
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `perm` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `perm` because it is borrowed")
 }
 
 test_verify_one_file! {
@@ -603,7 +603,7 @@ test_verify_one_file! {
             let z = y.clone();
             z
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -619,7 +619,7 @@ test_verify_one_file! {
             let z = y.clone();
             z
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -634,7 +634,7 @@ test_verify_one_file! {
             //let z = y.clone();
             y
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -758,7 +758,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of partially moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {
@@ -805,7 +805,7 @@ test_verify_one_file! {
             let ghost g = { let tracked z = Tracked(x); Tracked(x) };
             Tracked(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -815,7 +815,7 @@ test_verify_one_file! {
             let ghost g = { let y = x; let tracked z = Tracked(y); Tracked(x) };
             Tracked(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "has mode spec, expected mode proof")
+    } => Err(err) => assert_rust_error_msg(err, "has mode spec, expected mode proof")
 }
 
 test_verify_one_file! {
@@ -890,7 +890,7 @@ test_verify_one_file! {
                 l.use_shared();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -916,7 +916,7 @@ test_verify_one_file! {
 
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -942,7 +942,7 @@ test_verify_one_file! {
 
             assert(!b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -974,7 +974,7 @@ test_verify_one_file! {
 
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -1007,7 +1007,7 @@ test_verify_one_file! {
 
             assert(!b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {

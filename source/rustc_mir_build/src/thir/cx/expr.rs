@@ -336,19 +336,31 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let kind = match expr.kind {
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
-                // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
-                let expr = self.method_callee(expr, segment.ident.span, None);
-                info!("Using method span: {:?}", expr.span);
-                let args = std::iter::once(receiver)
-                    .chain(args.iter())
-                    .map(|expr| self.mirror_expr(expr))
-                    .collect();
-                ExprKind::Call {
-                    ty: expr.ty,
-                    fun: self.thir.exprs.push(expr),
-                    args,
-                    from_hir_call: true,
-                    fn_span,
+                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+
+                let kind = if skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else {
+                    // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
+                    let expr = self.method_callee(expr, segment.ident.span, None);
+                    info!("Using method span: {:?}", expr.span);
+                    let args = std::iter::once(receiver)
+                        .chain(args.iter())
+                        .map(|expr| self.mirror_expr(expr))
+                        .collect();
+                    ExprKind::Call {
+                        ty: expr.ty,
+                        fun: self.thir.exprs.push(expr),
+                        args,
+                        from_hir_call: true,
+                        fn_span,
+                    }
+                };
+
+                if skip_call && !skip_all {
+                    crate::verus::erased_value(self, expr)
+                } else {
+                    kind
                 }
             }
 
