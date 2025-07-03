@@ -336,9 +336,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let kind = match expr.kind {
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
-                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+                let call_erasure = crate::verus::handle_call(self, expr);
 
-                let kind = if skip_all {
+                let kind = if call_erasure == crate::verus::CallErasure::EraseAll {
                     crate::verus::erased_value(self, expr)
                 } else {
                     // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
@@ -357,7 +357,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     }
                 };
 
-                if skip_call && !skip_all {
+                if call_erasure == crate::verus::CallErasure::EraseCallButNotArgs {
                     crate::verus::erased_top_node(self, expr, kind)
                 } else {
                     kind
@@ -365,13 +365,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
 
             hir::ExprKind::Call(fun, ref args) => {
-                let (skip_all, skip_call) = crate::verus::handle_call(self, expr);
+                let call_erasure = crate::verus::handle_call(self, expr);
 
                 // If skip_all: skip everything, only create an erased_value
                 // If skip_call: run everything, but at the end, throw away the
                 //    top-level kind and just return an erased_value
 
-                let kind = if skip_all {
+                let kind = if call_erasure == crate::verus::CallErasure::EraseAll {
                     crate::verus::erased_value(self, expr)
                 } else if self.typeck_results.is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
@@ -482,7 +482,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         }
                     }
                 };
-                if skip_call && !skip_all {
+                if call_erasure == crate::verus::CallErasure::EraseCallButNotArgs {
                     crate::verus::erased_top_node(self, expr, kind)
                 } else {
                     kind

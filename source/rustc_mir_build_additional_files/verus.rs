@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use rustc_hir as hir;
-use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime, ExprId, AdtExprBase, StmtId, Stmt, StmtKind, Block, BlockSafety};
+use rustc_middle::thir::{Expr, ExprKind, ClosureExpr, TempLifetime, ExprId, AdtExprBase, StmtId, Stmt, StmtKind, Block, BlockSafety, Pat, PatKind};
 use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
@@ -18,7 +18,7 @@ pub enum VarErasure {
     Keep,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CallErasure {
     Keep,
     EraseAll,
@@ -52,13 +52,11 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
 pub(crate) fn handle_call<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
-) -> (bool, bool) {
+) -> CallErasure {
     let erasure_ctxt = get_verus_erasure_ctxt();
     match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => (false, false),
-        Some(CallErasure::Keep) => (false, false),
-        Some(CallErasure::EraseAll) => (true, true),
-        Some(CallErasure::EraseCallButNotArgs) => (false, true),
+        None => CallErasure::Keep,
+        Some(call_erasure) => *call_erasure,
     }
 }
 
@@ -503,4 +501,78 @@ pub(crate) fn skip_var_for_closure_capturing<'tcx>(
 ) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
     matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase))
+}
+
+pub(crate) fn erase_pat<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    pat: Box<Pat<'tcx>>,
+) -> Box<Pat<'tcx>> {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+
+    let mut p = pat;
+    erase_pat_rec(&erasure_ctxt, &mut p);
+    p
+}
+
+pub(crate) fn erase_pat_rec<'tcx>(erasure_ctxt: &VerusErasureCtxt, p: &mut Pat<'tcx>) {
+    match &mut p.kind {
+        PatKind::Missing => { }
+        PatKind::Wild => { }
+        PatKind::AscribeUserType { ascription: _, subpattern } => {
+            erase_pat_rec(erasure_ctxt, subpattern);
+        }
+        PatKind::Binding { name: _, mode: _, var, ty: _, subpattern, is_primary: _ } => {
+            if let Some(subpat) = subpattern {
+                erase_pat_rec(erasure_ctxt, subpat);
+            }
+
+            if matches!(erasure_ctxt.vars.get(&var.0), Some(VarErasure::Erase)) {
+                if subpattern.is_some() {
+                    let mut subpat = None;
+                    std::mem::swap(subpattern, &mut subpat);
+                    let subpat = *subpat.unwrap();
+                    *p = subpat;
+                } else {
+                    p.kind = PatKind::Wild;
+                }
+            }
+        }
+        PatKind::Variant { adt_def: _, args: _, variant_index: _, subpatterns }
+         | PatKind::Leaf { subpatterns}
+        => {
+            for field_pat in subpatterns.iter_mut() {
+                erase_pat_rec(erasure_ctxt, &mut field_pat.pattern);
+            }
+        }
+        PatKind::Deref { subpattern } => {
+            erase_pat_rec(erasure_ctxt, subpattern);
+        }
+        PatKind::DerefPattern { subpattern, borrow: _ } => {
+            erase_pat_rec(erasure_ctxt, subpattern);
+        }
+        PatKind::Constant { value: _ } => { }
+        PatKind::ExpandedConstant { def_id: _, subpattern } => {
+            erase_pat_rec(erasure_ctxt, subpattern);
+        }
+        PatKind::Range(_pat_range) => { }
+        PatKind::Slice { prefix, slice, suffix } | PatKind::Array { prefix, slice, suffix }
+        => {
+            for p in prefix.iter_mut() {
+                erase_pat_rec(erasure_ctxt, p);
+            }
+            if let Some(sl) = slice {
+                erase_pat_rec(erasure_ctxt, sl);
+            }
+            for p in suffix.iter_mut() {
+                erase_pat_rec(erasure_ctxt, p);
+            }
+        }
+        PatKind::Or { pats } => {
+            for p in pats.iter_mut() {
+                erase_pat_rec(erasure_ctxt, p);
+            }
+        }
+        PatKind::Never => { }
+        PatKind::Error(_error_guaranteed) => { }
+    }
 }

@@ -119,7 +119,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     #[instrument(level = "debug", skip(self))]
     fn pattern_from_hir(&mut self, p: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
-        pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p)
+        crate::verus::erase_pat(
+            self,
+            pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p)
+        )
     }
 
     fn closure_env_param(&self, owner_def: LocalDefId, expr_id: HirId) -> Option<Param<'tcx>> {
