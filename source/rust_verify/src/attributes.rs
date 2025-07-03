@@ -340,6 +340,7 @@ pub(crate) enum Attr {
     UnerasedProxy,
     UsesUnerasedProxy,
     EncodedConst,
+    EncodedStatic,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -758,6 +759,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "encoded_const" => {
                         v.push(Attr::EncodedConst)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "encoded_static" => {
+                        v.push(Attr::EncodedStatic)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -1003,6 +1007,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) exec_allows_no_decreases_clause: bool,
     pub(crate) unerased_proxy: bool,
     pub(crate) encoded_const: bool,
+    pub(crate) encoded_static: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1165,6 +1170,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         exec_allows_no_decreases_clause: false,
         unerased_proxy: false,
         encoded_const: false,
+        encoded_static: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1239,6 +1245,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             Attr::UnerasedProxy => vs.unerased_proxy = true,
             Attr::EncodedConst => vs.encoded_const = true,
+            Attr::EncodedStatic => vs.encoded_static = true,
             Attr::UsesUnerasedProxy => {}
             _ => {}
         }
