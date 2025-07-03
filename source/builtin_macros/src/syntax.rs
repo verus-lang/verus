@@ -36,7 +36,6 @@ use syn_verus::{
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
-const VERUS_UNERASED_PROXY: &str = "VERUS_UNERASED_PROXY__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -69,8 +68,8 @@ enum InsideArith {
     Fixed,
 }
 
-struct Visitor {
-    erase_ghost: EraseGhost,
+pub(crate) struct Visitor {
+    pub(crate) erase_ghost: EraseGhost,
     // TODO: this should always be true
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
@@ -94,7 +93,7 @@ struct Visitor {
     assign_to: bool,
 
     // Add extra verus signature information to the docstring
-    rustdoc: bool,
+    pub(crate) rustdoc: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -463,10 +462,6 @@ fn merge_default_ensures(
 }
 
 impl Visitor {
-    fn needs_unerased_proxies(&self) -> bool {
-        self.erase_ghost.keep() && !self.rustdoc
-    }
-
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
     }
@@ -935,8 +930,7 @@ impl Visitor {
         self.inside_ghost += 1; // for requires, ensures, etc.
 
         let sig_span = sig.span().clone();
-        let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
+        let spec_stmts = self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -1808,161 +1802,9 @@ impl Visitor {
         }
     }
 
-    fn item_needs_unerased_proxy(&self, item: &Item) -> bool {
-        match item {
-            Item::Const(item_const) => !is_external(&item_const.attrs),
-            Item::Fn(item_fn) => item_fn.sig.constness.is_some() && !is_external(&item_fn.attrs),
-            _ => false,
-        }
-    }
-
-    fn item_translate_const_to_0_arg_fn(&self, item: Item) -> Item {
-        match item {
-            Item::Const(item_const) => {
-                let span = item_const.span();
-                let ItemConst {
-                    mut attrs,
-                    vis,
-                    const_token,
-                    ident,
-                    generics,
-                    colon_token,
-                    ty,
-                    eq_token: _,
-                    expr,
-                    semi_token: _,
-                    publish,
-                    mode,
-                    ensures,
-                    block,
-                } = item_const;
-                attrs.push(mk_verus_attr(span, quote! { encoded_const }));
-
-                let publish = match (publish, &mode, &vis) {
-                    (publish, _, Visibility::Inherited) => publish,
-                    (
-                        Publish::Default,
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
-                        _,
-                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
-                    (publish, _, _) => publish,
-                };
-
-                Item::Fn(ItemFn {
-                    attrs,
-                    vis,
-                    sig: Signature {
-                        spec: SignatureSpec {
-                            prover: None,
-                            requires: None,
-                            recommends: None,
-                            ensures,
-                            default_ensures: None,
-                            returns: None,
-                            decreases: None,
-                            invariants: None,
-                            unwind: None,
-                            with: None,
-                        },
-                        publish,
-                        constness: None,
-                        asyncness: None,
-                        unsafety: None,
-                        abi: None,
-                        broadcast: None,
-                        mode: mode,
-                        fn_token: token::Fn { span: const_token.span },
-                        ident: ident.clone(),
-                        generics,
-                        paren_token: Paren { span: into_spans(colon_token.span) },
-                        inputs: Punctuated::new(),
-                        variadic: None,
-                        output: ReturnType::Type(
-                            token::RArrow { spans: [colon_token.span, colon_token.span] },
-                            None,
-                            None, /*
-                                  Some(Box::new((
-                                      Paren { span: into_spans(colon_token.span) },
-                                      Pat::Verbatim(quote!{ #ident }),
-                                      colon_token,
-                                  ))), */
-                            ty,
-                        ),
-                    },
-                    block: (match block {
-                        Some(block) => block,
-                        _ => {
-                            let expr = expr.unwrap();
-                            Box::new(Block {
-                                brace_token: Brace { span: into_spans(expr.span()) },
-                                stmts: vec![Stmt::Expr(*expr, None)],
-                            })
-                        }
-                    }),
-                    semi_token: None,
-                })
-            }
-            item => item,
-        }
-    }
-
-    fn item_make_proxy(&self, item: Item) -> Item {
-        let mut item = item;
-        item = self.item_translate_const_to_0_arg_fn(item);
-        match &mut item {
-            Item::Fn(item_fn) => {
-                item_fn.sig.ident = Ident::new(
-                    &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
-                    item_fn.sig.span(),
-                );
-                item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
-            }
-            _ => unreachable!(),
-        }
-        item
-    }
-
-    fn item_make_external_and_erased(&mut self, item: Item) -> Item {
-        let mut item = item;
-
-        self.erase_ghost = EraseGhost::Erase;
-        self.visit_item_mut(&mut item);
-        self.erase_ghost = EraseGhost::Keep;
-
-        let span = item.span();
-        let attributes = match &mut item {
-            Item::Fn(item_fn) => &mut item_fn.attrs,
-            Item::Const(item_const) => &mut item_const.attrs,
-            _ => unreachable!(),
-        };
-        attributes.push(mk_verifier_attr(span, quote! { external }));
-        attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
-
-        item
-    }
-
-    fn visit_items_make_unerased_proxies(&mut self, items: &mut Vec<Item>) {
-        if !self.needs_unerased_proxies() {
-            return;
-        }
-
-        let mut new_items = vec![];
-
-        for item in std::mem::take(items).into_iter() {
-            if self.item_needs_unerased_proxy(&item) {
-                let proxy = self.item_make_proxy(item.clone());
-                let erased = self.item_make_external_and_erased(item);
-                new_items.push(proxy);
-                new_items.push(erased);
-            } else {
-                new_items.push(item);
-            }
-        }
-
-        *items = new_items;
-    }
-
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        self.visit_impl_items_make_unerased_proxies(items, for_trait);
+
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 ImplItem::Fn(fun) => match fun.sig.mode {
@@ -4828,12 +4670,7 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
     let sig_span = sig.span().clone();
-    spec_stmts.extend(visitor.take_sig_specs(
-        &mut spec,
-        ret_pat,
-        final_ret_pat,
-        sig_span,
-    ));
+    spec_stmts.extend(visitor.take_sig_specs(&mut spec, ret_pat, final_ret_pat, sig_span));
     spec_stmts
 }
 
