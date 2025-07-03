@@ -3076,12 +3076,7 @@ impl Visitor {
             match (mode_block, &*unary.expr) {
                 ((false, _), Expr::Block(..)) => {
                     // proof { ... }
-                    let mut inner = take_expr(&mut *unary.expr);
-                    if self.inside_const {
-                        inner = Expr::Verbatim(
-                            quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
-                        );
-                    }
+                    let inner = take_expr(&mut *unary.expr);
                     let e = if is_inside_ghost {
                         quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
                     } else {
