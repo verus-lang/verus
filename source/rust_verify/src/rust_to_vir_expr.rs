@@ -12,7 +12,6 @@ use crate::rust_to_vir_base::{
     typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
-use crate::rust_to_vir_func::find_body;
 use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
@@ -2125,13 +2124,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 true,
             )
         }
-        ExprKind::Closure(Closure { fn_decl: _, body: body_id, .. }) => {
-            if expr_vattrs.internal_const_header_wrapper {
-                let closure_body = find_body(&bctx.ctxt, body_id);
-                expr_to_vir(bctx, closure_body.value, modifier)
-            } else {
-                closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
-            }
+        ExprKind::Closure(Closure { fn_decl: _, .. }) => {
+            closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut

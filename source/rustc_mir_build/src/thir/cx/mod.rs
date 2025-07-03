@@ -67,7 +67,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
     apply_adjustments: bool,
 
     /// The `DefId` of the owner of this body.
-    body_owner: DefId,
+    pub(crate) body_owner: DefId,
 }
 
 impl<'tcx> ThirBuildCx<'tcx> {

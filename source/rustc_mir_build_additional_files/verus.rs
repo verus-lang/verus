@@ -49,10 +49,23 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
     VERUS_ERASURE_CTXT.read().unwrap().as_ref().expect("Expected VerusErasureCtxt for THIR modification pass").clone()
 }
 
+fn is_for_const_eval<'tcx>(_cx: &mut ThirBuildCx<'tcx>) -> bool {
+    //match cx.tcx.def_kind(cx.body_owner) {
+    //    DefKind::
+    //}
+
+    // TODO actually check the function def id
+    VERUS_ERASURE_CTXT.read().unwrap().as_ref().is_none()
+}
+
 pub(crate) fn handle_call<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> CallErasure {
+    if is_for_const_eval(cx) {
+        return CallErasure::Keep;
+    }
+    
     let erasure_ctxt = get_verus_erasure_ctxt();
     match erasure_ctxt.calls.get(&expr.hir_id) {
         None => CallErasure::Keep,
@@ -65,6 +78,10 @@ pub(crate) fn handle_var<'tcx>(
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId
 ) -> Option<ExprKind<'tcx>> {
+    if is_for_const_eval(cx) {
+        return None;
+    }
+
     let erasure_ctxt = get_verus_erasure_ctxt();
     if matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
         return None;
@@ -80,6 +97,10 @@ pub(crate) fn fix_upvars<'tcx>(
     tys: &'tcx [Ty<'tcx>],
 ) -> Vec<ExprId>
 {
+    if is_for_const_eval(cx) {
+        todo!();
+    }
+
     let erasure_ctxt = get_verus_erasure_ctxt();
 
     if tys.len() == 0 {
@@ -251,7 +272,11 @@ pub(crate) fn erased_value<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> ExprKind<'tcx> {
+    if is_for_const_eval(cx) {
+        panic!("erased_value called for const value");
+    }
     let erasure_ctxt = get_verus_erasure_ctxt();
+
     let ty = cx.typeck_results.expr_ty(expr);
     erased_ghost_value(cx, &erasure_ctxt, expr.hir_id, expr.span, ty)
 }
@@ -261,6 +286,10 @@ pub(crate) fn erased_top_node<'tcx>(
     expr: &'tcx hir::Expr<'tcx>,
     kind: ExprKind<'tcx>
 ) -> ExprKind<'tcx> {
+    if is_for_const_eval(cx) {
+        panic!("erased_top_node called for const value");
+    }
+
     let expr_ids = match kind {
         ExprKind::Call {
             ty: _, fun, args, from_hir_call: _, fn_span: _
@@ -507,6 +536,9 @@ pub(crate) fn erase_pat<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     pat: Box<Pat<'tcx>>,
 ) -> Box<Pat<'tcx>> {
+    if is_for_const_eval(cx) {
+        return pat;
+    }
     let erasure_ctxt = get_verus_erasure_ctxt();
 
     let mut p = pat;

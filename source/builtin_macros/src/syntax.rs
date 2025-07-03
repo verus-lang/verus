@@ -511,8 +511,7 @@ impl Visitor {
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
         final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
-        is_const: bool,
-        span: Span,
+        _span: Span,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -741,16 +740,7 @@ impl Visitor {
             }
         }
 
-        if is_const {
-            vec![Stmt::Expr(
-                Expr::Verbatim(
-                    quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
-                ),
-                None,
-            )]
-        } else {
-            spec_stmts
-        }
+        spec_stmts
     }
 
     fn visit_fn(
@@ -946,7 +936,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
         let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig.constness.is_some(), sig_span);
+            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -992,29 +982,6 @@ impl Visitor {
                 })));
             }
         } else {
-            let ensures = self.take_ghost(con_ensures);
-            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-                self.inside_ghost += 1;
-                let mut stmts: Vec<Stmt> = Vec::new();
-                if attrs.len() > 0 {
-                    let err = "outer attributes only allowed on function's ensures";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
-                } else if exprs.exprs.len() > 0 {
-                    for expr in exprs.exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    // Use a closure in the ensures to avoid circular const definition.
-                    // Note: we can't use con.ident as the closure pattern,
-                    // because Rust would treat this as a const path pattern.
-                    // So we use a 0-parameter closure.
-                    stmts.push(stmt_with_semi!(builtin, token.span => #[verus::internal(const_header_wrapper)] || { #builtin::ensures(|| [#exprs]); }));
-                }
-                let mut block = std::mem::take(con_block).expect("const-with-ensures block");
-                block.stmts.splice(0..0, stmts);
-                *con_block = Some(block);
-                self.inside_ghost -= 1;
-            }
             if let Some(block) = std::mem::take(con_block) {
                 let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
                 *con_expr = Some(Box::new(Expr::Block(expr_block)));
@@ -1022,6 +989,7 @@ impl Visitor {
                 *con_semi_token = Some(Semi { spans: [con_span] });
             }
         }
+        *con_ensures = None;
     }
 
     fn visit_const_or_static(
@@ -4869,7 +4837,6 @@ pub(crate) fn sig_specs_attr(
         &mut spec,
         ret_pat,
         final_ret_pat,
-        sig.constness.is_some(),
         sig_span,
     ));
     spec_stmts
