@@ -336,6 +336,10 @@ pub(crate) enum Attr {
     ExecAllowNoDecreasesClause,
     // Assume that the function terminates
     AssumeTermination,
+    // Proxy containing unerased code
+    UnerasedProxy,
+    UsesUnerasedProxy,
+    EncodedConst,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -745,6 +749,15 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "open_visibility_qualifier" => {
                         v.push(Attr::OpenVisibilityQualifier)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "unerased_proxy" => {
+                        v.push(Attr::UnerasedProxy)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "uses_unerased_proxy" => {
+                        v.push(Attr::UsesUnerasedProxy)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "encoded_const" => {
+                        v.push(Attr::EncodedConst)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -931,6 +944,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) external_auto_derives: AutoDerivesAttr,
+    pub(crate) uses_unerased_proxy: bool,
 }
 
 #[derive(Debug)]
@@ -987,6 +1001,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
+    pub(crate) unerased_proxy: bool,
+    pub(crate) encoded_const: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1043,6 +1059,7 @@ pub(crate) fn get_external_attrs(
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
         external_auto_derives: AutoDerivesAttr::Regular,
+        uses_unerased_proxy: false,
     };
 
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1064,6 +1081,7 @@ pub(crate) fn get_external_attrs(
             Attr::ExternalAutoDerives(Some(external_auto_derives)) => {
                 es.external_auto_derives = AutoDerivesAttr::SomeExternal(external_auto_derives)
             }
+            Attr::UsesUnerasedProxy => es.uses_unerased_proxy = true,
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
@@ -1145,6 +1163,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         open_visibility_qualifier: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
+        unerased_proxy: false,
+        encoded_const: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1217,6 +1237,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
+            Attr::UnerasedProxy => vs.unerased_proxy = true,
+            Attr::EncodedConst => vs.encoded_const = true,
+            Attr::UsesUnerasedProxy => {}
             _ => {}
         }
     }
