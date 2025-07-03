@@ -913,7 +913,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    if vattrs.encoded_const {
+    if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
         if fn_sig.inputs().skip_binder().len() != 0 {
             return err_span(sig.span, "encoded_const must have 0 arguments");
@@ -939,7 +939,7 @@ pub(crate) fn check_item_fn<'tcx>(
             attrs,
             &typ,
             body_id,
-            false,
+            vattrs.encoded_static,
         )?;
         return Ok(Some(fun));
     }

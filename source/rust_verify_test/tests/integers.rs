@@ -472,7 +472,8 @@ test_verify_one_file! {
         proof fn test() {
             assert(plus_three(S) + 1 == 1 + plus_three(S));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
+    //} => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not support const items in traits")
 }
 
 test_verify_one_file! {
