@@ -28,11 +28,11 @@ use syn_verus::{
     FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
     InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
     ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked,
-    Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType, Returns, Signature,
-    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
-    Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
-    braced, bracketed, parenthesized, parse_macro_input,
+    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec,
+    ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType,
+    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
+    UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -827,6 +827,7 @@ impl Visitor {
             sig.mode,
             FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
         ) && !matches!(sig.publish, Publish::Default)
+            && !is_encoded_const(attrs)
         {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
@@ -1871,9 +1872,11 @@ impl Visitor {
 
                 let publish = match (publish, &mode, &vis) {
                     (publish, _, Visibility::Inherited) => publish,
-                    (Publish::Default, FnMode::Spec(_) | FnMode::SpecChecked(_), _) => {
-                        Publish::Open(syn_verus::Open { token: token::Open { span } })
-                    }
+                    (
+                        Publish::Default,
+                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
+                        _,
+                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
                     (publish, _, _) => publish,
                 };
 
@@ -5200,6 +5203,18 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
                 }
                 _ => false,
             }
+    })
+}
+
+pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
+    attrs.iter().any(|attr| match &attr.meta {
+        Meta::List(MetaList { path, delimiter: _, tokens }) => {
+            path.segments.len() == 2
+                && path.segments[0].ident.to_string() == "verus"
+                && path.segments[1].ident.to_string() == "internal"
+                && tokens.to_string() == "encoded_const"
+        }
+        _ => false,
     })
 }
 
