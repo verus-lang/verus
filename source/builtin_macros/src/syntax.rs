@@ -1886,6 +1886,7 @@ impl Visitor {
                             requires: None,
                             recommends: None,
                             ensures,
+                            default_ensures: None,
                             returns: None,
                             decreases: None,
                             invariants: None,
