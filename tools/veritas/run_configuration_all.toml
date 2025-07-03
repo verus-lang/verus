@@ -32,7 +32,7 @@ extra_args = ["--crate-type=lib", "--rlimit", "60", "--cfg", "feature=\"impl\""]
 [[project]]
 name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
-revspec = "main"
+revspec = "veritas"
 crate_root = "storage_node/src/lib.rs"
 extra_args = [
     "-L", "dependency=deps_hack/target/debug/deps",
