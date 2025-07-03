@@ -506,7 +506,7 @@ test_verify_one_file! {
             }
             assert(a@ == 4);
         }
-    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
 }
 
 // TODO Currently this causes a panic. However, it definitely needs to error,
