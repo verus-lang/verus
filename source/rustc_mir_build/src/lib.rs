@@ -28,6 +28,7 @@ extern crate rustc_pattern_analysis;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
+extern crate rustc_hir_typeck;
 
 
 // The `builder` module used to be named `build`, but that was causing GitHub's
@@ -47,6 +48,9 @@ pub mod expr_use_visitor;
 
 #[path = "../../rustc_mir_build_additional_files/upvar.rs"]
 pub mod upvar;
+
+#[path = "../../rustc_mir_build_additional_files/upvar2.rs"]
+pub mod upvar2;
 
 use rustc_middle::util::Providers;
 
