@@ -778,12 +778,12 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 (Some((_, kind, path)), _) => {
                     err.arg("kind", kind);
                     err.arg("path", path);
-                    Some(fluent_generated::hir_typeck_invalid_defined_kind)
+                    Some(fluent_generated::hir_typeck_verus_invalid_defined_kind)
                 }
                 (_, Some(hir::QPath::Resolved(_, path))) => {
                     self.tcx.sess.source_map().span_to_snippet(path.span).ok().map(|p| {
                         err.arg("func", p);
-                        fluent_generated::hir_typeck_invalid_fn_defined
+                        fluent_generated::hir_typeck_verus_invalid_fn_defined
                     })
                 }
                 _ => {
@@ -792,15 +792,15 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                         // type definitions themselves, but rather variables *of* that type.
                         Res::Local(hir_id) => {
                             err.arg("local_name", self.tcx.hir_name(hir_id));
-                            Some(fluent_generated::hir_typeck_invalid_local)
+                            Some(fluent_generated::hir_typeck_verus_invalid_local)
                         }
                         Res::Def(kind, def_id) if kind.ns() == Some(Namespace::ValueNS) => {
                             err.arg("path", self.tcx.def_path_str(def_id));
-                            Some(fluent_generated::hir_typeck_invalid_defined)
+                            Some(fluent_generated::hir_typeck_verus_invalid_defined)
                         }
                         _ => {
                             err.arg("path", callee_ty);
-                            Some(fluent_generated::hir_typeck_invalid_defined)
+                            Some(fluent_generated::hir_typeck_verus_invalid_defined)
                         }
                     }
                 }

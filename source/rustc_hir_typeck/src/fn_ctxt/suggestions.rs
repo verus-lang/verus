@@ -481,7 +481,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 let sugg = prefix_wrap(".map(|x| x.as_str())");
                 err.span_suggestion_verbose(
                     expr.span.shrink_to_hi(),
-                    fluent::hir_typeck_convert_to_str,
+                    fluent::hir_typeck_verus_convert_to_str,
                     sugg,
                     Applicability::MachineApplicable,
                 );
