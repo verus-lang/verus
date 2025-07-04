@@ -6,7 +6,7 @@ use rustc_span::SpanData;
 use vir::ast::{AutospecUsage, Fun, Krate, Mode, Path, Pattern, Function};
 use vir::modes::ErasureModes;
 
-use rustc_mir_build_verus::verus::{VerusErasureCtxt, set_verus_erasure_ctxt, VarErasure, CallErasure};
+use rustc_mir_build_verus::verus::{VerusErasureCtxt, set_verus_erasure_ctxt, VarErasure, CallErasure, ClosureErasure};
 use crate::verus_items::{VerusItem, VerusItems, DummyCaptureItem};
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -70,6 +70,7 @@ pub struct ErasureHints {
     pub external_functions: Vec<Fun>,
     /// List of function spans ignored by the verifier. These should not be erased
     pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) closures: Vec<(HirId, ClosureErasure)>
 }
 
 fn mode_to_var_erase(mode: Mode) -> VarErasure {
@@ -183,9 +184,16 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         calls.insert(*hir_id, resolved_call_to_call_erase(&functions, resolved_call));
     }
 
+    let mut closures = HashMap::<HirId, ClosureErasure>::new();
+    for (hir_id, c) in &erasure_hints.closures {
+        closures.insert(*hir_id, *c);
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
+        closures,
+
         erased_ghost_value_fn_def_id: *verus_items.name_to_id.get(&VerusItem::ErasedGhostValue).unwrap(),
         dummy_capture_struct_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::Struct)).unwrap(),
         dummy_capture_cons_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::Cons)).unwrap(),

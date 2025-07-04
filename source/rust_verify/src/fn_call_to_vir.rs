@@ -39,6 +39,7 @@ use vir::ast_util::{
     undecorate_typ, unit_typ, unpack_tuple,
 };
 use vir::def::field_ident_from_rust;
+use rustc_mir_build_verus::verus::ClosureErasure;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -764,6 +765,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 if let ExprKind::Closure(..) = &args[0].kind {
                     let is_spec_fn = matches!(expr_item, ExprItem::ClosureToFnSpec);
+
+                    bctx.ctxt.push_closure_erasure(args[0].hir_id,
+                        if is_spec_fn { ClosureErasure::EraseBody } else { ClosureErasure::Keep });
+
                     let proof_fn_modes = if matches!(expr_item, ExprItem::ClosureToFnProof) {
                         let ty = bctx.types.node_type(expr.hir_id);
                         if let Some((arg_modes, ret_mode)) =
@@ -1647,6 +1652,8 @@ fn extract_ensures<'tcx>(
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_closure_erasure(expr.hir_id, ClosureErasure::EraseBody);
+
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
@@ -1681,6 +1688,8 @@ fn extract_quant<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_closure_erasure(expr.hir_id, ClosureErasure::EraseBody);
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
@@ -1738,6 +1747,8 @@ fn extract_assert_forall_by<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_closure_erasure(expr.hir_id, ClosureErasure::EraseBody);
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
@@ -1792,6 +1803,8 @@ fn extract_choose<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_closure_erasure(expr.hir_id, ClosureErasure::EraseBody);
+
             let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();

@@ -339,7 +339,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 let call_erasure = crate::verus::handle_call(self, expr);
 
                 let kind = if call_erasure == crate::verus::CallErasure::EraseAll {
-                    crate::verus::erased_value(self, expr)
+                    crate::verus::erased_expr_kind_from_hir_expr(self, expr)
                 } else {
                     // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
                     let expr = self.method_callee(expr, segment.ident.span, None);
@@ -372,7 +372,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 //    top-level kind and just return an erased_value
 
                 let kind = if call_erasure == crate::verus::CallErasure::EraseAll {
-                    crate::verus::erased_value(self, expr)
+                    crate::verus::erased_expr_kind_from_hir_expr(self, expr)
                 } else if self.typeck_results.is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
                     // Find the actual method implementation being called and

@@ -192,7 +192,7 @@ pub fn enable_default_features_and_verus_attr(
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
-        for allow in &["unused_parens", "unused_braces"] {
+        for allow in &["unused_parens", "unused_braces", "unconditional_panic"] {
             rustc_args.push("-A".to_string());
             rustc_args.push(allow.to_string());
         }

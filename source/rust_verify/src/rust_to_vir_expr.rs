@@ -2,6 +2,7 @@ use crate::attributes::{
     Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt, get_trigger,
     get_var_mode, parse_attrs, parse_attrs_opt,
 };
+use rustc_mir_build_verus::verus::ClosureErasure;
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
@@ -2833,6 +2834,8 @@ pub(crate) fn closure_to_vir<'tcx>(
         assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
+            bctx.ctxt.push_closure_erasure(closure_expr.hir_id, ClosureErasure::EraseBody);
+
             if require.len() > 0 || ensure.0.len() > 0 {
                 return err_span(
                     closure_expr.span,
@@ -2841,6 +2844,8 @@ pub(crate) fn closure_to_vir<'tcx>(
             }
             ExprX::Closure(Arc::new(params), body)
         } else {
+            bctx.ctxt.push_closure_erasure(closure_expr.hir_id, ClosureErasure::Keep);
+
             let ret_typ = closure_ret_typ(bctx, closure_expr)?;
 
             let id = match ensure_id_typ {

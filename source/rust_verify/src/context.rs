@@ -1,9 +1,10 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
+use rustc_mir_build_verus::verus::ClosureErasure;
 use rustc_hir::Attribute;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
-use rustc_span::def_id::DefId;
+use rustc_span::def_id::{DefId};
 use std::sync::Arc;
 use vir::ast::{Expr, Ident, Mode, Pattern};
 use vir::messages::AstId;
@@ -16,6 +17,7 @@ pub struct ErasureInfo {
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) closures: Vec<(HirId, ClosureErasure)>
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -75,5 +77,10 @@ impl<'tcx> ContextX<'tcx> {
         attrs: &[Attribute],
     ) -> Result<crate::attributes::ExternalAttrs, vir::ast::VirErr> {
         crate::attributes::get_external_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
+    }
+
+    pub(crate) fn push_closure_erasure(&self, hir_id: HirId, c: ClosureErasure) {
+        let mut r = self.erasure_info.borrow_mut();
+        r.closures.push((hir_id, c));
     }
 }

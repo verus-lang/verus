@@ -77,7 +77,6 @@ pub fn compute_captures_accounting_for_ghost<'tcx>(
     closure_expr: &'tcx hir::Expr<'tcx>,
     closure_def_id: LocalDefId,
     typeck_results: &'tcx TypeckResults<'tcx>,
-    erase_var_fn: fn(HirId) -> bool,
 ) -> CaptureResults<'tcx> {
     let hir::ExprKind::Closure(hir::Closure { body: body_id, capture_clause, .. }) = &closure_expr.kind else {
         panic!("compute_captures_accounting_for_ghost expected Closure");
@@ -94,7 +93,6 @@ pub fn compute_captures_accounting_for_ghost<'tcx>(
         closure_def_id,
         typeck_results,
         fresh_typeck_results: &cell,
-        erase_var_fn,
     };
 
     let upvar_tys = fn_ctxt.analyze_closure(closure_expr.hir_id, closure_expr.span, *body_id, body, *capture_clause);
@@ -119,8 +117,6 @@ pub struct FnCtxt<'a, 'tcx> {
 
     pub(crate) typeck_results: &'tcx TypeckResults<'tcx>,
     pub(crate) fresh_typeck_results: &'a RefCell<UpvarResults<'tcx>>,
-
-    pub(crate) erase_var_fn: fn(HirId) -> bool,
 }
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
@@ -135,7 +131,6 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             closure_def_id: body_id,
             typeck_results: self.typeck_results,
             fresh_typeck_results: self.fresh_typeck_results,
-            erase_var_fn: self.erase_var_fn,
         }
     }
 

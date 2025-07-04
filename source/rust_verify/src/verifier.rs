@@ -2683,6 +2683,7 @@ impl Verifier {
             direct_var_modes: vec![],
             external_functions: vec![],
             ignored_functions: vec![],
+            closures: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let import_len = self.args.import.len();
@@ -2828,6 +2829,7 @@ impl Verifier {
         let direct_var_modes = erasure_info.direct_var_modes.clone();
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
+        let closures = erasure_info.closures.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
             hir_vir_ids,
@@ -2838,6 +2840,7 @@ impl Verifier {
             direct_var_modes,
             external_functions,
             ignored_functions,
+            closures,
         };
         self.erasure_hints = Some(erasure_hints);
 

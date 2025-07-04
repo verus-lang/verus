@@ -9,10 +9,10 @@ use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use std::sync::{RwLock, Arc};
-use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace, Region, RegionKind, Mutability};
+use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace, Region, RegionKind, Mutability, TyCtxt};
 use rustc_span::Span;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VarErasure {
     Erase,
     Keep,
@@ -25,11 +25,19 @@ pub enum CallErasure {
     EraseCallButNotArgs,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ClosureErasure {
+    EraseBody,
+    Keep,
+}
+
 #[derive(Debug)]
 pub struct VerusErasureCtxt {
     // For a given var (decl or use), should we erase it?
     pub vars: HashMap<HirId, VarErasure>,
     pub calls: HashMap<HirId, CallErasure>,
+    pub closures: HashMap<HirId, ClosureErasure>,
+
     pub erased_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub dummy_capture_cons_fn_def_id: DefId,
@@ -253,12 +261,26 @@ fn dummy_capture_cons<'tcx>(
     }
 }
 
-pub(crate) fn erased_value<'tcx>(
+pub(crate) fn erased_expr_id_from_hir_expr<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> ExprId {
+    let kind = erased_expr_kind_from_hir_expr(cx, expr);
+    let ty = cx.typeck_results.expr_ty(expr);
+
+    let (temp_lifetime, backwards_incompatible) = cx
+        .rvalue_scopes
+        .temporary_scope(cx.region_scope_tree, expr.hir_id.local_id);
+    let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: expr.span, kind };
+    cx.thir.exprs.push(e)
+}
+
+pub(crate) fn erased_expr_kind_from_hir_expr<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> ExprKind<'tcx> {
     if is_for_const_eval(cx) {
-        panic!("erased_value called for const value");
+        panic!("erased_expr_id_from_expr called for const value");
     }
     let erasure_ctxt = get_verus_erasure_ctxt();
 
@@ -386,10 +408,11 @@ pub(crate) fn get_closure_captures_accounting_for_ghost<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     closure_expr: &'tcx hir::Expr<'tcx>,
     closure_def_id: LocalDefId,
-) ->
-(&'tcx rustc_middle::ty::List<&'tcx CapturedPlace<'tcx>>,
-Vec<Ty<'tcx>>,
-Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, HirId)>)
+) -> (
+        &'tcx rustc_middle::ty::List<&'tcx CapturedPlace<'tcx>>,
+        Vec<Ty<'tcx>>,
+        Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, HirId)>
+     )
 {
     let tcx = cx.tcx;
     let capture_results = crate::upvar::compute_captures_accounting_for_ghost(
@@ -398,13 +421,9 @@ Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, Hi
         closure_expr,
         closure_def_id,
         cx.typeck_results,
-        skip_var_for_closure_capturing,
     );
 
     let closure_min_captures = capture_results.closure_min_captures;
-
-    //let closure_min_captures = Box::leak(Box::new(closure_min_captures));
-
     let closure_min_captures = Box::leak(Box::new(closure_min_captures));
     let closure_min_captures = closure_min_captures.values().flat_map(|v| v.iter());
 
@@ -413,7 +432,22 @@ Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, Hi
     (captures, capture_results.upvar_tys, capture_results.fake_reads)
 }
 
-fn skip_var_for_closure_capturing<'tcx>(
+pub(crate) fn erase_closure_body_local_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    local_def_id: LocalDefId,
+) -> bool {
+    let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
+    erase_closure_body(hir_id)
+}
+
+pub(crate) fn erase_closure_body<'tcx>(
+    hir_id: HirId
+) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    matches!(erasure_ctxt.closures.get(&hir_id), Some(ClosureErasure::EraseBody))
+}
+
+pub(crate) fn erase_var<'tcx>(
     hir_id: HirId
 ) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();

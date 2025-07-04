@@ -164,8 +164,6 @@ pub trait TypeInformationCtxt<'tcx> {
 
     fn recursive_analyze_closure(&self, expr: &Expr, closure: &rustc_hir::Closure);
 
-    fn erase_var(&self, hir_id: HirId) -> bool;
-
     fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T;
 
     fn structurally_resolve_type(&self, span: Span, ty: Ty<'tcx>) -> Ty<'tcx>;
@@ -215,10 +213,6 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
             body,
             closure.capture_clause
         );
-    }
-
-    fn erase_var(&self, hir_id: HirId) -> bool {
-        (self.erase_var_fn)(hir_id)
     }
 
     fn structurally_resolve_type(&self, _span: Span, ty: Ty<'tcx>) -> Ty<'tcx> {
@@ -551,8 +545,10 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Closure(closure) => {
-                self.cx.recursive_analyze_closure(expr, closure);
-                self.walk_captures(closure)?;
+                if !crate::verus::erase_closure_body(expr.hir_id) {
+                    self.cx.recursive_analyze_closure(expr, closure);
+                    self.walk_captures(closure)?;
+                }
             }
 
             hir::ExprKind::Yield(value, _) => {
@@ -1443,7 +1439,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
-                    if self.cx.erase_var(hir_id) {
+                    if crate::verus::erase_var(hir_id) {
                         return Ok(PlaceWithHirId::new(hir_id, expr_ty, PlaceBase::Rvalue, Vec::new()));
                     }
                     self.cat_upvar(hir_id, var_id)

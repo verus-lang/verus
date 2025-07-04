@@ -27,7 +27,11 @@ pub(crate) fn thir_body(
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
-    let expr = cx.mirror_expr(body.value);
+    let expr = if crate::verus::erase_closure_body_local_def_id(tcx, owner_def) {
+        crate::verus::erased_expr_id_from_hir_expr(&mut cx, body.value)
+    } else {
+        cx.mirror_expr(body.value)
+    };
 
     let owner_id = tcx.local_def_id_to_hir_id(owner_def);
     if let Some(fn_decl) = tcx.hir_fn_decl_by_hir_id(owner_id) {
