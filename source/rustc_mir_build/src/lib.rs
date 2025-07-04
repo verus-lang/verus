@@ -49,9 +49,6 @@ pub mod expr_use_visitor;
 #[path = "../../rustc_mir_build_additional_files/upvar.rs"]
 pub mod upvar;
 
-#[path = "../../rustc_mir_build_additional_files/upvar2.rs"]
-pub mod upvar2;
-
 use rustc_middle::util::Providers;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }

@@ -1694,7 +1694,6 @@ name = "rustc_hir_typeck_verus"
 version = "0.0.0"
 dependencies = [
  "itertools 0.12.1",
- "smallvec",
  "tracing",
 ]
 
