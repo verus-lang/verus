@@ -752,7 +752,7 @@ test_verify_one_file! {
                   proof { use_type_invariant(&x); }
                  0 });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file! {
@@ -868,12 +868,12 @@ test_verify_one_file! {
             // two-phase borrows. Either way, it needs to be an error.
 
             x.i.set_to(
-                x.j.set_to(3, 2)
+                x.j.set_to(3, 2) // FAILS
                 , {
                   proof { use_type_invariant(&x); }
                  0 });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
 
 test_verify_one_file! {
@@ -1724,7 +1724,7 @@ test_verify_one_file! {
             // This specific case would actually be ok to allow
             proof { use_type_invariant(&x); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "borrow of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "borrow of moved value: `x`")
 }
 
 test_verify_one_file! {
@@ -1745,7 +1745,7 @@ test_verify_one_file! {
             let x: X;
             proof { use_type_invariant(&x); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `x` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `x` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -1766,7 +1766,7 @@ test_verify_one_file! {
             let tracked x: X;
             use_type_invariant(&x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `x` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `x` isn't initialized")
 }
 
 test_verify_one_file! {
