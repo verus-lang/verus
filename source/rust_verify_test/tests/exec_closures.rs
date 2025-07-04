@@ -1426,7 +1426,7 @@ test_verify_one_file! {
 
             proof { consume_x(x); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file! {
