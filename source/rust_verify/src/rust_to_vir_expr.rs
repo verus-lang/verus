@@ -2768,7 +2768,7 @@ pub(crate) fn stmts_to_vir<'tcx>(
     }
 }
 
-fn is_ignorable_dummy_capture_operation<'tcx>(
+pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>
 ) -> bool {

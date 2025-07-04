@@ -21,7 +21,7 @@ use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
-use rustc_hir::{Expr, ExprKind, Node, QPath};
+use rustc_hir::{Expr, ExprKind, Node, QPath, StmtKind, Block, BlockCheckMode};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -755,6 +755,13 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
+                if !bctx.in_ghost {
+                    if matches!(expr_item, ExprItem::ClosureToFnSpec) {
+                        return err_span(args[0].span, "cannot use spec_fn closure in 'exec' mode")
+                    } else {
+                        return err_span(args[0].span, "cannot use proof_fn closure in 'exec' mode")
+                    }
+                }
                 if let ExprKind::Closure(..) = &args[0].kind {
                     let is_spec_fn = matches!(expr_item, ExprItem::ClosureToFnSpec);
                     let proof_fn_modes = if matches!(expr_item, ExprItem::ClosureToFnProof) {
@@ -1851,7 +1858,7 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
                     rustc_hir::def::Res::Def(_, def_id) => {
                         let verus_item = bctx.ctxt.verus_items.id_to_name.get(&def_id);
                         if verus_item == Some(&VerusItem::Expr(ExprItem::ClosureToFnSpec)) {
-                            return &args_slice[0];
+                            return skip_closure_coercion(bctx, &args_slice[0]);
                         }
                     }
                     _ => {}
@@ -1859,6 +1866,18 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
             }
             _ => {}
         },
+        ExprKind::Block(Block { stmts, expr: Some(e), hir_id: _, rules: BlockCheckMode::DefaultBlock, span: _, targeted_by_break: false }, None) => {
+            if stmts.len() == 1 {
+                match &stmts[0].kind {
+                    StmtKind::Let(rustc_hir::LetStmt { init: Some(init), .. }) => {
+                        if crate::rust_to_vir_expr::is_ignorable_dummy_capture_operation(bctx, init) {
+                            return skip_closure_coercion(bctx, e);
+                        }
+                    }
+                    _ => { }
+                }
+            }
+        }
         _ => {}
     }
 
