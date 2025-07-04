@@ -124,7 +124,6 @@ pub(crate) fn fix_upvars<'tcx>(
         let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: closure_expr.span, kind };
         cx.thir.exprs.push(e)
     };
-    //let mut new_dc_expr = upvars[upvar_dc_idx];
 
     for (i, upvar) in upvars.iter().enumerate() {
         if i != upvar_dc_idx {
@@ -157,24 +156,6 @@ pub(crate) fn fix_upvars<'tcx>(
             res.push(cx.thir.exprs.push(e));
         }
     }
-
-    /*for ty in tys.iter() {
-        let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, *ty);
-
-        let (temp_lifetime, backwards_incompatible) = cx
-            .rvalue_scopes
-            .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
-        let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty: *ty, span: closure_expr.span, kind };
-
-        res.push(cx.thir.exprs.push(e));
-    }*/
-
-    /*for (i, e) in cx.thir.exprs.iter().enumerate() {
-        dbg!((i, e));
-    }
-    dbg!(upvars);
-    dbg!(tys);
-    dbg!(&res);*/
 
     res
 }
@@ -224,34 +205,6 @@ fn get_ty_dummy_capture_idx<'tcx>(
     }
     panic!("MISSING DummyCapture (ty)");
 }
-
-/*
-pub(crate) fn fix_upvars<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    closure_expr: &'tcx hir::Expr<'tcx>,
-    upvars: &[ExprId],
-) -> Box<[ExprId]> {
-    let erasure_ctxt = get_verus_erasure_ctxt();
-
-    let mut res = vec![];
-
-    dbg!(upvars);
-
-    for id in upvars.iter() {
-        let ty = cx.thir.exprs[*id].ty;
-        let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, ty);
-
-        let (temp_lifetime, backwards_incompatible) = cx
-            .rvalue_scopes
-            .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
-        let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: closure_expr.span, kind };
-
-        res.push(cx.thir.exprs.push(e));
-    }
-
-    res.into_boxed_slice()
-}
-*/
 
 fn dummy_capture_cons<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -428,90 +381,6 @@ fn erased_ghost_value<'tcx>(
         fn_span: span,
     }
 }
-
-/*
-pub(crate) fn should_keep_upvar<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    closure_def_id: LocalDefId,
-    captured_place: &'tcx CapturedPlace<'tcx>,
-    upvar_ty: &Ty<'tcx>,
-) -> bool {
-    let (closure_body, _expr_id) = cx.tcx.thir_body(closure_def_id).unwrap();
-    let closure_body_thir = closure_body.borrow();
-    //dbg!(&closure_body_thir);
-    /*
-    for expr in closure_body_thir.exprs.iter() {
-        if expr_matches_place(&expr, &captured_place.place) {
-            return true;
-        }
-    }*/
-
-    //false
-    true
-}
-*/
-
-/*
-fn expr_matches_place(thir_body: &Thir, expr: &Expr, place: &Place) -> bool {
-    let mut i = place.projections.len();
-    let mut expr = expr;
-    while i > 0 {
-        if let Some(expr_id) = expr_matches_projection(expr, &place.projections[i-1]) {
-            expr = &thir_body.exprs[expr_id];
-            i -= 1;
-        } else {
-            return false;
-        }
-    }
-    expr_matches_place_base(expr, &place.base)
-}
-fn expr_matches_projection(expr: &Expr, projection: &Projection) {
-    match &projection.kind {
-        ProjectionKind::Field(field_idx, variant_idx) => {
-            
-        }
-        _ => {
-            panic!("unexpected ProjectionKind");
-        }
-    }
-}
-*/
-
-/*
-pub(crate) fn fix_closure<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    closure_expr: ClosureExpr<'tcx>
-) -> ClosureExpr<'tcx> {
-    //dbg!(&cx.thir);
-    //dbg!(&closure_expr);
-    let ClosureExpr { closure_id, args, upvars, movability, fake_reads } = closure_expr;
-
-    let def_id = closure_expr.closure_id;
-    /*for (hir_id, cl) in self.typeck_results.closure_min_captures[&def_id].iter() {
-        dbg!(&hir_id);
-        dbg!(&cl);
-    }
-    for cf in self.typeck_results.closure_min_captures_flattened(def_id) {
-        dbg!(&cf);
-    }
-    */
-    //dbg!(&cx.thir.exprs);
-    //dbg!(&upvars);
-    //dbg!(&fake_reads);
-
-    //let (closure_body, _expr_id) = cx.tcx.thir_body(closure_id).unwrap();
-    //let closure_body = closure_body.borrow();
-    //dbg!(closure_body);
-
-    /*
-    for e in closure_body.iter() {
-        
-    }
-    let filtered_upvars = upvars.iter().filter(|upv| is_upvar_actually_used(upv, closure_body)*/
-
-    ClosureExpr { closure_id, args, upvars, movability, fake_reads }
-}
-*/
 
 pub(crate) fn get_closure_captures_accounting_for_ghost<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
