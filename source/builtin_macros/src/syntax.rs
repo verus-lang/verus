@@ -3006,6 +3006,9 @@ impl Visitor {
             let mut stmts: Vec<Stmt> = Vec::new();
             // TODO: wrap specs inside ghost blocks
             self.inside_ghost += 1;
+            stmts.push(stmt_with_semi!(builtin, clos.span() =>
+                #builtin::dummy_capture_consume(_verus_internal_dummy_capture)
+            ));
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3054,7 +3057,16 @@ impl Visitor {
                 if let Expr::Block(block) = &mut *clos.body {
                     block.block.stmts.splice(0..0, stmts);
                 } else {
-                    panic!("parser requires Expr::Block for requires/ensures")
+                    let body = take_expr(&mut *clos.body);
+                    stmts.push(Stmt::Expr(body, None));
+                    *clos.body = Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block {
+                            brace_token: Brace(clos.span()),
+                            stmts,
+                        },
+                    })
                 }
             }
             let span = clos.span();
@@ -3079,7 +3091,9 @@ impl Visitor {
                     ));
                 }
             }
-            *expr = new_expr;
+            *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
+                { let _verus_internal_dummy_capture = #builtin::dummy_capture_new(); #new_expr }
+            ))
         }
 
         true

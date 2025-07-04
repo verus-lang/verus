@@ -2690,6 +2690,10 @@ pub(crate) fn stmt_to_vir<'tcx>(
 
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
+            if is_ignorable_dummy_capture_operation(bctx, expr) {
+                return Ok(vec![]);
+            }
+
             let vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
@@ -2734,6 +2738,12 @@ pub(crate) fn stmt_to_vir<'tcx>(
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
+            if let Some(init) = init {
+                if is_ignorable_dummy_capture_operation(bctx, init) {
+                    return Ok(vec![]);
+                }
+            }
+
             let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
     }
@@ -2755,6 +2765,27 @@ pub(crate) fn stmts_to_vir<'tcx>(
         Ok(Some(stmt_to_vir(bctx, stmt)?))
     } else {
         Ok(None)
+    }
+}
+
+fn is_ignorable_dummy_capture_operation<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>
+) -> bool {
+    match &expr.kind {
+        ExprKind::Call(fun, _) => {
+            match &fun.kind {
+                ExprKind::Path(QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: Res::Def(_, fun_id), .. },
+                )) => {
+                    let verus_item = bctx.ctxt.get_verus_item(*fun_id);
+                    matches!(verus_item, Some(VerusItem::DummyCaptureNew | VerusItem::DummyCaptureConsume))
+                }
+                _ => false,
+            }
+        }
+        _ => false,
     }
 }
 

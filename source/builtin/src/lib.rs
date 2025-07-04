@@ -1798,6 +1798,16 @@ pub struct DummyCapture<'a> {
     _ph: core::marker::PhantomData<&'a ()>,
 }
 
+#[rustc_diagnostic_item = "verus::builtin::dummy_capture_new"]
+pub fn dummy_capture_new<'a>() -> DummyCapture<'a> {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "verus::builtin::dummy_capture_consume"]
+pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
+    unimplemented!()
+}
+
 #[rustc_diagnostic_item = "verus::builtin::dummy_capture_cons"]
 pub fn dummy_capture_cons<'a, T: 'a>(_d: DummyCapture<'a>, _t: T) -> DummyCapture<'a> {
     unimplemented!()

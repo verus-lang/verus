@@ -1586,7 +1586,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
-        VerusItem::ErasedGhostValue | VerusItem::DummyCapture | VerusItem::DummyCaptureCons => {
+        VerusItem::ErasedGhostValue | VerusItem::DummyCapture | VerusItem::DummyCaptureCons | VerusItem::DummyCaptureNew | VerusItem::DummyCaptureConsume => {
             return err_span(
                 expr.span,
                 format!(
