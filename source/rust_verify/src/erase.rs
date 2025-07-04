@@ -7,7 +7,7 @@ use vir::ast::{AutospecUsage, Fun, Krate, Mode, Path, Pattern, Function};
 use vir::modes::ErasureModes;
 
 use rustc_mir_build_verus::verus::{VerusErasureCtxt, set_verus_erasure_ctxt, VarErasure, CallErasure};
-use crate::verus_items::{VerusItem, VerusItems};
+use crate::verus_items::{VerusItem, VerusItems, DummyCaptureItem};
 use std::sync::Arc;
 use std::collections::HashMap;
 
@@ -187,10 +187,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         vars,
         calls,
         erased_ghost_value_fn_def_id: *verus_items.name_to_id.get(&VerusItem::ErasedGhostValue).unwrap(),
-        dummy_capture_struct_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture).unwrap(),
-        dummy_capture_cons_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCaptureCons).unwrap(),
-        dummy_capture_cons_ref_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCaptureConsRef).unwrap(),
-        dummy_capture_cons_mut_ref_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCaptureConsMutRef).unwrap(),
+        dummy_capture_struct_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::Struct)).unwrap(),
+        dummy_capture_cons_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::Cons)).unwrap(),
+        dummy_capture_cons_ref_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::ConsRef)).unwrap(),
+        dummy_capture_cons_mut_ref_fn_def_id: *verus_items.name_to_id.get(&VerusItem::DummyCapture(DummyCaptureItem::ConsMutRef)).unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 }

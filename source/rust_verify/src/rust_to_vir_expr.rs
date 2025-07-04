@@ -16,7 +16,7 @@ use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
-    UnaryOpItem, VerusItem, VstdItem,
+    UnaryOpItem, VerusItem, VstdItem, DummyCaptureItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -2780,7 +2780,7 @@ pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
                     rustc_hir::Path { res: Res::Def(_, fun_id), .. },
                 )) => {
                     let verus_item = bctx.ctxt.get_verus_item(*fun_id);
-                    matches!(verus_item, Some(VerusItem::DummyCaptureNew | VerusItem::DummyCaptureConsume))
+                    matches!(verus_item, Some(VerusItem::DummyCapture(DummyCaptureItem::New | DummyCaptureItem::Consume)))
                 }
                 _ => false,
             }

@@ -374,12 +374,17 @@ pub(crate) enum VerusItem {
     Global(GlobalItem),
     External(ExternalItem),
     ErasedGhostValue,
-    DummyCapture,
-    DummyCaptureCons,
-    DummyCaptureConsRef,
-    DummyCaptureConsMutRef,
-    DummyCaptureNew,
-    DummyCaptureConsume,
+    DummyCapture(DummyCaptureItem),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum DummyCaptureItem {
+    Struct,
+    Cons,
+    ConsRef,
+    ConsMutRef,
+    New,
+    Consume,
 }
 
 #[rustfmt::skip]
@@ -506,12 +511,12 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
 
         ("verus::builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
-        ("verus::builtin::DummyCapture",            VerusItem::DummyCapture),
-        ("verus::builtin::dummy_capture_cons",      VerusItem::DummyCaptureCons),
-        ("verus::builtin::dummy_capture_cons_ref",  VerusItem::DummyCaptureConsRef),
-        ("verus::builtin::dummy_capture_cons_mut_ref",      VerusItem::DummyCaptureConsMutRef),
-        ("verus::builtin::dummy_capture_new",       VerusItem::DummyCaptureNew),
-        ("verus::builtin::dummy_capture_consume",   VerusItem::DummyCaptureConsume),
+        ("verus::builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
+        ("verus::builtin::dummy_capture_cons",      VerusItem::DummyCapture(DummyCaptureItem::Cons)),
+        ("verus::builtin::dummy_capture_cons_ref",  VerusItem::DummyCapture(DummyCaptureItem::ConsRef)),
+        ("verus::builtin::dummy_capture_cons_mut_ref",      VerusItem::DummyCapture(DummyCaptureItem::ConsMutRef)),
+        ("verus::builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
+        ("verus::builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),
 
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),

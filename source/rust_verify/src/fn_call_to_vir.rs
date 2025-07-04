@@ -1593,11 +1593,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
-        VerusItem::ErasedGhostValue | VerusItem::DummyCapture | VerusItem::DummyCaptureCons | VerusItem::DummyCaptureConsRef | VerusItem::DummyCaptureConsMutRef | VerusItem::DummyCaptureNew | VerusItem::DummyCaptureConsume => {
+        VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {
             return err_span(
                 expr.span,
                 format!(
-                    "this builtin function should not appear in user code"
+                    "this builtin item should not appear in user code",
                 ),
             );
         }
