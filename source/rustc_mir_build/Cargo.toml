@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 # tidy-alphabetical-start
 itertools = "0.12"
+rustc_hir_typeck_verus = { path = "../rustc_hir_typeck" }
 
 tracing = "0.1"
 # tidy-alphabetical-end

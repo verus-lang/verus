@@ -1690,10 +1690,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustc_hir_typeck_verus"
+version = "0.0.0"
+dependencies = [
+ "itertools 0.12.1",
+ "smallvec",
+ "tracing",
+]
+
+[[package]]
 name = "rustc_mir_build_verus"
 version = "0.0.0"
 dependencies = [
  "itertools 0.12.1",
+ "rustc_hir_typeck_verus",
  "tracing",
 ]
 
