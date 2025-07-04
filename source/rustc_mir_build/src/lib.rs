@@ -43,10 +43,10 @@ pub mod thir;
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]
 pub mod verus;
 
-#[path = "../../rustc_mir_build_additional_files/expr_use_visitor.rs"]
+#[path = "../../rustc_hir_typeck/src/expr_use_visitor.rs"]
 pub mod expr_use_visitor;
 
-#[path = "../../rustc_mir_build_additional_files/upvar.rs"]
+#[path = "../../rustc_hir_typeck/src/upvar.rs"]
 pub mod upvar;
 
 use rustc_middle::util::Providers;

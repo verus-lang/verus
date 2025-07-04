@@ -491,12 +491,13 @@ Vec<Ty<'tcx>>,
 Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, HirId)>)
 {
     let tcx = cx.tcx;
-    let capture_results = rustc_hir_typeck_verus::upvar::compute_captures_accounting_for_ghost(
+    let capture_results = crate::upvar::compute_captures_accounting_for_ghost(
         tcx,
         cx.typing_env.param_env,
         closure_expr,
         closure_def_id,
         cx.typeck_results,
+        skip_var_for_closure_capturing,
     );
 
     let closure_min_captures = capture_results.closure_min_captures;
@@ -511,7 +512,7 @@ Vec<(rustc_middle::hir::place::Place<'tcx>, rustc_middle::mir::FakeReadCause, Hi
     (captures, capture_results.upvar_tys, capture_results.fake_reads)
 }
 
-pub(crate) fn skip_var_for_closure_capturing<'tcx>(
+fn skip_var_for_closure_capturing<'tcx>(
     hir_id: HirId
 ) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();

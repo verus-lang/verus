@@ -30,6 +30,9 @@
 //! then mean that all later passes would have to check for these figments
 //! and report an error, and it just seems like more mess in the end.)
 
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
 use std::iter;
 
 use rustc_abi::FIRST_VARIANT;
@@ -74,6 +77,7 @@ pub fn compute_captures_accounting_for_ghost<'tcx>(
     closure_expr: &'tcx hir::Expr<'tcx>,
     closure_def_id: LocalDefId,
     typeck_results: &'tcx TypeckResults<'tcx>,
+    erase_var_fn: fn(HirId) -> bool,
 ) -> CaptureResults<'tcx> {
     let hir::ExprKind::Closure(hir::Closure { body: body_id, capture_clause, .. }) = &closure_expr.kind else {
         panic!("compute_captures_accounting_for_ghost expected Closure");
@@ -90,6 +94,7 @@ pub fn compute_captures_accounting_for_ghost<'tcx>(
         closure_def_id,
         typeck_results,
         fresh_typeck_results: &cell,
+        erase_var_fn,
     };
 
     let upvar_tys = fn_ctxt.analyze_closure(closure_expr.hir_id, closure_expr.span, *body_id, body, *capture_clause);
@@ -114,6 +119,8 @@ pub struct FnCtxt<'a, 'tcx> {
 
     pub(crate) typeck_results: &'tcx TypeckResults<'tcx>,
     pub(crate) fresh_typeck_results: &'a RefCell<UpvarResults<'tcx>>,
+
+    pub(crate) erase_var_fn: fn(HirId) -> bool,
 }
 
 impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
@@ -128,6 +135,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             closure_def_id: body_id,
             typeck_results: self.typeck_results,
             fresh_typeck_results: self.fresh_typeck_results,
+            erase_var_fn: self.erase_var_fn,
         }
     }
 
@@ -173,68 +181,6 @@ enum PlaceAncestryRelation {
 /// during capture analysis. Information in this map feeds into the minimum capture
 /// analysis pass.
 type InferredCaptureInformation<'tcx> = Vec<(Place<'tcx>, ty::CaptureInfo)>;
-
-impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
-    pub(crate) fn closure_analyze(&self, body: &'tcx hir::Body<'tcx>) {
-        InferBorrowKindVisitor { fcx: self }.visit_body(body);
-
-        // it's our job to process these.
-        //assert!(self.deferred_call_resolutions.borrow().is_empty());
-    }
-}
-
-/// Intermediate format to store the hir_id pointing to the use that resulted in the
-/// corresponding place being captured and a String which contains the captured value's
-/// name (i.e: a.b.c)
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum UpvarMigrationInfo {
-    /// We previously captured all of `x`, but now we capture some sub-path.
-    CapturingPrecise { source_expr: Option<HirId>, var_name: String },
-    CapturingNothing {
-        // where the variable appears in the closure (but is not captured)
-        use_span: Span,
-    },
-}
-
-/// Reasons that we might issue a migration warning.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct MigrationWarningReason {
-    /// When we used to capture `x` in its entirety, we implemented the auto-trait(s)
-    /// in this vec, but now we don't.
-    auto_traits: Vec<&'static str>,
-
-    /// When we used to capture `x` in its entirety, we would execute some destructors
-    /// at a different time.
-    drop_order: bool,
-}
-
-impl MigrationWarningReason {
-    fn migration_message(&self) -> String {
-        let base = "changes to closure capture in Rust 2021 will affect";
-        if !self.auto_traits.is_empty() && self.drop_order {
-            format!("{base} drop order and which traits the closure implements")
-        } else if self.drop_order {
-            format!("{base} drop order")
-        } else {
-            format!("{base} which traits the closure implements")
-        }
-    }
-}
-
-/// Intermediate format to store information needed to generate a note in the migration lint.
-struct MigrationLintNote {
-    captures_info: UpvarMigrationInfo,
-
-    /// reasons why migration is needed for this capture
-    reason: MigrationWarningReason,
-}
-
-/// Intermediate format to store the hir id of the root variable and a HashSet containing
-/// information on why the root variable should be fully captured
-struct NeededMigration {
-    var_hir_id: HirId,
-    diagnostics_info: Vec<MigrationLintNote>,
-}
 
 struct InferBorrowKindVisitor<'a, 'tcx> {
     fcx: &'a FnCtxt<'a, 'tcx>,
@@ -1446,33 +1392,6 @@ fn construct_capture_info_string<'tcx>(
 
 fn var_name(tcx: TyCtxt<'_>, var_hir_id: HirId) -> Symbol {
     tcx.hir_name(var_hir_id)
-}
-
-/// Return a two string tuple (s1, s2)
-/// - s1: Line of code that is needed for the migration: eg: `let _ = (&x, ...)`.
-/// - s2: Comma separated names of the variables being migrated.
-fn migration_suggestion_for_2229(
-    tcx: TyCtxt<'_>,
-    need_migrations: &[NeededMigration],
-) -> (String, String) {
-    let need_migrations_variables = need_migrations
-        .iter()
-        .map(|NeededMigration { var_hir_id: v, .. }| var_name(tcx, *v))
-        .collect::<Vec<_>>();
-
-    let migration_ref_concat =
-        need_migrations_variables.iter().map(|v| format!("&{v}")).collect::<Vec<_>>().join(", ");
-
-    let migration_string = if 1 == need_migrations.len() {
-        format!("let _ = {migration_ref_concat}")
-    } else {
-        format!("let _ = ({migration_ref_concat})")
-    };
-
-    let migrated_variables_concat =
-        need_migrations_variables.iter().map(|v| format!("`{v}`")).collect::<Vec<_>>().join(", ");
-
-    (migration_string, migrated_variables_concat)
 }
 
 /// Helper function to determine if we need to escalate CaptureKind from

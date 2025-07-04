@@ -5,6 +5,8 @@
 //! In the compiler, this is only used for upvar inference, but there
 //! are many uses within clippy.
 
+#![allow(unused_imports)]
+
 use std::cell::{Ref, RefCell};
 use std::ops::Deref;
 use std::slice::from_ref;
@@ -29,8 +31,6 @@ use rustc_middle::{bug, span_bug};
 use rustc_span::{ErrorGuaranteed, Span};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument, trace};
-
-use crate::fn_ctxt::FnCtxt;
 
 /// This trait defines the callbacks you can expect to receive when
 /// employing the ExprUseVisitor.
@@ -164,6 +164,8 @@ pub trait TypeInformationCtxt<'tcx> {
 
     fn recursive_analyze_closure(&self, expr: &Expr, closure: &rustc_hir::Closure);
 
+    fn erase_var(&self, hir_id: HirId) -> bool;
+
     fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T;
 
     fn structurally_resolve_type(&self, span: Span, ty: Ty<'tcx>) -> Ty<'tcx>;
@@ -213,6 +215,10 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
             body,
             closure.capture_clause
         );
+    }
+
+    fn erase_var(&self, hir_id: HirId) -> bool {
+        (self.erase_var_fn)(hir_id)
     }
 
     fn structurally_resolve_type(&self, _span: Span, ty: Ty<'tcx>) -> Ty<'tcx> {
@@ -1437,6 +1443,9 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
+                    if self.cx.erase_var(hir_id) {
+                        return Ok(PlaceWithHirId::new(hir_id, expr_ty, PlaceBase::Rvalue, Vec::new()));
+                    }
                     self.cat_upvar(hir_id, var_id)
                 } else {
                     Ok(PlaceWithHirId::new(hir_id, expr_ty, PlaceBase::Local(var_id), Vec::new()))
