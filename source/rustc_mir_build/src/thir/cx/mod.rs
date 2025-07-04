@@ -27,7 +27,7 @@ pub(crate) fn thir_body(
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
-    let expr = if crate::verus::erase_closure_body_local_def_id(tcx, owner_def) {
+    let expr = if crate::verus::erase_closure_body_local_def_id(&mut cx, owner_def) {
         crate::verus::erased_expr_id_from_hir_expr(&mut cx, body.value)
     } else {
         cx.mirror_expr(body.value)

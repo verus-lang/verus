@@ -433,21 +433,32 @@ pub(crate) fn get_closure_captures_accounting_for_ghost<'tcx>(
 }
 
 pub(crate) fn erase_closure_body_local_def_id<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    cx: &mut ThirBuildCx<'tcx>,
     local_def_id: LocalDefId,
 ) -> bool {
-    let hir_id = tcx.local_def_id_to_hir_id(local_def_id);
-    erase_closure_body(hir_id)
+    let hir_id = cx.tcx.local_def_id_to_hir_id(local_def_id);
+    erase_closure_body(cx, hir_id)
 }
 
 pub(crate) fn erase_closure_body<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    hir_id: HirId
+) -> bool {
+    if is_for_const_eval(cx) {
+        return false;
+    }
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    matches!(erasure_ctxt.closures.get(&hir_id), Some(ClosureErasure::EraseBody))
+}
+
+pub(crate) fn erase_closure_body_for_closure_captures<'tcx>(
     hir_id: HirId
 ) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
     matches!(erasure_ctxt.closures.get(&hir_id), Some(ClosureErasure::EraseBody))
 }
 
-pub(crate) fn erase_var<'tcx>(
+pub(crate) fn erase_var_for_closure_captures<'tcx>(
     hir_id: HirId
 ) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
