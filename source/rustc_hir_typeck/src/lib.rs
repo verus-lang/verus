@@ -1,4 +1,6 @@
 // tidy-alphabetical-start
+#![allow(unused_imports)]
+#![allow(dead_code)]
 #![allow(rustc::diagnostic_outside_of_impl)]
 #![allow(rustc::untranslatable_diagnostic)]
 #![feature(array_windows)]
@@ -58,7 +60,7 @@ mod pat;
 mod place_op;
 mod rvalue_scopes;
 mod typeck_root_ctxt;
-mod upvar;
+pub mod upvar;
 mod writeback;
 
 pub use coercion::can_coerce;
@@ -235,7 +237,7 @@ fn typeck_with_inspect<'tcx>(
 
     // Closure and coroutine analysis may run after fallback
     // because they don't constrain other type variables.
-    fcx.closure_analyze(body);
+    //fcx.closure_analyze(body);
     assert!(fcx.deferred_call_resolutions.borrow().is_empty());
     // Before the coroutine analysis, temporary scopes shall be marked to provide more
     // precise information on types to be captured.
