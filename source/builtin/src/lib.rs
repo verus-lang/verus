@@ -1794,6 +1794,7 @@ pub fn erased_ghost_value<T>() -> T {
 }
 
 #[rustc_diagnostic_item = "verus::builtin::DummyCapture"]
+#[derive(Clone, Copy)]
 pub struct DummyCapture<'a> {
     _ph: core::marker::PhantomData<&'a ()>,
 }
@@ -1810,5 +1811,15 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 
 #[rustc_diagnostic_item = "verus::builtin::dummy_capture_cons"]
 pub fn dummy_capture_cons<'a, T: 'a>(_d: DummyCapture<'a>, _t: T) -> DummyCapture<'a> {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "verus::builtin::dummy_capture_cons_ref"]
+pub fn dummy_capture_cons_ref<'a, T: 'a>(_d: &'a DummyCapture<'a>, _t: T) -> &'a DummyCapture<'a> {
+    unimplemented!()
+}
+
+#[rustc_diagnostic_item = "verus::builtin::dummy_capture_cons_mut_ref"]
+pub fn dummy_capture_cons_mut_ref<'a, T: 'a>(_d: &'a mut DummyCapture<'a>, _t: T) -> &'a mut DummyCapture<'a> {
     unimplemented!()
 }

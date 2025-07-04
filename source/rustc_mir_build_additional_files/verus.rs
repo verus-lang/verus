@@ -9,7 +9,7 @@ use hir::HirId;
 use crate::thir::cx::ThirBuildCx;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use std::sync::{RwLock, Arc};
-use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace, Region, RegionKind};
+use rustc_middle::ty::{Ty, TyKind, GenericArg, CapturedPlace, Region, RegionKind, Mutability};
 use rustc_span::Span;
 
 #[derive(Debug)]
@@ -33,6 +33,8 @@ pub struct VerusErasureCtxt {
     pub erased_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub dummy_capture_cons_fn_def_id: DefId,
+    pub dummy_capture_cons_ref_fn_def_id: DefId,
+    pub dummy_capture_cons_mut_ref_fn_def_id: DefId,
 }
 
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
@@ -111,7 +113,19 @@ pub(crate) fn fix_upvars<'tcx>(
     let upvar_dc_idx = get_upvar_dummy_capture_idx(cx, &erasure_ctxt, upvars);
     let ty_dc_idx = get_ty_dummy_capture_idx(&erasure_ctxt, tys);
 
-    let mut new_dc_expr = upvars[upvar_dc_idx];
+    assert!(cx.thir.exprs[upvars[upvar_dc_idx]].ty == tys[ty_dc_idx]);
+
+    let mut new_dc_expr = {
+        let ty = cx.thir.exprs[upvars[upvar_dc_idx]].ty;
+        let kind = erased_ghost_value(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, ty);
+        let (temp_lifetime, backwards_incompatible) = cx
+            .rvalue_scopes
+            .temporary_scope(cx.region_scope_tree, closure_expr.hir_id.local_id);
+        let e = Expr { temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible }, ty, span: closure_expr.span, kind };
+        cx.thir.exprs.push(e)
+    };
+    //let mut new_dc_expr = upvars[upvar_dc_idx];
+
     for (i, upvar) in upvars.iter().enumerate() {
         if i != upvar_dc_idx {
             let kind = dummy_capture_cons(cx, &erasure_ctxt, closure_expr.hir_id, closure_expr.span, new_dc_expr, *upvar);
@@ -165,19 +179,34 @@ pub(crate) fn fix_upvars<'tcx>(
     res
 }
 
+fn ty_is_dummy_capture_or_ref<'tcx>(
+    erasure_ctxt: &VerusErasureCtxt,
+    ty: Ty<'tcx>
+) -> bool {
+    let ty = match ty.kind() {
+        TyKind::Ref(_region, ty, _mutability) => *ty,
+        _ => ty,
+    };
+    match ty.kind() {
+        TyKind::Adt(adt_def, _) => {
+            if adt_def.did() == erasure_ctxt.dummy_capture_struct_def_id {
+                return true;
+            }
+        }
+        _ => { }
+    }
+    false
+}
+
 fn get_upvar_dummy_capture_idx<'tcx>(
     cx: &ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     upvars: &Vec<ExprId>,
 ) -> usize {
     for i in 0 .. upvars.len() {
-        match cx.thir.exprs[upvars[i]].ty.kind() {
-            TyKind::Adt(adt_def, _) => {
-                if adt_def.did() == erasure_ctxt.dummy_capture_struct_def_id {
-                    return i;
-                }
-            }
-            _ => { }
+        let ty = cx.thir.exprs[upvars[i]].ty;
+        if ty_is_dummy_capture_or_ref(erasure_ctxt, ty) {
+            return i;
         }
     }
     panic!("MISSING DummyCapture (upvar)");
@@ -188,13 +217,9 @@ fn get_ty_dummy_capture_idx<'tcx>(
     tys: &'tcx [Ty<'tcx>],
 ) -> usize {
     for i in 0 .. tys.len() {
-        match tys[i].kind() {
-            TyKind::Adt(adt_def, _) => {
-                if adt_def.did() == erasure_ctxt.dummy_capture_struct_def_id {
-                    return i;
-                }
-            }
-            _ => { }
+        let ty = tys[i];
+        if ty_is_dummy_capture_or_ref(erasure_ctxt, ty) {
+            return i;
         }
     }
     panic!("MISSING DummyCapture (ty)");
@@ -243,7 +268,14 @@ fn dummy_capture_cons<'tcx>(
     let ty_arg = GenericArg::from(ty);
 
     let args = cx.tcx.mk_args(&[lt_arg, ty_arg]);
-    let fn_def_id = erasure_ctxt.dummy_capture_cons_fn_def_id;
+    let fn_def_id = match cx.thir.exprs[dc_arg].ty.kind() {
+        TyKind::Ref(_region, _, mutability) => match mutability {
+            Mutability::Not => erasure_ctxt.dummy_capture_cons_ref_fn_def_id,
+            Mutability::Mut => erasure_ctxt.dummy_capture_cons_mut_ref_fn_def_id,
+        },
+        TyKind::Adt(..) => erasure_ctxt.dummy_capture_cons_fn_def_id,
+        _ => unreachable!()
+    };
     let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
     let fun_expr_kind = ExprKind::ZstLiteral {

@@ -188,7 +188,7 @@ pub type CargoVerusArgs = Arc<CargoVerusArgsX>;
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
     syntax_macro: bool,
-    erase_ghost: bool,
+    _erase_ghost: bool,
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
@@ -197,11 +197,9 @@ pub fn enable_default_features_and_verus_attr(
             rustc_args.push(allow.to_string());
         }
     }
-    if erase_ghost {
-        for allow in &["unused_imports", "unused_mut"] {
-            rustc_args.push("-A".to_string());
-            rustc_args.push(allow.to_string());
-        }
+    for allow in &["unused_imports", "unused_mut"] {
+        rustc_args.push("-A".to_string());
+        rustc_args.push(allow.to_string());
     }
     rustc_args.push("-Zcrate-attr=allow(internal_features)".to_string());
     for feature in &[

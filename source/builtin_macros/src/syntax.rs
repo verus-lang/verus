@@ -3006,9 +3006,11 @@ impl Visitor {
             let mut stmts: Vec<Stmt> = Vec::new();
             // TODO: wrap specs inside ghost blocks
             self.inside_ghost += 1;
-            stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                #builtin::dummy_capture_consume(_verus_internal_dummy_capture)
-            ));
+            if self.erase_ghost.keep() {
+                stmts.push(stmt_with_semi!(builtin, clos.span() =>
+                    #builtin::dummy_capture_consume(_verus_internal_dummy_capture)
+                ));
+            }
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3091,9 +3093,13 @@ impl Visitor {
                     ));
                 }
             }
-            *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                { let _verus_internal_dummy_capture = #builtin::dummy_capture_new(); #new_expr }
-            ))
+            *expr = if self.erase_ghost.keep() {
+                Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
+                    { let _verus_internal_dummy_capture = #builtin::dummy_capture_new(); #new_expr }
+                ))
+            } else {
+                new_expr
+            }
         }
 
         true

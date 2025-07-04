@@ -376,6 +376,8 @@ pub(crate) enum VerusItem {
     ErasedGhostValue,
     DummyCapture,
     DummyCaptureCons,
+    DummyCaptureConsRef,
+    DummyCaptureConsMutRef,
     DummyCaptureNew,
     DummyCaptureConsume,
 }
@@ -506,6 +508,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
         ("verus::builtin::DummyCapture",            VerusItem::DummyCapture),
         ("verus::builtin::dummy_capture_cons",      VerusItem::DummyCaptureCons),
+        ("verus::builtin::dummy_capture_cons_ref",  VerusItem::DummyCaptureConsRef),
+        ("verus::builtin::dummy_capture_cons_mut_ref",      VerusItem::DummyCaptureConsMutRef),
         ("verus::builtin::dummy_capture_new",       VerusItem::DummyCaptureNew),
         ("verus::builtin::dummy_capture_consume",   VerusItem::DummyCaptureConsume),
 
