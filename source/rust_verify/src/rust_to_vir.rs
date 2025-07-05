@@ -389,7 +389,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
-    let crate_items = crate::external::get_crate_items(ctxt)?;
+    let crate_items = crate::external::get_crate_items(ctxt, &mut external_info)?;
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {
@@ -452,6 +452,13 @@ pub fn crate_to_vir<'a, 'tcx>(
             }
         }
     }
+
+    crate::rust_to_vir_trait::make_external_trait_extension_impl_map(
+        ctxt,
+        &mut external_info,
+        imported,
+        &crate_items,
+    )?;
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {

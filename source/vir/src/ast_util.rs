@@ -35,6 +35,12 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
+    pub fn replace_last(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments[self.segments.len() - 1] = ident;
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
     pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
         let mut segments = (*self.segments).clone();
         segments.extend(idents);

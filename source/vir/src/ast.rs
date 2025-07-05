@@ -1274,6 +1274,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
+    // Some((TSpec, TSpecImpl))
+    pub external_trait_extension: Option<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }

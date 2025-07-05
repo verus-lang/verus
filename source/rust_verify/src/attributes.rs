@@ -299,6 +299,11 @@ pub(crate) enum Attr {
     // In order to apply a specification to a trait externally
     // (the string is the name of the associated type pointing to the specified trait)
     ExternalTraitSpecification(String),
+    // A trait or impl of a trait that extends an external_type_specification trait with ghost items
+    ExternalTraitExtension(String, String),
+    // Mark the blanket trait impl for the external_type_specification trait
+    // (needed so that trait_conflicts.rs knows to ignore it.)
+    ExternalTraitBlanket,
     // Any auto-derives for this type should be treated external
     ExternalAutoDerives(Option<std::collections::HashSet<String>>),
     // Marks a variable that's spec or ghost mode in exec code
@@ -602,6 +607,19 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::ExternalTraitSpecification(r.clone()))
                 }
+                AttrTree::Fun(
+                    _,
+                    arg,
+                    Some(
+                        box [
+                            AttrTree::Fun(_, s, None),
+                            AttrTree::Fun(_, via, None),
+                            AttrTree::Fun(_, i, None),
+                        ],
+                    ),
+                ) if arg == "external_trait_extension" && via == "via" => {
+                    v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
                     v.push(Attr::ProphecyDependent)
@@ -669,6 +687,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "external_trait_blanket" => {
+                        v.push(Attr::ExternalTraitBlanket)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "open" => {
                         v.push(Attr::Publish(AttrPublish::Open))
@@ -937,6 +958,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) external_trait_specification: bool,
+    pub(crate) external_trait_blanket: bool,
     pub(crate) sets_mode: bool,
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
@@ -984,6 +1006,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) external_trait_specification: Option<String>,
+    pub(crate) external_trait_extension: Option<(String, String)>,
+    pub(crate) external_trait_blanket: bool,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
@@ -1042,6 +1066,7 @@ pub(crate) fn is_sealed(
 }
 
 /// Get the attributes needed to determine if the item is external.
+/// or needed to determine properties of external items.
 pub(crate) fn get_external_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
@@ -1051,6 +1076,7 @@ pub(crate) fn get_external_attrs(
         external_fn_specification: false,
         external_type_specification: false,
         external_trait_specification: false,
+        external_trait_blanket: false,
         external: false,
         verify: false,
         sets_mode: false,
@@ -1075,6 +1101,7 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
+            Attr::ExternalTraitBlanket => es.external_trait_blanket = true,
             Attr::ExternalAutoDerives(None) => {
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
@@ -1146,6 +1173,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         external_fn_specification: false,
         external_type_specification: false,
         external_trait_specification: None,
+        external_trait_extension: None,
+        external_trait_blanket: false,
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
@@ -1176,6 +1205,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::ExternalTraitSpecification(assoc) => {
                 vs.external_trait_specification = Some(assoc.clone())
             }
+            Attr::ExternalTraitExtension(s, i) => vs.external_trait_extension = Some((s, i)),
+            Attr::ExternalTraitBlanket => vs.external_trait_blanket = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,

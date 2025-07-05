@@ -309,9 +309,6 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier::external_type_specification]
-        pub struct ExOrdering(core::cmp::Ordering);
-
-        #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
         pub struct ExPeekable<I: Iterator>(core::iter::Peekable<I>);
@@ -357,6 +354,173 @@ test_verify_one_file! {
             fn f() -> Self::X;
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                requires b, self.s(q, a, b, x)
+                ensures r > 7
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+
+        impl T<u8> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: u8, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                a == x
+            }
+        }
+
+        proof fn test(u: u32) {
+            assert(TSpec::s(&u, &u, 6, true, 6));
+            assert(TSpec::s(&u, &u, 6, true, 7)); // FAILS
+        }
+
+        fn test2(u: u32) {
+            u.f(&u, 6, true, 6);
+            u.f(&u, 6, true, 7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_vstd verus_code! {
+        use vstd::std_specs::core::PartialEqSpec;
+        broadcast proof fn axiom_spec_eq_u8(x: u8, y: u8)
+            ensures
+                #[trigger] x.spec_eq(&y) <==> x == y,
+        {
+            admit();
+        }
+        fn test(u: u8, v: u8) {
+            broadcast use axiom_spec_eq_u8;
+            assert(u.spec_eq(&u));
+            assert(u.spec_eq(&v)); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_cycle verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                requires b, self.s(q, a, b, x)
+                ensures r > 7
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+        impl T<u8> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: u8, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                !TSpec::<u8>::s(self, q, a, b, x)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_cycle2 verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                ensures self.s(q, a, b, x)
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+        impl T<u8> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: u8, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                !call_ensures(Self::f, (self, q, a, b, x), 10)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_mismatch verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                requires b, self.s(q, a, b, x)
+                ensures r > 7
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+        impl<A> T<A> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: A, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        impl TSpecImpl<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "TSpec must have a matching impl")
 }
 
 test_verify_one_file! {

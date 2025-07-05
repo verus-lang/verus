@@ -35,7 +35,7 @@ use syn_verus::{
     UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
-const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
 const VERUS_UNERASED_PROXY: &str = "VERUS_UNERASED_PROXY__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -1402,6 +1402,7 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         self.visit_items_make_unerased_proxies(items);
+        crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
         if self.erase_ghost.erase_all() {
             // Erase ghost functions and constants
