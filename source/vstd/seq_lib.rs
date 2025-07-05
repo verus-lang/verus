@@ -11,24 +11,22 @@ use super::relations::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::Set;
+use super::set::*;
 
 verus! {
 
-broadcast use group_seq_axioms;
+broadcast use {super::set::group_set_lemmas, group_seq_axioms};
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
-    // TODO(verus): rename to map_entries, for consistency with Map::map
     pub open spec fn map<B>(self, f: spec_fn(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
-    // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
     }
@@ -524,7 +522,21 @@ impl<A> Seq<A> {
 
     /// Converts a sequence into a set
     pub open spec fn to_set(self) -> Set<A> {
-        Set::new(|a: A| self.contains(a))
+        Set::int_range(0, self.len() as int).map(|i| self.index(i))
+    }
+
+    pub broadcast proof fn to_set_ensures(self)
+        ensures
+            #![trigger(self.to_set())]
+            // to_set works for all indices
+            forall|i|
+                0 <= i < self.len() ==> #[trigger] self.to_set().contains(self[i]),
+            // to_set finds everything .contains finds
+            forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
+    {
+        assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
+            assert(Set::int_range(0, self.len() as int).contains(i) && self[i] == self[i]);  // trigger
+        }
     }
 
     /// Converts a sequence into a multiset
@@ -976,7 +988,7 @@ impl<A> Seq<A> {
             self.len() == self.to_set().len(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms;
+        broadcast use super::set::group_set_lemmas;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -998,15 +1010,9 @@ impl<A> Seq<A> {
             self.to_set().len() <= self.len(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
-        broadcast use group_seq_properties;
-        broadcast use super::set_lib::group_set_properties;
+        // trivial from lemma_set_map_len
+        broadcast use {super::set::group_set_lemmas, seq_to_set_is_finite};
 
-        if self.len() == 0 {
-        } else {
-            assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
-            self.drop_last().lemma_cardinality_of_set();
-        }
     }
 
     /// A sequence is of length 0 if and only if its conversion to
@@ -1015,7 +1021,9 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
+        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+
+        self.to_set_ensures();
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -1035,7 +1043,10 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
+        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
+
+        self.to_set_ensures();
+        self.drop_first().to_set_ensures();
 
         if self.len() == 0 {
         } else {
@@ -1858,19 +1869,12 @@ impl<A> Seq<A> {
         ensures
             #[trigger] self.push(elem).to_set() =~= self.to_set().insert(elem),
     {
-        broadcast use group_seq_properties;
-        broadcast use super::set::group_set_axioms;
+        broadcast use {group_seq_properties, super::set::group_set_lemmas, Seq::to_set_ensures};
 
         let lhs = self.push(elem).to_set();
         let rhs = self.to_set().insert(elem);
-
-        assert(lhs.subset_of(rhs));
         assert forall|x: A| rhs.contains(x) implies lhs.contains(x) by {
             lemma_seq_contains_after_push(self, elem, x);
-            if x == elem {
-            } else {
-                lemma_seq_contains_after_push(self, elem, x);
-            }
         }
     }
 
@@ -2934,7 +2938,7 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
         seq_to_set_rec(seq).finite(),
     decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() > 0 {
         let sub_seq = seq.drop_last();
@@ -2950,7 +2954,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
         forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a),
     decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() > 0 {
         assert(forall|a| #[trigger]
@@ -2975,13 +2979,14 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
+    decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
+    seq.to_set_ensures();
+    assert(forall|n| seq.contains(n) <==> #[trigger] seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
     }
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
     assert(seq.to_set() =~= seq_to_set_rec(seq));
 }
 
@@ -2990,7 +2995,7 @@ pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     ensures
         #[trigger] seq.to_set().finite(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     assert(seq.to_set().finite()) by {
         seq_to_set_equal_rec(seq);
@@ -3603,6 +3608,7 @@ pub broadcast group group_filter_ensures {
 }
 
 pub broadcast group group_seq_lib_default {
+    Seq::to_set_ensures,
     group_filter_ensures,
     Seq::add_empty_left,
     Seq::add_empty_right,
