@@ -1026,3 +1026,14 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
 }
+
+test_verify_one_file! {
+    #[test] lifetime_multiple_anonymous_names verus_code! {
+        trait T<A> {
+            type X;
+        }
+        impl T<&u8> for &u8 {
+            type X = u8;
+        }
+    } => Ok(())
+}
