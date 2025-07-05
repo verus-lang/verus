@@ -346,7 +346,9 @@ fn span_dummy() -> Span {
 
 fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
-        RegionKind::ReEarlyParam(bound) => Some(state.lifetime((bound.name.to_string(), None))),
+        RegionKind::ReEarlyParam(bound) => {
+            Some(state.lifetime((bound.name.to_string(), Some(bound.index))))
+        }
         RegionKind::ReBound(_, bound) => match bound.kind {
             BoundRegionKind::Named(a, _) => Some(state.lifetime(lifetime_key(ctxt, a))),
             _ => None,
@@ -2139,7 +2141,7 @@ fn erase_mir_generics<'tcx>(
     for gparam in &mir_generics.own_params {
         match gparam.kind {
             GenericParamDefKind::Lifetime => {
-                let name = state.lifetime((gparam.name.to_string(), None));
+                let name = state.lifetime((gparam.name.to_string(), Some(gparam.index)));
                 lifetimes.push(GenericParam { name, const_typ: None });
             }
             GenericParamDefKind::Type { .. } => {
@@ -2832,7 +2834,7 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
         // so introduce a dummy field for each lifetime/type variable
         match gparam.kind {
             GenericParamDefKind::Lifetime => {
-                let x = state.lifetime((gparam.name.to_string(), None));
+                let x = state.lifetime((gparam.name.to_string(), Some(gparam.index)));
                 fields.push(Box::new(TypX::Ref(TypX::mk_bool(), Some(x), Mutability::Not)));
             }
             GenericParamDefKind::Type { .. } => {
