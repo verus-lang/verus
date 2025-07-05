@@ -128,7 +128,7 @@ pub fn demote_external_traits(
     let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
     let mut extension_traits: HashSet<Path> = HashSet::new();
     for t in krate.traits.iter() {
-        if let Some(extension) = &t.x.external_trait_extension {
+        if let Some((extension, _)) = &t.x.external_trait_extension {
             extension_traits.insert(extension.clone());
         }
     }

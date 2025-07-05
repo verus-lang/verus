@@ -296,7 +296,7 @@ impl GlobalCtx {
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
             // If TSpec extends T with spec functions, merge TSpec into T
-            if let Some(extension) = &t.x.external_trait_extension {
+            if let Some((extension, _)) = &t.x.external_trait_extension {
                 let t_node = Node::Trait(t.x.name.clone());
                 let extension_node = Node::Trait(extension.clone());
                 assert!(!replace_with.contains_key(&extension_node));
@@ -313,12 +313,6 @@ impl GlobalCtx {
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
-                if !trait_impl.x.external_trait_extension {
-                    return Err(error(
-                        &trait_impl.span,
-                        "an impl of a trait extension must be marked `#[verifier::external_trait_extension]`",
-                    ));
-                }
                 let mut candidates: Vec<TraitImpl> = Vec::new();
                 for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
                     if let ImplPath::TraitImplPath(imp) = imp {
@@ -337,11 +331,6 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
-            } else if trait_impl.x.external_trait_extension {
-                return Err(error(
-                    &trait_impl.span,
-                    "impl is marked `#[verifier::external_trait_extension]`, but it does not implement a trait extension",
-                ));
             }
         }
         let mut func_call_graph: GraphBuilder<Node> =

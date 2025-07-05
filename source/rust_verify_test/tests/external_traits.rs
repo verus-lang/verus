@@ -365,7 +365,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        #[verifier::external_trait_extension(TSpec)]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
         trait Ex<A> {
             type ExternalTraitSpecificationFor: T<A>;
             type X;
@@ -384,8 +384,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::external_trait_extension]
-        impl TSpec<u8> for u32 {
+        impl TSpecImpl<u8> for u32 {
             spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
                 a == x
             }
@@ -429,7 +428,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        #[verifier::external_trait_extension(TSpec)]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
         trait Ex<A> {
             type ExternalTraitSpecificationFor: T<A>;
             type X;
@@ -447,8 +446,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::external_trait_extension]
-        impl TSpec<u8> for u32 {
+        impl TSpecImpl<u8> for u32 {
             spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
@@ -465,7 +463,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        #[verifier::external_trait_extension(TSpec)]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
         trait Ex<A> {
             type ExternalTraitSpecificationFor: T<A>;
             type X;
@@ -482,8 +480,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::external_trait_extension]
-        impl TSpec<u8> for u32 {
+        impl TSpecImpl<u8> for u32 {
             spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
                 !call_ensures(Self::f, (self, q, a, b, x), 10)
             }
@@ -500,7 +497,7 @@ test_verify_one_file! {
         }
 
         #[verifier::external_trait_specification]
-        #[verifier::external_trait_extension(TSpec)]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
         trait Ex<A> {
             type ExternalTraitSpecificationFor: T<A>;
             type X;
@@ -518,8 +515,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::external_trait_extension]
-        impl TSpec<u8> for u32 {
+        impl TSpecImpl<u8> for u32 {
             spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
                 true
             }

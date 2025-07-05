@@ -19,6 +19,56 @@ use vir::ast::{
 };
 use vir::def::{VERUS_SPEC, trait_self_type_param};
 
+pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
+    ctxt: &Context<'tcx>,
+    external_info: &mut ExternalInfo,
+    imported: &Vec<vir::ast::Krate>,
+    crate_items: &CrateItems,
+) -> Result<(), VirErr> {
+    use crate::external::{GeneralItemId, VerifOrExternal};
+    use rustc_hir::ItemKind;
+    let tcx = ctxt.tcx;
+
+    for krate in imported.iter() {
+        for t in &krate.traits {
+            if let Some((spec, imp)) = &t.x.external_trait_extension {
+                let m = &mut external_info.external_trait_extension_impl_map;
+                assert!(!m.contains_key(imp));
+                m.insert(imp.clone(), spec.clone());
+            }
+        }
+    }
+
+    for crate_item in crate_items.items.iter() {
+        match &crate_item.verif {
+            VerifOrExternal::VerusAware { .. } => match crate_item.id {
+                GeneralItemId::ItemId(item_id) => {
+                    let item = ctxt.tcx.hir().item(item_id);
+                    let trait_def_id = item.owner_id.to_def_id();
+                    match &item.kind {
+                        ItemKind::Trait(..) => {
+                            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+                            let vattrs = ctxt.get_verifier_attrs(attrs)?;
+                            if let Some((spec, imp)) = vattrs.external_trait_extension {
+                                let path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
+                                let spec = path.replace_last(Arc::new(spec.clone()));
+                                let imp = path.replace_last(Arc::new(imp.clone()));
+                                let m = &mut external_info.external_trait_extension_impl_map;
+                                assert!(!m.contains_key(&imp));
+                                m.insert(imp, spec);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn external_trait_specification_of<'tcx>(
     tcx: TyCtxt<'tcx>,
     trait_items: &'tcx [TraitItemRef],
@@ -131,14 +181,11 @@ pub(crate) fn translate_trait<'tcx>(
     let mut method_names: Vec<Fun> = Vec::new();
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
     let external_trait_extension = &trait_vattrs.external_trait_extension;
-    let trait_extension = if let Some(trait_extension) = external_trait_extension {
+    let trait_extension = if let Some((spec, _)) = external_trait_extension {
         if ex_trait_ref_for.is_none() {
             return err_span(trait_span, "unexpected `external_trait_extension`");
         }
-        if trait_extension.is_none() {
-            return err_span(trait_span, "expected `external_trait_extension(...trait name...)`");
-        }
-        trait_extension.clone()
+        Some(spec.clone())
     } else {
         None
     };
@@ -414,8 +461,10 @@ pub(crate) fn translate_trait<'tcx>(
         trait_def_id
     };
     external_info.local_trait_ids.push(target_trait_id);
-    let external_trait_extension = if let Some(Some(name)) = external_trait_extension {
-        Some(orig_trait_path.pop_segment().push_segment(Arc::new(name.clone())))
+    let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
+        let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
+        let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));
+        Some((spec, imp))
     } else {
         None
     };

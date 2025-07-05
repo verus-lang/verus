@@ -448,6 +448,13 @@ pub fn crate_to_vir<'a, 'tcx>(
         }
     }
 
+    crate::rust_to_vir_trait::make_external_trait_extension_impl_map(
+        ctxt,
+        &mut external_info,
+        imported,
+        &crate_items,
+    )?;
+
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
             VerifOrExternal::VerusAware { module_path } => {

@@ -38,6 +38,9 @@ pub(crate) struct ExternalInfo {
     pub(crate) external_trait_blanket: HashSet<DefId>,
     // all #[verifier::external_fn_specification] functions that implement a trait
     pub(crate) external_fn_specification_trait_method_impls: Vec<(DefId, rustc_span::Span)>,
+    // For verifier::external_trait_extension(TSpec via TSpecImpl),
+    // replace all "impl TSpecImpl" with "impl TSpec"
+    pub(crate) external_trait_extension_impl_map: HashMap<Path, Path>,
 }
 
 impl ExternalInfo {
@@ -50,6 +53,7 @@ impl ExternalInfo {
             internal_trait_impls: HashSet::new(),
             external_trait_blanket: HashSet::new(),
             external_fn_specification_trait_method_impls: Vec::new(),
+            external_trait_extension_impl_map: HashMap::new(),
         }
     }
 
@@ -76,9 +80,9 @@ fn trait_impl_to_vir<'tcx>(
     path_span: rustc_span::Span,
     impl_def_id: DefId,
     hir_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
+    external_info: &mut ExternalInfo,
     module_path: Path,
     auto_imported: bool,
-    external_trait_extension: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
     let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
     if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
@@ -130,6 +134,9 @@ fn trait_impl_to_vir<'tcx>(
 
     let types = Arc::new(types);
     let mut trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
+    if let Some(spec) = external_info.external_trait_extension_impl_map.get(&trait_path) {
+        trait_path = spec.clone();
+    }
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
         ctxt.tcx,
         &ctxt.verus_items,
@@ -139,13 +146,6 @@ fn trait_impl_to_vir<'tcx>(
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
-    if external_trait_extension {
-        let last = trait_path.last_segment();
-        if last.starts_with(vir::def::VERUS_SPEC) {
-            let last = Arc::new(last.to_string()[vir::def::VERUS_SPEC.len()..].to_string());
-            trait_path = trait_path.pop_segment().push_segment(last);
-        }
-    }
     let trait_impl = vir::ast::TraitImplX {
         impl_path: impl_path.clone(),
         typ_params,
@@ -155,7 +155,6 @@ fn trait_impl_to_vir<'tcx>(
         trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
         owning_module: Some(module_path),
         auto_imported,
-        external_trait_extension,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok(Some((trait_path, types, trait_impl)))
@@ -349,14 +348,6 @@ pub(crate) fn translate_impl<'tcx>(
         }
     }
 
-    let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    let external_trait_extension = vattrs.external_trait_extension.is_some();
-    if external_trait_extension {
-        if impll.of_trait.is_none() {
-            return err_span(item.span, "`external_trait_extension` not allowed here");
-        }
-    }
-
     let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
         let impl_def_id = item.owner_id.to_def_id();
         external_info.internal_trait_impls.insert(impl_def_id);
@@ -367,9 +358,9 @@ pub(crate) fn translate_impl<'tcx>(
             path_span,
             impl_def_id,
             Some(impll.generics),
+            external_info,
             module_path.clone(),
             false,
-            vattrs.external_trait_extension.is_some(),
         )? {
             vir.trait_impls.push(trait_impl);
             Some((trait_path, types))
@@ -628,8 +619,16 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         let span = tcx.def_span(&impl_def_id);
         let impl_path = def_id_to_vir_path(tcx, &ctxt.verus_items, impl_def_id);
         let module_path = impl_path.pop_segment();
-        let t_impl_opt =
-            trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true, false);
+        let t_impl_opt = trait_impl_to_vir(
+            ctxt,
+            span,
+            span,
+            impl_def_id,
+            None,
+            external_info,
+            module_path,
+            true,
+        );
         if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
             for assoc_item in tcx.associated_items(impl_def_id).in_definition_order() {
@@ -743,9 +742,16 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
         let module_path = impl_path.pop_segment();
 
-        if let Some((_trait_path, _types, trait_impl)) =
-            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false, false)?
-        {
+        if let Some((_trait_path, _types, trait_impl)) = trait_impl_to_vir(
+            ctxt,
+            span,
+            span,
+            *impl_def_id,
+            None,
+            external_info,
+            module_path,
+            false,
+        )? {
             krate.trait_impls.push(trait_impl);
         }
     }

@@ -42,7 +42,7 @@ fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> Ite
 /*
 Given:
     #[verifier::external_trait_specification]
-    #[verifier::external_trait_extension(TSpec)]
+    #[verifier::external_trait_extension(TSpec via TSpecImpl)]
     trait Ex {
         type ExternalTraitSpecificationFor: T;
         ...
@@ -60,7 +60,7 @@ Generate additional items:
     }
     #[verifier::external]
     #[allow(non_camel_case_types)]
-    trait VERUS_SPEC__TSpec: T {
+    trait TSpecImpl: T {
         // omitted for erase_all
         fn s1(...) -> ...;
         ...
@@ -84,7 +84,8 @@ fn expand_extension_trait(
     new_items: &mut Vec<Item>,
     t: &Path,
     tr: &ItemTrait,
-    tr_spec: Ident,
+    tr_spec: &Ident,
+    tr_impl: &Ident,
 ) {
     let mut tspec_items: Vec<TraitItem> = Vec::new();
     let mut tspec_impl_items: Vec<TraitItem> = Vec::new();
@@ -120,7 +121,7 @@ fn expand_extension_trait(
     tspec.supertraits.push(parse_quote_spanned!(span => #t));
     tspec.items = tspec_items;
 
-    let mut tspec_impl = new_trait_from(tr, Ident::new(&format!("{VERUS_SPEC}{tr_spec}"), span));
+    let mut tspec_impl = new_trait_from(tr, tr_impl.clone());
     tspec_impl.attrs.push(parse_quote_spanned!(span => #[verifier::external]));
     tspec_impl.attrs.push(mk_rust_attr(
         span,
@@ -181,10 +182,16 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                     && attr.path().segments[1].ident.to_string() == "external_trait_extension";
                 if is_external_trait_extension {
                     if let Meta::List(list) = &attr.meta {
-                        if let Ok(tr_spec) = syn_verus::parse2::<Ident>(list.tokens.clone()) {
-                            if let Some(t) = &t {
-                                expand_extension_trait(erase_all, &mut new_items, t, tr, tr_spec);
+                        let tokens: Vec<_> = list.tokens.clone().into_iter().collect();
+                        use proc_macro2::TokenTree;
+                        match (&t, tokens.as_slice()) {
+                            (
+                                Some(t),
+                                [TokenTree::Ident(s), TokenTree::Ident(via), TokenTree::Ident(i)],
+                            ) if via.to_string() == "via" => {
+                                expand_extension_trait(erase_all, &mut new_items, t, tr, s, i);
                             }
+                            _ => {}
                         }
                     }
                 }
@@ -192,29 +199,4 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
         }
     }
     items.extend(new_items);
-}
-
-/*
-Change:
-    #[verifier::external_trait_extension]
-    impl TSpec for ... { ... }
-To:
-    #[verifier::external_trait_extension]
-    impl VERUS_SPEC__TSpec for ... { ... }
-*/
-pub(crate) fn trait_extension_rewrite_impl(tr: &mut ItemImpl) {
-    let is_external_trait_extension_no_args = tr.attrs.iter().any(|attr| {
-        matches!(attr.meta, Meta::Path(..))
-            && attr.path().segments.len() == 2
-            && attr.path().segments[0].ident.to_string() == "verifier"
-            && attr.path().segments[1].ident.to_string() == "external_trait_extension"
-    });
-    if is_external_trait_extension_no_args {
-        if let Some((_, path, _)) = &mut tr.trait_ {
-            if let Some(segment) = path.segments.last_mut() {
-                let x = &mut segment.ident;
-                *x = syn_verus::Ident::new(&format!("{VERUS_SPEC}{x}"), x.span());
-            }
-        }
-    }
 }

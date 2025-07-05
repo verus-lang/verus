@@ -1274,8 +1274,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
-    // If this trait has a spec trait extension, Some path of the spec trait that extends us
-    pub external_trait_extension: Option<Path>,
+    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
+    // Some((TSpec, TSpecImpl))
+    pub external_trait_extension: Option<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
@@ -1308,8 +1309,6 @@ pub struct TraitImplX {
     pub owning_module: Option<Path>,
     // Not declared directly to Verus, but imported based on related traits and types:
     pub auto_imported: bool,
-    // true if this is an external_trait_extension impl
-    pub external_trait_extension: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
