@@ -560,7 +560,6 @@ fn make_attributes<'tcx>(
         print_zero_args,
         print_as_method,
         prophecy_dependent: vattrs.prophecy_dependent,
-        strong_call_ensures: vattrs.strong_call_ensures,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
         is_external_body: vattrs.external_body,

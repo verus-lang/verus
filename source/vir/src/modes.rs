@@ -1616,8 +1616,6 @@ fn check_function(
     let mut fun_typing =
         fun_typing0.push_allow_prophecy_dependence(function.x.attrs.prophecy_dependent);
 
-    let mut strong_call_ensures = function.x.attrs.strong_call_ensures;
-
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
         let our_trait = ctxt.traits.contains(trait_path);
         let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
@@ -1629,7 +1627,6 @@ fn check_function(
                     format!("function must have mode {}", expect_mode),
                 ));
             }
-            strong_call_ensures = strong_call_ensures || trait_method.x.attrs.strong_call_ensures;
             (trait_method.x.params.iter().map(|f| f.x.mode).collect(), trait_method.x.ret.x.mode)
         } else {
             (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec)
@@ -1676,14 +1673,14 @@ fn check_function(
     }
     for expr in function.x.ensure.iter() {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
-        let mut ens_typing = ens_typing.push_allow_prophecy_dependence(!strong_call_ensures);
+        let mut ens_typing = ens_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     drop(ens_typing);
 
     if let Some(expr) = &function.x.returns {
         let mut ret_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
-        let mut ret_typing = ret_typing.push_allow_prophecy_dependence(!strong_call_ensures);
+        let mut ret_typing = ret_typing.push_allow_prophecy_dependence(true);
         check_expr_has_mode(ctxt, record, &mut ret_typing, Mode::Spec, expr, Mode::Spec)?;
     }
 

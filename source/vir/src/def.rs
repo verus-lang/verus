@@ -179,7 +179,6 @@ pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const DEFAULT_ENS: &str = "default_ens";
-pub const STRONG_TRAIT_ENS: &str = "strong_trait_ens";
 const CLOSURE_PARAM: &str = "closure%";
 pub const EXT_EQ: &str = "ext_eq";
 

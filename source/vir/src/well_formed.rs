@@ -770,18 +770,6 @@ fn check_function(
         }
     }
 
-    if function.x.attrs.strong_call_ensures {
-        match function.x.kind {
-            FunctionKind::TraitMethodDecl { .. } if function.x.mode == Mode::Exec => {}
-            _ => {
-                return Err(error(
-                    &function.span,
-                    "strong_call_ensures only allowed on exec trait function declarations",
-                ));
-            }
-        }
-    }
-
     if (function.x.attrs.bit_vector
         && (function.x.attrs.nonlinear || function.x.attrs.integer_ring))
         || (!function.x.attrs.bit_vector
