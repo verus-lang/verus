@@ -770,10 +770,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
         }
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => continue,
-            GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {}
-            GenericParamDefKind::Type { has_default: true, .. } => {
-                return false;
-            }
+            GenericParamDefKind::Type { has_default: _, synthetic: _ } => {}
             GenericParamDefKind::Const { .. } => {}
         }
         if param.pure_wrt_drop {
@@ -1703,10 +1700,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (
-                GenericArgKind::Type(ty),
-                GenericParamKind::Type { default: None, synthetic: false },
-            ) => {
+            (GenericArgKind::Type(ty), GenericParamKind::Type { default: _, synthetic: false }) => {
                 match ty.kind() {
                     TyKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
                     _ => {
@@ -1716,7 +1710,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             }
             (
                 GenericArgKind::Const(c),
-                GenericParamKind::Const { ty: _, default: None, synthetic: false },
+                GenericParamKind::Const { ty: _, default: _, synthetic: false },
             ) => {
                 match c.kind() {
                     ConstKind::Param(param) if param.name.as_str() == param_name => {
@@ -1896,7 +1890,7 @@ fn check_generics_bounds_main<'tcx>(
 
         match &mid_param.kind {
             GenericParamDefKind::Const { .. }
-            | GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {
+            | GenericParamDefKind::Type { has_default: _, synthetic: _ } => {
                 // trait/function bounds
                 typ_params.push((Arc::new(param_name), accept_rec));
             }

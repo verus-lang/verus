@@ -26,12 +26,27 @@ fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
 fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> ItemImpl {
     let t = &tr.ident;
     let span = t.span();
+    let mut generics = tr.generics.clone();
+    for param in &mut generics.params {
+        use syn_verus::GenericParam;
+        match param {
+            GenericParam::Lifetime(_) => {}
+            GenericParam::Type(p) => {
+                p.eq_token = None;
+                p.default = None;
+            }
+            GenericParam::Const(p) => {
+                p.eq_token = None;
+                p.default = None;
+            }
+        }
+    }
     ItemImpl {
         attrs: Vec::new(),
         defaultness: None,
         unsafety: None,
         impl_token: Token![impl](span),
-        generics: tr.generics.clone(),
+        generics,
         trait_: Some((None, parse_quote_spanned!(span => #tr_spec), Token![for](span))),
         self_ty,
         brace_token: tr.brace_token,

@@ -76,7 +76,7 @@ pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]
-pub trait ExPartialEq<Rhs: ?Sized> {
+pub trait ExPartialEq<Rhs: ?Sized = Self> {
     type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
 
     spec fn obeys_spec_eq() -> bool;
@@ -101,7 +101,7 @@ pub trait ExEq: PartialEq {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialOrdSpec via PartialOrdSpecImpl)]
-pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
+pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
     type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
 
     spec fn obeys_spec_partial_cmp() -> bool;
