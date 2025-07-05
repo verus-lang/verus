@@ -43,11 +43,11 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
         match &crate_item.verif {
             VerifOrExternal::VerusAware { .. } => match crate_item.id {
                 GeneralItemId::ItemId(item_id) => {
-                    let item = ctxt.tcx.hir().item(item_id);
+                    let item = ctxt.tcx.hir_item(item_id);
                     let trait_def_id = item.owner_id.to_def_id();
                     match &item.kind {
                         ItemKind::Trait(..) => {
-                            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+                            let attrs = ctxt.tcx.hir_attrs(item.hir_id());
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
                                 let path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
@@ -76,7 +76,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, kind, span, .. } = trait_item;
         match kind {
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -251,7 +251,7 @@ pub(crate) fn translate_trait<'tcx>(
     }
 
     for trait_item_ref in trait_items {
-        let trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
             trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
@@ -275,7 +275,7 @@ pub(crate) fn translate_trait<'tcx>(
         let item_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
         let is_verus_spec =
             item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
-        let attrs = tcx.hir().attrs(trait_item.hir_id());
+        let attrs = tcx.hir_attrs(trait_item.hir_id());
         let ex_item_id_for = if let Some(ex_trait_id_for) = ex_trait_id_for {
             match kind {
                 TraitItemKind::Type(_generic_bounds, None) => {
@@ -289,8 +289,12 @@ pub(crate) fn translate_trait<'tcx>(
             let mode = crate::attributes::get_mode(Mode::Exec, attrs);
             let assoc_item = tcx.associated_item(owner_id.to_def_id());
             let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
-            let ex_assoc_item =
-                ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
+            let ex_assoc_item = ex_assoc_items.find_by_ident_and_kind(
+                tcx,
+                *ident,
+                assoc_item.as_tag(),
+                ex_trait_id_for,
+            );
             if mode == Mode::Spec {
                 if external_trait_extension.is_some() {
                     if let TraitItemKind::Fn(_, TraitFn::Provided(_)) = kind {
@@ -329,6 +333,8 @@ pub(crate) fn translate_trait<'tcx>(
 
         match kind {
             TraitItemKind::Fn(sig, fun) => {
+                // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
+                let param_names;
                 let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(
@@ -337,8 +343,11 @@ pub(crate) fn translate_trait<'tcx>(
                         );
                     }
                     TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
-                    TraitFn::Required(param_names) => {
-                        (CheckItemFnEither::ParamNames(*param_names), false)
+                    TraitFn::Required(opt_param_names) => {
+                        // REVIEW: Is filtering out `None`s the right thing to do here?
+                        param_names =
+                            opt_param_names.into_iter().flatten().cloned().collect::<Vec<_>>();
+                        (CheckItemFnEither::ParamNames(param_names.as_slice()), false)
                     }
                 };
                 // requires and ensures on exec functions can refer to spec extension trait:

@@ -9,13 +9,10 @@ use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::Visibility;
-use rustc_middle::ty::fold::BoundVarReplacerDelegate;
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
-use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTreeKind, Value,
+    AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
+    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -90,7 +87,7 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
     if !is_impl_item_fn {
         return;
     }
-    let mut parent_node = tcx.hir().parent_iter(hir_id);
+    let mut parent_node = tcx.hir_parent_iter(hir_id);
     let (_, parent_node) = parent_node.next().expect("unexpected empty impl path");
     let friendly_self_ty = match parent_node {
         rustc_hir::Node::Item(rustc_hir::Item {
@@ -231,7 +228,7 @@ pub(crate) fn clean_all_escaping_bound_vars<
     param_env_src: DefId,
 ) -> T {
     let mut regions = HashMap::new();
-    let delegate = rustc_middle::ty::fold::FnMutDelegate {
+    let delegate = rustc_middle::ty::FnMutDelegate {
         regions: &mut |br| {
             *regions.entry(br).or_insert(rustc_middle::ty::Region::new_late_param(
                 tcx,
@@ -310,7 +307,7 @@ where
             rustc_middle::ty::Bound(debruijn, bound_ty) if debruijn == self.current_index => {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
-                rustc_middle::ty::fold::shift_vars(self.tcx, ty, self.current_index.as_u32())
+                rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
             }
             _ if t.has_vars_bound_at_or_above(self.current_index) => t.super_fold_with(self),
             _ => t,
@@ -318,11 +315,11 @@ where
     }
 
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
-        match *r {
+        match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
             rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(debruijn1, br) = *region {
+                if let rustc_middle::ty::ReBound(debruijn1, br) = region.kind() {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -338,7 +335,7 @@ where
             ConstKind::Bound(debruijn, bound_const) if debruijn == self.current_index => {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
-                rustc_middle::ty::fold::shift_vars(self.tcx, ct, self.current_index.as_u32())
+                rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
             }
             _ => ct.super_fold_with(self),
         }
@@ -709,7 +706,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Never => false,
 
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
         TyKind::Float(..) => false,
         TyKind::Foreign(..) => false,
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
@@ -744,7 +741,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 
 pub(crate) fn mid_arg_filter_for_external_impls<'tcx>(
     ctxt: &Context<'tcx>,
-    type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
+    type_walker: rustc_middle::ty::walk::TypeWalker<TyCtxt<'tcx>>,
     external_info: &mut ExternalInfo,
 ) -> bool {
     let mut all_types_supported = true;
@@ -1034,7 +1031,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
-            let name = Arc::new(assoc_item.name.to_string());
+            let name = Arc::new(assoc_item.name().to_string());
             // Note: this looks like it would work, but trait_item_def_id is sometimes None:
             //   use crate::rustc_middle::ty::DefIdTree;
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
@@ -1080,7 +1077,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => {
             unsupported_err!(span, "opaque type")
         }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => {
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
@@ -1574,7 +1571,7 @@ where
                 let substs = pred.projection_term.args;
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
-                let name = Arc::new(assoc_item.name.to_string());
+                let name = Arc::new(assoc_item.name().to_string());
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
@@ -1768,7 +1765,7 @@ fn check_generics_bounds_main<'tcx>(
             } = hir_param;
 
             let vattrs = get_verifier_attrs(
-                tcx.hir().attrs(hir_param.hir_id),
+                tcx.hir_attrs(hir_param.hir_id),
                 if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
             )?;
             if vattrs.reject_recursive_types
