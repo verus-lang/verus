@@ -1192,79 +1192,6 @@ impl VisitMut for ExecGhostPatVisitor {
     }
 }
 
-macro_rules! do_split_trait_method {
-    ($s:ident, $fun:ident, $spec_fun:ident, $mk_rust_attr:ident) => {
-        let mut $spec_fun = $fun.clone();
-        let x = &$fun.sig.ident;
-        let span = x.span();
-        $spec_fun.sig.ident = $s::Ident::new(&format!("{VERUS_SPEC}{x}"), span);
-        $spec_fun.attrs.push($mk_rust_attr(span, "doc", quote! { hidden }));
-    };
-}
-
-// In addition to prefiltering ghost code, we also split methods declarations
-// into separate spec and implementation declarations.  For example:
-//   fn f() requires x;
-// becomes
-//   fn VERUS_SPEC__f() requires x;
-//   fn f();
-// In a later pass, this becomes:
-//   fn VERUS_SPEC__f() { requires(x); ... }
-//   fn f();
-// Note: we don't do this if there's a default body,
-// because it turns out that the parameter names
-// don't exactly match between fun and fun.clone() (they have different macro contexts),
-// which would cause the body and specs to mismatch.
-// (See also split_trait_method_syn below.)
-fn split_trait_method(spec_items: &mut Vec<TraitItem>, fun: &mut TraitItemFn, erase_ghost: bool) {
-    if !erase_ghost && fun.default.is_none() {
-        // Copy into separate spec method, then remove spec from original method
-        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr);
-        spec_items.push(TraitItem::Fn(spec_fun));
-        fun.sig.erase_spec_fields();
-    } else if erase_ghost {
-        match (&mut fun.default, &fun.sig.mode) {
-            (
-                Some(default),
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
-            ) => {
-                // replace body with panic!()
-                let span = default.span();
-                let expr: Expr = Expr::Verbatim(quote_spanned! {
-                    span => { panic!() }
-                });
-                let stmt = Stmt::Expr(expr, None);
-                default.stmts = vec![stmt];
-            }
-            _ => {}
-        }
-    }
-}
-
-// syn version of split_trait_method (see above)
-// (Note: there are no spec fields to erase in syn; the spec attribute must be erased separately.)
-pub(crate) fn split_trait_method_syn(
-    fun: &syn::TraitItemFn,
-    erase_ghost: bool,
-) -> Option<syn::TraitItemFn> {
-    use syn::{Block, Expr, Stmt, token::Brace};
-    if !erase_ghost && fun.default.is_none() {
-        do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
-        // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
-        let span = fun.sig.fn_token.span;
-        let stmts = vec![Stmt::Expr(
-            Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
-            None,
-        )];
-        spec_fun.default = Some(Block { brace_token: Brace(span), stmts });
-        Some(spec_fun)
-    } else {
-        // Note: we only support exec functions via syn; there is no fun.sig.mode here
-        // So there's no case for spec, proof as in split_trait_method above
-        None
-    }
-}
-
 impl Visitor {
     fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
         if self.erase_ghost.erase() && (local.tracked.is_some() || local.ghost.is_some()) {
@@ -2109,7 +2036,7 @@ impl Visitor {
         for item in items.iter_mut() {
             match item {
                 TraitItem::Fn(ref mut fun) => {
-                    split_trait_method(&mut spec_items, fun, erase_ghost);
+                    crate::syntax_trait::split_trait_method(&mut spec_items, fun, erase_ghost);
                 }
                 _ => {}
             }
