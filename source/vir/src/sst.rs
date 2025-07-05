@@ -49,7 +49,6 @@ pub type UniqueIdent = VarIdent;
 pub enum InternalFun {
     ClosureReq,
     ClosureEns,
-    DefaultEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
@@ -141,8 +140,6 @@ pub enum StmX {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
-        // Some(is_trait_default) for calls to DynamicResolved functions for which a default exists
-        is_trait_default: Option<bool>,
         typ_args: Typs,
         args: Exps,
         // if split is Some, this is a dummy call to be replaced with assertions for error splitting

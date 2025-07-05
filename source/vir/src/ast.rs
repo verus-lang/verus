@@ -332,9 +332,6 @@ pub enum UnaryOp {
     Clip { range: IntRange, truncate: bool },
     /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
     CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode, kind: ModeCoercion },
-    /// Mark an ensures clause in a trait as applying just to the default implementation,
-    /// not the trait declaration in general
-    DefaultEnsures,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -669,8 +666,6 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
-    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
-    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -696,8 +691,6 @@ pub enum CallTargetKind {
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
-    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
-    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
