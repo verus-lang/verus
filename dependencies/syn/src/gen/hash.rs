@@ -115,6 +115,7 @@ impl Hash for crate::AssumeSpecification {
         self.output.hash(state);
         self.requires.hash(state);
         self.ensures.hash(state);
+        self.default_ensures.hash(state);
         self.returns.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
@@ -357,7 +358,9 @@ impl Hash for crate::BroadcastUse {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.brace_token.hash(state);
         self.paths.hash(state);
+        self.warning.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -385,6 +388,16 @@ impl Hash for crate::Closed {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ClosureArg {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.tracked_token.hash(state);
+        self.pat.hash(state);
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -493,6 +506,15 @@ impl Hash for crate::DataUnion {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Decreases {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::DefaultEnsures {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -894,6 +916,8 @@ impl Hash for crate::ExprClosure {
         self.movability.hash(state);
         self.asyncness.hash(state);
         self.capture.hash(state);
+        self.proof_fn.hash(state);
+        self.options.hash(state);
         self.inputs.hash(state);
         self.output.hash(state);
         self.requires.hash(state);
@@ -1485,14 +1509,37 @@ impl Hash for crate::FnMode {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::FnMode::Exec(v0) => {
+            crate::FnMode::ProofAxiom(v0) => {
                 state.write_u8(3u8);
                 v0.hash(state);
             }
-            crate::FnMode::Default => {
+            crate::FnMode::Exec(v0) => {
                 state.write_u8(4u8);
+                v0.hash(state);
+            }
+            crate::FnMode::Default => {
+                state.write_u8(5u8);
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::FnProofArg {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.tracked_token.hash(state);
+        self.arg.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::FnProofOptions {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.options.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1747,7 +1794,11 @@ impl Hash for crate::ImplItemConst {
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
+        self.ensures.hash(state);
+        self.eq_token.hash(state);
+        self.block.hash(state);
         self.expr.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2491,6 +2542,13 @@ impl Hash for crate::ModeProof {
     {}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ModeProofAxiom {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ModeSpec {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -3039,10 +3097,12 @@ impl Hash for crate::SignatureSpec {
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
+        self.default_ensures.hash(state);
         self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.with.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -3319,6 +3379,10 @@ impl Hash for crate::Type {
                 state.write_u8(15u8);
                 v0.hash(state);
             }
+            crate::Type::FnProof(v0) => {
+                state.write_u8(16u8);
+                v0.hash(state);
+            }
         }
     }
 }
@@ -3345,6 +3409,18 @@ impl Hash for crate::TypeBareFn {
         self.abi.hash(state);
         self.inputs.hash(state);
         self.variadic.hash(state);
+        self.output.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::TypeFnProof {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.generics.hash(state);
+        self.options.hash(state);
+        self.inputs.hash(state);
         self.output.hash(state);
     }
 }
@@ -3741,5 +3817,26 @@ impl Hash for crate::WherePredicate {
                 v0.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::WithSpecOnExpr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
+        self.follows.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::WithSpecOnFn {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
     }
 }

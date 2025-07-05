@@ -54,7 +54,26 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     } else {
         false
     };
+    if verus_crate {
+        rustc_args.push("--check-cfg".to_owned());
+        rustc_args
+            .push("cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core)".to_owned());
+    }
     if !verus_crate {
+        let mut is_span_crate = false;
+        let mut i = rustc_args.iter();
+        if i.find(|x| *x == "--crate-name").is_some() {
+            if let Some(crate_name) = i.next() {
+                if crate_name == "proc_macro2" {
+                    is_span_crate = true;
+                }
+            }
+        }
+        if is_span_crate {
+            set_rustc_bootstrap();
+            let flags = ["--cfg", "proc_macro_span", "--cfg", "span_locations"];
+            rustc_args.extend(flags.map(ToOwned::to_owned));
+        }
         if let Some(package_id) = &package_id {
             let is_builtin =
                 dep_tracker.compare_env(&format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1");

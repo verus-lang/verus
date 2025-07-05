@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::context::Ctx;
 use vir::expand_errors::{
-    cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
+    CanExpandFurther, ExpansionContext, ExpansionTree, Introduction, cons_id,
 };
 use vir::sst::FuncCheckSst;
 use vir::sst::{AssertId, Exp};
@@ -153,7 +153,7 @@ impl ExpandErrorsDriver {
     /// for the root ID with a Fail result, then afterwards call `report`
     /// for the other queries.
     /// This will advance the current assert_id to the next assert_id that
-    /// should be queries.
+    /// should be queried.
     pub fn report(&mut self, ctx: &Ctx, assert_id: &AssertId, result: ExpandErrorsResult) {
         assert!(&self.current == &**assert_id);
         if assert_id.len() == 1 {
@@ -556,10 +556,10 @@ impl ExpandErrorsDriver {
         use rustc_session::config::ErrorOutputType;
 
         let (in_fancy_note, in_msg) = match error_format {
-            Some(ErrorOutputType::HumanReadable(HumanReadableErrorType::Short, _)) => {
-                (false, false)
-            }
-            Some(ErrorOutputType::HumanReadable(_, _)) => (true, false),
+            Some(ErrorOutputType::HumanReadable {
+                kind: HumanReadableErrorType::Short, ..
+            }) => (false, false),
+            Some(ErrorOutputType::HumanReadable { .. }) => (true, false),
             Some(rustc_session::config::ErrorOutputType::Json { .. }) => (false, true),
             None => (true, false),
         };
@@ -592,7 +592,7 @@ impl ExpandErrorsDriver {
             note = note.primary_span(span);
         }
         if in_fancy_note {
-            note = note.fancy_note(main_body);
+            note = note.fancy_note(format!("\n\n{:}", main_body));
         }
 
         use vir::messages::ToAny;

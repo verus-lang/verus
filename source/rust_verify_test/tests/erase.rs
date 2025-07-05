@@ -8,12 +8,12 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         proof fn f1<T>(t: Ghost<Option<T>>) {
-            let x = t.view().get_Some_0();
+            let x = t.view()->0;
         }
 
         spec fn f2() -> bool {
             let x: Option<usize> = Option::None;
-            x.is_None()
+            x is None
         }
     } => Ok(())
 }

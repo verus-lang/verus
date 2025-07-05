@@ -691,7 +691,13 @@ test_verify_one_file! {
             use builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int { crate::M1::f1(i - 1) }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors[0].code.is_none());
+        assert!(err.errors[1].code.is_none());
+        assert!(err.errors[0].message.contains("recursive function must have a decreases clause"));
+        assert!(err.errors[1].message.contains("recursive function must have a decreases clause"));
+    }
 }
 
 test_verify_one_file! {
@@ -1251,8 +1257,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_no_decreases verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_no_decreases ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize {
             if i < 10 {
                 e(s, i + 1)
@@ -1263,8 +1269,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize
             decreases i
         {
@@ -1275,12 +1281,12 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_2_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_2_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64) -> u64
             decreases *old(s)
         {
@@ -1292,7 +1298,7 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -1902,6 +1908,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decreases_in_pure_exp verus_code! {
+        spec fn f(n: int) -> bool
+            decreases n
+        {
+            (|b: bool| b)(f(n)) // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] decreases_checks_assert_by verus_code! {
+        // https://github.com/verus-lang/verus/issues/1624
+        #[via_fn]
+        proof fn test_decr(i: nat) {
+            assert(false) by {} // FAILS
+        }
+
+        spec fn test(i: nat) -> bool
+            decreases i
+            via test_decr
+        {
+            test(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] decreases_checks_preconditions verus_code! {
+        proof fn p() requires false ensures false { }
+
+        #[via_fn]
+        proof fn ff(i: int) {
+            p(); // FAILS
+        }
+
+        spec fn f(i: int) -> int
+            decreases i
+            via ff
+        {
+            f(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] lemma_not_proved_by_impossible_fun verus_code! {
         spec fn impossible_fun() -> bool
             decreases 0int
@@ -2064,6 +2115,40 @@ test_verify_one_file! {
                 0
             } else {
                 test_rec(t.get_lt()) + 1
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] has_type_for_recursive_call verus_code! {
+        // https://verus-lang.zulipchat.com/#narrow/channel/399078-help/topic/missing.20recursive.20expansion/with/517201560
+        use vstd::prelude::*;
+        struct Link<K>(Option<Box<Node<K>>>);
+
+        struct Node<K> {
+            key: K,
+            left: Link<K>,
+            right: Link<K>,
+        }
+
+        proof fn right_mem<K>(node: Node<K>, key: K)
+            requires
+                node.right.as_set().contains(key),
+                node.key != key,
+            ensures
+                Link(Some(Box::new(node))).as_set().contains(key),
+        {
+        }
+
+        impl<K> Link<K> {
+            spec fn as_set(self) -> Set<K>
+                decreases self,
+            {
+                match self.0 {
+                    None => Set::empty(),
+                    Some(node) => node.left.as_set().union(node.right.as_set()).insert(node.key),
+                }
             }
         }
     } => Ok(())

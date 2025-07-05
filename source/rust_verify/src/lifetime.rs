@@ -118,14 +118,14 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use crate::verus_items::VerusItems;
-use rustc_data_structures::sync::Lrc;
 use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use vir::ast::VirErr;
-use vir::messages::{message_bare, Message, MessageLevel};
+use vir::messages::{Message, MessageLevel, message_bare};
 
 const LDBG_PREFIX: &str = "!!!ldbg!!! ";
 
@@ -170,39 +170,43 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
-    queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
-        let hir = tcx.hir();
-        let krate = hir.krate();
-        rustc_hir_analysis::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return;
-        }
-        for owner in &krate.owners {
-            if let MaybeOwner::Owner(owner) = owner {
-                match owner.node() {
-                    OwnerNode::Item(item) => match &item.kind {
-                        rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                        }
-                        ItemKind::Impl(impll) => {
-                            for item in impll.items {
-                                match item.kind {
-                                    AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
-                                    }
-                                    _ => {}
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
+    let krate = tcx.hir_crate(());
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn { .. } => {
+                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item in impll.items {
+                            match item.kind {
+                                AssocItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
                                 }
+                                _ => {}
                             }
                         }
-                        _ => {}
-                    },
+                    }
                     _ => (),
-                }
+                },
+                _ => {}
             }
         }
-    });
+    }
 }
+
+const PROOF_FN_ONCE: u8 = 1;
+const PROOF_FN_MUT: u8 = 2;
+const PROOF_FN: u8 = 3;
+const PROOF_FN_COPY: u8 = 4;
+const PROOF_FN_SEND: u8 = 5;
+const PROOF_FN_SYNC: u8 = 6;
 
 const PRELUDE: &str = "\
 #![feature(negative_impls)]
@@ -211,6 +215,9 @@ const PRELUDE: &str = "\
 #![feature(ptr_metadata)]
 #![feature(never_type)]
 #![feature(allocator_api)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(tuple_trait)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -224,6 +231,7 @@ const PRELUDE: &str = "\
 #![allow(unused_mut)]
 #![allow(unused_labels)]
 use std::marker::PhantomData;
+use std::marker::Tuple;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::alloc::Allocator;
@@ -265,6 +273,42 @@ impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
+
+struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a dyn Fn<A, Output = O>>);
+struct FOpts<const B: u8, C, const D: u8, const E: u8, const G: u8>(PhantomData<C>);
+trait ProofFnOnce {}
+trait ProofFnMut: ProofFnOnce {}
+trait ProofFn: ProofFnMut {}
+struct ProofFnConfirm;
+trait ConfirmCopy<const D: u8, F> {}
+trait ConfirmUsage<A, O, const B: u8, F> {}
+impl<const B: u8, C, const E: u8, const G: u8> Clone for FOpts<B, C, (PROOF_FN_COPY), E, G> { fn clone(&self) -> Self { panic!() } }
+impl<const B: u8, C, const E: u8, const G: u8> Copy for FOpts<B, C, (PROOF_FN_COPY), E, G> {}
+impl<const B: u8, C, const D: u8, const E: u8, const G: u8> ProofFnOnce for FOpts<B, C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN_MUT), C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN), C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFn for FOpts<(PROOF_FN), C, D, E, G> {}
+impl<'a, P: Copy, M, N, A, O> Clone for FnProof<'a, P, M, N, A, O> { fn clone(&self) -> Self { panic!() } }
+impl<'a, P: Copy, M, N, A, O> Copy for FnProof<'a, P, M, N, A, O> {}
+impl<'a, P: ProofFnOnce, M, N, A: Tuple, O> FnOnce<A> for FnProof<'a, P, M, N, A, O> {
+    type Output = O;
+    extern \"rust-call\" fn call_once(self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<'a, P: ProofFnMut, M, N, A: Tuple, O> FnMut<A> for FnProof<'a, P, M, N, A, O> {
+    extern \"rust-call\" fn call_mut(&mut self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<'a, P: ProofFn, M, N, A: Tuple, O> Fn<A> for FnProof<'a, P, M, N, A, O> {
+    extern \"rust-call\" fn call(&self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<F: Copy> ConfirmCopy<(PROOF_FN_COPY), F> for ProofFnConfirm {}
+impl<F> ConfirmCopy<0, F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: FnOnce<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN_ONCE), F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: FnMut<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN_MUT), F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: Fn<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN), F> for ProofFnConfirm {}
+pub fn closure_to_fn_proof<'a, const B: u8, const D: u8, const E: u8, const G: u8, M, N, A, O, F: 'a>(_f: F) -> FnProof<'a, FOpts<B, (), D, E, G>, M, N, A, O>
+where ProofFnConfirm: ConfirmUsage<A, O, B, F>, ProofFnConfirm: ConfirmCopy<D, F>, M: Tuple, A: Tuple,
+{ panic!() }
+
 fn main() {}
 ";
 
@@ -289,7 +333,14 @@ fn emit_check_tracked_lifetimes<'tcx>(
     );
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
-    for line in PRELUDE.split('\n') {
+    let prelude = PRELUDE
+        .replace("(PROOF_FN_ONCE)", &PROOF_FN_ONCE.to_string())
+        .replace("(PROOF_FN_MUT)", &PROOF_FN_MUT.to_string())
+        .replace("(PROOF_FN)", &PROOF_FN.to_string())
+        .replace("(PROOF_FN_COPY)", &PROOF_FN_COPY.to_string())
+        .replace("(PROOF_FN_SEND)", &PROOF_FN_SEND.to_string())
+        .replace("(PROOF_FN_SYNC)", &PROOF_FN_SYNC.to_string());
+    for line in prelude.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
 
@@ -308,16 +359,21 @@ fn emit_check_tracked_lifetimes<'tcx>(
     gen_state
 }
 
-struct LifetimeCallbacks {}
+struct LifetimeCallbacks {
+    code: String,
+}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    // note: we do not need to to call into config here,
-    // because all config is handled in the other Callbacks
+    // note: we only need to call into config here,
+    // to change the file_loader
+    fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
+        cfg.file_loader = Some(Box::new(LifetimeFileLoader { rust_code: self.code.clone() }));
+    }
 
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         check(queries);
         rustc_driver::Compilation::Stop
@@ -342,7 +398,7 @@ impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
         Ok(self.rust_code.clone())
     }
 
-    fn read_binary_file(&self, path: &std::path::Path) -> Result<Lrc<[u8]>, std::io::Error> {
+    fn read_binary_file(&self, path: &std::path::Path) -> Result<Arc<[u8]>, std::io::Error> {
         assert!(path.display().to_string() == Self::FILENAME.to_string());
         Ok(self.rust_code.as_bytes().into())
     }
@@ -367,13 +423,8 @@ struct Diagnostic {
 pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
 
 pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
-    let mut callbacks = LifetimeCallbacks {};
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
-    compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
-    match compiler.run() {
-        Ok(()) => (),
-        Err(_) => std::process::exit(128),
-    }
+    let mut callbacks = LifetimeCallbacks { code: rust_code };
+    rustc_driver::run_compiler(rustc_args, &mut callbacks)
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
@@ -386,7 +437,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
-    let krate = tcx.hir().krate();
+    let krate = tcx.hir_crate(());
     let mut emit_state = EmitState::new();
     let gen_state = emit_check_tracked_lifetimes(
         cmd_line_args,

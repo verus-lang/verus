@@ -132,6 +132,9 @@ pub trait VisitMut {
     fn visit_closed_mut(&mut self, i: &mut crate::Closed) {
         visit_closed_mut(self, i);
     }
+    fn visit_closure_arg_mut(&mut self, i: &mut crate::ClosureArg) {
+        visit_closure_arg_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_const_param_mut(&mut self, i: &mut crate::ConstParam) {
@@ -167,6 +170,9 @@ pub trait VisitMut {
     }
     fn visit_decreases_mut(&mut self, i: &mut crate::Decreases) {
         visit_decreases_mut(self, i);
+    }
+    fn visit_default_ensures_mut(&mut self, i: &mut crate::DefaultEnsures) {
+        visit_default_ensures_mut(self, i);
     }
     #[cfg(feature = "derive")]
     #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
@@ -446,6 +452,12 @@ pub trait VisitMut {
     }
     fn visit_fn_mode_mut(&mut self, i: &mut crate::FnMode) {
         visit_fn_mode_mut(self, i);
+    }
+    fn visit_fn_proof_arg_mut(&mut self, i: &mut crate::FnProofArg) {
+        visit_fn_proof_arg_mut(self, i);
+    }
+    fn visit_fn_proof_options_mut(&mut self, i: &mut crate::FnProofOptions) {
+        visit_fn_proof_options_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -751,6 +763,9 @@ pub trait VisitMut {
     fn visit_mode_proof_mut(&mut self, i: &mut crate::ModeProof) {
         visit_mode_proof_mut(self, i);
     }
+    fn visit_mode_proof_axiom_mut(&mut self, i: &mut crate::ModeProofAxiom) {
+        visit_mode_proof_axiom_mut(self, i);
+    }
     fn visit_mode_spec_mut(&mut self, i: &mut crate::ModeSpec) {
         visit_mode_spec_mut(self, i);
     }
@@ -998,6 +1013,9 @@ pub trait VisitMut {
     fn visit_type_bare_fn_mut(&mut self, i: &mut crate::TypeBareFn) {
         visit_type_bare_fn_mut(self, i);
     }
+    fn visit_type_fn_proof_mut(&mut self, i: &mut crate::TypeFnProof) {
+        visit_type_fn_proof_mut(self, i);
+    }
     fn visit_type_fn_spec_mut(&mut self, i: &mut crate::TypeFnSpec) {
         visit_type_fn_spec_mut(self, i);
     }
@@ -1141,6 +1159,12 @@ pub trait VisitMut {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_where_predicate_mut(&mut self, i: &mut crate::WherePredicate) {
         visit_where_predicate_mut(self, i);
+    }
+    fn visit_with_spec_on_expr_mut(&mut self, i: &mut crate::WithSpecOnExpr) {
+        visit_with_spec_on_expr_mut(self, i);
+    }
+    fn visit_with_spec_on_fn_mut(&mut self, i: &mut crate::WithSpecOnFn) {
+        visit_with_spec_on_fn_mut(self, i);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1290,6 +1314,9 @@ where
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.default_ensures {
+        v.visit_default_ensures_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);
@@ -1535,11 +1562,13 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     skip!((node.broadcast_use_tokens).0);
     skip!((node.broadcast_use_tokens).1);
+    skip!(node.brace_token);
     for mut el in Punctuated::pairs_mut(&mut node.paths) {
         let it = el.value_mut();
         v.visit_expr_path_mut(it);
     }
     skip!(node.semi);
+    skip!(node.warning);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1561,6 +1590,13 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_closure_arg_mut<V>(v: &mut V, node: &mut crate::ClosureArg)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.tracked_token);
+    full!(v.visit_pat_mut(& mut node.pat));
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1662,6 +1698,13 @@ where
     v.visit_fields_named_mut(&mut node.fields);
 }
 pub fn visit_decreases_mut<V>(v: &mut V, node: &mut crate::Decreases)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_default_ensures_mut<V>(v: &mut V, node: &mut crate::DefaultEnsures)
 where
     V: VisitMut + ?Sized,
 {
@@ -1980,10 +2023,14 @@ where
     skip!(node.movability);
     skip!(node.asyncness);
     skip!(node.capture);
+    skip!(node.proof_fn);
+    if let Some(it) = &mut node.options {
+        v.visit_fn_proof_options_mut(it);
+    }
     skip!(node.or1_token);
     for mut el in Punctuated::pairs_mut(&mut node.inputs) {
         let it = el.value_mut();
-        v.visit_pat_mut(it);
+        v.visit_closure_arg_mut(it);
     }
     skip!(node.or2_token);
     v.visit_return_type_mut(&mut node.output);
@@ -2585,10 +2632,30 @@ where
         crate::FnMode::Proof(_binding_0) => {
             v.visit_mode_proof_mut(_binding_0);
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            v.visit_mode_proof_axiom_mut(_binding_0);
+        }
         crate::FnMode::Exec(_binding_0) => {
             v.visit_mode_exec_mut(_binding_0);
         }
         crate::FnMode::Default => {}
+    }
+}
+pub fn visit_fn_proof_arg_mut<V>(v: &mut V, node: &mut crate::FnProofArg)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.tracked_token);
+    v.visit_bare_fn_arg_mut(&mut node.arg);
+}
+pub fn visit_fn_proof_options_mut<V>(v: &mut V, node: &mut crate::FnProofOptions)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.bracket_token);
+    for mut el in Punctuated::pairs_mut(&mut node.options) {
+        let it = el.value_mut();
+        v.visit_path_segment_mut(it);
     }
 }
 #[cfg(feature = "full")]
@@ -2824,8 +2891,16 @@ where
     v.visit_generics_mut(&mut node.generics);
     skip!(node.colon_token);
     v.visit_type_mut(&mut node.ty);
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
     skip!(node.eq_token);
-    v.visit_expr_mut(&mut node.expr);
+    if let Some(it) = &mut node.block {
+        v.visit_block_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.expr {
+        v.visit_expr_mut(&mut **it);
+    }
     skip!(node.semi_token);
 }
 #[cfg(feature = "full")]
@@ -3607,6 +3682,12 @@ where
 {
     skip!(node.proof_token);
 }
+pub fn visit_mode_proof_axiom_mut<V>(v: &mut V, node: &mut crate::ModeProofAxiom)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.axiom_token);
+}
 pub fn visit_mode_spec_mut<V>(v: &mut V, node: &mut crate::ModeSpec)
 where
     V: VisitMut + ?Sized,
@@ -4156,6 +4237,9 @@ where
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
     }
+    if let Some(it) = &mut node.default_ensures {
+        v.visit_default_ensures_mut(it);
+    }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);
     }
@@ -4167,6 +4251,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.with {
+        v.visit_with_spec_on_fn_mut(it);
     }
 }
 pub fn visit_signature_spec_attr_mut<V>(v: &mut V, node: &mut crate::SignatureSpecAttr)
@@ -4416,6 +4503,9 @@ where
         crate::Type::FnSpec(_binding_0) => {
             v.visit_type_fn_spec_mut(_binding_0);
         }
+        crate::Type::FnProof(_binding_0) => {
+            v.visit_type_fn_proof_mut(_binding_0);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4450,6 +4540,24 @@ where
     }
     if let Some(it) = &mut node.variadic {
         v.visit_bare_variadic_mut(it);
+    }
+    v.visit_return_type_mut(&mut node.output);
+}
+pub fn visit_type_fn_proof_mut<V>(v: &mut V, node: &mut crate::TypeFnProof)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.proof_fn_token);
+    if let Some(it) = &mut node.generics {
+        v.visit_angle_bracketed_generic_arguments_mut(it);
+    }
+    if let Some(it) = &mut node.options {
+        v.visit_fn_proof_options_mut(it);
+    }
+    skip!(node.paren_token);
+    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
+        let it = el.value_mut();
+        v.visit_fn_proof_arg_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
 }
@@ -4822,6 +4930,41 @@ where
         }
         crate::WherePredicate::Type(_binding_0) => {
             v.visit_predicate_type_mut(_binding_0);
+        }
+    }
+}
+pub fn visit_with_spec_on_expr_mut<V>(v: &mut V, node: &mut crate::WithSpecOnExpr)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.with);
+    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
+        let it = el.value_mut();
+        v.visit_expr_mut(it);
+    }
+    if let Some(it) = &mut node.outputs {
+        skip!((it).0);
+        full!(v.visit_pat_mut(& mut (it).1));
+    }
+    if let Some(it) = &mut node.follows {
+        skip!((it).0);
+        full!(v.visit_pat_mut(& mut (it).1));
+    }
+}
+pub fn visit_with_spec_on_fn_mut<V>(v: &mut V, node: &mut crate::WithSpecOnFn)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.with);
+    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
+        let it = el.value_mut();
+        full!(v.visit_fn_arg_mut(it));
+    }
+    if let Some(it) = &mut node.outputs {
+        skip!((it).0);
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_pat_type_mut(it));
         }
     }
 }

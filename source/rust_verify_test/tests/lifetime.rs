@@ -439,15 +439,15 @@ test_verify_one_file! {
         #[verifier(external_body)]
         #[verifier(reject_recursive_types(A))]
         #[verifier(reject_recursive_types(B))]
-        struct S<A, B>(A, std::marker::PhantomData<B>);
+        struct S<'a, A, const N: u8, B>(A, std::marker::PhantomData<&'a B>);
 
         #[verifier(external)]
-        impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
-        impl<A: Copy, B> Copy for S<A, B> {}
+        impl<'a, A, const N: u8, B> Clone for S<'a, A, N, B> { fn clone(&self) -> Self { panic!() } }
+        impl<'a, A: Copy, const N: u8, B> Copy for S<'a, A, N, B> {}
 
         struct Q {}
 
-        proof fn f(tracked x: S<u8, Q>) -> tracked (S<u8, Q>, S<u8, Q>) {
+        proof fn f<'a>(tracked x: S<'a, u8, 3, Q>) -> tracked (S<'a, u8, 3, Q>, S<'a, u8, 3, Q>) {
             (x, x)
         }
     } => Ok(())
@@ -891,4 +891,138 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "as mutable more than once at a time")
+}
+
+test_verify_one_file! {
+    #[test] tracked_empty_union_uninitialized_1 verus_code! {
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        fn test() {
+            let tracked t: X;
+            let b = false;
+
+            proof {
+                match (b, t) {
+                    (true, _) => {
+                        assert(false);
+                    }
+                }
+            }
+
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] tracked_empty_union_uninitialized_2 verus_code! {
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        fn test2(b: bool) {
+            let tracked t: X;
+
+            proof {
+                if b {
+                    match t {
+                    }
+                    assert(false);
+                } else {
+                }
+            }
+
+            assert(!b);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] tracked_empty_union_uninitialized_3 verus_code! {
+        use vstd::*;
+
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        fn test3() {
+            let tracked t: X;
+            let b = false;
+
+            let r = || ensures false {
+                proof {
+                    match (b, t) {
+                        (true, _) => {
+                            assert(false);
+                        }
+                    }
+                }
+            };
+
+            r();
+
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] tracked_empty_union_uninitialized_4 verus_code! {
+        use vstd::*;
+
+        #[verifier::external]
+        enum X { }
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        struct ExX(X);
+
+        // This is an interesting case because we need to check t is initalized;
+        // however, Rust may not consider it "captured" by the closure because
+        // its value is never used.
+        fn test4(b: bool) {
+            let tracked t: X;
+
+            let r = || ensures !b {
+                proof {
+                    if b {
+                        match t {
+                        }
+                        assert(false);
+                    } else {
+                    }
+                }
+            };
+
+            assert(!b);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] spec_fn_call_fn_arg_proof_code verus_code! {
+        struct R { }
+
+        pub proof fn consume(tracked r: R) {
+        }
+
+        pub proof fn y(tracked r: R) {
+            let z = ({
+                consume(r);
+                |y: int| y + 1
+            })(5);
+            consume(r);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
 }

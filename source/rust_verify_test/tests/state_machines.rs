@@ -2305,7 +2305,7 @@ test_verify_one_file! {
                     guard t >= Some(5) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.is_Some() && t->0 == 5);
+                    assert(t is Some && t->0 == 5);
                 }
             }
         }}
@@ -2345,7 +2345,7 @@ test_verify_one_file! {
                     guard t >= (Option::Some(5)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.is_Some() && t->0 == 5);
+                    assert(t is Some && t->0 == 5);
                 }
             }
         }}
@@ -2439,8 +2439,8 @@ test_verify_one_file! {
 
             #[inductive(tr)]
             pub fn is_inductive(pre: Self, post: Self) {
-                assert(pre.t.is_None());
-                assert(post.t.is_Some());
+                assert(pre.t is None);
+                assert(post.t is Some);
                 assert(post.t->0 == 5);
             }
         }}
@@ -4571,11 +4571,11 @@ test_verify_one_file! {
 
             #[invariant]
             pub fn the_inv(&self) -> bool {
-                imply(self.opt1.is_Some(), (
-                    self.opt2.is_Some()
-                        && self.opt4.is_Some()
+                imply(self.opt1 is Some, (
+                    self.opt2 is Some
+                        && self.opt4 is Some
                         && equal(self.opt2, self.opt4)
-                        && self.opt3.is_None()
+                        && self.opt3 is None
                 ))
             }
 
@@ -5277,7 +5277,7 @@ test_verify_one_file! {
             transition!{
                 tr1() {
                     withdraw storage_opt -= Some(let Goo::Bar) by { // FAILS
-                        assume(pre.storage_opt.is_Some());
+                        assume(pre.storage_opt is Some);
                     };
                 }
             }
@@ -5285,7 +5285,7 @@ test_verify_one_file! {
             transition!{
                 tr2() {
                     withdraw storage_opt -= Some(let Goo::Qux(id1)) by { // FAILS
-                        assume(pre.storage_opt.is_Some());
+                        assume(pre.storage_opt is Some);
                     };
                 }
             }
@@ -5293,7 +5293,7 @@ test_verify_one_file! {
             transition!{
                 tr3() {
                     withdraw storage_opt -= Some(let Goo::Tal(id1, id2)) by { // FAILS
-                        assume(pre.storage_opt.is_Some());
+                        assume(pre.storage_opt is Some);
                     };
                 }
             }
@@ -6135,7 +6135,7 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
-            assert(token_f.is_None());
+            assert(token_f is None);
 
             let tracked tok = inst.tr_add();
             assert(equal(tok.instance_id(), inst.id()));
@@ -6143,29 +6143,29 @@ test_verify_one_file! {
             inst.tr_remove(tok);
 
             let tracked opt_tok = inst.tr_add_gen(true);
-            assert(opt_tok.is_Some());
+            assert(opt_tok is Some);
             assert(equal(opt_tok->0.instance_id(), inst.id()));
             inst.tr_have_gen(true, &opt_tok);
             inst.tr_remove_gen(true, opt_tok);
 
             let tracked opt_tok = inst.tr_add_gen(false);
-            assert(opt_tok.is_None());
+            assert(opt_tok is None);
             inst.tr_have_gen(false, &opt_tok);
             inst.tr_remove_gen(false, opt_tok);
         }
 
         proof fn test_inst1_fail() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
-            assert(token_f.is_None());
+            assert(token_f is None);
 
             let tracked opt_tok = inst.tr_add_gen(false);
-            assert(opt_tok.is_None());
+            assert(opt_tok is None);
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
         proof fn test_inst2() {
             let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
-            assert(token_t.is_Some());
+            assert(token_t is Some);
             assert(equal(token_t->0.instance_id(), inst.id()));
         }
 
@@ -6268,7 +6268,7 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
-            assert(token_f.is_None());
+            assert(token_f is None);
 
             let tracked tok = inst.tr_add();
             assert(equal(tok.instance_id(), inst.id()));
@@ -6278,27 +6278,27 @@ test_verify_one_file! {
             assert(equal(tok, tok1));
 
             let tracked opt_tok = inst.tr_add_gen(true);
-            assert(opt_tok.is_Some());
+            assert(opt_tok is Some);
             assert(equal(opt_tok->0.instance_id(), inst.id()));
             inst.tr_have_gen(true, &opt_tok);
 
             let tracked opt_tok = inst.tr_add_gen(false);
-            assert(opt_tok.is_None());
+            assert(opt_tok is None);
             inst.tr_have_gen(false, &opt_tok);
         }
 
         proof fn test_inst1_fail() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::init_false();
-            assert(token_f.is_None());
+            assert(token_f is None);
 
             let tracked opt_tok = inst.tr_add_gen(false);
-            assert(opt_tok.is_None());
+            assert(opt_tok is None);
             inst.tr_have_gen(true, &opt_tok);   // FAILS
         }
 
         proof fn test_inst2() {
             let tracked (Tracked(inst), Tracked(token_t)) = Y::Instance::init_true();
-            assert(token_t.is_Some());
+            assert(token_t is Some);
             assert(equal(token_t->0.instance_id(), inst.id()));
         }
 
@@ -6894,21 +6894,21 @@ test_verify_one_file! {
         }}
 
         spec fn tr_weak(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
-            (x.is_Some() ==> w)
-              && ((!x.is_Some() ==> y) ==> (
+            (x is Some ==> w)
+              && ((!(x is Some) ==> y) ==> (
                   // TODO this should probably be under the `z ==>`
-                  (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
+                  (x is Some ==> post.a == pre.a) && (!(x is Some) ==> post.a == 99)
 
                   && (z ==> (
-                        (v.is_Some() ==> post.b == v->0) && (!v.is_Some() ==> post.b == pre.b)
-                        && (if x.is_Some() {
-                            if v.is_Some() {
+                        (v is Some ==> post.b == v->0) && (!(v is Some) ==> post.b == pre.b)
+                        && (if x is Some {
+                            if v is Some {
                                 post.m =~= pre.m.insert(0, x->0)
                             } else {
                                 post.m =~= pre.m.insert(0, x->0).insert(1, 11)
                             }
                         } else {
-                            if v.is_Some() {
+                            if v is Some {
                                 post.m =~= pre.m
                             } else {
                                 post.m =~= pre.m.insert(1, 11)
@@ -6923,19 +6923,19 @@ test_verify_one_file! {
         { }
 
         spec fn tr_strong(pre: X::State, post: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
-            (x.is_Some() ==> w) && (!x.is_Some() ==> y)
+            (x is Some ==> w) && (!(x is Some) ==> y)
                 && z
 
-                && (x.is_Some() ==> post.a == pre.a) && (!x.is_Some() ==> post.a == 99)
-                && (v.is_Some() ==> post.b == v->0) && (!v.is_Some() ==> post.b == pre.b)
-                && (if x.is_Some() {
-                    if v.is_Some() {
+                && (x is Some ==> post.a == pre.a) && (!(x is Some) ==> post.a == 99)
+                && (v is Some ==> post.b == v->0) && (!(v is Some) ==> post.b == pre.b)
+                && (if x is Some {
+                    if v is Some {
                         post.m =~= pre.m.insert(0, x->0)
                     } else {
                         post.m =~= pre.m.insert(0, x->0).insert(1, 11)
                     }
                 } else {
-                    if v.is_Some() {
+                    if v is Some {
                         post.m =~= pre.m
                     } else {
                         post.m =~= pre.m.insert(1, 11)
@@ -6956,7 +6956,7 @@ test_verify_one_file! {
         }
 
         spec fn tr_enabled(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>) -> bool {
-            x.is_Some() ==> w
+            x is Some ==> w
         }
 
         proof fn test3(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
@@ -6964,7 +6964,7 @@ test_verify_one_file! {
         { }
 
         proof fn test_take_step(pre: X::State, x: Option<int>, y: bool, z: bool, w: bool, v: Option<int>)
-            requires x.is_Some() ==> w,
+            requires x is Some ==> w,
         {
             let post = X::take_step::tr(pre, x, y, z, w, v);
             assert(X::State::tr(pre, post, x, y, z, w, v));

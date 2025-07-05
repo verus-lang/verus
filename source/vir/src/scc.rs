@@ -10,6 +10,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 type SccId = usize;
 type NodeIndex = usize;
 
+#[derive(Clone)]
 pub struct Graph<T: std::cmp::Eq + std::hash::Hash + Clone> {
     // Map T to index in nodes
     h: HashMap<T, NodeIndex>,
@@ -25,11 +26,13 @@ pub struct Graph<T: std::cmp::Eq + std::hash::Hash + Clone> {
     mapping: HashMap<T, SccId>,
 }
 
+#[derive(Clone)]
 struct SCC /* <T> */ {
     id: SccId,
     nodes: Vec<NodeIndex>,
 }
 
+#[derive(Clone)]
 struct Node<T: std::cmp::Eq + std::hash::Hash + Clone> {
     t: T,
     edges: Vec<NodeIndex>,
@@ -192,6 +195,12 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         false
     }
 
+    pub fn get_edges_from<'a>(&'a self, t: &T) -> impl Iterator<Item = &'a T> + 'a {
+        assert!(self.h.contains_key(&t));
+        let v: NodeIndex = self.h[t];
+        self.nodes[v].edges.iter().map(move |i| &self.nodes[*i].t)
+    }
+
     pub fn get_scc_size(&self, t: &T) -> usize {
         assert!(self.has_run);
         match self.mapping.get(&t) {
@@ -250,6 +259,46 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
             }
             paths_at_depth = paths_at_next_depth;
         }
+    }
+
+    // Can source reach target by traversing 0 or more edges?
+    // (Note: if the graph is already sorted, we can optimize the traversal.)
+    pub fn can_reach(
+        &self,
+        source: &T,
+        target: &T,
+        // if sort_sccs returns v: Vec<T>, map each T to its index in the sorted Vec<T>:
+        sorted_order: Option<&HashMap<T, usize>>,
+    ) -> bool {
+        assert!(self.has_run);
+        let src = self.mapping[source];
+        let tgt = self.mapping[target];
+        let tgt_sort_index = sorted_order.map(|order| order[&self.get_scc_rep(target)]);
+        let mut reached: HashSet<SccId> = HashSet::new();
+        let mut worklist: Vec<SccId> = vec![src];
+        while let Some(scc) = worklist.pop() {
+            if scc == tgt {
+                return true;
+            }
+            if reached.contains(&scc) {
+                continue;
+            }
+            reached.insert(scc);
+            if let Some(tgt_sort_index) = tgt_sort_index {
+                let scc_sort_index = sorted_order.unwrap()[&self.nodes[self.sccs[scc].rep()].t];
+                if scc_sort_index < tgt_sort_index {
+                    // optimization: scc has already passed the target in the sorted sccs,
+                    // so we can't reach target from scc
+                    continue;
+                }
+            }
+            for v in self.sccs[scc].nodes.iter() {
+                for w in self.nodes[*v].edges.iter() {
+                    worklist.push(self.mapping[&self.nodes[*w].t]);
+                }
+            }
+        }
+        false
     }
 
     pub fn to_dot(

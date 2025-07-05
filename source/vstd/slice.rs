@@ -71,12 +71,10 @@ pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
 // (the axiom also shows that slice@.len() is in-bounds for usize)
-pub broadcast proof fn axiom_spec_len<T>(slice: &[T])
+pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
     ensures
         #[trigger] spec_slice_len(slice) == slice@.len(),
-{
-    admit();
-}
+;
 
 #[verifier::when_used_as_spec(spec_slice_len)]
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
@@ -122,17 +120,22 @@ pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
     idx: I,
 ) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;
 
-pub broadcast proof fn axiom_slice_get_usize<T>(v: &[T], i: usize)
+pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
         i < v.len() ==> #[trigger] spec_slice_get(v, i) === Some(&v[i as int]),
         i >= v.len() ==> spec_slice_get(v, i).is_none(),
-{
-    admit();
-}
+;
+
+pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
+    ensures
+        #[trigger] (a1 =~= a2) <==> (a1.len() == a2.len() && forall|i: int|
+            0 <= i < a1.len() ==> a1[i] == a2[i]),
+;
 
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
+    axiom_slice_ext_equal,
 }
 
 } // verus!

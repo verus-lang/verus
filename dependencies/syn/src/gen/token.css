@@ -10,6 +10,7 @@ a.struct[title="struct syn::token::Async"],
 a.struct[title="struct syn::token::At"],
 a.struct[title="struct syn::token::Auto"],
 a.struct[title="struct syn::token::Await"],
+a.struct[title="struct syn::token::Axiom"],
 a.struct[title="struct syn::token::Become"],
 a.struct[title="struct syn::token::BigAnd"],
 a.struct[title="struct syn::token::BigOr"],
@@ -29,6 +30,7 @@ a.struct[title="struct syn::token::Continue"],
 a.struct[title="struct syn::token::Crate"],
 a.struct[title="struct syn::token::Decreases"],
 a.struct[title="struct syn::token::Default"],
+a.struct[title="struct syn::token::DefaultEnsures"],
 a.struct[title="struct syn::token::Do"],
 a.struct[title="struct syn::token::Dollar"],
 a.struct[title="struct syn::token::Dot"],
@@ -104,6 +106,7 @@ a.struct[title="struct syn::token::PlusEq"],
 a.struct[title="struct syn::token::Pound"],
 a.struct[title="struct syn::token::Priv"],
 a.struct[title="struct syn::token::Proof"],
+a.struct[title="struct syn::token::ProofFn"],
 a.struct[title="struct syn::token::Pub"],
 a.struct[title="struct syn::token::Question"],
 a.struct[title="struct syn::token::RArrow"],
@@ -153,6 +156,7 @@ a.struct[title="struct syn::token::Virtual"],
 a.struct[title="struct syn::token::When"],
 a.struct[title="struct syn::token::Where"],
 a.struct[title="struct syn::token::While"],
+a.struct[title="struct syn::token::With"],
 a.struct[title="struct syn::token::Yield"] {
 	display: inline-block;
 	color: transparent;
@@ -171,6 +175,7 @@ a.struct[title="struct syn::token::Async"]::before,
 a.struct[title="struct syn::token::At"]::before,
 a.struct[title="struct syn::token::Auto"]::before,
 a.struct[title="struct syn::token::Await"]::before,
+a.struct[title="struct syn::token::Axiom"]::before,
 a.struct[title="struct syn::token::Become"]::before,
 a.struct[title="struct syn::token::BigAnd"]::before,
 a.struct[title="struct syn::token::BigOr"]::before,
@@ -190,6 +195,7 @@ a.struct[title="struct syn::token::Continue"]::before,
 a.struct[title="struct syn::token::Crate"]::before,
 a.struct[title="struct syn::token::Decreases"]::before,
 a.struct[title="struct syn::token::Default"]::before,
+a.struct[title="struct syn::token::DefaultEnsures"]::before,
 a.struct[title="struct syn::token::Do"]::before,
 a.struct[title="struct syn::token::Dollar"]::before,
 a.struct[title="struct syn::token::Dot"]::before,
@@ -265,6 +271,7 @@ a.struct[title="struct syn::token::PlusEq"]::before,
 a.struct[title="struct syn::token::Pound"]::before,
 a.struct[title="struct syn::token::Priv"]::before,
 a.struct[title="struct syn::token::Proof"]::before,
+a.struct[title="struct syn::token::ProofFn"]::before,
 a.struct[title="struct syn::token::Pub"]::before,
 a.struct[title="struct syn::token::Question"]::before,
 a.struct[title="struct syn::token::RArrow"]::before,
@@ -314,6 +321,7 @@ a.struct[title="struct syn::token::Virtual"]::before,
 a.struct[title="struct syn::token::When"]::before,
 a.struct[title="struct syn::token::Where"]::before,
 a.struct[title="struct syn::token::While"]::before,
+a.struct[title="struct syn::token::With"]::before,
 a.struct[title="struct syn::token::Yield"]::before {
 	display: inline-block;
 	color: var(--type-link-color);
@@ -366,6 +374,10 @@ a.struct[title="struct syn::token::Auto"]::before {
 
 a.struct[title="struct syn::token::Await"]::before {
 	content: "Token![await]";
+}
+
+a.struct[title="struct syn::token::Axiom"]::before {
+	content: "Token![axiom]";
 }
 
 a.struct[title="struct syn::token::Become"]::before {
@@ -443,6 +455,10 @@ a.struct[title="struct syn::token::Decreases"]::before {
 
 a.struct[title="struct syn::token::Default"]::before {
 	content: "Token![default]";
+}
+
+a.struct[title="struct syn::token::DefaultEnsures"]::before {
+	content: "Token![default_ensures]";
 }
 
 a.struct[title="struct syn::token::Do"]::before {
@@ -745,6 +761,10 @@ a.struct[title="struct syn::token::Proof"]::before {
 	content: "Token![proof]";
 }
 
+a.struct[title="struct syn::token::ProofFn"]::before {
+	content: "Token![proof_fn]";
+}
+
 a.struct[title="struct syn::token::Pub"]::before {
 	content: "Token![pub]";
 }
@@ -942,6 +962,10 @@ a.struct[title="struct syn::token::While"]::before {
 	content: "Token![while]";
 }
 
+a.struct[title="struct syn::token::With"]::before {
+	content: "Token![with]";
+}
+
 a.struct[title="struct syn::token::Yield"]::before {
 	content: "Token![yield]";
 }
@@ -1045,6 +1069,7 @@ a.struct[title="struct syn::token::Assume"]::after,
 a.struct[title="struct syn::token::Async"]::after,
 a.struct[title="struct syn::token::Auto"]::after,
 a.struct[title="struct syn::token::Await"]::after,
+a.struct[title="struct syn::token::Axiom"]::after,
 a.struct[title="struct syn::token::Become"]::after,
 a.struct[title="struct syn::token::Box"]::after,
 a.struct[title="struct syn::token::Break"]::after,
@@ -1124,14 +1149,17 @@ a.struct[title="struct syn::token::Virtual"]::after,
 a.struct[title="struct syn::token::When"]::after,
 a.struct[title="struct syn::token::Where"]::after,
 a.struct[title="struct syn::token::While"]::after,
+a.struct[title="struct syn::token::With"]::after,
 a.struct[title="struct syn::token::Yield"]::after {
 	content: "........";
 }
 
 a.struct[title="struct syn::token::AssumeSpecification"]::after,
+a.struct[title="struct syn::token::DefaultEnsures"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,
 a.struct[title="struct syn::token::NoUnwind"]::after,
 a.struct[title="struct syn::token::OpensInvariants"]::after,
+a.struct[title="struct syn::token::ProofFn"]::after,
 a.struct[title="struct syn::token::SizeOf"]::after {
 	content: ".........";
 }

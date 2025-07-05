@@ -1,10 +1,11 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
     ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind,
-    MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
+    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
+    Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -34,6 +35,12 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
+    pub fn replace_last(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments[self.segments.len() - 1] = ident;
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
     pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
         let mut segments = (*self.segments).clone();
         segments.extend(idents);
@@ -52,6 +59,22 @@ impl PathX {
             _ => false,
         }
     }
+}
+
+pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
+    prefix.len() <= target.len() && prefix[..] == target[..prefix.len()]
+}
+
+pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
+    let mut arg_segments: Vec<Ident> =
+        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
+    if arg_segments.first().map(|x| **x == "") == Some(true) {
+        arg_segments.remove(0);
+    }
+    if arg_segments.is_empty() {
+        return Err(crate::messages::error_bare(format!("invalid path {s}")));
+    }
+    Ok(Arc::new(arg_segments))
 }
 
 impl fmt::Debug for PathX {
@@ -149,10 +172,12 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         }
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
+        (TypX::ConstBool(b1), TypX::ConstBool(b2)) => b1 == b2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -166,8 +191,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Projection { .. }, _) => false,
         (TypX::TypeId, _) => false,
         (TypX::ConstInt(_), _) => false,
+        (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::PointeeMetadata(..), _) => false,
     }
 }
 
@@ -263,6 +290,14 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
         TypX::Int(range) => Some(*range),
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
+    }
+}
+
+pub(crate) fn const_generic_to_primitive(typ: &Typ) -> &'static str {
+    match &*undecorate_typ(typ) {
+        TypX::Int(_) => crate::def::CONST_INT,
+        TypX::Bool => crate::def::CONST_BOOL,
+        _ => panic!("unexpected const generic type"),
     }
 }
 
@@ -602,10 +637,12 @@ impl crate::ast::CallTargetKind {
     pub(crate) fn resolved(&self) -> Option<(Fun, Typs)> {
         match self {
             crate::ast::CallTargetKind::Static => None,
+            crate::ast::CallTargetKind::ProofFn(..) => None,
             crate::ast::CallTargetKind::Dynamic => None,
             crate::ast::CallTargetKind::DynamicResolved { resolved, typs, .. } => {
                 Some((resolved.clone(), typs.clone()))
             }
+            crate::ast::CallTargetKind::ExternalTraitDefault => None,
         }
     }
 }
@@ -869,6 +906,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
+        TypX::ConstBool(_) => format!("constbool"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
@@ -879,6 +917,10 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::PointeeMetadata(t) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("<{} as Pointee>::Metadata", t)
+        }
     }
 }
 
@@ -1151,7 +1193,7 @@ impl HeaderExprX {
 
 impl Default for crate::ast::AutoExtEqual {
     fn default() -> Self {
-        crate::ast::AutoExtEqual { assert: true, assert_by: false, ensures: false }
+        crate::ast::AutoExtEqual { assert: true, assert_by: true, ensures: true, invariant: true }
     }
 }
 

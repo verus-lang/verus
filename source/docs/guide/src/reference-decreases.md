@@ -62,16 +62,72 @@ fn f(args...) -> _
 }
 ```
 
-### The `via` clause
+### Helping Verus prove termination
 
 Sometimes, it may be true that the decreases-measure decreases, but Verus cannot prove
-it automatically. In this case, the user can supply a lemma to prove the decreases property.
+it automatically.  When this happens, the user can either supply a proof inside the body
+of the recursive function, or use a separate lemma to prove the decreases property.
+In the vast majority of cases, writing a proof inside the function body is simpler
+and easier to read.  The main reason to use a separate lemma is if you want
+to keep your trusted specifications as minimal as possible.
 
-If the `via` clause is supplied,
-the `FUNCTION_NAME` must be the name of a `proof` function defined in the same module.
-The number of expressions in the `decreases` clause must be the same for each function
-in a mutually recursive collection.
+**Example.**
+On its own, Verus cannot see that `n` decreases at each recursive call.
+We'll use this example to illustrate the two methods of helping Verus prove termination.
+```rust
+spec fn floor_log2(n: u64) -> int 
+    decreases n
+{
+    if n <= 1 { 
+        0   
+    } else {
+        floor_log2(n >> 1) + 1 
+    }   
+}
+```
+In order to check that the recursion in `floor_log2` terminates, Verus generates a proof obligation
+that `n > 1 ==> decreases_to!(n => n >> 1)`. (The `n > 1` hypothesis stems from the fact that
+the recursive call is in the else-block.) Thus we need to show:
+
+`n > 1 ==> (n >> 1) < n`
+
+Verus cannot prove this automatically. 
+
+#### Writing an proof of termination inside your recursive function
+
+For the purposes of termination checking, you can include a `proof {}` block
+in the body of your spec function.  The proof needs to demonstrate that your
+decreases measure really does decrease at each recursive call site.
+
+Note that at present, this proof block can only assist with termination.
+You cannot use it, for example, to prove additional properties about your function
+for use elsewhere.
+
+**Example**
+Here we supply the fact Verus was missing using Verus's specialized 
+[bit-vector reasoning mode](bitvec.md).
+
+```rust
+{{#include ../../../../examples/guide/recursion.rs:example_proof_in_spec}}
+```
+
+#### Writing a separate proof of termination with the `via` clause
+
+To avoid cluttering your recursive spec function with proof material,
+you can add a `via PROOF_FUNCTION_NAME` clause to the spec function.
+`FUNCTION_NAME` must be the name of a `proof` function defined in the same module
+that takes the same arguments as the recursive function.
 This proof function must also be annotated with the `#[via_fn]` attribute.
 
-It is the job of the proof function to prove the relevant decreases property for each
-call site.
+The proof function's job is to prove the relevant decreases property for each
+call site.  In other words, it needs to show that the decreases measure actually
+decreases at each recursive call in the spec function's body.
+
+**Example.**
+In the following definition, we use a `via` clause to prove that the decreases-measure
+decreases.
+
+```rust
+{{#include ../../../../examples/guide/recursion.rs:example_proof_using_via}}
+```
+The proof function `floor_log2_decreases_proof` is defined as a `via_fn` and is referenced from the `via` clause. The body of the proof function contains a proof that `n > 1 ==> (n >> 1) < n` (the same proof we used inline above).

@@ -333,7 +333,7 @@ test_verify_one_file! {
     #[test] test_attr_on_const verus_code! {
         #[verifier(external_fn_specification)]
         const x: u8 = 5;
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` attribute not supported for const")
 }
 
 test_verify_one_file! {
@@ -647,7 +647,7 @@ test_verify_one_file! {
         fn ex_f<T: Tr>() {
             T::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported for unresolved trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead")
 }
 
 // Other
@@ -859,6 +859,38 @@ test_verify_one_file! {
             x.swap()
         }
     } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+}
+
+// allow_in_spec
+
+test_verify_one_file! {
+    #[test] test_allow_in_spec verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        #[verifier::allow_in_spec]
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+            returns !x
+        {
+            foo(x)
+        }
+
+        proof fn test() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test2() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test3() {
+            let a = foo(true);
+            assert(a == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 // when_used_as_spec
@@ -1369,4 +1401,193 @@ test_verify_one_file! {
         assert!(err.warnings.len() == 2);
         assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
     }
+}
+
+test_verify_one_file! {
+    #[test] test_trait_with_assoc_type_bounds verus_code! {
+        trait Sr {
+            fn s_foo(&self);
+        }
+
+        trait Tr {
+            type AssocType: Sr;
+
+            fn t_foo(&self) -> Self::AssocType;
+        }
+
+        struct X { u: u64 }
+        struct Y { }
+
+        impl Sr for X {
+            fn s_foo(&self) { }
+        }
+
+        #[verifier::external]
+        impl Tr for Y {
+            type AssocType = X;
+
+            fn t_foo(&self) -> X {
+                X { u: 0 }
+            }
+        }
+
+        assume_specification [ Y::t_foo ] (y: &Y) -> (x: X)
+            ensures x == (X { u: 0 });
+
+        fn test(y: &Y) {
+            let j = y.t_foo();
+            assert(j == X { u: 0 });
+        }
+
+        fn test_fails(y: &Y) {
+            let j = y.t_foo();
+            assert(j == X { u: 0 });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_blanket_impl_mismatch verus_code! {
+        use std::fmt::Display;
+        // This is missing the ?Sized bound:
+        pub assume_specification<T: Display>[ T::to_string ](this: &T) -> (other: String);
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+}
+
+test_verify_one_file! {
+    #[test] test_blanket_impl verus_code! {
+        trait Tr {
+            fn stuff(&self)
+                ensures self.foo();
+
+            spec fn foo(&self) -> bool;
+        }
+
+        #[verifier::external]
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        #[verifier::external]
+        impl<T: Tr> Blanket for T {
+            fn stuff2(&self) {
+                self.stuff();
+            }
+        }
+
+        assume_specification <T: Tr> [ <T as Blanket>::stuff2 ] (x: &T)
+            ensures x.foo();
+
+
+        fn test_generic<T: Tr>(t: &T) {
+            t.stuff2();
+            assert(t.foo());
+        }
+
+        impl Tr for u64 {
+            fn stuff(&self) {
+                assume(false);
+            }
+
+            spec fn foo(&self) -> bool {
+                self < 5
+            }
+        }
+
+        fn test_specific(u: u64) {
+            u.stuff2();
+            assert(u < 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_blanket_impl_unsized verus_code! {
+        trait Tr {
+            fn stuff(&self)
+                ensures self.foo();
+
+            spec fn foo(&self) -> bool;
+        }
+
+        #[verifier::external]
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        #[verifier::external]
+        impl<T: Tr + ?Sized> Blanket for T {
+            fn stuff2(&self) {
+                self.stuff();
+            }
+        }
+
+        assume_specification <T: Tr + ?Sized> [ <T as Blanket>::stuff2 ] (x: &T)
+            ensures x.foo();
+
+
+        fn test_generic<T: Tr + ?Sized>(t: &T) {
+            t.stuff2();
+            assert(t.foo());
+        }
+
+        impl Tr for u64 {
+            fn stuff(&self) {
+                assume(false);
+            }
+
+            spec fn foo(&self) -> bool {
+                self < 5
+            }
+        }
+
+        fn test_specific(u: u64) {
+            u.stuff2();
+            assert(u < 5);
+        }
+    } => Ok(())
+}
+
+// `Deref` is special since it has an alias `*` for calling `.deref()`.
+
+test_verify_one_file! {
+    #[test] test_manually_drop_deref_when_have_spec verus_code! {
+        use core::mem::ManuallyDrop;
+        use core::ops::Deref;
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        #[verifier::reject_recursive_types(T)]
+        pub struct ExManuallyDrop<T: ?Sized>(ManuallyDrop<T>);
+
+        pub uninterp spec fn manually_drop_spec_get<T: ?Sized>(m: &ManuallyDrop<T>) -> &T;
+
+        #[verifier::when_used_as_spec(manually_drop_spec_get)]
+        pub assume_specification<T: ?Sized >[ <ManuallyDrop<T> as Deref>::deref ](
+            v: &ManuallyDrop<T>,
+        ) -> (res: &T)
+            ensures
+                res == manually_drop_spec_get(v),
+        ;
+
+        fn do_exec_deref(x: &ManuallyDrop<usize>)
+            requires 100 <= **x < 102
+        {
+            // Explicit call.
+            let u: &usize = &((*x).deref());
+            assert(100 <= *u < 102);
+            // Implicit call.
+            let v: &usize = &**x;
+            assert(100 <= *v < 102);
+        }
+
+        spec fn do_explicit_spec_deref(x: &ManuallyDrop<usize>) -> &usize {
+            &((*x).deref())
+        }
+
+        spec fn do_implicit_spec_deref(x: &ManuallyDrop<usize>) -> &usize {
+            &**x
+        }
+    } => Ok(())
 }

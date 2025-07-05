@@ -122,6 +122,9 @@ impl ToString for TypX {
                     typ_args_to_string(Some(name), assoc_typ_args, &vec![], &None)
                 )
             }
+            TypX::PointeeMetadata(t) => {
+                format!("<{} as std::ptr::Pointee>::Metadata", t.to_string())
+            }
             TypX::Closure => "_".to_string(),
             TypX::FnDef => "_".to_string(),
             TypX::RawPtr(t, mutbl) => {
@@ -820,6 +823,13 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
             buf += " -> ";
             buf += &ret.to_string();
         }
+        Bound::ProofFn(kind) => {
+            buf += match kind {
+                ClosureKind::Fn => "ProofFn",
+                ClosureKind::FnMut => "ProofFnMut",
+                ClosureKind::FnOnce => "ProofFnOnce",
+            };
+        }
     }
     buf
 }
@@ -966,59 +976,36 @@ fn emit_fields(state: &mut EmitState, fields: &Fields, suffix: &str) {
     }
 }
 
-fn emit_copy_clone(
-    state: &mut EmitState,
-    d: &DatatypeDecl,
-    copy_bounds: &Vec<bool>,
-    bound: &Bound,
-    bound_name: &str,
-    body: &str,
-) {
-    // impl<A: Clone, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
-    // impl<A: Copy, B> Copy for S<A, B> {}
-    assert!(d.generic_params.len() == copy_bounds.len());
-    state.newdecl();
-    state.newline();
-    state.write("impl");
-    let mut copy_generics: Vec<GenericParam> = Vec::new();
-    let mut generic_args: Vec<GenericParam> = Vec::new();
-    let mut generic_bounds: Vec<GenericBound> = Vec::new();
-    for (gparam, copy_bound) in d.generic_params.iter().zip(copy_bounds.iter()) {
-        if *copy_bound {
-            let typ = Box::new(TypX::TypParam(gparam.name.clone()));
-            let generic_bound = GenericBound { typ, bound_vars: vec![], bound: bound.clone() };
-            generic_bounds.push(generic_bound);
-        }
-        copy_generics.push(gparam.clone());
-        generic_args.push(GenericParam { name: gparam.name.clone(), const_typ: None });
-    }
-    emit_generic_params(state, &copy_generics);
-    state.write(format!(" {bound_name} for "));
-    state.write(d.name.to_string());
-    emit_generic_params(state, &generic_args);
-    emit_generic_bounds(state, &vec![], &generic_bounds);
-    state.write(" ");
-    state.write(body);
-}
-
 pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.newdecl();
     state.newline();
     state.write("trait ");
     state.write(&t.name.to_string());
     emit_generic_params(state, &t.generic_params);
-    emit_generic_bounds(state, &t.generic_params, &t.generic_bounds);
+
+    // Move the assoc_typs bounds into the top-level generic_bounds,
+    // because rustc seems to have overflow issues with bounds directly on associated types.
+    // See, for example: https://github.com/rust-lang/rust/issues/87755
+    let mut generic_bounds = t.generic_bounds.clone();
+    for (a, _, bounds) in &t.assoc_typs {
+        let (_bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
+        generic_bounds.extend(wheres.clone());
+    }
+
+    emit_generic_bounds(state, &t.generic_params, &generic_bounds);
     state.write(" {");
     state.push_indent();
     for (a, params, bounds) in &t.assoc_typs {
-        let (bares, wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
+        let (bares, _wheres) = simplify_assoc_typ_bounds(&t.name, a, bounds.clone());
         state.newline();
         state.write("type ");
         state.write(a.to_string());
         emit_generic_params(state, &params);
         let sized = bares.iter().any(|b| b.bound == Bound::Sized);
         let unsize = if sized { vec![] } else { vec!["?Sized".to_string()] };
-        if bounds.len() + unsize.len() > 0 {
+        // See comment above about overflow issues
+        // if bounds.len() + unsize.len() > 0 {
+        if bares.len() + unsize.len() > 0 {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
@@ -1026,7 +1013,8 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));
-            emit_generic_bounds(state, &vec![], &wheres);
+            // See comment above about overflow issues
+            //emit_generic_bounds(state, &vec![], &wheres);
         }
         state.write(";");
     }
@@ -1076,11 +1064,6 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
         }
     }
     state.end_span_opt(d.span);
-    if let Some(copy_bounds) = &d.implements_copy {
-        let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
-        emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
-        emit_copy_clone(state, d, copy_bounds, &Bound::Copy, "Copy", "{}");
-    }
 }
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
@@ -1092,6 +1075,7 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
         generic_bounds,
         assoc_typs,
         trait_polarity,
+        is_clone,
     } = t;
     state.newdecl();
     state.newline();
@@ -1116,6 +1100,10 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
         state.write(" = ");
         state.write(&typ.to_string());
         state.write(";");
+    }
+    if *is_clone {
+        state.newline();
+        state.write("fn clone(&self) -> Self { panic!() }");
     }
     state.newline_unindent();
     state.write("}");

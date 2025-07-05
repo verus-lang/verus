@@ -12,9 +12,10 @@
 #![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-#![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
+#![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
+#![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -28,12 +29,14 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
+pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
 pub mod invariant;
 pub mod layout;
+pub mod logatom;
 pub mod map;
 pub mod map_lib;
 pub mod math;
@@ -74,7 +77,7 @@ use prelude::*;
 
 verus! {
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", feature = "std"))]
 #[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
 pub broadcast group group_vstd_default {
     seq::group_seq_axioms,
@@ -94,6 +97,35 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
+    function::group_function_axioms,
+    std_specs::hash::group_hash_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
+    std_specs::slice::group_slice_axioms,
+}
+
+#[cfg(feature = "alloc")]
+#[cfg(not(feature = "std"))]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
+pub broadcast group group_vstd_default {
+    seq::group_seq_axioms,
+    seq_lib::group_seq_lib_default,
+    map::group_map_axioms,
+    set::group_set_axioms,
+    set_lib::group_set_lib_default,
+    std_specs::bits::group_bits_axioms,
+    std_specs::control_flow::group_control_flow_axioms,
+    std_specs::vec::group_vec_axioms,
+    slice::group_slice_axioms,
+    array::group_array_axioms,
+    multiset::group_multiset_axioms,
+    string::group_string_axioms,
+    std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
+    compute::all_spec_ensures,
+    layout::group_layout_axioms,
+    function::group_function_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
+    std_specs::slice::group_slice_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -115,6 +147,8 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
+    function::group_function_axioms,
+    std_specs::slice::group_slice_axioms,
 }
 
 } // verus!

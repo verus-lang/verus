@@ -8,5 +8,5 @@ if [ "$(dirname "$0")" != "." ]; then
 fi
 
 docker build -f verus-lang_verus-deps.dockerfile -t ghcr.io/utaal/verus-lang/verus-deps .
-docker build -f verus-lang_verus-base-1.82.0.dockerfile -t ghcr.io/utaal/verus-lang/verus-base:rust-1.82.0 .
-docker build -f verus-lang_veritas-1.82.0.dockerfile -t ghcr.io/utaal/verus-lang/veritas:rust-1.82.0 .
+docker build -f verus-lang_verus-base-1.85.1.dockerfile -t ghcr.io/utaal/verus-lang/verus-base:rust-1.85.1 .
+docker build -f verus-lang_veritas-1.85.1.dockerfile -t ghcr.io/utaal/verus-lang/veritas:rust-1.85.1 .

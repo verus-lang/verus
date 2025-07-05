@@ -17,7 +17,13 @@ use super::super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use super::power::{pow, lemma_pow_positive, lemma_pow_adds, lemma_pow_strictly_increases};
+use super::power::{
+    pow,
+    lemma_pow_positive,
+    lemma_pow_adds,
+    lemma_pow_strictly_increases,
+    lemma_pow_subtracts,
+};
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
@@ -37,7 +43,7 @@ pub open spec fn pow2(e: nat) -> nat
 }
 
 /// Proof that 2 to the power of any natural number (specifically,
-/// `e`) is positive
+/// `e`) is positive.
 pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
         #[trigger] pow2(e) > 0,
@@ -46,7 +52,7 @@ pub broadcast proof fn lemma_pow2_pos(e: nat)
     lemma_pow_positive(2, e);
 }
 
-/// Proof that `pow2(e)` is equivalent to `pow(2, e)`
+/// Proof that `pow2(e)` is equivalent to `pow(2, e)`.
 pub broadcast proof fn lemma_pow2(e: nat)
     ensures
         #[trigger] pow2(e) == pow(2, e) as int,
@@ -66,6 +72,7 @@ pub broadcast proof fn lemma_pow2_unfold(e: nat)
     ensures
         #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
 {
+    reveal(pow);
     lemma_pow2(e);
     lemma_pow2((e - 1) as nat);
 }
@@ -81,6 +88,19 @@ pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow_adds(2, e1, e2);
 }
 
+/// Proof that, as long as `e1 <= e2`, `2^(e2 - e1)` is equivalent to `2^e2 / 2^e1`.
+pub broadcast proof fn lemma_pow2_subtracts(e1: nat, e2: nat)
+    requires
+        e1 <= e2,
+    ensures
+        #[trigger] pow2((e2 - e1) as nat) == pow2(e2) / pow2(e1) > 0,
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow2((e2 - e1) as nat);
+    lemma_pow_subtracts(2, e1, e2);
+}
+
 /// Proof that if `e1 < e2` then `2^e1 < 2^e2`.
 pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     requires
@@ -93,7 +113,7 @@ pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     lemma_pow_strictly_increases(2, e1, e2);
 }
 
-/// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
+/// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64.
 pub proof fn lemma2_to64()
     ensures
         pow2(0) == 0x1,

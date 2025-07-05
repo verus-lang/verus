@@ -217,5 +217,5 @@ as [they are for initialization](#initializing-the-field).
 ## Example
 
 ```rust,ignore
-{{#include ../../../rust_verify/example/state_machines/reference-examples/strategy_option.rs:full}}
+{{#include ../../../../examples/state_machines/reference-examples/strategy_option.rs:full}}
 ```

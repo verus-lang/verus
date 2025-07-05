@@ -117,42 +117,42 @@ test_verify_one_file! {
             let y = x as *mut u16;
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+            assert(y@.metadata == ());
         }
 
         fn cast_test2(x: *mut [u8]) {
             let y = x as *mut u16;
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+            assert(y@.metadata == ());
         }
 
         fn cast_test3(x: *mut [u64; 16]) {
             let y = x as *mut [u64];
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Length(16));
+            assert(y@.metadata == 16);
         }
 
         proof fn cast_proof_test(x: *mut u8) {
             let y = x as *mut u16;
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+            assert(y@.metadata == ());
         }
 
         proof fn cast_proof_test2(x: *mut [u8]) {
             let y = x as *mut u16;
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Thin);
+            assert(y@.metadata == ());
         }
 
         proof fn cast_proof_test3(x: *mut [u64; 16]) {
             let y = x as *mut [u64];
             assert(y@.addr == x@.addr);
             assert(y@.provenance == x@.provenance);
-            assert(y@.metadata == vstd::raw_ptr::Metadata::Length(16));
+            assert(y@.metadata == 16);
         }
 
         fn test_strict_provenance(a: *mut u64) {
@@ -177,7 +177,17 @@ test_verify_one_file! {
             assert(b@.metadata == a@.metadata);
         }
 
-    } => Err(err) => assert_fails(err, 8)
+        fn test_extensionality_sized<T>(a: *const T, b: *const T) {
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assert(a == b);
+        }
+
+        fn test_extensionality_unsized<T: ?Sized>(a: *const T, b: *const T) {
+            assume(a.addr() == b.addr() && a@.provenance == b@.provenance);
+            assert(a == b); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 9)
 }
 
 test_verify_one_file! {

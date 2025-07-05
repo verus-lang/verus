@@ -3,6 +3,7 @@ pub mod alloc;
 
 pub mod atomic;
 pub mod bits;
+pub mod borrow;
 pub mod clone;
 pub mod control_flow;
 pub mod core;
@@ -15,6 +16,8 @@ pub mod num;
 pub mod option;
 pub mod range;
 pub mod result;
+
+pub mod slice;
 
 #[cfg(feature = "alloc")]
 pub mod vec;

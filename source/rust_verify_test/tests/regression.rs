@@ -356,8 +356,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] parse_empty_requires_ensure_invariant verus_code! {
+test_verify_one_file_with_options! {
+    #[test] parse_empty_requires_ensure_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn test()
             requires
         {
@@ -1408,4 +1408,117 @@ test_verify_one_file! {
             }
         }
     ) => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] derive_regression_1575 verus_code! {
+        #[derive(Clone, Copy)]
+        enum A { A, }
+
+        #[derive(Clone, Copy)]
+        enum B { B, }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] field_update_regression_1591 verus_code! {
+        use vstd::map::*;
+
+        struct PCB {
+            pid: usize,
+            parent_pid: usize,
+        }
+
+
+        fn test(pcb: &mut PCB) {
+            pcb.parent_pid = 10;
+
+            //assert(pcb.pid == old(pcb).pid); // this assert should not be necessary
+
+            proof {
+                let m = Map::<usize, bool>::empty();
+                let m2 = m.insert(pcb.pid, false);
+                assert(m2.contains_key(pcb.pid));
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_unsupported_trait_imports ["no-auto-import-builtin"] => code! {
+        // https://github.com/verus-lang/verus/issues/1582
+        // https://github.com/verus-lang/verus/issues/1597
+        // https://github.com/verus-lang/verus/issues/1708
+        #![feature(extern_types)]
+
+        // The bug is a mishandling of unsupported types, so to test it,
+        // declare a foreign type that is unlikely to be supported in future Verus versions:
+        extern "C" { type T; }
+
+        impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] subst_in_traits verus_code! {
+        // https://github.com/verus-lang/verus/issues/1511
+        use vstd::prelude::*;
+
+        struct A {
+            a: bool,
+        }
+
+        struct B;
+
+        trait TraitA {
+            proof fn prop(chain: Seq<Option<A>>, i: int)
+                ensures
+                    0 <= i < chain.len() ==> {
+                        let c = chain[i];
+                        if c is Some {
+                            let MISSING_KEY = c->0;
+                            MISSING_KEY.a
+                        } else {
+                            false
+                        }
+                    }
+                    ;
+        }
+
+        impl TraitA for B {
+            proof fn prop(chain: Seq<Option<A>>, i: int) { assume(false); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] well_formed_typ_check_issue1399 verus_code! {
+        #[verifier::external]
+        enum Never {}
+
+        uninterp spec fn arbitrary<T>() -> T;
+
+        spec fn foo() -> u64 {
+            match arbitrary::<Never>() {
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] well_formed_pattern_check_issue1741 verus_code! {
+        #[verifier::external_body]
+        pub enum E {
+            A,
+            B,
+        }
+
+        pub fn foo(e: E) -> i32{
+            match e {
+                E::A { .. } => 0,
+                _ => 1,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
 }

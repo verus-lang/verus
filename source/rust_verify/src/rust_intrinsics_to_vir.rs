@@ -2,8 +2,8 @@ use crate::{
     context::Context,
     verus_items::{self, RustIntConst, RustIntIntrinsicItem, RustIntType},
 };
-use rustc_span::def_id::DefId;
 use rustc_span::Span;
+use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{Expr, ExprX, IntRange, IntegerTypeBoundKind, Mode, Typ, TypX, UnaryOpr};
 
@@ -39,8 +39,8 @@ pub(crate) fn int_intrinsic_constant_to_vir(
     };
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
-    use verus_items::RustItem::IntIntrinsic;
     use RustIntConst::*;
+    use verus_items::RustItem::IntIntrinsic;
     match rust_item {
         // MIN
         Some(IntIntrinsic(RustIntIntrinsicItem(RustIntType::U8, Min))) => lit_expr(0),
