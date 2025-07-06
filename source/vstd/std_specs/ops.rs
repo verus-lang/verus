@@ -1,10 +1,7 @@
-#![allow(unused_imports)]
-
 /// Defines the specifications for operator traits.
 ///
 /// This file specifies the behavior of operator traits for integers when the trait method is invoked.
-/// To maintain flexibility in defining postconditions, this specification does not enforce them.
-/// However, preconditions for some operator trait method are required to prevent overflow and underflow.
+/// Preconditions for some operator trait method are required to prevent overflow and underflow.
 ///
 /// - For primitive integer types, the expression `lhs $op rhs` is directly handled by the verifier
 ///   without relying on trait specifications defined here, avoiding additional trigger costs.
@@ -12,381 +9,434 @@
 /// - If an operator is overloaded for a custom type, both `lhs $op rhs` and `lhs.add(rhs)` invoke the
 ///   corresponding trait method for verification.
 ///   and its preconditions are enforced.
-/// - To allow users to specify preconditions for trait methods, preconditions can be defined in
-///   the `Spec${Op}Requires` trait for types within the target crate.
-/// - For types defined in external crates, preconditions must be specified using an axiom to define
-///   the uninterpreted `spec_${op}_requires`, which is easy to cause contradict axioms and should be
-///   avoided when possible.
+/// - Since this crate (vstd) defines the extension traits AddSpec, SubSpec, etc.,
+///   this crate is also allowed to implement these extension traits for known std types
+///   like u8, u16, etc.  Rust's coherence rules prevent other crates from implementing
+///   these extension traits for std types.  If this is a problem, as a last-resort workaround,
+///   other crates can assume axioms about the extension traits as an alternative to implementing
+///   them directly.
 use super::super::prelude::*;
 
-verus! {
-
-pub broadcast group group_ops_axioms {
-    axiom_add_requires,
-    axiom_sub_requires,
-    axiom_shl_requires,
-    axiom_mul_requires,
-    axiom_div_requires,
-    axiom_rem_requires,
-    axiom_shr_requires,
-    group_integer_ops_call_requires,
-}
-
-} // verus!
-macro_rules! def_bin_ops_spec {
-    ($trait:path, $extrait: ident, $fun:ident, $spec_trait:ident, $spec_requires:ident, $axiom_requires:ident, $axiom_call_requires:ident) => {
+macro_rules! def_un_ops_spec {
+    ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
         builtin_macros::verus! {
-            /// Define the pre-condition for the operator trait.
-            /// This is used since the preconditions of trait methods must be set in the trait definition.
-            /// spec_{op}_requires(..) ==> call_requires(...)
-            pub uninterp spec fn $spec_requires<Lhs, Rhs>(v: Lhs, rhs: Rhs) -> bool;
-
-            /// This is a workaround to allow the pre-condition to be defined outside the trait,
-            /// without writing axiom for spec_{op}_requires.
-            /// Spec{Op}Requires::spec_requires(...) <==> spec_{op}_requires(...)
-            pub trait $spec_trait<Rhs>: Sized {
-                open spec fn $spec_requires(self, rhs: Rhs) -> bool {true}
-            }
-
             #[verifier::external_trait_specification]
-            pub trait $extrait<Rhs> {
-                type ExternalTraitSpecificationFor: $trait<Rhs>;
+            #[verifier::external_trait_extension($spec_trait via $impl_trait)]
+            pub trait $extrait {
+                type ExternalTraitSpecificationFor: $trait;
 
                 type Output;
-                fn $fun(self, rhs: Rhs) -> (ret: Self::Output)
-                requires $spec_requires::<Self, Rhs>(self, rhs);
-            }
 
-            pub broadcast proof fn $axiom_requires<Lhs, Rhs>(lhs: Lhs, rhs: Rhs)
-            where
-                Lhs: $spec_trait<Rhs>,
-            ensures
-                #![trigger $spec_requires(lhs, rhs)]
-                $spec_requires(lhs, rhs) == Lhs::$spec_requires(lhs, rhs),
-            {
-                admit()
-            }
+                spec fn $obeys() -> bool;
 
-            pub proof fn $axiom_call_requires<Lhs, Rhs>(lhs: Lhs, rhs: Rhs)
-            where
-                Lhs: $spec_trait<Rhs> + $trait<Rhs>,
-            ensures
-                #![trigger call_requires(Lhs::$fun, (lhs, rhs))]
-                Lhs::$spec_requires(lhs, rhs) ==> call_requires(Lhs::$fun, (lhs, rhs)),
-            {
-                $axiom_requires(lhs, rhs);
+                spec fn $req(self) -> bool
+                    where Self: Sized;
+
+                spec fn $spec(self) -> Self::Output
+                    where Self: Sized;
+
+                fn $fun(self) -> (ret: Self::Output)
+                    requires
+                        self.$req(),
+                    ensures
+                        Self::$obeys() ==> ret == self.$spec();
             }
         }
 };
 }
 
-verus! {
+macro_rules! def_bin_ops_spec {
+    ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
+        builtin_macros::verus! {
+            #[verifier::external_trait_specification]
+            #[verifier::external_trait_extension($spec_trait via $impl_trait)]
+            pub trait $extrait<Rhs = Self> {
+                type ExternalTraitSpecificationFor: $trait<Rhs>;
 
-#[verifier::external_trait_specification]
-pub trait ExNot {
-    type ExternalTraitSpecificationFor: core::ops::Not;
+                type Output;
 
-    type Output;
+                spec fn $obeys() -> bool;
 
-    fn not(self) -> Self::Output;
+                spec fn $req(self, rhs: Rhs) -> bool
+                    where Self: Sized;
+
+                spec fn $spec(self, rhs: Rhs) -> Self::Output
+                    where Self: Sized;
+
+                fn $fun(self, rhs: Rhs) -> (ret: Self::Output)
+                    requires
+                        self.$req(rhs),
+                    ensures
+                        Self::$obeys() ==> ret == self.$spec(rhs);
+            }
+        }
+};
 }
 
-} // verus!
-verus! {
+def_un_ops_spec!(
+    core::ops::Neg,
+    ExNeg,
+    NegSpec,
+    NegSpecImpl,
+    neg,
+    obeys_neg_spec,
+    neg_req,
+    neg_spec
+);
 
-#[verifier::external_trait_specification]
-pub trait ExBitAnd<Rhs> {
-    type ExternalTraitSpecificationFor: core::ops::BitAnd<Rhs>;
+def_un_ops_spec!(
+    core::ops::Not,
+    ExNot,
+    NotSpec,
+    NotSpecImpl,
+    not,
+    obeys_not_spec,
+    not_req,
+    not_spec
+);
 
-    type Output;
-
-    fn bitand(self, other: Rhs) -> Self::Output;
-}
-
-} // verus!
 def_bin_ops_spec!(
     core::ops::Add,
     ExAdd,
+    AddSpec,
+    AddSpecImpl,
     add,
-    SpecAddRequires,
-    spec_add_requires,
-    axiom_add_requires,
-    axiom_add_call_requires
+    obeys_add_spec,
+    add_req,
+    add_spec
 );
 
 def_bin_ops_spec!(
     core::ops::Sub,
     ExSub,
+    SubSpec,
+    SubSpecImpl,
     sub,
-    SpecSubRequires,
-    spec_sub_requires,
-    axiom_sub_requires,
-    axiom_sub_call_requires
-);
-
-def_bin_ops_spec!(
-    core::ops::Rem,
-    ExRem,
-    rem,
-    SpecRemRequires,
-    spec_rem_requires,
-    axiom_rem_requires,
-    axiom_rem_call_requires
+    obeys_sub_spec,
+    sub_req,
+    sub_spec
 );
 
 def_bin_ops_spec!(
     core::ops::Mul,
     ExMul,
+    MulSpec,
+    MulSpecImpl,
     mul,
-    SpecMulRequires,
-    spec_mul_requires,
-    axiom_mul_requires,
-    axiom_mul_call_requires
+    obeys_mul_spec,
+    mul_req,
+    mul_spec
 );
 
 def_bin_ops_spec!(
     core::ops::Div,
     ExDiv,
+    DivSpec,
+    DivSpecImpl,
     div,
-    SpecDivRequires,
-    spec_div_requires,
-    axiom_div_requires,
-    axiom_div_call_requires
+    obeys_div_spec,
+    div_req,
+    div_spec
+);
+
+def_bin_ops_spec!(
+    core::ops::Rem,
+    ExRem,
+    RemSpec,
+    RemSpecImpl,
+    rem,
+    obeys_rem_spec,
+    rem_req,
+    rem_spec
+);
+
+def_bin_ops_spec!(
+    core::ops::BitAnd,
+    ExBitAnd,
+    BitAndSpec,
+    BitAndSpecImpl,
+    bitand,
+    obeys_bitand_spec,
+    bitand_req,
+    bitand_spec
+);
+
+def_bin_ops_spec!(
+    core::ops::BitOr,
+    ExBitOr,
+    BitOrSpec,
+    BitOrSpecImpl,
+    bitor,
+    obeys_bitor_spec,
+    bitor_req,
+    bitor_spec
+);
+
+def_bin_ops_spec!(
+    core::ops::BitXor,
+    ExBitXor,
+    BitXorSpec,
+    BitXorSpecImpl,
+    bitxor,
+    obeys_bitxor_spec,
+    bitxor_req,
+    bitxor_spec
 );
 
 def_bin_ops_spec!(
     core::ops::Shl,
     ExShl,
+    ShlSpec,
+    ShlSpecImpl,
     shl,
-    SpecShlRequires,
-    spec_shl_requires,
-    axiom_shl_requires,
-    axiom_shl_call_requires
+    obeys_shl_spec,
+    shl_req,
+    shl_spec
 );
 
 def_bin_ops_spec!(
     core::ops::Shr,
     ExShr,
+    ShrSpec,
+    ShrSpecImpl,
     shr,
-    SpecShrRequires,
-    spec_shr_requires,
-    axiom_shr_requires,
-    axiom_shr_call_requires
+    obeys_shr_spec,
+    shr_req,
+    shr_spec
 );
 
-macro_rules! def_bop_specs {
-    ($tr: path, $func: ident, $op:tt, [$($typ:ty)*]) => {
-        verus! {
-        $(
-            pub assume_specification[<$typ as $tr<$typ>>::$func ](a: $typ, b: $typ) -> (ret: $typ)
-            ensures
-                ret == (a $op b);
-        )*
-    }
-    };
+macro_rules! def_uop_impls {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
+        builtin_macros::verus! {
+            $(
+                impl $impl_trait for $typ {
+                    open spec fn $obeys() -> bool {
+                        true
+                    }
+
+                    open spec fn $req($self) -> bool {
+                        $req_expr
+                    }
+
+                    open spec fn $spec($self) -> Self::Output {
+                        $spec_expr
+                    }
+                }
+
+                pub assume_specification[ <$typ as $trait>::$fun ](x: $typ) -> $typ;
+            )*
+        }
+};
 }
 
-macro_rules! def_uop_axioms {
-    ($tr: path, $fun: ident, $op:tt, [$($typ:ty)*]) => {
-        verus!{
-        $(
-            pub assume_specification[ <$typ as $tr>::$fun ](a: $typ) -> (ret: $typ)
-            ensures
-                ret == ($op a);
-        )*
-    }
-    };
+macro_rules! def_bop_impls {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
+        builtin_macros::verus! {
+            $(
+                impl $impl_trait for $typ {
+                    open spec fn $obeys() -> bool {
+                        true
+                    }
+
+                    open spec fn $req($self, $rhs: $typ) -> bool {
+                        $req_expr
+                    }
+
+                    open spec fn $spec($self, $rhs: $typ) -> Self::Output {
+                        $spec_expr
+                    }
+                }
+
+                pub assume_specification[ <$typ as $trait>::$fun ](x: $typ, y: $typ) -> $typ;
+            )*
+        }
+};
 }
 
-def_bop_specs!(core::ops::Add, add, +, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Sub, sub, -, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Mul, mul, *, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Div, div, /, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Rem, rem, %, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::BitAnd, bitand, &, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Shl, shl, <<, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_bop_specs!(core::ops::Shr, shr, >>, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-def_uop_axioms!(core::ops::Not, not, !, [
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-macro_rules! def_call_requires_axiom {
-    ($typ:ty, $mname: ident) => {
-        verus!{
-        impl SpecAddRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_add_requires(self, rhs: $typ) -> bool {
-                (self + rhs) as $typ == (self + rhs)
-            }
-        }
-
-        impl SpecSubRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_sub_requires(self, rhs: $typ) -> bool {
-                (self - rhs) as $typ == (self - rhs)
-            }
-        }
-
-
-        impl SpecRemRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_rem_requires(self, rhs: $typ) -> bool {
-                rhs != 0
-            }
-        }
-
-        impl SpecDivRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_div_requires(self, rhs: $typ) -> bool {
-                rhs != 0
-            }
-        }
-
-        impl SpecMulRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_mul_requires(self, rhs: $typ) -> bool {
-                self * rhs == (self * rhs) as $typ
-            }
-        }
-
-        impl SpecShlRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_shl_requires(self, rhs: $typ) -> bool {
-                rhs <= $typ::BITS
-            }
-        }
-
-        impl SpecShrRequires<$typ> for $typ {
-            #[verifier(inline)]
-            open spec fn spec_shr_requires(self, rhs: $typ) -> bool {
-                rhs <= $typ::BITS
-            }
-        }
-
-        mod $mname {
-        use super::*;
-        // Triggered by call_requires since we may not call spec_xxx_requires direcly.
-        pub broadcast proof fn add_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_add_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Add>::add, (a, b)),
-        {
-            axiom_add_requires(a, b);
-        }
-
-        pub broadcast proof fn sub_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_sub_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Sub>::sub, (a, b)),
-        {
-            axiom_sub_requires(a, b);
-        }
-
-        pub broadcast proof fn mul_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_mul_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Mul>::mul, (a, b)),
-        {
-            axiom_mul_requires(a, b);
-        }
-
-        pub broadcast proof fn rem_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_rem_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Rem>::rem, (a, b)),
-        {
-            axiom_rem_requires(a, b);
-        }
-
-        pub broadcast proof fn div_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_div_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Div>::div, (a, b)),
-        {
-            axiom_div_requires(a, b);
-        }
-
-        pub broadcast proof fn shr_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_shr_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Shr>::shr, (a, b)),
-        {
-            axiom_shr_requires(a, b);
-        }
-
-        pub broadcast proof fn shl_op_call_requires(a: $typ, b: $typ)
-        ensures
-            a.spec_shl_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Shl>::shl, (a, b)),
-        {
-            axiom_shl_requires(a, b);
-        }
-
-        pub broadcast group $mname {
-            add_op_call_requires,
-            sub_op_call_requires,
-            mul_op_call_requires,
-            div_op_call_requires,
-            rem_op_call_requires,
-            shl_op_call_requires,
-            shr_op_call_requires,
-        }
-    }
-    }
-    };
-}
-
-macro_rules! def_call_requires_axioms {
-    ($group_op_requires: ident, [$($typ:ty, $mname: ident)*])  => {
-        $(
-            def_call_requires_axiom!($typ, $mname);
-        )*
-        verus!{
-            pub broadcast group $group_op_requires {
+macro_rules! def_uop_impls_no_check {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
                 $(
-                    $mname::$mname,
+                    (
+                        $typ,
+                        true,
+                        $op $self
+                    )
                 )*
-            }
+            ]);
         }
-    }
+};
 }
 
-def_call_requires_axioms! {group_integer_ops_call_requires, [
-    usize, axiom_usize_op_requires
-    u8, axiom_u8_op_requires
-    u16, axiom_u16_op_requires
-    u32, axiom_u32_op_requires
-    u64, axiom_u64_op_requires
-    isize, axiom_isize_op_requires
-    i8, axiom_i8_op_requires
-    i16, axiom_i16_op_requires
-    i32, axiom_i32_op_requires
-    i64, axiom_i64_op_requires
-]
+macro_rules! def_uop_impls_check_overflow {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
+                $(
+                    (
+                        $typ,
+                        ($op $self) as $typ == ($op $self),
+                        ($op $self) as $typ
+                    )
+                )*
+            ]);
+        }
+};
 }
+
+macro_rules! def_bop_impls_no_check {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        true,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+macro_rules! def_bop_impls_check_overflow {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        ($self $op $rhs) as $typ == ($self $op $rhs),
+                        ($self $op $rhs) as $typ
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+macro_rules! def_bop_impls_unsigned_div_rem {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs != 0,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+// Signed div/rem needs to:
+// - check for overflow (e.g. (-128i8) / (-1im))
+// - express truncating div, rem in terms of euclidean /, %
+macro_rules! def_bop_impls_signed_div_rem {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs != 0 && !($self == $typ::MIN && $rhs == -1),
+                        if $self >= 0 {
+                            ($self $op $rhs) as $typ
+                        } else {
+                            (-((-$self) $op ($rhs as int))) as $typ
+                        }
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+// TODO: there are many more combinations of primitive integer types supported by Shl and Shr,
+// such as (Self = u8, Rhs = u64)
+macro_rules! def_bop_impls_shift {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        builtin_macros::verus! {
+            def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs < $typ::BITS,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+def_uop_impls_check_overflow!(core::ops::Neg, NegSpecImpl, neg, obeys_neg_spec, neg_req, neg_spec, self, -, [
+    isize i8 i16 i32 i64 i128
+]);
+
+def_uop_impls_no_check!(core::ops::Not, NotSpecImpl, not, obeys_not_spec, not_req, not_spec, self, !, [
+    bool
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_check_overflow!(core::ops::Add, AddSpecImpl, add, obeys_add_spec, add_req, add_spec, self, rhs, +, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_check_overflow!(core::ops::Sub, SubSpecImpl, sub, obeys_sub_spec, sub_req, sub_spec, self, rhs, -, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_check_overflow!(core::ops::Mul, MulSpecImpl, mul, obeys_mul_spec, mul_req, mul_spec, self, rhs, *, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_unsigned_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, div_req, div_spec, self, rhs, /, [
+    usize u8 u16 u32 u64 u128
+]);
+
+def_bop_impls_signed_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, div_req, div_spec, self, rhs, /, [
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_unsigned_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, %, [
+    usize u8 u16 u32 u64 u128
+]);
+
+def_bop_impls_signed_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, %, [
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_no_check!(core::ops::BitAnd, BitAndSpecImpl, bitand, obeys_bitand_spec, bitand_req, bitand_spec, self, rhs, &, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_no_check!(core::ops::BitOr, BitOrSpecImpl, bitor, obeys_bitor_spec, bitor_req, bitor_spec, self, rhs, |, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_no_check!(core::ops::BitXor, BitXorSpecImpl, bitxor, obeys_bitxor_spec, bitxor_req, bitxor_spec, self, rhs, ^, [
+    bool
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_shift!(core::ops::Shl, ShlSpecImpl, shl, obeys_shl_spec, shl_req, shl_spec, self, rhs, <<, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_impls_shift!(core::ops::Shr, ShrSpecImpl, shr, obeys_shr_spec, shr_req, shr_spec, self, rhs, >>, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);

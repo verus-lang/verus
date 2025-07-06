@@ -1272,8 +1272,6 @@ fn operator_overload_to_vir<'tcx>(
                 BinOpKind::Add
                 | BinOpKind::Sub
                 | BinOpKind::Mul
-                | BinOpKind::Div
-                | BinOpKind::Rem
                 | BinOpKind::BitXor
                 | BinOpKind::BitAnd
                 | BinOpKind::BitOr
@@ -1285,6 +1283,19 @@ fn operator_overload_to_vir<'tcx>(
                 | BinOpKind::Gt => {
                     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
                         return Ok(None);
+                    }
+                }
+                BinOpKind::Div | BinOpKind::Rem => {
+                    if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+                        let tc = bctx.types;
+                        match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
+                            IntRange::I(_) | IntRange::ISize => {
+                                // Let trait impls handle signed div/rem
+                            }
+                            _ => {
+                                return Ok(None);
+                            }
+                        }
                     }
                 }
                 BinOpKind::And | BinOpKind::Or => {

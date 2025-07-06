@@ -9,16 +9,17 @@ test_verify_one_file! {
         use core::ops::Add;
 
         fn generic_add<T: Add<Output = T>>(a: T, b: T) -> (ret: T)
-        requires
-            call_requires(<T as Add>::add, (a, b))
-        ensures
-            call_ensures(<T as Add>::add, (a, b), ret)
+            requires
+                call_requires(<T as Add>::add, (a, b))
+            ensures
+                call_ensures(<T as Add>::add, (a, b), ret)
         {
             a + b
         }
 
         fn test(a: usize, b: usize)
-        requires a + b < 10,
+            requires
+                a + b < 10,
         {
             let c1 = a + b;
             let c2 = generic_add(a, b);
@@ -45,8 +46,8 @@ test_verify_one_file! {
         pub assume_specification[ <usize as core::ops::Add>::add ](a: usize, b: usize) -> (ret: usize);
 
         fn generic_add<T: core::ops::Add<Output = T>>(a: T, b: T) -> (ret: T)
-        ensures
-            call_ensures(<T as  core::ops::Add>::add, (a, b), ret),
+            ensures
+                call_ensures(<T as  core::ops::Add>::add, (a, b), ret),
         {
             a + b
         }
@@ -76,21 +77,23 @@ test_verify_one_file! {
         pub assume_specification[ <usize as core::ops::Add>::add ](a: usize, b: usize) -> (ret: usize);
 
         fn generic_add<T: core::ops::Add<Output = T>>(a: T, b: T) -> (ret: T)
-        ensures
-            call_ensures(<T as  core::ops::Add>::add, (a, b), ret),
+            ensures
+                call_ensures(<T as  core::ops::Add>::add, (a, b), ret),
         {
             a + b
         }
 
         fn test_integer_add_diff_trait_add_operation1(a: usize, b: usize)
-        requires a + b < 10
+            requires
+                a + b < 10,
         {
             let c1 = a + b;
             assert(call_ensures(usize::add, (a, b), c1)); // FAILS
         }
 
         fn test_integer_add_diff_trait_add_operation2(a: usize, b: usize)
-        requires a + b < 10
+            requires
+                a + b < 10,
         {
             let c1 = a + b;
             let c2 = generic_add(a, b);
@@ -104,7 +107,7 @@ test_verify_one_file! {
     #[test] test_partial_eq_overload verus_code! {
         use core::cmp::PartialEq;
 
-        pub struct A(pub usize);
+        pub struct S(pub usize);
 
         #[verifier::external_trait_specification]
         pub trait ExPartialEqBasic<Rhs: ?Sized> {
@@ -112,16 +115,16 @@ test_verify_one_file! {
             fn eq(&self, rhs: &Rhs) -> (ret: bool);
         }
 
-        impl PartialEq<A> for A {
-            fn eq(&self, rhs: &A) -> (ret: bool)
-            ensures
-                ret <==> (self.0 != rhs.0)
+        impl PartialEq<S> for S {
+            fn eq(&self, rhs: &S) -> (ret: bool)
+                ensures
+                    ret <==> (self.0 != rhs.0)
             {
                 self.0 != rhs.0
             }
         }
 
-        fn test_usize_cmp(a: A, b: A) {
+        fn test_usize_cmp(a: S, b: S) {
             let c2 = (a == b);
             assert(c1 == (a@ != b@)); //FAILS
         }
@@ -171,24 +174,30 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::std_specs::ops::*;
 
-        pub struct A(pub usize);
+        pub struct S(pub usize);
 
-        impl SpecSubRequires<A> for A {
-            closed spec fn spec_sub_requires(self, rhs: A) -> bool {
-                self.0 >= 20 && rhs.0 < 10
-            }
-        }
-        impl core::ops::Sub<A> for A {
+        impl core::ops::Sub<S> for S {
             type Output = usize;
-            fn sub(self, rhs: A) -> (ret: usize)
-            ensures
-                ret == self.0 - rhs.0 - 10
+            fn sub(self, rhs: S) -> (ret: usize)
+                ensures
+                    ret == self.0 - rhs.0 - 10
             {
                 assert(self.0 >= 20 && rhs.0 <= 10);
                 self.0 - rhs.0 - 10
             }
         }
 
+        impl vstd::std_specs::ops::SubSpecImpl<S> for S {
+            open spec fn obeys_sub_spec() -> bool {
+                true
+            }
+            open spec fn sub_spec(self, rhs: S) -> usize {
+                (self.0 - rhs.0 - 10) as usize
+            }
+            open spec fn sub_req(self, rhs: S) -> bool {
+                self.0 >= 20 && rhs.0 < 10
+            }
+        }
     } => Ok(())
 }
 
@@ -197,21 +206,29 @@ test_verify_one_file! {
         use core::ops::Sub;
         use vstd::prelude::*;
         use vstd::std_specs::ops::*;
-        struct A;
-        impl SpecSubRequires<A> for A {
-            closed spec fn spec_sub_requires(self, other: A) -> bool {
-                true
-            }
-        }
-        impl Sub for A {
-            type Output = A;
-            fn sub(self, other: A) -> (ret: A)
-            {
+        struct S;
+
+        impl Sub for S {
+            type Output = S;
+            fn sub(self, other: S) -> (ret: S) {
                 self
             }
         }
+
+        impl vstd::std_specs::ops::SubSpecImpl<S> for S {
+            open spec fn obeys_sub_spec() -> bool {
+                true
+            }
+            open spec fn sub_spec(self, rhs: S) -> S {
+                self
+            }
+            open spec fn sub_req(self, rhs: S) -> bool {
+                true
+            }
+        }
+
         // If it is a non-primitive type, it would work.
-        fn test(x1: A, x2: A) {
+        fn test(x1: S, x2: S) {
             let ord2 = x1.sub(x2);
         }
     } => Ok(())
@@ -219,13 +236,13 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_operator_not_implemented verus_code! {
-        struct A;
+        struct S;
         fn test()
         {
-            let a1 = A;
-            if a1 == a1 {}
+            let s1 = S;
+            if s1 == s1 {}
         }
-    } => Err(e) => assert_rust_error_msg(e, "binary operation `==` cannot be applied to type `A`")
+    } => Err(e) => assert_rust_error_msg(e, "binary operation `==` cannot be applied to type `S`")
 }
 
 test_verify_one_file! {
@@ -249,11 +266,11 @@ test_verify_one_file! {
         }
 
         impl vstd::std_specs::core::PartialEqSpecImpl for S {
-            closed spec fn obeys_spec_eq() -> bool {
+            closed spec fn obeys_eq_spec() -> bool {
                 false
             }
 
-            closed spec fn spec_eq(&self, s: &S) -> bool {
+            closed spec fn eq_spec(&self, s: &S) -> bool {
                 false
             }
         }
@@ -286,10 +303,52 @@ test_verify_one_file! {
         ;
 
         fn test(s1: S, s2: S)
-        requires s1 == s2
+            requires s1 == s2
         {
             let c = (s1 == s2);
             assert(c);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_arith verus_code! {
+        use vstd::prelude::*;
+
+        fn test_shl(u: u16) {
+            use core::ops::Shl;
+            let _ = u.shl(15u16);
+            let _ = u.shl(16u16); // FAILS
+        }
+
+        fn test_shr(u: i16) {
+            use core::ops::Shr;
+            let _ = u.shr(15i16);
+            let _ = u.shr(16i16); // FAILS
+        }
+
+        fn test_signed_div() {
+            let x = 53i8 / 10i8;
+            assert(x == 5);
+            let x = (-53i8) / 10i8;
+            assert(x == -5);
+            let x = 53i8 / (-10i8);
+            assert(x == -5);
+            let x = (-53i8) / (-10i8);
+            assert(x == 5);
+            let x = (-128i8) / (-1i8); // FAILS
+        }
+
+        fn test_signed_mod() {
+            let x = 53i8 % 10i8;
+            assert(x == 3);
+            let x = (-53i8) % 10i8;
+            assert(x == -3);
+            let x = 53i8 % (-10i8);
+            assert(x == 3);
+            let x = (-53i8) % (-10i8);
+            assert(x == -3);
+            let x = (-128i8) % (-1i8); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 4)
 }
