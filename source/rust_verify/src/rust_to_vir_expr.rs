@@ -1895,8 +1895,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Ok(mk_ty_clip(&expr_typ()?, &e, true))
                         }
                         IntRange::I(_) | IntRange::ISize => {
-                            // Non-Euclidean division, which will need more encoding
-                            unsupported_err!(expr.span, "div/mod on signed finite-width integers")
+                            // Handled by operator_overload_to_vir
+                            unreachable!("signed fixed-width div/mod handled by traits")
                         }
                         IntRange::Char => {
                             unsupported_err!(expr.span, "div/mod on char type")
