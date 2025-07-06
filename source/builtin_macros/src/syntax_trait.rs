@@ -218,12 +218,24 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
 }
 
 macro_rules! do_split_trait_method {
-    ($s:ident, $fun:ident, $spec_fun:ident, $mk_rust_attr:ident) => {
+    ($s:ident, $fun:ident, $spec_fun:ident, $mk_rust_attr:ident, $recv:ident, $pred:ident) => {
         let mut $spec_fun = $fun.clone();
         let x = &$fun.sig.ident;
         let span = x.span();
         $spec_fun.sig.ident = $s::Ident::new(&format!("{VERUS_SPEC}{x}"), span);
         $spec_fun.attrs.push($mk_rust_attr(span, "doc", quote! { hidden }));
+        // Some traits, like core::ops::Add, declare functions whose parameters or return values
+        // aren't guaranteed to be Sized.  This is allowed when the function has no default
+        // (provided) body, but disallowed when there is a default body, so we may get an error
+        // when we create $spec_fun here.  Ideally, we could just add :Sized bounds to all
+        // the parameter and return types, but this is easier said than done, since types like
+        // "&u8" need to be turned into something like "&'a u8" to be used in a bound.
+        // For now, just handle the special case of a "self" parameter, which needs Self: Sized.
+        if let Some(recv) = $recv {
+            if recv.colon_token.is_none() && recv.reference.is_none() {
+                $spec_fun.sig.generics.make_where_clause().predicates.push($pred);
+            }
+        }
     };
 }
 
@@ -248,7 +260,13 @@ pub(crate) fn split_trait_method(
 ) {
     if !erase_ghost && fun.default.is_none() {
         // Copy into separate spec method, then remove spec from original method
-        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr);
+        use syn_verus::FnArgKind;
+        let recv = fun.sig.inputs.first().and_then(|a| match &a.kind {
+            FnArgKind::Receiver(r) => Some(r),
+            _ => None,
+        });
+        let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr, recv, pred);
         spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
@@ -278,7 +296,13 @@ pub(crate) fn split_trait_method_syn(
 ) -> Option<syn::TraitItemFn> {
     use syn::{Block, Expr, Stmt, token::Brace};
     if !erase_ghost && fun.default.is_none() {
-        do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
+        use syn::FnArg;
+        let recv = fun.sig.inputs.first().and_then(|a| match a {
+            FnArg::Receiver(r) => Some(r),
+            _ => None,
+        });
+        let pred = syn::parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
+        do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn, recv, pred);
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;
         let stmts = vec![Stmt::Expr(

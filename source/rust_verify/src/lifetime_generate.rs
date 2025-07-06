@@ -2318,6 +2318,23 @@ fn erase_fn_common<'tcx>(
             Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
         };
         state.enclosing_fun_id = None;
+
+        // Special case for trait with direct self argument
+        if body.is_none() && inputs.len() > 0 {
+            match inputs[0].kind() {
+                TyKind::Param(p) if p.name == kw::SelfUpper => {
+                    // Add Sized bound to make function declaration legal
+                    let generic_bound = GenericBound {
+                        typ: params[0].typ.clone(),
+                        bound_vars: vec![],
+                        bound: Bound::Sized,
+                    };
+                    generic_bounds.push(generic_bound);
+                }
+                _ => {}
+            }
+        }
+
         let decl = FunDecl {
             sig_span: sig_span,
             name_span,
