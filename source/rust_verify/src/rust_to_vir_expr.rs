@@ -1177,44 +1177,36 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+enum OpKind {
+    UnOp(rustc_hir::UnOp),
+    BinOp(rustc_hir::BinOp),
+    AssignOp(rustc_hir::AssignOp),
+}
+
 // Add lang_item_for_op from rust/compiler/rustc_hir_typeck/src/op.rs
 // Returns the required traits to use op
 // Note: comparison operators are defined only by PartialEq and PartialOrd
 fn lang_item_for_op(
     tcx: TyCtxt<'_>,
-    bop: Option<(rustc_hir::BinOp, bool)>, // bop + is_assigned
-    uop: Option<rustc_hir::UnOp>,
+    op: OpKind,
     span: Span,
 ) -> Result<(rustc_span::Symbol, Option<rustc_hir::def_id::DefId>), VirErr> {
-    assert!(uop.is_some() || bop.is_some());
-    assert!(!(uop.is_some() && bop.is_some()));
     let lang = tcx.lang_items();
     use rustc_span::symbol::sym;
-    let ret = if let Some((op, true)) = bop {
-        match op.node {
-            BinOpKind::Add => (sym::add_assign, lang.add_assign_trait()),
-            BinOpKind::Sub => (sym::sub_assign, lang.sub_assign_trait()),
-            BinOpKind::Mul => (sym::mul_assign, lang.mul_assign_trait()),
-            BinOpKind::Div => (sym::div_assign, lang.div_assign_trait()),
-            BinOpKind::Rem => (sym::rem_assign, lang.rem_assign_trait()),
-            BinOpKind::BitXor => (sym::bitxor_assign, lang.bitxor_assign_trait()),
-            BinOpKind::BitAnd => (sym::bitand_assign, lang.bitand_assign_trait()),
-            BinOpKind::BitOr => (sym::bitor_assign, lang.bitor_assign_trait()),
-            BinOpKind::Shl => (sym::shl_assign, lang.shl_assign_trait()),
-            BinOpKind::Shr => (sym::shr_assign, lang.shr_assign_trait()),
-            BinOpKind::Lt
-            | BinOpKind::Le
-            | BinOpKind::Ge
-            | BinOpKind::Gt
-            | BinOpKind::Eq
-            | BinOpKind::Ne
-            | BinOpKind::And
-            | BinOpKind::Or => {
-                crate::internal_err!(span, "impossible assignment operation: {}=", op.node.as_str())
-            }
-        }
-    } else if let Some((op, false)) = bop {
-        match op.node {
+    let ret = match op {
+        OpKind::AssignOp(op) => match op.node {
+            AssignOpKind::AddAssign => (sym::add_assign, lang.add_assign_trait()),
+            AssignOpKind::SubAssign => (sym::sub_assign, lang.sub_assign_trait()),
+            AssignOpKind::MulAssign => (sym::mul_assign, lang.mul_assign_trait()),
+            AssignOpKind::DivAssign => (sym::div_assign, lang.div_assign_trait()),
+            AssignOpKind::RemAssign => (sym::rem_assign, lang.rem_assign_trait()),
+            AssignOpKind::BitXorAssign => (sym::bitxor_assign, lang.bitxor_assign_trait()),
+            AssignOpKind::BitAndAssign => (sym::bitand_assign, lang.bitand_assign_trait()),
+            AssignOpKind::BitOrAssign => (sym::bitor_assign, lang.bitor_assign_trait()),
+            AssignOpKind::ShlAssign => (sym::shl_assign, lang.shl_assign_trait()),
+            AssignOpKind::ShrAssign => (sym::shr_assign, lang.shr_assign_trait()),
+        },
+        OpKind::BinOp(op) => match op.node {
             BinOpKind::Add => (sym::add, lang.add_trait()),
             BinOpKind::Sub => (sym::sub, lang.sub_trait()),
             BinOpKind::Mul => (sym::mul, lang.mul_trait()),
@@ -1234,13 +1226,14 @@ fn lang_item_for_op(
             BinOpKind::And | BinOpKind::Or => {
                 crate::internal_err!(span, "&& and || are not overloadable")
             }
-        }
-    } else if let Some(UnOp::Not) = uop {
-        (sym::not, lang.not_trait())
-    } else if let Some(UnOp::Neg) = uop {
-        (sym::neg, lang.neg_trait())
-    } else {
-        crate::internal_err!(span, "lang_item_for_op: op not supported")
+        },
+        OpKind::UnOp(op) => match op {
+            UnOp::Not => (sym::not, lang.not_trait()),
+            UnOp::Neg => (sym::neg, lang.neg_trait()),
+            UnOp::Deref => {
+                crate::internal_err!(span, "unexpected Deref")
+            }
+        },
     };
     Ok(ret)
 }
@@ -1255,42 +1248,63 @@ fn operator_overload_to_vir<'tcx>(
 ) -> Result<Option<vir::ast::Expr>, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let span = expr.span;
-    let mut is_assign = false;
-    let bexpr = if let ExprKind::Binary(op, lhs, rhs) = expr.kind {
-        Some((op, lhs, rhs))
-    } else if let ExprKind::AssignOp(op, lhs, rhs) = expr.kind {
-        // This should work, except for lacking external specifications
-        is_assign = true;
-        Some((op, lhs, rhs))
-    } else {
-        None
-    };
-
-    let (trait_id, fun_sym, args, substs) = if let Some((op, lhs, rhs)) = bexpr {
-        let do_replace = match op.node {
-            BinOpKind::Eq | BinOpKind::Ne => {
-                !is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
-            }
-            BinOpKind::Add
-            | BinOpKind::Sub
-            | BinOpKind::Mul
-            | BinOpKind::Div
-            | BinOpKind::Rem
-            | BinOpKind::BitAnd
-            | BinOpKind::BitOr
-            | BinOpKind::Shl
-            | BinOpKind::Shr
-            | BinOpKind::Le
-            | BinOpKind::Ge
-            | BinOpKind::Lt
-            | BinOpKind::Gt => !is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
-            _ => false,
-        };
-        if !do_replace {
+    let (op, bin_args) = match expr.kind {
+        ExprKind::Unary(UnOp::Deref, _) => {
             return Ok(None);
         }
-        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, Some((op, is_assign)), None, span)?
-        else {
+        ExprKind::Unary(op @ (UnOp::Not | UnOp::Neg), arg) => {
+            let ty = bctx.types.expr_ty_adjusted(arg);
+            match ty.kind() {
+                TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Bool => {
+                    return Ok(None);
+                }
+                _ => {}
+            }
+            (OpKind::UnOp(op), None)
+        }
+        ExprKind::Binary(op, lhs, rhs) => {
+            match op.node {
+                BinOpKind::Eq | BinOpKind::Ne => {
+                    if is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)? {
+                        return Ok(None);
+                    }
+                }
+                BinOpKind::Add
+                | BinOpKind::Sub
+                | BinOpKind::Mul
+                | BinOpKind::Div
+                | BinOpKind::Rem
+                | BinOpKind::BitXor
+                | BinOpKind::BitAnd
+                | BinOpKind::BitOr
+                | BinOpKind::Shl
+                | BinOpKind::Shr
+                | BinOpKind::Le
+                | BinOpKind::Ge
+                | BinOpKind::Lt
+                | BinOpKind::Gt => {
+                    if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+                        return Ok(None);
+                    }
+                }
+                BinOpKind::And | BinOpKind::Or => {
+                    return Ok(None);
+                }
+            };
+            (OpKind::BinOp(op), Some((lhs, rhs)))
+        }
+        ExprKind::AssignOp(op, lhs, rhs) => {
+            if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+                return Ok(None);
+            }
+            // This should work, except for lacking external specifications
+            (OpKind::AssignOp(op), Some((lhs, rhs)))
+        }
+        _ => return Ok(None),
+    };
+
+    let (trait_id, fun_sym, args, substs) = if let Some((lhs, rhs)) = bin_args {
+        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
             crate::internal_err!(span, "operator needs an accessible trait");
         };
         let lhs_ty = bctx.types.node_type(lhs.hir_id);
@@ -1299,15 +1313,8 @@ fn operator_overload_to_vir<'tcx>(
 
         let args = vec![lhs, rhs];
         (trait_id, fun_sym, args, substs)
-    } else if let ExprKind::Unary(op, arg) = expr.kind {
-        let ty = bctx.types.expr_ty_adjusted(arg);
-        match ty.kind() {
-            TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Bool => {
-                return Ok(None);
-            }
-            _ => {}
-        }
-        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, None, Some(op), span)? else {
+    } else if let ExprKind::Unary(_, arg) = expr.kind {
+        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
             crate::internal_err!(span, "Needs to import trait for operator");
         };
 
@@ -1321,7 +1328,7 @@ fn operator_overload_to_vir<'tcx>(
     let Some(assoc_fn) = tcx
         .associated_items(trait_id)
         .filter_by_name_unhygienic(fun_sym)
-        .find(|item| item.kind == rustc_middle::ty::AssocKind::Fn)
+        .find(|item| matches!(item.kind, rustc_middle::ty::AssocKind::Fn { .. }))
     else {
         panic!("could not find function");
     };

@@ -54,7 +54,6 @@ macro_rules! def_bin_ops_spec {
 
                 type Output;
                 fn $fun(self, rhs: Rhs) -> (ret: Self::Output)
-                where Self: Sized
                 requires $spec_requires::<Self, Rhs>(self, rhs);
             }
 
@@ -89,7 +88,7 @@ pub trait ExNot {
 
     type Output;
 
-    fn not(self) -> Self::Output where Self: Sized;
+    fn not(self) -> Self::Output;
 }
 
 } // verus!
@@ -101,7 +100,7 @@ pub trait ExBitAnd<Rhs> {
 
     type Output;
 
-    fn bitand(self, other: Rhs) -> Self::Output where Self: Sized;
+    fn bitand(self, other: Rhs) -> Self::Output;
 }
 
 } // verus!

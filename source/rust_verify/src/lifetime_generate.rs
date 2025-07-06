@@ -13,9 +13,9 @@ use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, BinOpKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig,
-    HirId, Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
-    OpaqueTyOrigin, OwnerNode, Pat, PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn,
-    TraitItem, TraitItemKind, TraitItemRef, UnOp,
+    HirId, Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode,
+    Pat, PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,

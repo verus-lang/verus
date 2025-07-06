@@ -232,8 +232,6 @@ test_verify_one_file! {
     #[test] test_eq_overload verus_code! {
         use vstd::prelude::*;
         use core::cmp::PartialEq;
-        use vstd::laws_eq::*;
-        use vstd::laws_cmp::*;
 
         pub struct S {
             a: u8,
@@ -246,6 +244,16 @@ test_verify_one_file! {
                 ensures
                     !ret
             {
+                false
+            }
+        }
+
+        impl vstd::std_specs::core::PartialEqSpecImpl for S {
+            closed spec fn obeys_spec_eq() -> bool {
+                false
+            }
+
+            closed spec fn spec_eq(&self, s: &S) -> bool {
                 false
             }
         }
