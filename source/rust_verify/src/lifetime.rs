@@ -218,6 +218,8 @@ const PRELUDE: &str = "\
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(tuple_trait)]
+#![feature(f16)]
+#![feature(f128)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]

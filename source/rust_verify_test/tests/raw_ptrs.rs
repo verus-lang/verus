@@ -232,6 +232,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] pointer_exec_eq_is_not_spec_eq verus_code! {
+        use vstd::prelude::*;
         fn test_const_eq(x: *const u8, y: *const u8) {
             if x == y {
                 assert(x == y); // FAILS
@@ -243,7 +244,7 @@ test_verify_one_file! {
                 assert(x == y); // FAILS
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: ==/!= for non smt equality types")
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {
