@@ -43,6 +43,7 @@ use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
     syntax,
     syntax::mk_verus_attr_syn,
+    syntax_trait,
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
@@ -424,7 +425,7 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
 
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
-            let mut spec_fun_opt = syntax::split_trait_method_syn(&method, erase.erase());
+            let mut spec_fun_opt = syntax_trait::split_trait_method_syn(&method, erase.erase());
             let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
             let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));

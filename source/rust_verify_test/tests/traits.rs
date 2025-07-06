@@ -4300,6 +4300,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unsized_self_ok verus_code! {
+        trait T {
+            fn f(self) -> u8;
+        }
+        impl T for &u8 {
+            fn f(self) -> u8 {
+                *self
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unsized_self_ok_external verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f(self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f(self) -> u8;
+        }
+
+        impl T for &u8 {
+            fn f(self) -> u8 {
+                *self
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] usize_isize_type_id verus_code! {
         // https://github.com/verus-lang/verus/issues/1743
         use vstd::prelude::*;

@@ -466,7 +466,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         owning_module: _,
         mode: _,
         typ_params,
-        typ_bounds,
+        mut typ_bounds,
         params,
         ret,
         ens_has_return: _,
@@ -485,6 +485,14 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         extra_dependencies,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
+    while typ_bounds.len() > methodx.typ_bounds.len() {
+        // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
+        // Remove these added Sized bounds so that we can match the remaining bounds.
+        use crate::ast::{GenericBoundX, TraitId};
+        if let GenericBoundX::Trait(TraitId::Sized, _) = &**typ_bounds.last().unwrap() {
+            Arc::make_mut(&mut typ_bounds).pop();
+        }
+    }
     if methodx.typ_params.len() != typ_params.len() {
         return Err(error(
             &spec_method.span,
