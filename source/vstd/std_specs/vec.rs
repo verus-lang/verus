@@ -149,7 +149,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::swap_remove ](
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.swap_remove(i as int),
+        vec@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](

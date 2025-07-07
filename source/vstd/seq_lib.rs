@@ -556,30 +556,6 @@ impl<A> Seq<A> {
 
     }
 
-    /// Remove item a at index i, pop the last item and write the last item at i
-    pub open spec fn swap_remove(self, i: int) -> Seq<A>
-        recommends
-            0 <= i < self.len(),
-    {
-        if i + 1 == self.len() {
-            self.subrange(0, self.len() - 1)
-        } else {
-            self.subrange(0, i).push(self.last()) + self.subrange(i+1, (self.len() - 1) as int)
-        }
-    }
-
-    /// Proof of correctness and expected properties of swap_remove function
-    pub proof fn swap_remove_ensures(self, pos: int)
-        requires
-            0 <= pos < self.len(),
-        ensures
-            self.swap_remove(pos).len() + 1 == self.len(),
-            forall|i: int| 0 <= i < pos ==> #[trigger] self.swap_remove(pos)[i] == self[i],
-            forall|i: int| pos < i < self.len() - 1 ==> #[trigger] self.swap_remove(pos)[i] == self[i],
-            pos == self.len() - 1 || self.swap_remove(pos)[pos] == self.last(),
-    {
-    }
-
     /// Insert item a at index i, shifting remaining elements (if any) to the right
     pub open spec fn insert(self, i: int, a: A) -> Seq<A>
         recommends
