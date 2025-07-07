@@ -157,7 +157,7 @@ test_verify_one_file! {
         {
             let tracked mut t = t;
 
-            let b = call_ensures(fens, (t,), ());
+            let b = call_ensures(freq, (t,), ());
             t.resolve(b);
 
             assert(false); // FAILS
@@ -197,57 +197,4 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 4)
-}
-
-test_verify_one_file! {
-    #[test] strong_call_ensures1 PROPH.to_string() + verus_code_str! {
-        #[verifier::strong_call_ensures]
-        fn fens(tracked t: Prophecy<bool>)
-            ensures t.value() == false,
-        { assume(false); }
-
-        proof fn test_ens(tracked t: Prophecy<bool>)
-            requires t.may_resolve(),
-        {
-            let tracked mut t = t;
-
-            let b = call_ensures(fens, (t,), ());
-            t.resolve(b);
-
-            assert(false); // FAILS
-        }
-    } => Err(err) => assert_vir_error_msg(err, "strong_call_ensures only allowed on exec trait function declarations")
-}
-
-test_verify_one_file! {
-    #[test] strong_call_ensures2 PROPH.to_string() + verus_code_str! {
-        trait T {
-            #[verifier::strong_call_ensures]
-            fn fens(tracked t: Prophecy<bool>)
-                ensures t.value() == false;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
-}
-
-test_verify_one_file! {
-    #[test] strong_call_ensures3 PROPH.to_string() + verus_code_str! {
-        trait T {
-            #[verifier::strong_call_ensures]
-            fn fens(tracked t: Prophecy<bool>)
-                ensures default_ensures(t.value() == false);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
-}
-
-test_verify_one_file! {
-    #[test] strong_call_ensures4 PROPH.to_string() + verus_code_str! {
-        trait T {
-            #[verifier::strong_call_ensures]
-            fn fens(tracked t: Prophecy<bool>);
-        }
-        impl T for bool {
-            fn fens(tracked t: Prophecy<bool>)
-                ensures t.value() == false;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
 }

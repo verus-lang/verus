@@ -1177,7 +1177,6 @@ pub(crate) fn expr_to_stm_opt(
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
                 BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
-                BuiltinSpecFun::StrongTraitEns => InternalFun::StrongTraitEns,
             };
             Ok((
                 check_stms,
