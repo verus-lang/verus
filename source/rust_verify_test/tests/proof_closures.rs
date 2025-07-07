@@ -1281,17 +1281,10 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked x: &'a S) {
             p(proof_fn|| -> tracked &'a S { x });
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "borrowed data escapes outside of function")
-}
-
-test_verify_one_file_with_options! {
-    #[test] lifetime4 ["vstd"] => verus_code! {
-        struct S;
-        proof fn p<'a>(tracked f: proof_fn<'static>() -> tracked &'a S) {}
-        proof fn q<'a>(tracked x: &'a S) {
-            p(proof_fn|| -> tracked &'a S { x });
-        }
-    } => Err(err) => assert_any_vir_error_msg(err, "closure may outlive the current function, but it borrows `x`")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "borrowed data escapes outside of function",
+        "closure may outlive the current function, but it borrows `x`",
+    ])
 }
 
 test_verify_one_file_with_options! {
