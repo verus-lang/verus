@@ -178,7 +178,7 @@ impl<A> Set<A> {
         exists|f: spec_fn(A) -> nat, ub: nat|
             {
                 &&& #[trigger] trigger_finite(f, ub)
-                &&& surj_on(f, self)
+                &&& inj_on(f, self)
                 &&& forall|a| self.contains(a) ==> f(a) < ub
             }
     }
@@ -214,7 +214,7 @@ spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
     true
 }
 
-spec fn surj_on<A, B>(f: spec_fn(A) -> B, s: Set<A>) -> bool {
+spec fn inj_on<A, B>(f: spec_fn(A) -> B, s: Set<A>) -> bool {
     forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
@@ -545,7 +545,7 @@ pub mod fold {
             pred(s),
     {
         let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-            trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+            trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
         lemma_finite_set_induct_aux(s, f, ub, pred);
     }
 
@@ -556,7 +556,7 @@ pub mod fold {
         pred: spec_fn(Set<A>) -> bool,
     )
         requires
-            surj_on(f, s),
+            inj_on(f, s),
             s.finite(),
             forall|a| s.contains(a) ==> f(a) < ub,
             pred(Set::empty()),
@@ -794,7 +794,7 @@ pub broadcast proof fn axiom_set_insert_finite<A>(s: Set<A>, a: A)
         #[trigger] s.insert(a).finite(),
 {
     let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
     let f2 = |a2: A|
         if a2 == a {
             ub
@@ -831,7 +831,7 @@ pub broadcast proof fn axiom_set_remove_finite<A>(s: Set<A>, a: A)
         #[trigger] s.remove(a).finite(),
 {
     let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
     assert forall|a1, a2|
         #![all_triggers]
         s.remove(a).contains(a1) && s.remove(a).contains(a2) && a1 != a2 implies f(a1) != f(a2) by {
@@ -842,7 +842,7 @@ pub broadcast proof fn axiom_set_remove_finite<A>(s: Set<A>, a: A)
             assert(s.contains(a2));
         }
     };
-    assert(surj_on(f, s.remove(a)));
+    assert(inj_on(f, s.remove(a)));
     assert forall|a2| s.remove(a).contains(a2) implies #[trigger] f(a2) < ub by {
         if a == a2 {
         } else {
@@ -860,9 +860,9 @@ pub broadcast proof fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>)
         #[trigger] s1.union(s2).finite(),
 {
     let (f1, ub1) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s1) && (forall|a| s1.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s1) && (forall|a| s1.contains(a) ==> f(a) < ub);
     let (f2, ub2) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s2) && (forall|a| s2.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s2) && (forall|a| s2.contains(a) ==> f(a) < ub);
     let f3 = |a|
         if s1.contains(a) {
             f1(a)

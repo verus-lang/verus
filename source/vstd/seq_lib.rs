@@ -2928,7 +2928,7 @@ spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
     }
 }
 
-// Helper function showing that the recursive definition of set_to_seq produces a finite set
+// Helper function showing that the recursive definition of seq_to_set produces a finite set
 proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
     ensures
         seq_to_set_rec(seq).finite(),
