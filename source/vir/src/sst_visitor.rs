@@ -366,17 +366,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_stm_rec(&mut self, stm: &Stm) -> Result<R::Ret<Stm>, Err> {
         let stm_new = |s: StmX| Spanned::new(stm.span.clone(), s);
         match &stm.x {
-            StmX::Call {
-                fun,
-                resolved_method,
-                is_trait_default,
-                mode,
-                typ_args,
-                args,
-                split,
-                dest,
-                assert_id,
-            } => {
+            StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
                     R::ret(|| Some((f.clone(), R::get_vec_a(ts))))
@@ -390,7 +380,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
                         resolved_method: R::get(resolved_method),
-                        is_trait_default: *is_trait_default,
                         mode: *mode,
                         typ_args: R::get_vec_a(typ_args),
                         args: R::get_vec_a(args),

@@ -755,7 +755,6 @@ where
                                 is_trait_default: *is_trait_default,
                             }
                         }
-                        CallTargetKind::ExternalTraitDefault => kind.clone(),
                     };
                     CallTarget::Fun(
                         kind.clone(),

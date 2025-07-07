@@ -191,10 +191,6 @@ pub fn mk_false() -> Expr {
     Arc::new(ExprX::Const(Constant::Bool(false)))
 }
 
-pub fn mk_const_bool(b: bool) -> Expr {
-    Arc::new(ExprX::Const(Constant::Bool(b)))
-}
-
 pub fn mk_and(exprs: &Vec<Expr>) -> Expr {
     if exprs.iter().any(|expr| matches!(**expr, ExprX::Const(Constant::Bool(false)))) {
         return mk_false();

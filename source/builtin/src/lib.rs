@@ -183,15 +183,6 @@ pub fn reveal_hide_internal_path_<A>(_x: A) {
     unimplemented!();
 }
 
-/// Mark an ensures clause in a trait as applying just to the default implementation,
-/// not the trait declaration in general
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::default_ensures"]
-#[verifier::spec]
-pub fn default_ensures(_b: bool) -> bool {
-    unimplemented!();
-}
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::imply"]
 #[verifier::spec]
