@@ -79,82 +79,48 @@ use prelude::*;
 
 verus! {
 
-#[cfg(all(feature = "alloc", feature = "std"))]
 #[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
 pub broadcast group group_vstd_default {
+    //
+    // basic Verus math, types, and features
+    //
     seq::group_seq_axioms,
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
     set::group_set_axioms,
     set_lib::group_set_lib_default,
-    std_specs::bits::group_bits_axioms,
-    std_specs::control_flow::group_control_flow_axioms,
-    std_specs::vec::group_vec_axioms,
-    slice::group_slice_axioms,
-    array::group_array_axioms,
     multiset::group_multiset_axioms,
-    string::group_string_axioms,
-    std_specs::range::group_range_axioms,
-    raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
-    layout::group_layout_axioms,
+    function::group_function_axioms,
     laws_eq::group_laws_eq,
     laws_cmp::group_laws_cmp,
-    function::group_function_axioms,
+    //
+    // Rust types
+    //
+    slice::group_slice_axioms,
+    array::group_array_axioms,
+    string::group_string_axioms,
+    raw_ptr::group_raw_ptr_axioms,
+    layout::group_layout_axioms,
+    //
+    // core std_specs
+    //
+    std_specs::range::group_range_axioms,
+    std_specs::bits::group_bits_axioms,
+    std_specs::control_flow::group_control_flow_axioms,
+    std_specs::slice::group_slice_axioms,
+    //
+    // std_specs for alloc (with or without std)
+    //
+    #[cfg(feature = "alloc")]
+    std_specs::vec::group_vec_axioms,
+    #[cfg(feature = "alloc")]
+    std_specs::vecdeque::group_vec_dequeue_axioms,
+    //
+    // std_specs for alloc + std
+    //
+    #[cfg(all(feature = "alloc", feature = "std"))]
     std_specs::hash::group_hash_axioms,
-    std_specs::vecdeque::group_vec_dequeue_axioms,
-    std_specs::slice::group_slice_axioms,
-}
-
-#[cfg(feature = "alloc")]
-#[cfg(not(feature = "std"))]
-#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
-pub broadcast group group_vstd_default {
-    seq::group_seq_axioms,
-    seq_lib::group_seq_lib_default,
-    map::group_map_axioms,
-    set::group_set_axioms,
-    set_lib::group_set_lib_default,
-    std_specs::bits::group_bits_axioms,
-    std_specs::control_flow::group_control_flow_axioms,
-    std_specs::vec::group_vec_axioms,
-    slice::group_slice_axioms,
-    array::group_array_axioms,
-    multiset::group_multiset_axioms,
-    string::group_string_axioms,
-    std_specs::range::group_range_axioms,
-    raw_ptr::group_raw_ptr_axioms,
-    compute::all_spec_ensures,
-    layout::group_layout_axioms,
-    laws_eq::group_laws_eq,
-    laws_cmp::group_laws_cmp,
-    function::group_function_axioms,
-    std_specs::vecdeque::group_vec_dequeue_axioms,
-    std_specs::slice::group_slice_axioms,
-}
-
-#[cfg(not(feature = "alloc"))]
-#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
-pub broadcast group group_vstd_default {
-    seq::group_seq_axioms,
-    seq_lib::group_seq_lib_default,
-    map::group_map_axioms,
-    set::group_set_axioms,
-    set_lib::group_set_lib_default,
-    std_specs::bits::group_bits_axioms,
-    std_specs::control_flow::group_control_flow_axioms,
-    slice::group_slice_axioms,
-    array::group_array_axioms,
-    multiset::group_multiset_axioms,
-    string::group_string_axioms,
-    std_specs::range::group_range_axioms,
-    raw_ptr::group_raw_ptr_axioms,
-    compute::all_spec_ensures,
-    layout::group_layout_axioms,
-    laws_eq::group_laws_eq,
-    laws_cmp::group_laws_cmp,
-    function::group_function_axioms,
-    std_specs::slice::group_slice_axioms,
 }
 
 } // verus!

@@ -1735,8 +1735,31 @@ impl Visitor {
                 TokenStream::new()
             }
         } else {
-            let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote_spanned_builtin!{ builtin, span =>
-                #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); }), None))
+            let stmts: Vec<Stmt> = paths
+                .iter()
+                .map(|path| {
+                    let mut path = path.clone();
+                    let attrs = path
+                        .attrs
+                        .extract_if(0..path.attrs.len(), |attr| {
+                            // move any cfg attrs from path to the stmt
+                            attr.path().get_ident().map(|i| i.to_string())
+                                == Some("cfg".to_string())
+                        })
+                        .collect();
+                    let block = Expr::Verbatim(quote_spanned_builtin!(builtin, span => {
+                        #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
+                            #builtin::reveal_hide_internal_path_(#path)
+                        } __VERUS_REVEAL_INTERNAL__
+                    }));
+                    let one = Expr::Verbatim(quote_spanned!(span => 1));
+                    let mut expr: Expr = parse_quote_spanned_builtin!(builtin, span =>
+                        #builtin::reveal_hide_(#block, #one)
+                    );
+                    expr.replace_attrs(attrs);
+                    let stmt = Stmt::Expr(expr, Some(Token![;](span)));
+                    stmt
+                })
                 .collect();
             let block = Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
             let mut item_fn: ItemFn = parse_quote_spanned! { span =>
