@@ -1041,17 +1041,19 @@ fn add_fndef_axioms_to_function(
         enss_list.push((BuiltinSpecFun::DefaultEns, default_enss, strong_call_ensures));
     }
     for (builtin_spec_fun, enss, equiv) in enss_list {
-        let ens_forall = exec_closure_spec_ensures(
-            state,
-            &function.span,
-            &fndef_singleton,
-            &params,
-            &ret,
-            &enss,
-            builtin_spec_fun,
-            equiv,
-        )?;
-        fndef_axioms.push(ens_forall);
+        if enss.len() > 0 {
+            let ens_forall = exec_closure_spec_ensures(
+                state,
+                &function.span,
+                &fndef_singleton,
+                &params,
+                &ret,
+                &enss,
+                builtin_spec_fun,
+                equiv,
+            )?;
+            fndef_axioms.push(ens_forall);
+        }
     }
 
     let mut functionx = function.x.clone();
