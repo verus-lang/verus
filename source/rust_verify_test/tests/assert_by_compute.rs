@@ -763,3 +763,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] const_in_another_module verus_code! {
+        mod m {
+            use vstd::prelude::*;
+            pub const BIN_HUGE: u64 = 12;
+        }
+
+        mod x {
+            use vstd::prelude::*;
+            use crate::m::*;
+            proof fn test() {
+                assert(BIN_HUGE == 12) by(compute_only);
+            }
+        }
+    } => Ok(())
+}

@@ -406,7 +406,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_is_variant_get_fail IS_VARIANT_MAYBE.to_string() + verus_code_str! {
         pub fn test1(m: Maybe<u64>) -> u64 {
-            requires(m.get_Some_0() == 4);
+            requires(m->0 == 4);
             if let Maybe::Some(v) = m {
                 v
             } else {
@@ -416,7 +416,7 @@ test_verify_one_file! {
 
         pub fn test2() {
             let m = Maybe::None;
-            assume(m.get_Some_0() == 4);
+            assume(m->0 == 4);
             test1(m);
         }
     } => Err(e) => assert_one_fails(e)
@@ -1771,7 +1771,7 @@ test_verify_one_file! {
     } => Ok(err) => {
         dbg!(&err);
         assert!(err.errors.len() == 0);
-        assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
+        assert!(err.warnings.iter().find(|w| w.message.starts_with("`#[is_variant]` is deprecated - use `->` or `matches` instead")).is_some());
     }
 }
 
@@ -1925,4 +1925,23 @@ test_verify_one_file! {
             &&& forall|b:nat| s[b as int] is Some(Alternative::Yes)
         }
     } => Err(_e) => todo!() //assert_rust_error_msg(e, todo!())
+}
+
+test_verify_one_file! {
+    #[test] struct_brace_syntax_with_associated_type_issue1761 verus_code! {
+        pub struct I;
+        pub trait T {
+            type Output;
+            fn execute() -> Self::Output;
+        }
+        pub struct Out {}
+        impl T for I {
+            type Output = Out;
+            fn execute() -> (res: Self::Output)
+                ensures res == (Self::Output {})
+            {
+                Self::Output {}
+            }
+        }
+    } => Ok(())
 }

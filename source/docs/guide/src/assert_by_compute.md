@@ -22,7 +22,7 @@ expression `e`).  Continuing the example above, the developer could
 write:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:pow_concrete}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:pow_concrete}}
 ```
 
 In Assertion 1, Verus will internally reduce the left-hand side to 256 by repeatedly evaluating
@@ -52,7 +52,7 @@ Important note: An assertion using proof by computation does not inherit any con
 from its environment.  Hence, this example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:let_fails}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:let_fails}}
 ```
 
 will fail, since `x` will be treated symbolically, and hence the assertion will
@@ -61,7 +61,7 @@ by using `assert(e) by (compute)` and allowing Z3 to finish the proof, or by mov
 the `let` into the assertion, e.g., as:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:let_passes}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:let_passes}}
 ```
 
 While proofs by computation are most useful for concrete values, the interpreter
@@ -69,7 +69,7 @@ also supports symbolic values, and hence it can complete certain proofs
 symbolically.  For example, given variables `a, b, c, d`, the following succeeds:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:seq_example}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:seq_example}}
 ```
 
 Many proofs by computation take place over a concrete range of integers.  To reduce
@@ -77,7 +77,7 @@ the boilerplate needed for such proofs, you can use
 [`all_spec`](https://verus-lang.github.io/verus/verusdoc/vstd/compute/trait.RangeAll.html#tymethod.all_spec).
 In the example below,
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:all_spec}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:all_spec}}
 ```
 we use `all_spec` to prove that `p` holds for all values between 25 and 100,
 and hence it must hold for a generic value `u` that we know is in that range.
@@ -117,4 +117,4 @@ with the naive definition of Fibonacci).  Such functions can be annotated with
 ## See Also
 
 1. The [test suite](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/assert_by_compute.rs) has a variety of small examples.
-2. We also have several [more complex examples](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/assert_by_compute.rs).
+2. We also have several [more complex examples](https://github.com/verus-lang/verus/blob/main/source/../examples/assert_by_compute.rs).

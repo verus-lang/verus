@@ -27,11 +27,10 @@
 
 use crate::lifetime_ast::*;
 use crate::lifetime_generate::*;
-use crate::verus_items::RustItem;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
-    TypDecorationArg,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TraitId,
+    TypDecoration, TypDecorationArg,
 };
 
 // General purpose type to represent various types, where N comes from the TypNum enum:
@@ -153,7 +152,12 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             let name = state.typ_param(name.to_string(), None);
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
+        vir::ast::TypX::PointeeMetadata(t) => {
+            let t = gen_typ(state, t);
+            Box::new(TypX::PointeeMetadata(t))
+        }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
@@ -178,17 +182,18 @@ fn gen_generics(
     let mut const_typs: HashMap<String, Typ> = HashMap::new();
     for b in typ_bounds.iter() {
         match &**b {
-            GenericBoundX::Trait(path, typs) => {
-                let rust_item = crate::verus_items::get_rust_item_path(path);
+            GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                let bound = match rust_item {
-                    Some(RustItem::Sized) => Bound::Sized,
-                    _ => {
-                        let args = gen_typ_slice(state, &typs[1..]);
-                        let trait_path = state.trait_name(&path);
-                        Bound::Trait { trait_path, args, equality: None }
-                    }
+                let bound = {
+                    let args = gen_typ_slice(state, &typs[1..]);
+                    let trait_path = state.trait_name(&path);
+                    Bound::Trait { trait_path, args, equality: None }
                 };
+                generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+            }
+            GenericBoundX::Trait(TraitId::Sized, typs) => {
+                let typ = gen_typ(state, &typs[0]);
+                let bound = Bound::Sized;
                 generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
             }
             GenericBoundX::TypEquality(path, typs, x, eq_typ) => {
@@ -248,7 +253,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         let decl = DatatypeDecl {
             name: state.datatype_name(path),
             span: spans.from_air_span(&d.span, None),
-            implements_copy: None,
             generic_params,
             generic_bounds,
             datatype: Box::new(Datatype::Struct(Fields::Pos(fields))),
@@ -326,6 +330,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             trait_as_datatype,
             assoc_typs,
             trait_polarity,
+            is_clone: false,
         };
         state.trait_impls.push(decl);
     }

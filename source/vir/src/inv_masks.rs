@@ -1,6 +1,6 @@
-use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs};
+use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs, UnaryOp};
 use crate::context::Ctx;
-use crate::messages::{error_with_label, Message, Span};
+use crate::messages::{Message, Span, error_with_label};
 use crate::sst::{CallFun, Exp, ExpX};
 use std::sync::Arc;
 
@@ -207,18 +207,23 @@ impl MaskSet {
                 MaskSet::Remove { base, elem: removed } => {
                     let mut asserts = self.subset_of(ctx, base, call_span);
 
-                    let mut removed_not_in_other = SpannedTyped::new(
+                    let mut removed_in_self = SpannedTyped::new(
                         &removed.span,
                         &Arc::new(TypX::Bool),
-                        ExpX::Const(Constant::Bool(false)),
+                        ExpX::Const(Constant::Bool(true)),
                     );
-                    for assertion in other.contains_internal(ctx, removed, Some(call_span)) {
-                        removed_not_in_other = SpannedTyped::new(
+                    for assertion in self.contains_internal(ctx, removed, Some(call_span)) {
+                        removed_in_self = SpannedTyped::new(
                             &removed.span,
                             &Arc::new(TypX::Bool),
-                            ExpX::Binary(BinaryOp::Or, removed_not_in_other, assertion.cond),
+                            ExpX::Binary(BinaryOp::And, removed_in_self, assertion.cond),
                         );
                     }
+                    let removed_not_in_self = SpannedTyped::new(
+                        &removed.span,
+                        &Arc::new(TypX::Bool),
+                        ExpX::Unary(UnaryOp::Not, removed_in_self),
+                    );
                     asserts.push(Assertion {
                         err: error_with_label(
                             &removed.span,
@@ -226,7 +231,7 @@ impl MaskSet {
                             "invariant opened here",
                         )
                         .primary_label(call_span, "might be opened again in this call"),
-                        cond: removed_not_in_other,
+                        cond: removed_not_in_self,
                     });
                     asserts
                 }

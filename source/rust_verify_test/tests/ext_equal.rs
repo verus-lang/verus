@@ -5,6 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_fn verus_code! {
+        #[verifier::auto_ext_equal()]
         proof fn test(x: spec_fn(int, u8) -> int, y: spec_fn(int, u8) -> int) {
             assume(forall|i: int, j: u8| #[trigger] x(i, j) == y(i, j));
             assert(x =~= y);
@@ -23,6 +24,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<u8>, s2: Seq<u8>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -34,6 +36,7 @@ test_verify_one_file! {
             assert(s1.len() == 1 && s2.len() == 1 && s1[0] == s2[0] ==> s1 == s2);
         }
 
+        #[verifier::auto_ext_equal(assert)]
         proof fn test_no_auto_ext_equal_in_ensures(s1: Seq<u8>, s2: Seq<u8>)
             ensures s1.len() == 1 && s2.len() == 1 && s1[0] == s2[0] ==> s1 == s2 // FAILS
         {
@@ -44,6 +47,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_fails1 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<u8>, s2: Seq<u8>) {
             assume(s1.len() == 1);
             assume(s1[0] == s2[0]);
@@ -55,6 +59,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_fails2 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<u8>, s2: Seq<u8>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -66,6 +71,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_set verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Set<u8>, s2: Set<u8>) {
             assume(forall|i: u8| 1 <= i ==> !s1.contains(i));
             assume(forall|i: u8| 1 <= i ==> !s2.contains(i));
@@ -79,6 +85,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_set_fails1 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Set<u8>, s2: Set<u8>) {
             assume(forall|i: u8| 1 <= i ==> !s1.contains(i));
             assume(s1.contains(0));
@@ -91,6 +98,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_set_fails2 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Set<u8>, s2: Set<u8>) {
             assume(forall|i: u8| 1 <= i ==> !s1.contains(i));
             assume(forall|i: u8| 1 <= i ==> !s2.contains(i));
@@ -103,6 +111,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_map verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(m1: Map<u8, bool>, m2: Map<u8, bool>) {
             assume(forall|i: u8| 1 <= i ==> !m1.dom().contains(i));
             assume(forall|i: u8| 1 <= i ==> !m2.dom().contains(i));
@@ -117,6 +126,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_map_fails1 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(m1: Map<u8, bool>, m2: Map<u8, bool>) {
             assume(forall|i: u8| 1 <= i ==> !m1.dom().contains(i));
             assume(m1.dom().contains(0));
@@ -130,6 +140,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_map_fails2 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(m1: Map<u8, bool>, m2: Map<u8, bool>) {
             assume(forall|i: u8| 1 <= i ==> !m1.dom().contains(i));
             assume(forall|i: u8| 1 <= i ==> !m2.dom().contains(i));
@@ -143,6 +154,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_not_deep verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -158,6 +170,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_not_deep_fails verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -172,6 +185,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_deep verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -186,6 +200,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_deep_fails1 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s2.len() == 1);
             assume(s1[0].len() == 1);
@@ -199,6 +214,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_deep_fails2 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -212,6 +228,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_seq_deep_fails3 verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(s1: Seq<Seq<u8>>, s2: Seq<Seq<u8>>) {
             assume(s1.len() == 1);
             assume(s2.len() == 1);
@@ -227,6 +244,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
+        #[verifier::auto_ext_equal()]
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
             let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
             let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
@@ -247,6 +265,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         // omit #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
+        #[verifier::auto_ext_equal()]
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
             let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
             let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
@@ -268,6 +287,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
+        #[verifier::auto_ext_equal()]
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
             let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
             let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
@@ -288,6 +308,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
+        #[verifier::auto_ext_equal()]
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
             let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
             let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
@@ -308,6 +329,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         #[verifier::ext_equal]
         enum List { Nil, Cons(Seq<u8>, Box<List>), }
+        #[verifier::auto_ext_equal()]
         proof fn test_list(s1: Seq<u8>, s2: Seq<u8>, s3: Seq<u8>, s4: Seq<u8>) {
             let x = List::Cons(s1, Box::new(List::Cons(s2, Box::new(List::Nil))));
             let y = List::Cons(s3, Box::new(List::Cons(s4, Box::new(List::Nil))));
@@ -368,6 +390,7 @@ test_verify_one_file! {
         mod m2 {
             use vstd::prelude::*;
             use crate::m1::*;
+            #[verifier::auto_ext_equal()]
             proof fn test(x: Seq4<u8>, y: Seq4<u8>)
                 requires
                     x[0] == y[0],
@@ -387,6 +410,7 @@ test_verify_one_file! {
         mod m2 {
             use vstd::prelude::*;
             use crate::m1::*;
+            #[verifier::auto_ext_equal()]
             proof fn test(x: Seq4<u8>, y: Seq4<u8>)
                 requires
                     x[0] == y[0],
@@ -403,16 +427,17 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_std_specs_option_ext_eq verus_code! {
         use vstd::prelude::*;
+        #[verifier::auto_ext_equal()]
         proof fn test(a: core::option::Option<Seq<int>>, b: core::option::Option<Seq<int>>)
             requires
-                a.is_Some() == b.is_Some(),
-                a.is_Some() ==> {
-                    &&& a.get_Some_0().len() == 2
-                    &&& b.get_Some_0().len() == 2
-                    &&& a.get_Some_0()[0] == 0
-                    &&& b.get_Some_0()[0] == 0
-                    &&& a.get_Some_0()[1] == 1
-                    &&& b.get_Some_0()[1] == 1
+                a is Some == b is Some,
+                a is Some ==> {
+                    &&& a->0.len() == 2
+                    &&& b->0.len() == 2
+                    &&& a->0[0] == 0
+                    &&& b->0[0] == 0
+                    &&& a->0[1] == 1
+                    &&& b->0[1] == 1
                 },
         {
             assert(a =~= b);
@@ -430,7 +455,70 @@ test_verify_one_file! {
             assert(s == t) by { };
             assert(s == t);
         }
+
+        #[verifier::auto_ext_equal(assert)]
+        proof fn test_assert_by_fail(s: Seq<int>) {
+            let t = s.push(5).drop_last();
+            assert(s == t) by { }; // FAILS
+            assert(s == t);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] heuristic_calc verus_code! {
+        use vstd::prelude::*;
+        use vstd::calc_macro::*;
+
+        #[verifier::auto_ext_equal(assert_by)]
+        proof fn test_calc(s: Seq<int>) {
+            calc! {
+                (==)
+                s; {}
+                s.push(5).drop_last();
+            }
+        }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] heuristic_invariant verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_ext_equal(assert, ensures)]
+        fn test_invariant1(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t, // FAILS
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant2(Ghost(s): Ghost<Seq<int>>) {
+            let ghost t = s.push(5).drop_last();
+            loop
+                invariant s == t,
+                decreases 1int,
+            {
+                break;
+            }
+        }
+
+        #[verifier::auto_ext_equal(invariant)]
+        fn test_invariant3(Ghost(s): Ghost<Seq<int>>) {
+            let ghost mut t = s.push(5).drop_last();
+            for i in 0..3
+                invariant s == t,
+            {
+                proof {
+                    t = s.push(6).push(7).drop_last().drop_last();
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

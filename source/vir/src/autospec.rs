@@ -23,15 +23,52 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
         ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
-            let tgt = new_tgt(tgt, *autospec_usage);
+            use crate::ast::CallTargetKind;
+            let (kind, tgt, typs, impl_paths) = match (kind, autospec_usage) {
+                (
+                    CallTargetKind::DynamicResolved {
+                        resolved,
+                        typs: r_typs,
+                        impl_paths: r_impl_paths,
+                        is_trait_default,
+                    },
+                    AutospecUsage::IfMarked,
+                ) => {
+                    if functions.get(resolved).is_some_and(|f| f.x.attrs.autospec.is_some()) {
+                        (
+                            CallTargetKind::Static,
+                            new_tgt(resolved, *autospec_usage),
+                            r_typs.clone(),
+                            r_impl_paths.clone(),
+                        )
+                    } else if functions.get(tgt).is_some_and(|f| f.x.attrs.autospec.is_some()) {
+                        let new_t = &functions[tgt].x.attrs.autospec.as_ref().unwrap();
+                        // calling tgt = T::exec, resolved = impl::exec
+                        // new_t = T::spec, so check for new_resolved = impl::spec first
+                        let new_resolved_path =
+                            resolved.path.pop_segment().push_segment(new_t.path.last_segment());
+                        let new_resolved = Arc::new(crate::ast::FunX { path: new_resolved_path });
+                        let kind = if !is_trait_default && functions.contains_key(&new_resolved) {
+                            CallTargetKind::DynamicResolved {
+                                resolved: new_resolved,
+                                typs: r_typs.clone(),
+                                impl_paths: r_impl_paths.clone(),
+                                is_trait_default: *is_trait_default,
+                            }
+                        } else {
+                            CallTargetKind::Dynamic
+                        };
+                        (kind, new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
+                    } else {
+                        (kind.clone(), tgt.clone(), typs.clone(), impl_paths.clone())
+                    }
+                }
+                _ => {
+                    (kind.clone(), new_tgt(tgt, *autospec_usage), typs.clone(), impl_paths.clone())
+                }
+            };
             let call = ExprX::Call(
-                CallTarget::Fun(
-                    kind.clone(),
-                    tgt.clone(),
-                    typs.clone(),
-                    impl_paths.clone(),
-                    AutospecUsage::Final,
-                ),
+                CallTarget::Fun(kind, tgt, typs, impl_paths, AutospecUsage::Final),
                 args.clone(),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))

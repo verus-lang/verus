@@ -38,12 +38,12 @@ pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     }
 }
 
-pub fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
+pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
     for attr in attrs.iter() {
-        match &attr.kind {
-            rustc_ast::AttrKind::Normal(item) => match &item.item.path.segments[..] {
+        match attr {
+            rustc_hir::Attribute::Unparsed(item) => match &item.path.segments[..] {
                 [segment] => {
-                    if segment.ident.as_str() == "automatically_derived" {
+                    if segment.as_str() == "automatically_derived" {
                         return true;
                     }
                 }
@@ -124,7 +124,7 @@ fn clone_add_post_condition<'tcx>(
         }
     }
 
-    if functionx.ensure.len() != 0 {
+    if functionx.ensure.0.len() != 0 {
         warn_unexpected();
         return Ok(());
     }
@@ -144,7 +144,7 @@ fn clone_add_post_condition<'tcx>(
         );
 
         let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
-        functionx.ensure = Arc::new(vec![eq_expr]);
+        functionx.ensure.0 = Arc::new(vec![eq_expr]);
     } else {
         warn_unsupported();
     }

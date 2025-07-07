@@ -3,14 +3,46 @@ use super::set::*;
 
 verus! {
 
-/// Interface for ghost state that is consistent with the common
-/// presentations of partially commutative monoids (PCMs) / resource algebras.
-///
-/// For applications, the general advice is to use the
-/// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
-/// which lets you focus on updates and invariants rather than composition.
-///
-/// However, the PCM interface you'll find here may be more familiar to people.
+broadcast use super::set::group_set_axioms;
+/** Interface for PCM / Resource Algebra ghost state.
+
+RA-based ghost state is a well-established theory that is especially
+useful for verifying concurrent code. An introduction to the concept
+can be found in
+[Iris: Monoids and Invariants as an Orthogonal Basis for Concurrent Reasoning](https://iris-project.org/pdfs/2015-popl-iris1-final.pdf)
+or
+[Iris from the ground up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf).
+
+To embed the concept into Verus, we:
+ * Use a trait, [`PCM`], to embed the well-formedness laws of a resource algebra
+ * use a "tracked ghost" object, `Resource<P>` (this page) to represent ownership of a resource.
+
+Most operations are fairly standard, just "translated" from the usual CSL presentation into Verus.
+
+ * [`alloc`](Self::alloc) to allocate a resource.
+ * [`join`](Self::join) to combine two resources via `P::op`, and [`split`](Self::split), its inverse.
+ * [`validate`](Self::validate) to assert the validity of any held resource.
+ * [`update`](Self::update) or [`update_nondeterministic`](Self::update_nondeterministic) to perform a frame-preserving update.
+
+The interface also includes a nontrivial extension for working with _shared references_ to resources.
+Shared resources do not compose in a "separating" way via `P::op`, but rather, in a "potentially overlapping" way ([`join_shared`](Self::join_shared)). Shared resources can also be used to "help" perform frame-preserving updates, as long as they themselves do not change ([`update_with_shared`](Self::update_with_shared)).
+
+### Examples
+
+See:
+ * Any of the examples in [this directory](https://github.com/verus-lang/verus/tree/main/examples/pcm)
+ * The source code for the [fractional resource library](super::tokens::frac::FracGhost)
+
+### See also
+
+The ["storage protocol"](super::storage_protocol::StorageResource) formalism
+is an even more significant
+extension with additional capabilities for interacting with shared resources.
+
+[VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
+"swiss army knife" for building useful ghost resources.
+*/
+
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P> {
@@ -82,29 +114,22 @@ impl<P: PCM> Resource<P> {
 
     pub uninterp spec fn loc(self) -> Loc;
 
-    #[verifier::external_body]
-    pub proof fn alloc(value: P) -> (tracked out: Self)
+    pub axiom fn alloc(value: P) -> (tracked out: Self)
         requires
             value.valid(),
         ensures
             out.value() == value,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
             out.value() == P::op(self.value(), other.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
+    pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
         requires
             self.value() == P::op(left, right),
         ensures
@@ -112,28 +137,19 @@ impl<P: PCM> Resource<P> {
             out.1.loc() == self.loc(),
             out.0.value() == left,
             out.1.value() == right,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn create_unit(loc: Loc) -> (tracked out: Self)
+    pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
             out.loc() == loc,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn validate(tracked &self)
+    pub axiom fn validate(tracked &self)
         ensures
             self.value().valid(),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
     pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
         requires
             frame_preserving_update(self.value(), new_value),
@@ -141,23 +157,23 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        unimplemented!();
+        let new_values = set![new_value];
+        assert(new_values.contains(new_value));
+        self.update_nondeterministic(new_values)
     }
 
-    #[verifier::external_body]
-    pub proof fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
     // Operations with shared references
-    #[verifier::external_body]
-    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    /// This is useful when you have two (or more) shared resources and want to learn
+    /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
+    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -165,9 +181,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 
     pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
@@ -186,29 +200,24 @@ impl<P: PCM> Resource<P> {
         j.weaken(target)
     }
 
-    #[verifier::external_body]
-    pub proof fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
+    pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
             *self == *old(self),
             P::op(self.value(), other.value()).valid(),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
+    /// If `x · y --> x · z` is a frame-perserving update, and we have a shared reference to `x`,
+    /// we can update the `y` resource to `z`.
     pub proof fn update_with_shared(
         tracked self,
         tracked other: &Self,
@@ -224,11 +233,13 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        unimplemented!();
+        let new_values = set![new_value];
+        let so = set_op(new_values, other.value());
+        assert(so.contains(P::op(new_value, other.value())));
+        self.update_nondeterministic_with_shared(other, new_values)
     }
 
-    #[verifier::external_body]
-    pub proof fn update_nondeterministic_with_shared(
+    pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
         new_values: Set<P>,
@@ -242,9 +253,7 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    {
-        unimplemented!();
-    }
+    ;
 }
 
 } // verus!

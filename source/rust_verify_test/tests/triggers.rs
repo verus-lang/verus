@@ -458,3 +458,51 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_broadcast_all_triggers verus_code! {
+        uninterp spec fn a(a: nat) -> bool;
+        uninterp spec fn b(a: nat) -> bool;
+        uninterp spec fn c(a: nat) -> bool;
+        uninterp spec fn d(a: nat) -> bool;
+
+        broadcast proof fn axiom_a(x: nat)
+            requires
+                a(x)
+            ensures
+                #![all_triggers] b(x) && c(x)
+            // a(x) ==> b(x) && c(x)
+        {
+            admit();
+        }
+
+        proof fn test(x: nat)
+            requires a(x)
+        {
+            broadcast use axiom_a;
+            assume(forall|x: nat| b(x) ==> d(x));
+            assert(d(x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_all_trigger_ext_eq verus_code! {
+        use vstd::set::*;
+        pub uninterp spec fn my_contains<A>(s: Set<A>, a: A) -> bool;
+
+        pub broadcast proof fn test_ext<A>(s1: Set<A>, s2: Set<A>)
+            ensures
+                #![all_triggers] (s1 =~= s2) <==> (forall|a: A| my_contains(s1, a) == my_contains(s2, a)),
+        {
+            admit();
+        }
+
+        proof fn test(a: Set<nat>, b: Set<nat>)
+            requires forall|x: nat| my_contains(a, x) == my_contains(b, x),
+        {
+            broadcast use test_ext;
+            assert(a == b); // in positive position: we infer a =~= b
+        }
+    } => Ok(())
+}

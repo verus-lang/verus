@@ -405,8 +405,8 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
-test_verify_one_file! {
-    #[test] nest_local_loop_local verus_code! {
+test_verify_one_file_with_options! {
+    #[test] nest_local_loop_local ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
@@ -422,8 +422,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] never_terminate_in_invariant verus_code! {
+test_verify_one_file_with_options! {
+    #[test] never_terminate_in_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
@@ -722,8 +722,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] local_invariant_non_termination_into_inner_issue1102 verus_code!{
+test_verify_one_file_with_options! {
+    #[test] local_invariant_non_termination_into_inner_issue1102 ["exec_allows_no_decreases_clause"] => verus_code!{
         use vstd::invariant::*;
 
         #[verifier::external_body]
@@ -756,8 +756,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] inv_typ_invariants verus_code!{
+test_verify_one_file_with_options! {
+    #[test] inv_typ_invariants ["exec_allows_no_decreases_clause"] => verus_code!{
         use vstd::invariant::*;
 
         #[allow(unreachable_code)]
@@ -821,4 +821,69 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_set verus_code!{
+        use vstd::invariant::*;
+        use vstd::set::*;
+
+        struct P {}
+        impl InvariantPredicate<(), ()> for P {
+            closed spec fn inv(k: (), v: ()) -> bool { true }
+        }
+
+        proof fn a(tracked credit1: OpenInvariantCredit,
+                   tracked credit2: OpenInvariantCredit,
+                   tracked inv1: AtomicInvariant<(), (), P>,
+                   tracked inv2: AtomicInvariant<(), (), P>,
+                   s: Set<int>)
+            requires
+                !s.contains(inv1.namespace()),
+                !s.contains(inv2.namespace()),
+                inv1.namespace() != inv2.namespace(),
+            opens_invariants
+                any
+        {
+            open_atomic_invariant_in_proof!(credit1 => &inv1 => inner => {
+                b(s);
+                open_atomic_invariant_in_proof!(credit2 => &inv2 => inner => {
+                    b(s);
+                });
+            });
+        }
+
+        proof fn b(s: Set<int>)
+            opens_invariants s
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_set_fails verus_code!{
+        use vstd::invariant::*;
+        use vstd::set::*;
+
+        struct P {}
+        impl InvariantPredicate<(), ()> for P {
+            closed spec fn inv(k: (), v: ()) -> bool { true }
+        }
+
+        proof fn a(tracked credit: OpenInvariantCredit,
+                   tracked inv: AtomicInvariant<(), (), P>,
+                   s: Set<int>)
+            opens_invariants
+                any
+        {
+            open_atomic_invariant_in_proof!(credit => &inv => inner => {
+                b(s);
+            });
+        }
+
+        proof fn b(s: Set<int>)
+            opens_invariants s
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "callee may open invariants disallowed at call-site")
 }

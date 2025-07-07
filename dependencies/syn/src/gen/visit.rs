@@ -124,6 +124,9 @@ pub trait Visit<'ast> {
     fn visit_closed(&mut self, i: &'ast crate::Closed) {
         visit_closed(self, i);
     }
+    fn visit_closure_arg(&mut self, i: &'ast crate::ClosureArg) {
+        visit_closure_arg(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_const_param(&mut self, i: &'ast crate::ConstParam) {
@@ -159,6 +162,9 @@ pub trait Visit<'ast> {
     }
     fn visit_decreases(&mut self, i: &'ast crate::Decreases) {
         visit_decreases(self, i);
+    }
+    fn visit_default_ensures(&mut self, i: &'ast crate::DefaultEnsures) {
+        visit_default_ensures(self, i);
     }
     #[cfg(feature = "derive")]
     #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
@@ -438,6 +444,12 @@ pub trait Visit<'ast> {
     }
     fn visit_fn_mode(&mut self, i: &'ast crate::FnMode) {
         visit_fn_mode(self, i);
+    }
+    fn visit_fn_proof_arg(&mut self, i: &'ast crate::FnProofArg) {
+        visit_fn_proof_arg(self, i);
+    }
+    fn visit_fn_proof_options(&mut self, i: &'ast crate::FnProofOptions) {
+        visit_fn_proof_options(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -737,6 +749,9 @@ pub trait Visit<'ast> {
     fn visit_mode_proof(&mut self, i: &'ast crate::ModeProof) {
         visit_mode_proof(self, i);
     }
+    fn visit_mode_proof_axiom(&mut self, i: &'ast crate::ModeProofAxiom) {
+        visit_mode_proof_axiom(self, i);
+    }
     fn visit_mode_spec(&mut self, i: &'ast crate::ModeSpec) {
         visit_mode_spec(self, i);
     }
@@ -984,6 +999,9 @@ pub trait Visit<'ast> {
     fn visit_type_bare_fn(&mut self, i: &'ast crate::TypeBareFn) {
         visit_type_bare_fn(self, i);
     }
+    fn visit_type_fn_proof(&mut self, i: &'ast crate::TypeFnProof) {
+        visit_type_fn_proof(self, i);
+    }
     fn visit_type_fn_spec(&mut self, i: &'ast crate::TypeFnSpec) {
         visit_type_fn_spec(self, i);
     }
@@ -1127,6 +1145,12 @@ pub trait Visit<'ast> {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_where_predicate(&mut self, i: &'ast crate::WherePredicate) {
         visit_where_predicate(self, i);
+    }
+    fn visit_with_spec_on_expr(&mut self, i: &'ast crate::WithSpecOnExpr) {
+        visit_with_spec_on_expr(self, i);
+    }
+    fn visit_with_spec_on_fn(&mut self, i: &'ast crate::WithSpecOnFn) {
+        visit_with_spec_on_fn(self, i);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1286,6 +1310,9 @@ where
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.default_ensures {
+        v.visit_default_ensures(it);
     }
     if let Some(it) = &node.returns {
         v.visit_returns(it);
@@ -1537,11 +1564,13 @@ where
     }
     skip!((node.broadcast_use_tokens).0);
     skip!((node.broadcast_use_tokens).1);
+    skip!(node.brace_token);
     for el in Punctuated::pairs(&node.paths) {
         let it = el.value();
         v.visit_expr_path(it);
     }
     skip!(node.semi);
+    skip!(node.warning);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1563,6 +1592,13 @@ where
     V: Visit<'ast> + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_closure_arg<'ast, V>(v: &mut V, node: &'ast crate::ClosureArg)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.tracked_token);
+    full!(v.visit_pat(& node.pat));
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1666,6 +1702,13 @@ where
     v.visit_fields_named(&node.fields);
 }
 pub fn visit_decreases<'ast, V>(v: &mut V, node: &'ast crate::Decreases)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_default_ensures<'ast, V>(v: &mut V, node: &'ast crate::DefaultEnsures)
 where
     V: Visit<'ast> + ?Sized,
 {
@@ -2008,10 +2051,14 @@ where
     skip!(node.movability);
     skip!(node.asyncness);
     skip!(node.capture);
+    skip!(node.proof_fn);
+    if let Some(it) = &node.options {
+        v.visit_fn_proof_options(it);
+    }
     skip!(node.or1_token);
     for el in Punctuated::pairs(&node.inputs) {
         let it = el.value();
-        v.visit_pat(it);
+        v.visit_closure_arg(it);
     }
     skip!(node.or2_token);
     v.visit_return_type(&node.output);
@@ -2693,10 +2740,30 @@ where
         crate::FnMode::Proof(_binding_0) => {
             v.visit_mode_proof(_binding_0);
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            v.visit_mode_proof_axiom(_binding_0);
+        }
         crate::FnMode::Exec(_binding_0) => {
             v.visit_mode_exec(_binding_0);
         }
         crate::FnMode::Default => {}
+    }
+}
+pub fn visit_fn_proof_arg<'ast, V>(v: &mut V, node: &'ast crate::FnProofArg)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.tracked_token);
+    v.visit_bare_fn_arg(&node.arg);
+}
+pub fn visit_fn_proof_options<'ast, V>(v: &mut V, node: &'ast crate::FnProofOptions)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.bracket_token);
+    for el in Punctuated::pairs(&node.options) {
+        let it = el.value();
+        v.visit_path_segment(it);
     }
 }
 #[cfg(feature = "full")]
@@ -2945,8 +3012,16 @@ where
     v.visit_generics(&node.generics);
     skip!(node.colon_token);
     v.visit_type(&node.ty);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     skip!(node.eq_token);
-    v.visit_expr(&node.expr);
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
     skip!(node.semi_token);
 }
 #[cfg(feature = "full")]
@@ -3773,6 +3848,12 @@ where
 {
     skip!(node.proof_token);
 }
+pub fn visit_mode_proof_axiom<'ast, V>(v: &mut V, node: &'ast crate::ModeProofAxiom)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.axiom_token);
+}
 pub fn visit_mode_spec<'ast, V>(v: &mut V, node: &'ast crate::ModeSpec)
 where
     V: Visit<'ast> + ?Sized,
@@ -4351,6 +4432,9 @@ where
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
     }
+    if let Some(it) = &node.default_ensures {
+        v.visit_default_ensures(it);
+    }
     if let Some(it) = &node.returns {
         v.visit_returns(it);
     }
@@ -4362,6 +4446,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.with {
+        v.visit_with_spec_on_fn(it);
     }
 }
 pub fn visit_signature_spec_attr<'ast, V>(
@@ -4627,6 +4714,9 @@ where
         crate::Type::FnSpec(_binding_0) => {
             v.visit_type_fn_spec(_binding_0);
         }
+        crate::Type::FnProof(_binding_0) => {
+            v.visit_type_fn_proof(_binding_0);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4661,6 +4751,24 @@ where
     }
     if let Some(it) = &node.variadic {
         v.visit_bare_variadic(it);
+    }
+    v.visit_return_type(&node.output);
+}
+pub fn visit_type_fn_proof<'ast, V>(v: &mut V, node: &'ast crate::TypeFnProof)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.proof_fn_token);
+    if let Some(it) = &node.generics {
+        v.visit_angle_bracketed_generic_arguments(it);
+    }
+    if let Some(it) = &node.options {
+        v.visit_fn_proof_options(it);
+    }
+    skip!(node.paren_token);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        v.visit_fn_proof_arg(it);
     }
     v.visit_return_type(&node.output);
 }
@@ -5041,6 +5149,41 @@ where
         }
         crate::WherePredicate::Type(_binding_0) => {
             v.visit_predicate_type(_binding_0);
+        }
+    }
+}
+pub fn visit_with_spec_on_expr<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnExpr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.with);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        v.visit_expr(it);
+    }
+    if let Some(it) = &node.outputs {
+        skip!((it).0);
+        full!(v.visit_pat(& (it).1));
+    }
+    if let Some(it) = &node.follows {
+        skip!((it).0);
+        full!(v.visit_pat(& (it).1));
+    }
+}
+pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.with);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        full!(v.visit_fn_arg(it));
+    }
+    if let Some(it) = &node.outputs {
+        skip!((it).0);
+        for el in Punctuated::pairs(&(it).1) {
+            let it = el.value();
+            full!(v.visit_pat_type(it));
         }
     }
 }

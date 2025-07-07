@@ -53,6 +53,7 @@ ast_enum_of_structs! {
         Spec(ModeSpec),
         SpecChecked(ModeSpecChecked),
         Proof(ModeProof),
+        ProofAxiom(ModeProofAxiom),
         Exec(ModeExec),
         Default,
     }
@@ -82,6 +83,12 @@ ast_struct! {
 ast_struct! {
     pub struct ModeProof {
         pub proof_token: Token![proof],
+    }
+}
+
+ast_struct! {
+    pub struct ModeProofAxiom {
+        pub axiom_token: Token![axiom],
     }
 }
 
@@ -138,6 +145,13 @@ ast_struct! {
     pub struct Ensures {
         pub attrs: Vec<Attribute>,
         pub token: Token![ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct DefaultEnsures {
+        pub token: Token![default_ensures],
         pub exprs: Specification,
     }
 }
@@ -234,16 +248,35 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct WithSpecOnExpr {
+        pub with: Token![with],
+        pub inputs: Punctuated<Expr, Token![,]>,
+        pub outputs: Option<(Token![=>], Pat)>,
+        pub follows: Option<(Token![|=], Pat)>,
+    }
+}
+
+ast_struct! {
+    pub struct WithSpecOnFn {
+        pub with: Token![with],
+        pub inputs: Punctuated<FnArg , Token![,]>,
+        pub outputs: Option<(Token![->], Punctuated<PatType, Token![,]>)>,
+    }
+}
+
+ast_struct! {
     pub struct SignatureSpec {
         // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<Prover>,
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
+        pub with: Option<WithSpecOnFn>,
     }
 }
 
@@ -253,6 +286,7 @@ impl SignatureSpec {
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
+        self.default_ensures = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
@@ -332,8 +366,10 @@ ast_struct! {
     pub struct BroadcastUse {
         pub attrs: Vec<Attribute>,
         pub broadcast_use_tokens: (Token![broadcast], Token![use]),
+        pub brace_token: Option<token::Brace>,
         pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
+        pub warning: bool,
     }
 }
 
@@ -352,6 +388,7 @@ ast_struct! {
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -368,6 +405,27 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ClosureArg {
+        pub tracked_token: Option<Token![tracked]>,
+        pub pat: Pat,
+    }
+}
+
+ast_struct! {
+    pub struct FnProofArg {
+        pub tracked_token: Option<Token![tracked]>,
+        pub arg: BareFnArg,
+    }
+}
+
+ast_struct! {
+    pub struct FnProofOptions {
+        pub bracket_token: token::Bracket,
+        pub options: Punctuated<PathSegment, Token![,]>,
+    }
+}
+
+ast_struct! {
     /// A FnSpec type: `FnSpec(usize) -> bool`.
     /// Parsed similarly to TypeBareFn
     pub struct TypeFnSpec {
@@ -375,6 +433,20 @@ ast_struct! {
         pub spec_fn_token: Option<Token![SpecFn]>,
         pub paren_token: token::Paren,
         pub inputs: Punctuated<BareFnArg, Token![,]>,
+        pub output: ReturnType,
+    }
+}
+
+ast_struct! {
+    /// A proof_fn type:
+    ///   `proof_fn<'a, F>[ReqEns<R>, Copy, Send, Sync](tracked usize) -> tracked bool`
+    /// Parsed similarly to TypeBareFn
+    pub struct TypeFnProof {
+        pub proof_fn_token: Token![proof_fn],
+        pub generics: Option<AngleBracketedGenericArguments>,
+        pub options: Option<FnProofOptions>,
+        pub paren_token: token::Paren,
+        pub inputs: Punctuated<FnProofArg, Token![,]>,
         pub output: ReturnType,
     }
 }
@@ -606,6 +678,9 @@ pub mod parsing {
             } else if input.peek(Token![proof]) {
                 let proof_token: Token![proof] = input.parse()?;
                 Ok(FnMode::Proof(ModeProof { proof_token }))
+            } else if input.peek(Token![axiom]) {
+                let axiom_token: Token![axiom] = input.parse()?;
+                Ok(FnMode::ProofAxiom(ModeProofAxiom { axiom_token }))
             } else if input.peek(Token![exec]) {
                 let exec_token: Token![exec] = input.parse()?;
                 Ok(FnMode::Exec(ModeExec { exec_token }))
@@ -626,10 +701,12 @@ pub mod parsing {
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
                 || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
                 || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
@@ -647,7 +724,7 @@ pub mod parsing {
                 if input.peek2(token::Comma) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![ensures]) {
+                if input.peek2(Token![ensures]) || input.peek2(Token![default_ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![opens_invariants]) {
@@ -717,6 +794,17 @@ pub mod parsing {
             attr::parsing::parse_inner(input, &mut attrs)?;
             Ok(Ensures {
                 attrs,
+                token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for DefaultEnsures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            Ok(DefaultEnsures {
                 token,
                 exprs: input.parse()?,
             })
@@ -941,6 +1029,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<DefaultEnsures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![default_ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Returns> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![returns]) {
@@ -1021,9 +1120,11 @@ pub mod parsing {
     impl Parse for SignatureSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
+            let with: Option<WithSpecOnFn> = input.parse()?;
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1034,10 +1135,12 @@ pub mod parsing {
                 requires,
                 recommends,
                 ensures,
+                default_ensures,
                 returns,
                 decreases,
                 invariants,
                 unwind,
+                with,
             })
         }
     }
@@ -1045,13 +1148,24 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureSpecAttr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let ret_pat = if input.peek2(Token![=>]) {
-                let pat = Pat::parse_single(&input)?;
-                let token = input.parse()?;
-                Some((pat, token))
-            } else {
-                None
-            };
+            let ret_pat =
+                if input.peek2(Token![=>]) || (input.peek2(Token![:]) && input.peek4(Token![=>])) {
+                    let mut pat = Pat::parse_single(&input)?;
+                    if input.peek(Token![:]) {
+                        let colon_token = input.parse()?;
+                        let ty = input.parse()?;
+                        pat = Pat::Type(PatType {
+                            attrs: vec![],
+                            pat: Box::new(pat),
+                            colon_token,
+                            ty,
+                        });
+                    }
+                    let token = input.parse()?;
+                    Some((pat, token))
+                } else {
+                    None
+                };
             let spec = input.parse()?;
 
             Ok(SignatureSpecAttr { ret_pat, spec })
@@ -1245,27 +1359,43 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for BroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
+            let mut warning = false;
             let attrs = Vec::new();
             let broadcast_use_tokens: (Token![broadcast], Token![use]) =
                 (input.parse()?, input.parse()?);
-            let mut paths = Punctuated::new();
-            let semi = loop {
-                let path: ExprPath = input.parse()?;
+            let (brace_token, paths) = if input.peek(token::Brace) {
+                let brace_content;
+                let brace = braced!(brace_content in input);
+                let paths = brace_content.parse_terminated(ExprPath::parse, Token![,])?;
+                (Some(brace), paths)
+            } else {
+                let path = input.parse()?;
+                let mut paths = Punctuated::new();
                 paths.push(path);
-                if input.peek(Token![,]) {
-                    let _: Token![,] = input.parse()?;
-                    continue;
-                } else {
-                    let semi: Token![;] = input.parse()?;
-                    break semi;
+                loop {
+                    if input.peek(Token![;]) {
+                        break;
+                    }
+                    warning = true;
+                    if input.peek(Token![,]) {
+                        let _: Token![,] = input.parse()?;
+                        continue;
+                    }
+                    let path = input.parse()?;
+                    paths.push(path);
                 }
+                (None, paths)
             };
+
+            let semi: Token![;] = input.parse()?;
 
             Ok(BroadcastUse {
                 attrs,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning,
             })
         }
     }
@@ -1295,6 +1425,7 @@ pub mod parsing {
 
             let requires: Option<Requires> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1314,6 +1445,7 @@ pub mod parsing {
                 output,
                 requires,
                 ensures,
+                default_ensures,
                 returns,
                 invariants,
                 unwind,
@@ -1426,6 +1558,30 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for FnProofOptions {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let options = content.parse_terminated(PathSegment::parse, Token![,])?;
+            Ok(FnProofOptions {
+                bracket_token,
+                options,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<FnProofOptions> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(token::Bracket) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -1482,6 +1638,13 @@ mod printing {
     impl ToTokens for ModeProof {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.proof_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ModeProofAxiom {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.axiom_token.to_tokens(tokens);
         }
     }
 
@@ -1544,6 +1707,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for DefaultEnsures {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);
@@ -1661,6 +1832,7 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
@@ -1759,12 +1931,20 @@ mod printing {
             let BroadcastUse {
                 attrs: _,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning: _,
             } = self;
             broadcast_use_tokens.0.to_tokens(tokens);
             broadcast_use_tokens.1.to_tokens(tokens);
-            paths.to_tokens(tokens);
+            if let Some(brace_token) = brace_token {
+                brace_token.surround(tokens, |tokens| {
+                    paths.to_tokens(tokens);
+                });
+            } else {
+                paths.to_tokens(tokens);
+            }
             semi.to_tokens(tokens);
         }
     }
@@ -1801,10 +1981,48 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ClosureArg {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.tracked_token.to_tokens(tokens);
+            self.pat.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for FnProofArg {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.tracked_token.to_tokens(tokens);
+            self.arg.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for FnProofOptions {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.bracket_token.surround(tokens, |tokens| {
+                self.options.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for TypeFnSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.fn_spec_token.to_tokens(tokens);
             self.spec_fn_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.inputs.to_tokens(tokens);
+            });
+            self.output.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for TypeFnProof {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.proof_fn_token.to_tokens(tokens);
+            self.generics.to_tokens(tokens);
+            self.options.to_tokens(tokens);
             self.paren_token.surround(tokens, |tokens| {
                 self.inputs.to_tokens(tokens);
             });
@@ -1959,6 +2177,7 @@ mod printing {
 
             self.requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);
@@ -2126,6 +2345,48 @@ pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
     Ok(fn_spec)
 }
 
+pub(crate) fn parse_fn_proof(input: ParseStream) -> Result<TypeFnProof> {
+    let args;
+    let proof_fn_token = input.parse()?;
+    let generics = if input.peek(Token![<]) {
+        Some(input.parse()?)
+    } else {
+        None
+    };
+    let fn_proof = TypeFnProof {
+        proof_fn_token,
+        generics,
+        options: input.parse()?,
+        paren_token: parenthesized!(args in input),
+        inputs: {
+            let mut inputs = Punctuated::new();
+
+            while !args.is_empty() {
+                let attrs = args.call(Attribute::parse_outer)?;
+
+                let tracked_token = args.parse()?;
+                let arg = crate::ty::parsing::parse_bare_fn_arg(&args, false)?;
+                inputs.push_value(FnProofArg {
+                    tracked_token,
+                    arg: BareFnArg { attrs, ..arg },
+                });
+
+                if args.is_empty() {
+                    break;
+                }
+
+                let comma = args.parse()?;
+                inputs.push_punct(comma);
+            }
+
+            inputs
+        },
+        output: input.call(ReturnType::without_plus)?,
+    };
+
+    Ok(fn_proof)
+}
+
 ast_struct! {
     pub struct LoopSpec {
         pub iter_name: Option<(Ident, Token![=>])>,
@@ -2156,6 +2417,89 @@ impl parse::Parse for LoopSpec {
             invariant_except_breaks,
             ensures,
             decreases,
+        })
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for Option<WithSpecOnFn> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.peek(Token![with]) {
+            input.parse().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for WithSpecOnFn {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let with = input.parse()?;
+        let mut inputs = Punctuated::new();
+        while !input.peek(Token![->]) {
+            let expr = input.parse()?;
+            inputs.push(expr);
+            if !input.peek(Token![,]) {
+                break;
+            }
+            let _comma: Token![,] = input.parse()?;
+        }
+        let outputs = if input.peek(Token![->]) {
+            let token = input.parse()?;
+            let mut outs = Punctuated::new();
+            loop {
+                let expr = input.parse()?;
+                outs.push(expr);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let _comma: Token![,] = input.parse()?;
+            }
+            Some((token, outs))
+        } else {
+            None
+        };
+        Ok(WithSpecOnFn {
+            with,
+            inputs,
+            outputs,
+        })
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for WithSpecOnExpr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let with = input.parse()?;
+        let mut inputs = Punctuated::new();
+        while !input.peek(Token![=>]) && !input.peek(Token![|=]) {
+            let expr = input.parse()?;
+            inputs.push(expr);
+            if !input.peek(Token![,]) {
+                break;
+            }
+            let _comma: Token![,] = input.parse()?;
+        }
+        let outputs = if input.peek(Token![=>]) {
+            let token = input.parse()?;
+            let outs = Pat::parse_single(&input)?;
+            Some((token, outs))
+        } else {
+            None
+        };
+        let follows = if input.peek(Token![|=]) {
+            let token = input.parse()?;
+            let outs = Pat::parse_single(&input)?;
+            Some((token, outs))
+        } else {
+            None
+        };
+        Ok(WithSpecOnExpr {
+            with,
+            inputs,
+            outputs,
+            follows,
         })
     }
 }

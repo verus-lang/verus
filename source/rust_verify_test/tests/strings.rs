@@ -417,7 +417,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test() {
             let a = ("ABC");
-            let b = a.to_string();
+            let b = a.to_owned();
             let c = b.as_str();
             proof {
                 reveal_strlit("ABC");
@@ -558,7 +558,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = ("hello ").to_string();
+            let mut s = ("hello ").to_owned();
             s.append(("world"));
             assert(s@ =~= ("hello world")@);
             s
@@ -582,7 +582,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = ("hello ").to_string();
+            let mut s = ("hello ").to_owned();
             s.append(("world"));
             assert(s@ !~= ("hello worlds")@);
             s
@@ -606,7 +606,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = ("hello ").to_string();
+            let s1 = ("hello ").to_owned();
             let s = s1.concat(("world"));
             assert(s@ =~= ("hello world")@);
             s
@@ -630,7 +630,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = ("hello ").to_string();
+            let s1 = ("hello ").to_owned();
             let s = s1.concat(("world"));
             assert(s@ !~= ("hello worlds")@);
             s
@@ -795,4 +795,36 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_chars_iterator verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        #[verifier::loop_isolation(false)]
+        fn test() {
+            let s = "abca";
+            proof {
+                reveal_strlit("abca");
+            }
+            let mut chars_it = s.chars();
+            let mut num_as = 0usize;
+            let ghost is_a = |c: char| c == 'a';
+            for c in it: chars_it
+                invariant num_as == it@.filter(is_a).len()
+            {
+                reveal(Seq::filter);
+                let ghost prev_chars = it.chars.take(it.pos);
+                let ghost next_chars = it.chars.take(it.pos + 1);
+                assert(next_chars =~= prev_chars + seq![c]);
+                if c == 'a' {
+                    assert(seq![c].filter(is_a) =~= seq![c]);
+                    num_as += 1;
+                } else {
+                    assert(seq![c].drop_last().filter(is_a) =~= Seq::<char>::empty());
+                }
+            }
+        }
+    } => Ok(())
 }

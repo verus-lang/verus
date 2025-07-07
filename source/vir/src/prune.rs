@@ -5,14 +5,14 @@
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitX, Typ, TypX,
+    Trait, TraitId, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name, fn_set_full_name,
-    fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name, Spanned,
+    Spanned, fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name,
+    fn_set_full_name, fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name,
 };
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
@@ -33,6 +33,7 @@ enum ReachedType {
     StrSlice,
     Array,
     Primitive,
+    PointeeMetadata,
 }
 
 // Group all AssocTypeImpls with the same (ReachedType(self_typ), (trait_path, name)):
@@ -101,6 +102,7 @@ struct State {
     mono_abstract_datatypes: Option<HashSet<MonoTyp>>,
     spec_fn_types: HashSet<usize>,
     uses_array: bool,
+    uses_pointee_metadata: bool,
     fndef_types: HashSet<Fun>,
     // broadcast functions that are also defined or called normally
     // (not just used for the broadcast)
@@ -120,8 +122,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
+        TypX::PointeeMetadata(_) => ReachedType::PointeeMetadata,
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
+        TypX::ConstBool(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
         TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
@@ -257,7 +261,12 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
+        TypX::Bool
+        | TypX::Int(_)
+        | TypX::SpecFn(..)
+        | TypX::Datatype(..)
+        | TypX::Primitive(..)
+        | TypX::PointeeMetadata(_) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::AnonymousClosure(..) => {}
@@ -265,7 +274,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             panic!("unexpected TypX")
         }
         TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
-        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
+        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) | TypX::ConstBool(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
@@ -338,7 +347,10 @@ fn traverse_generic_bounds(
     for bound in bounds.iter() {
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                 reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                 path
@@ -462,7 +474,10 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let mut map: VisitorScopeMap = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
-            let methods = reached_methods(ctxt, state.reached_types.iter().map(|t| (t, &f)));
+            let methods = reached_methods(
+                ctxt,
+                state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
+            );
             reach_methods(ctxt, state, methods);
             continue;
         }
@@ -487,6 +502,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 ReachedType::Array => {
                     state.uses_array = true;
+                }
+                ReachedType::PointeeMetadata => {
+                    state.uses_pointee_metadata = true;
                 }
                 _ => {}
             }
@@ -532,7 +550,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             continue;
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
-            let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
+            let typs: Vec<ReachedType> =
+                state.reached_types.iter().chain(vec![ReachedType::None].iter()).cloned().collect();
             for t in typs {
                 reach_assoc_type_impl(ctxt, state, &(t.clone(), a.clone()));
             }
@@ -633,7 +652,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     };
 
     // Collect all triggers
-    for expr in f.x.require.iter().chain(f.x.ensure.iter()) {
+    for expr in f.x.require.iter().chain(f.x.ensure.0.iter()).chain(f.x.ensure.1.iter()) {
         let control = crate::ast_visitor::expr_visitor_dfs(expr, &mut map, &mut f_get_triggers);
         if control == VisitorControlFlow::Stop(()) {
             return vec![];
@@ -692,6 +711,12 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     trigs
 }
 
+#[derive(Debug)]
+pub struct UsedBuiltins {
+    pub uses_array: bool,
+    pub uses_pointee_metadata: bool,
+}
+
 //  - module is none: prune to keep what's reachable from current_crate
 //    module is some and fun is none: prune to keep what's reachable from module
 //    module is some and fun is some: prune to keep what's reachable from fun
@@ -705,7 +730,7 @@ pub fn prune_krate_for_module_or_krate(
     module: Option<Path>,
     fun: Option<&Fun>,
     collect_monotyps: bool,
-) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, bool, Vec<Fun>) {
+) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, UsedBuiltins, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -968,8 +993,13 @@ pub fn prune_krate_for_module_or_krate(
         let mut bound_types: Vec<ReachedType> = Vec::new();
         for bound in imp.x.typ_bounds.iter() {
             match &**bound {
-                crate::ast::GenericBoundX::Trait(path, typ_args) => {
-                    bound_traits.push(path.clone());
+                crate::ast::GenericBoundX::Trait(tid, typ_args) => {
+                    match tid {
+                        TraitId::Path(path) => {
+                            bound_traits.push(path.clone());
+                        }
+                        TraitId::Sized => {}
+                    }
                     for t in typ_args.iter() {
                         bound_types.push(typ_to_reached_type(t));
                     }
@@ -1127,5 +1157,9 @@ pub fn prune_krate_for_module_or_krate(
         }
         _ => None,
     };
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
+    let used_builtins = UsedBuiltins {
+        uses_array: state.uses_array,
+        uses_pointee_metadata: state.uses_pointee_metadata,
+    };
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types)
 }

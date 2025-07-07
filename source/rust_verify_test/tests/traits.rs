@@ -444,8 +444,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_ok ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -461,7 +461,7 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -505,8 +505,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_fail_1c verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_fail_1c ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -1362,8 +1362,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_one_file! {
-    #[test] test_verify_loop verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_verify_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             spec fn f() -> bool;
         }
@@ -3823,14 +3823,14 @@ test_verify_one_file! {
 
             proof fn test1(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 200);
                 assert(QQ::e(&s) == 300);
             }
 
             proof fn test2(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 300); // FAILS
             }
         }
@@ -4203,4 +4203,150 @@ test_verify_one_file! {
             let r = Y::<X<A1, B1>>::f();
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] trait_with_const_param_and_assoc_type verus_code! {
+        use vstd::*;
+
+        pub trait Trait<const X: usize> {
+            type AssocType;
+
+            fn exec_get_x(&self) -> (r: usize)
+                ensures r == X;
+
+            fn exec_get_x_2(a: &Self::AssocType) -> (r: usize)
+                ensures r == X;
+        }
+
+        struct Bar<const X: usize> {
+        }
+
+        impl<const X: usize> Trait<X> for Bar<X> {
+            type AssocType = [bool; X];
+
+            fn exec_get_x(&self) -> (r: usize)
+            {
+                return X;
+            }
+
+            fn exec_get_x_2(a: &[bool; X]) -> (r: usize)
+            {
+                return a.len();
+            }
+        }
+
+        fn test_generic<const X: usize, T: Trait<X>>(t: &T, j: &T::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = T::exec_get_x_2(j);
+            assert(r2 == X);
+        }
+
+        fn test_specific<const X: usize>(t: &Bar<X>, j: &<Bar<X> as Trait<X>>::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = <Bar<X> as Trait<X>>::exec_get_x_2(j);
+            assert(r2 == X);
+        }
+
+        fn test_generic_fail<const X: usize, T: Trait<X>>(t: &T, j: &T::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = T::exec_get_x_2(j);
+            assert(r2 == X);
+
+            assert(false); // FAILS
+        }
+
+        fn test_specific_fail<const X: usize>(t: &Bar<X>, j: &<Bar<X> as Trait<X>>::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = <Bar<X> as Trait<X>>::exec_get_x_2(j);
+            assert(r2 == X);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] static_resolution_to_blanket_impl_unsized_issue1657 verus_code! {
+        trait Tr {
+            fn stuff(&self);
+        }
+
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        impl<T: Tr + ?Sized> Blanket for T {
+            fn stuff2(&self)
+                ensures false
+            {
+                assume(false);
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T) {
+            t.stuff2();
+            assert(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unsized_self_ok verus_code! {
+        trait T {
+            fn f(self) -> u8;
+        }
+        impl T for &u8 {
+            fn f(self) -> u8 {
+                *self
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unsized_self_ok_external verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f(self) -> u8;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f(self) -> u8;
+        }
+
+        impl T for &u8 {
+            fn f(self) -> u8 {
+                *self
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] usize_isize_type_id verus_code! {
+        // https://github.com/verus-lang/verus/issues/1743
+        use vstd::prelude::*;
+        global size_of usize == 8;
+
+        uninterp spec fn foo<T>() -> int;
+
+        proof fn testu() {
+            assert(foo::<usize>() == foo::<u64>()); // FAILS
+        }
+
+        proof fn testi() {
+            assert(foo::<isize>() == foo::<i64>()); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

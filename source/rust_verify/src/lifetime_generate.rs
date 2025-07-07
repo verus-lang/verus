@@ -1,31 +1,35 @@
-use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
+use crate::attributes::{GhostBlockAttr, get_ghost_block_opt, get_mode, get_verifier_attrs};
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
-use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
-use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+use crate::rust_to_vir_base::{
+    auto_deref_supported_for_ty, def_id_to_vir_path, mid_ty_const_to_vir,
+};
+use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
+use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
-    OpaqueTyOrigin, OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, UnOp,
+    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode, Pat,
+    PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
-    GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
+    GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, TypingEnv,
+    VariantDef,
 };
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
-use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
-use vir::def::{field_ident_from_rust, VERUS_SPEC};
+use vir::def::{VERUS_SPEC, field_ident_from_rust};
 use vir::messages::AstId;
 
 impl TypX {
@@ -56,9 +60,6 @@ struct Context<'tcx> {
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, vir::ast::Datatype>,
     ignored_functions: HashSet<DefId>,
-    /// For each struct/enum that implements Copy,
-    /// for each GenericParam A say whether clone and copy require A: Clone and A: Copy
-    copy_types: HashMap<DefId, Vec<bool>>,
     calls: HashMap<HirId, ResolvedCall>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
@@ -77,9 +78,15 @@ impl<'tcx> Context<'tcx> {
     }
 }
 
+struct ConstOrStaticImport {
+    id: DefId,
+    is_static: bool,
+}
+
 pub(crate) struct State {
     rename_count: usize,
     reached: HashSet<(Option<Path>, DefId)>,
+    const_static_worklist: Vec<ConstOrStaticImport>,
     datatype_worklist: Vec<DefId>,
     impl_assocs_worklist: Vec<DefId>,
     imported_fun_worklist: Vec<DefId>,
@@ -116,6 +123,7 @@ impl State {
         State {
             rename_count: 0,
             reached: HashSet::new(),
+            const_static_worklist: Vec::new(),
             datatype_worklist: Vec::new(),
             impl_assocs_worklist: Vec::new(),
             imported_fun_worklist: Vec::new(),
@@ -276,6 +284,13 @@ impl State {
         s
     }
 
+    fn reach_const_static(&mut self, id: DefId, is_static: bool) {
+        if id.as_local().is_none() && !self.reached.contains(&(None, id)) {
+            self.reached.insert((None, id));
+            self.const_static_worklist.push(ConstOrStaticImport { id, is_static });
+        }
+    }
+
     fn reach_datatype(&mut self, ctxt: &Context, id: DefId) {
         if !self.reached.contains(&(None, id)) {
             if !matches!(ctxt.verus_items.id_to_name.get(&id), Some(VerusItem::BuiltinType(_))) {
@@ -329,77 +344,13 @@ fn span_dummy() -> Span {
     data.span()
 }
 
-fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
-    let tcx = ctxt.tcx;
-    let copy = tcx.lang_items().copy_trait();
-    let sized = tcx.lang_items().sized_trait();
-    // check for implementation of the form:
-    //   impl<A1 ... An> Copy for S<A1 ... An>
-    if let Some(trait_ref) = tcx.impl_trait_ref(id) {
-        if trait_ref.skip_binder().args.len() == 1 {
-            if let GenericArgKind::Type(ty) = trait_ref.skip_binder().args[0].unpack() {
-                if let TyKind::Adt(AdtDef(adt_def_data), args) = ty.kind() {
-                    let did = adt_def_data.did;
-                    let generics = tcx.generics_of(id);
-                    let mut copy_bounds: Vec<(Id, bool)> = Vec::new();
-                    if generics.own_params.len() == args.len() {
-                        for (param, arg) in generics.own_params.iter().zip(args.iter()) {
-                            let name = state.typ_param(param.name.to_string(), Some(param.index));
-                            copy_bounds.push((name, false));
-                            if let GenericArgKind::Type(arg_ty) = arg.unpack() {
-                                if let TyKind::Param(p) = arg_ty.kind() {
-                                    if p.name == param.name {
-                                        continue;
-                                    }
-                                }
-                            }
-                            return;
-                        }
-                    } else {
-                        return;
-                    }
-                    for (pred, _) in tcx.predicates_of(id).predicates {
-                        if let Some(ClauseKind::Trait(p)) = pred.kind().no_bound_vars() {
-                            let pid = p.trait_ref.def_id;
-                            // For now, only allowed predicates are Copy and Sized
-                            if Some(pid) == copy {
-                                let x = match *erase_ty(
-                                    ctxt,
-                                    state,
-                                    &p.trait_ref.args[0].expect_ty(),
-                                ) {
-                                    TypX::TypParam(x) => x,
-                                    _ => panic!("PredicateKind::Trait"),
-                                };
-                                let x_ref = copy_bounds.iter_mut().find(|(name, _)| name == &x);
-                                let x_ref = x_ref.expect("generic param bound");
-                                x_ref.1 = true;
-                                continue;
-                            }
-                            if Some(pid) == sized {
-                                continue;
-                            }
-                        }
-                        return;
-                    }
-                    if tcx.impl_polarity(id) != rustc_middle::ty::ImplPolarity::Positive {
-                        return;
-                    }
-                    // Found a matching Copy Impl
-                    assert!(!ctxt.copy_types.contains_key(&did));
-                    let copy_bounds = copy_bounds.into_iter().map(|(_, copy)| copy).collect();
-                    ctxt.copy_types.insert(did, copy_bounds);
-                }
-            }
-        }
-    }
-}
-
 fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
-        RegionKind::ReEarlyParam(bound) => Some(state.lifetime((bound.name.to_string(), None))),
+        RegionKind::ReEarlyParam(bound) => {
+            Some(state.lifetime((bound.name.to_string(), Some(bound.index))))
+        }
         RegionKind::ReBound(_, bound) => match bound.kind {
-            BoundRegionKind::BrNamed(a, _) => Some(state.lifetime(lifetime_key(ctxt, a))),
+            BoundRegionKind::Named(a, _) => Some(state.lifetime(lifetime_key(ctxt, a))),
             _ => None,
         },
         RegionKind::ReStatic => Some(Id::new(IdKind::Builtin, 0, "'static".to_string())),
@@ -420,6 +371,7 @@ fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Con
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }
@@ -444,15 +396,16 @@ fn adt_args<'a, 'tcx>(
 // Collect some or all as-yet unreached types mentioned directly by ty
 // (It's ok to miss some, but the more we capture, the less extraneous code
 // we have to import.)
+// Return Err if we don't handle an impl with this type.
 fn collect_unreached_datatypes<'tcx>(
     ctxt: &Context<'tcx>,
     state: &State,
     datatypes: &mut Vec<DefId>,
     ty: &Ty<'tcx>,
-) {
+) -> Result<(), ()> {
     match ty.kind() {
         TyKind::Ref(_, t, _) | TyKind::Slice(t) | TyKind::Array(t, _) => {
-            collect_unreached_datatypes(ctxt, state, datatypes, t);
+            collect_unreached_datatypes(ctxt, state, datatypes, t)
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
@@ -464,13 +417,27 @@ fn collect_unreached_datatypes<'tcx>(
             for arg in args.iter() {
                 match arg.unpack() {
                     rustc_middle::ty::GenericArgKind::Type(t) => {
-                        collect_unreached_datatypes(ctxt, state, datatypes, &t);
+                        collect_unreached_datatypes(ctxt, state, datatypes, &t)?;
                     }
                     _ => {}
                 }
             }
+            Ok(())
         }
-        _ => {}
+        TyKind::Bool
+        | TyKind::Uint(_)
+        | TyKind::Int(_)
+        | TyKind::Char
+        | TyKind::Str
+        | TyKind::Float(_)
+        | TyKind::Param(_)
+        | TyKind::Never
+        | TyKind::Tuple(..)
+        | TyKind::RawPtr(..)
+        | TyKind::Alias(rustc_middle::ty::AliasTyKind::Projection, _) => Ok(()),
+        TyKind::Closure(..) => Err(()),
+        TyKind::FnDef(..) => Err(()),
+        _ => Err(()),
     }
 }
 
@@ -495,7 +462,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         }
         TyKind::Never => Box::new(TypX::Never),
         TyKind::Ref(region, t, mutability) => {
-            let lifetime = erase_hir_region(ctxt, state, region);
+            let lifetime = erase_hir_region(ctxt, state, &region.kind());
             Box::new(TypX::Ref(erase_ty(ctxt, state, t), lifetime, *mutability))
         }
         TyKind::Slice(t) => Box::new(TypX::Slice(erase_ty(ctxt, state, t))),
@@ -529,6 +496,12 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     BuiltinTypeItem::Ghost => Id::new(IdKind::Builtin, 0, "Ghost".to_owned()),
                     BuiltinTypeItem::Tracked => Id::new(IdKind::Builtin, 0, "Tracked".to_owned()),
                 },
+                Some(VerusItem::External(ExternalItem::FnProof)) => {
+                    Id::new(IdKind::Builtin, 0, "FnProof".to_owned())
+                }
+                Some(VerusItem::External(ExternalItem::FOpts)) => {
+                    Id::new(IdKind::Builtin, 0, "FOpts".to_owned())
+                }
                 _ => match rust_item {
                     Some(RustItem::Box) => {
                         assert!(typ_args.len() == 2);
@@ -570,7 +543,8 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             use crate::rustc_trait_selection::traits::NormalizeExt;
             if let Some(fun_id) = state.enclosing_fun_id {
                 let param_env = ctxt.tcx.param_env(fun_id);
-                let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build();
+                let ty_mode = rustc_middle::ty::TypingMode::PostAnalysis;
+                let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build(ty_mode);
                 let cause = rustc_infer::traits::ObligationCause::dummy();
                 let at = infcx.at(&cause, param_env);
                 let resolved_ty = infcx.resolve_vars_if_possible(*ty);
@@ -596,13 +570,20 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
 
             // If normalization isn't possible:
             let assoc_item = ctxt.tcx.associated_item(t.def_id);
-            let name = state.typ_param(assoc_item.name.to_string(), None);
+            let name = state.typ_param(assoc_item.name().to_string(), None);
             let projection_generics = ctxt.tcx.generics_of(t.def_id);
             let trait_def = projection_generics.parent;
             if let Some(trait_def) = trait_def {
                 let n = t.args.len() - projection_generics.own_params.len();
                 let (trait_typ_args, self_typ) =
                     erase_generic_args(ctxt, state, &t.args[..n], true);
+
+                if Some(trait_def) == ctxt.tcx.lang_items().pointee_trait()
+                    && assoc_item.name().as_str() == "Metadata"
+                {
+                    return Box::new(TypX::PointeeMetadata(self_typ.clone().unwrap()));
+                }
+
                 let (assoc_typ_args, _) = erase_generic_args(ctxt, state, &t.args[n..], false);
                 let assoc_typ_args = assoc_typ_args.into_iter().map(|a| a.as_lifetime()).collect();
                 let self_typ = self_typ.expect("self_typ");
@@ -653,7 +634,7 @@ fn erase_generic_args<'tcx>(
                 skip_self = false;
             }
             rustc_middle::ty::GenericArgKind::Lifetime(region) => {
-                let lifetime = erase_hir_region(ctxt, state, &region);
+                let lifetime = erase_hir_region(ctxt, state, &region.kind());
                 let lifetime =
                     lifetime.unwrap_or_else(|| Id::new(IdKind::Builtin, 0, "'_".to_string()));
                 lifetimes.push(Box::new(TypX::TypParam(lifetime)));
@@ -672,7 +653,31 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
     let mk_pat = |p: PatternX| Box::new((pat.span, p));
     match &pat.kind {
         PatKind::Wild => mk_pat(PatternX::Wildcard),
-        PatKind::Lit(_expr) => mk_pat(PatternX::Wildcard),
+        PatKind::Expr(PatExpr { kind: PatExprKind::Path(qpath), hir_id, .. }) => {
+            let res = ctxt.types().qpath_res(qpath, *hir_id);
+            match res {
+                Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
+                _ => {
+                    if let Some((ctor, ctor_kind)) = resolve_ctor(ctxt.tcx, res) {
+                        if ctor_kind != CtorKind::Const {
+                            panic!("lifetime_generate PatKind::Path: expected CtorKind::Const");
+                        }
+                        let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                        let vir_path =
+                            def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
+                        let name = state.datatype_name(&vir_path);
+                        let variant = match &ctor.kind {
+                            AdtKind::Enum => Some(state.variant(variant_name.to_string())),
+                            _ => None,
+                        };
+                        mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
+                    } else {
+                        panic!("lifetime_generate PatKind::Path: expected ctor");
+                    }
+                }
+            }
+        }
+        PatKind::Expr(_expr) => mk_pat(PatternX::Wildcard),
         PatKind::Range(_, _, _) => mk_pat(PatternX::Wildcard),
         PatKind::Binding(ann, hir_id, x, None) => {
             if ctxt.var_modes[&pat.hir_id] == Mode::Spec {
@@ -693,23 +698,6 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
                 mk_pat(PatternX::Binding(id, mutability.to_owned(), Some(subpat)))
             }
         }
-        PatKind::Path(qpath) => {
-            let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            match res {
-                Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
-                _ => {
-                    let (adt_def_id, variant_def, is_enum) =
-                        get_adt_res_struct_enum(ctxt.tcx, res, pat.span, true).unwrap();
-                    let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
-
-                    let name = state.datatype_name(&vir_path);
-                    let variant =
-                        if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-                    mk_pat(PatternX::DatatypeTuple(name, variant, vec![], None))
-                }
-            }
-        }
         PatKind::Box(p) => mk_pat(PatternX::Box(erase_pat(ctxt, state, p))),
         PatKind::Or(pats) => {
             let mut patterns: Vec<Pattern> = Vec::new();
@@ -727,29 +715,38 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
         }
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
-            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
-            let name = state.datatype_name(&vir_path);
-            let variant_name = state.variant(variant_name.to_string());
-            let mut patterns: Vec<Pattern> = Vec::new();
-            for pat in pats.iter() {
-                patterns.push(erase_pat(ctxt, state, pat));
+            if let Some((ctor, ctor_kind)) = resolve_ctor(ctxt.tcx, res) {
+                assert!(ctor_kind == CtorKind::Fn);
+                let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
+
+                let name = state.datatype_name(&vir_path);
+                let variant_name = state.variant(variant_name.to_string());
+                let mut patterns: Vec<Pattern> = Vec::new();
+                for pat in pats.iter() {
+                    patterns.push(erase_pat(ctxt, state, pat));
+                }
+                let variant = match &ctor.kind {
+                    AdtKind::Enum => Some(variant_name),
+                    _ => None,
+                };
+                mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
+            } else {
+                panic!("lifetime_generate PatKind::TupleStruct: expected ctor");
             }
-            let variant = if is_enum { Some(variant_name) } else { None };
-            mk_pat(PatternX::DatatypeTuple(name, variant, patterns, dot_dot_pos.as_opt_usize()))
         }
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
-            let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+            let ty = ctxt.types().node_type(pat.hir_id);
+            let ctor = resolve_braces_ctor(ctxt.tcx, res, ty, false, pat.span).unwrap();
+            let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+            let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
-            let variant_opt =
-                if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
+            let variant_opt = match &ctor.kind {
+                AdtKind::Enum => Some(state.variant(variant_name.to_string())),
+                _ => None,
+            };
 
             let name = state.datatype_name(&vir_path);
             let mut binders: Vec<(Id, Pattern)> = Vec::new();
@@ -910,6 +907,7 @@ fn erase_call<'tcx>(
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
                 UseTypeInvariant => Some((false, "use_type_invariant", false)),
+                ClosureToFnProof(_) => Some((false, "closure_to_fn_proof", false)),
             };
             if let Some((true, method, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_some());
@@ -924,7 +922,11 @@ fn erase_call<'tcx>(
             } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let exp = erase_expr(ctxt, state, expect_spec_inside, &args_slice[0]);
+                let exp = if let ClosureToFnProof(mode) = op {
+                    Some(erase_expr_closure(ctxt, state, expect_spec_inside, *mode, &args_slice[0]))
+                } else {
+                    erase_expr(ctxt, state, expect_spec_inside, &args_slice[0])
+                };
                 if expect_spec_inside {
                     erase_spec_exps(ctxt, state, expr, vec![exp])
                 } else {
@@ -978,8 +980,6 @@ fn erase_call<'tcx>(
             let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
-
             let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
             let mut node_substs = crate::fn_call_to_vir::fix_node_substs(
                 ctxt.tcx,
@@ -990,23 +990,38 @@ fn erase_call<'tcx>(
                 expr,
             );
 
-            let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
-            let inst = rustc_middle::ty::Instance::try_resolve(
-                ctxt.tcx,
-                param_env,
-                fn_def_id,
-                normalized_substs,
-            );
-            if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
-                    node_substs = &inst.args;
-                    fn_def_id = did;
+            if ctxt.tcx.trait_of_item(fn_def_id).is_some() {
+                let typing_env = TypingEnv::post_analysis(
+                    ctxt.tcx,
+                    state.enclosing_fun_id.expect("enclosing_fun_id"),
+                );
+                let resolution_result = crate::resolve_traits::resolve_trait_item(
+                    expr.span,
+                    ctxt.tcx,
+                    typing_env,
+                    fn_def_id,
+                    node_substs,
+                )
+                .unwrap();
+                match resolution_result {
+                    ResolutionResult::Unresolved => {}
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromImpl(did, args),
+                        ..
+                    } => {
+                        node_substs = args;
+                        fn_def_id = did;
+                    }
+                    ResolutionResult::Resolved {
+                        resolved_item: ResolvedItem::FromTrait(..),
+                        ..
+                    } => {}
+                    ResolutionResult::Builtin(_) => {}
                 }
             }
 
             state.reach_fun(fn_def_id);
 
-            let node_substs = remove_host_arg(ctxt.tcx, fn_def_id, node_substs, expr.span).unwrap();
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1026,12 +1041,16 @@ fn erase_call<'tcx>(
                     let mut exp = erase_expr(ctxt, state, false, e).expect("expr");
                     if is_first && is_method {
                         let adjustments = ctxt.types().expr_adjustments(e);
-                        if adjustments.len() == 1 {
+                        // There could be more than one adjustments:
+                        // For example
+                        // 1. mut [u8; N] -> &[u8]: [Borrow(Ref('{erased}, _)) -> &[u8; 10], Pointer(Unsize) -> &[u8]]
+                        // 2. Rc<String> -> &str will use two Borrow adjustments
+                        for adjust in adjustments {
                             use rustc_middle::ty::adjustment::{
                                 Adjust, AutoBorrow, AutoBorrowMutability,
                             };
-                            match adjustments[0].kind {
-                                Adjust::Borrow(AutoBorrow::Ref(_, m)) => {
+                            match adjust.kind {
+                                Adjust::Borrow(AutoBorrow::Ref(m)) => {
                                     let m = match m {
                                         AutoBorrowMutability::Not => Mutability::Not,
                                         AutoBorrowMutability::Mut { .. } => Mutability::Mut,
@@ -1088,15 +1107,28 @@ fn erase_call<'tcx>(
                 mk_exp(ExpX::DatatypeTuple(state.datatype_name(path), variant_opt, typ_args, args))
             }
         }
-        ResolvedCall::NonStaticExec => {
+        ResolvedCall::NonStaticExec | ResolvedCall::NonStaticProof(_) => {
             assert!(receiver.is_none());
             let expr_fun = expr_fun.expect("exec closure call function target");
             let exp_fun = erase_expr(ctxt, state, false, expr_fun).expect("closure call target");
             let typ_args = mk_typ_args(ctxt, state, node_substs);
-            let exps = args_slice
-                .iter()
-                .map(|a| erase_expr(ctxt, state, false, a).expect("call arg"))
-                .collect();
+            let mut exps: Vec<Exp> = Vec::new();
+            let modes = if let ResolvedCall::NonStaticProof(modes) = &call {
+                modes.clone()
+            } else {
+                Arc::new(args_slice.iter().map(|_| Mode::Exec).collect())
+            };
+            assert!(args_slice.len() == modes.len());
+            for (a, mode) in args_slice.iter().zip(modes.iter()) {
+                if *mode == Mode::Spec {
+                    let spec_exp = erase_expr(ctxt, state, true, a);
+                    let ty = ctxt.types().node_type(a.hir_id);
+                    let typ = erase_ty(ctxt, state, &ty);
+                    exps.push(erase_spec_exps_force_typ(ctxt, state, a.span, typ, vec![spec_exp]));
+                } else {
+                    exps.push(erase_expr(ctxt, state, false, a).expect("call arg"));
+                }
+            }
             // syntax quirk: need extra parens when exp_fun is a block
             let exp_fun = Box::new((expr_fun.span, ExpX::ExtraParens(exp_fun)));
             mk_exp(ExpX::Call(exp_fun, typ_args, exps))
@@ -1201,6 +1233,47 @@ fn erase_expr<'tcx>(
     expect_spec: bool,
     expr: &Expr<'tcx>,
 ) -> Option<Exp> {
+    let mut exp = match erase_expr_inner(ctxt, state, expect_spec, expr) {
+        None => return None,
+        Some(exp) => exp,
+    };
+    let mut ty = ctxt.types().expr_ty(expr);
+    let adjustments = ctxt.types().expr_adjustments(expr);
+    let mut has_deref_call = false;
+    for adjust in adjustments {
+        use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
+        match adjust.kind {
+            Adjust::Deref(Some(deref)) => {
+                if !auto_deref_supported_for_ty(ctxt.tcx, &ty) {
+                    // exp := *op<_, &t>(&exp)
+                    let typ = erase_ty(ctxt, state, &adjust.target);
+                    let typ = Box::new(TypX::Ref(typ, None, deref.mutbl));
+                    exp = Box::new((exp.0, ExpX::AddrOf(deref.mutbl, exp)));
+                    exp = Box::new((exp.0, ExpX::Op(vec![exp], typ)));
+                    exp = Box::new((exp.0, ExpX::Deref(exp)));
+                    has_deref_call = true;
+                }
+            }
+            Adjust::Borrow(AutoBorrow::Ref(m)) if has_deref_call => {
+                let m = match m {
+                    AutoBorrowMutability::Not => Mutability::Not,
+                    AutoBorrowMutability::Mut { .. } => Mutability::Mut,
+                };
+                exp = Box::new((exp.0, ExpX::AddrOf(m, exp)));
+            }
+            _ => {}
+        }
+        ty = adjust.target;
+    }
+    Some(exp)
+}
+
+fn erase_expr_inner<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    expect_spec: bool,
+    expr: &Expr<'tcx>,
+) -> Option<Exp> {
     let expr = expr.peel_drop_temps();
     let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
     let mk_exp1 = |e: ExpX| Box::new((expr.span, e));
@@ -1228,12 +1301,15 @@ fn erase_expr<'tcx>(
                     if expect_spec {
                         None
                     } else {
-                        let (adt_def_id, variant_def, is_enum) =
-                            get_adt_res_struct_enum(ctxt.tcx, res, expr.span, true).unwrap();
-                        let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
-                        let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+                        let (ctor, ctor_kind) = resolve_ctor(ctxt.tcx, res).unwrap();
+                        if ctor_kind != CtorKind::Const {
+                            panic!("unsupported: this CtorKind here");
+                        }
+                        let variant_name = str_ident(&ctor.variant_def.ident(ctxt.tcx).as_str());
+                        let vir_path =
+                            def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
-                        let rust_item = verus_items::get_rust_item(ctxt.tcx, adt_def_id);
+                        let rust_item = verus_items::get_rust_item(ctxt.tcx, ctor.adt_def_id);
                         if rust_item == Some(RustItem::PhantomData) {
                             return mk_exp(ExpX::Var(Id::new(
                                 IdKind::Builtin,
@@ -1242,7 +1318,7 @@ fn erase_expr<'tcx>(
                             )));
                         }
 
-                        let variant = if is_enum {
+                        let variant = if ctor.kind == AdtKind::Enum {
                             Some(state.variant(variant_name.to_string()))
                         } else {
                             None
@@ -1257,10 +1333,11 @@ fn erase_expr<'tcx>(
                         ));
                     }
                 }
-                Res::Def(DefKind::AssocConst, _id) => {
+                Res::Def(DefKind::AssocConst, id) => {
                     if expect_spec {
                         None
                     } else {
+                        state.reach_const_static(id, false);
                         let typ = expr_typ(state);
                         assert!(matches!(*typ, TypX::Primitive(_)));
                         mk_exp(ExpX::Op(vec![], typ))
@@ -1270,6 +1347,7 @@ fn erase_expr<'tcx>(
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
+                        state.reach_const_static(id, false);
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                         let fun_name = Arc::new(FunX { path: vir_path });
                         let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
@@ -1283,6 +1361,7 @@ fn erase_expr<'tcx>(
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
+                        state.reach_const_static(id, true);
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
                         let fun_name = Arc::new(FunX { path: vir_path });
                         let fun_exp = mk_exp1(ExpX::Var(state.fun_name(&fun_name)));
@@ -1385,10 +1464,11 @@ fn erase_expr<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             } else {
                 let res = ctxt.types().qpath_res(qpath, expr.hir_id);
+                let ty = ctxt.types().node_type(expr.hir_id);
 
-                let (adt_def_id, variant_name, is_enum) =
-                    get_adt_res_struct_enum_union(ctxt.tcx, res, expr.span, fields).unwrap();
-                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+                let ctor = resolve_braces_ctor(ctxt.tcx, res, ty, true, expr.span).unwrap();
+                let variant_name = ctor.variant_name(ctxt.tcx, fields);
+                let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, ctor.adt_def_id);
 
                 let datatype = &ctxt.datatypes[&vir_path];
                 let variant = datatype.x.get_variant(&variant_name);
@@ -1404,9 +1484,18 @@ fn erase_expr<'tcx>(
                     };
                     fs.push((name, e));
                 }
-                let variant_opt =
-                    if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
-                let spread = spread.map(|e| erase_expr(ctxt, state, expect_spec, e).expect("expr"));
+                let variant_opt = if ctor.kind == AdtKind::Enum {
+                    Some(state.variant(variant_name.to_string()))
+                } else {
+                    None
+                };
+                let spread = match spread {
+                    rustc_hir::StructTailExpr::None => None,
+                    rustc_hir::StructTailExpr::Base(expr) => {
+                        Some(erase_expr(ctxt, state, expect_spec, expr).expect("expr"))
+                    }
+                    rustc_hir::StructTailExpr::DefaultFields(_span) => None,
+                };
                 let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
                     typ_args
                 } else {
@@ -1475,7 +1564,32 @@ fn erase_expr<'tcx>(
         ExprKind::Unary(op, e1) => {
             let exp1 = erase_expr(ctxt, state, expect_spec, e1);
             match op {
-                UnOp::Deref if !expect_spec => mk_exp(ExpX::Deref(exp1.expect("expr"))),
+                UnOp::Deref if !expect_spec => {
+                    if auto_deref_supported_for_ty(ctxt.tcx, &ctxt.types().node_type(e1.hir_id))
+                        || !ctxt.types().is_method_call(expr)
+                    {
+                        mk_exp(ExpX::Deref(exp1.expect("expr")))
+                    } else {
+                        let fn_def_id = ctxt
+                            .types()
+                            .type_dependent_def_id(expr.hir_id)
+                            .expect("`deref` method ID not found");
+                        erase_call(
+                            ctxt,
+                            state,
+                            expect_spec,
+                            expr,
+                            None,
+                            Some(fn_def_id),
+                            ctxt.types().node_args(expr.hir_id),
+                            expr.span,
+                            Some(e1),
+                            &[],
+                            true,
+                            false,
+                        )
+                    }
+                }
                 _ => erase_spec_exps(ctxt, state, expr, vec![exp1]),
             }
         }
@@ -1613,32 +1727,15 @@ fn erase_expr<'tcx>(
             let exp = erase_expr(ctxt, state, ctxt.ret_spec.expect("ret_spec"), expr);
             mk_exp(ExpX::Ret(exp))
         }
-        ExprKind::Closure(Closure { capture_clause: capture_by, body: body_id, .. }) => {
-            let mut params: Vec<(Span, Id, Typ)> = Vec::new();
-            let body = ctxt.tcx.hir().body(*body_id);
-            let ps = &body.params;
-            for p in ps.iter() {
-                let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
-                let (x, local_id) = match &pat_var {
-                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
-                        (x, local_id)
-                    }
-                    _ => panic!("pat_to_var"),
-                };
-                let x = state.local(x.to_string(), *local_id);
-                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
-                params.push((p.pat.span, x, typ));
-            }
-            let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
-            let body_exp = force_block(body_exp, body.value.span);
-            mk_exp(ExpX::Closure(*capture_by, None, params, body_exp))
+        ExprKind::Closure(_) => {
+            Some(erase_expr_closure(ctxt, state, expect_spec, Mode::Exec, expr))
         }
         ExprKind::Block(block, None) => {
-            let attrs = ctxt.tcx.hir().attrs(expr.hir_id);
+            let attrs = ctxt.tcx.hir_attrs(expr.hir_id);
             if crate::rust_to_vir_expr::attrs_is_invariant_block(attrs).expect("attrs") {
                 return Some(erase_inv_block(ctxt, state, expr.span, block));
             }
-            let g_attr = get_ghost_block_opt(ctxt.tcx.hir().attrs(expr.hir_id));
+            let g_attr = get_ghost_block_opt(ctxt.tcx.hir_attrs(expr.hir_id));
             let keep = match g_attr {
                 Some(GhostBlockAttr::Proof) => true,
                 Some(GhostBlockAttr::Tracked) => true,
@@ -1653,6 +1750,45 @@ fn erase_expr<'tcx>(
             dbg!(&expr);
             panic!()
         }
+    }
+}
+
+fn erase_expr_closure<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    expect_spec: bool,
+    body_mode: Mode,
+    expr: &Expr<'tcx>,
+) -> Exp {
+    match &expr.kind {
+        ExprKind::Closure(Closure { capture_clause: capture_by, body: body_id, .. }) => {
+            let mut params: Vec<(Span, Id, Typ)> = Vec::new();
+            let body = ctxt.tcx.hir_body(*body_id);
+            let ps = &body.params;
+            for p in ps.iter() {
+                let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
+                let (x, local_id) = match &pat_var {
+                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+                        (x, local_id)
+                    }
+                    _ => panic!("pat_to_var"),
+                };
+                let x = state.local(x.to_string(), *local_id);
+                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
+                params.push((p.pat.span, x, typ));
+            }
+            let body_exp = if body_mode == Mode::Spec {
+                let spec_exp = erase_expr(ctxt, state, true, &body.value);
+                let ty = ctxt.types().node_type(body.value.hir_id);
+                let typ = erase_ty(ctxt, state, &ty);
+                Some(erase_spec_exps_force_typ(ctxt, state, body.value.span, typ, vec![spec_exp]))
+            } else {
+                erase_expr(ctxt, state, expect_spec, &body.value)
+            };
+            let body_exp = force_block(body_exp, body.value.span);
+            Box::new((expr.span, ExpX::Closure(*capture_by, None, params, body_exp)))
+        }
+        _ => panic!("expected closure"),
     }
 }
 
@@ -1682,7 +1818,7 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![]
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id, .. }) => {
             let mode = ctxt.var_modes[&pat.hir_id];
             if mode != Mode::Exec && els.is_some() {
                 panic!("let-else is not supported in spec");
@@ -1712,7 +1848,7 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
             }
         }
         StmtKind::Item(item_id) => {
-            let item = ctxt.tcx.hir().item(*item_id);
+            let item = ctxt.tcx.hir_item(*item_id);
             if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
                 return vec![];
             }
@@ -1722,15 +1858,18 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
 }
 
 fn erase_const_or_static<'tcx>(
-    krate: &'tcx Crate<'tcx>,
+    krate: Option<&'tcx Crate<'tcx>>,
     ctxt: &mut Context<'tcx>,
     state: &mut State,
     span: Span,
     id: DefId,
     external_body: bool,
-    body_id: &BodyId,
+    body_id: Option<&BodyId>,
     is_static: bool,
 ) {
+    // When importing a const/static, we expect both to be None.
+    // Otherwise, both should be Some.
+    assert!(krate.is_none() == body_id.is_none());
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(s) = path.segments.last() {
         if s.to_string().starts_with("_DERIVE_builtin_Structural_FOR_") {
@@ -1738,21 +1877,28 @@ fn erase_const_or_static<'tcx>(
         }
     }
     let fun_name = Arc::new(FunX { path });
-    if let Some(f_vir) = &ctxt.functions[&fun_name] {
+    if let Some(Some(f_vir)) = ctxt.functions.get(&fun_name) {
         if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
         }
-        let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
-        ctxt.types_opt = Some(types);
-        ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
+        if let Some(body_id) = body_id {
+            let types = ctxt.tcx.typeck(body_id.hir_id.owner.def_id);
+            ctxt.types_opt = Some(types);
+            ctxt.ret_spec = Some(f_vir.x.ret.x.mode == Mode::Spec);
+        }
 
         let name = state.fun_name(&fun_name);
         let ty = ctxt.tcx.type_of(id).skip_binder();
         let typ = erase_ty(ctxt, state, &ty);
-        let body = crate::rust_to_vir_func::find_body_krate(krate, body_id);
-        let body_exp = if external_body {
-            Box::new((body.value.span, ExpX::Panic))
+        let body = if let Some(body_id) = body_id {
+            Some(crate::rust_to_vir_func::find_body_krate(krate.expect("krate"), body_id))
         } else {
+            None
+        };
+        let body_exp = if body.is_none() || external_body {
+            Box::new((span, ExpX::Panic))
+        } else {
+            let body = &body.expect("body");
             state.enclosing_fun_id = Some(id);
             let body_exp = erase_expr(ctxt, state, false, &body.value).expect("const body");
             state.enclosing_fun_id = None;
@@ -1760,7 +1906,7 @@ fn erase_const_or_static<'tcx>(
         };
 
         let mut return_typ = typ;
-        let body_span = body.value.span;
+        let body_span = body_exp.0;
         let mut body = Box::new((body_span, ExpX::Block(vec![], Some(body_exp))));
 
         if is_static {
@@ -1815,8 +1961,11 @@ fn erase_mir_bound<'a, 'tcx>(
     erase_trait(ctxt, state, id);
     let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, id);
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
+    let verus_item = ctxt.verus_items.id_to_name.get(&id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
+    } else if Some(id) == tcx.lang_items().clone_trait() {
+        Some(Bound::Clone)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
     } else if Some(RustItem::Allocator) == rust_item {
@@ -1829,6 +1978,12 @@ fn erase_mir_bound<'a, 'tcx>(
     {
         // "Thin" is a trait alias for Pointee (special case since we don't support trait aliases)
         Some(Bound::Thin)
+    } else if Some(&VerusItem::External(ExternalItem::ProofFnOnce)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::FnOnce))
+    } else if Some(&VerusItem::External(ExternalItem::ProofFnMut)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::FnMut))
+    } else if Some(&VerusItem::External(ExternalItem::ProofFn)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::Fn))
     } else if state.trait_decl_set.contains(&trait_path) {
         let (args, _) = erase_generic_args(ctxt, state, args, true);
         let trait_path = state.trait_name(&trait_path);
@@ -1853,7 +2008,7 @@ fn erase_mir_predicates<'a, 'tcx>(
         let mut bound_vars: Vec<Id> = Vec::new();
         for x in pred.kind().bound_vars().iter() {
             let a = match x {
-                BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) => a,
+                BoundVariableKind::Region(BoundRegionKind::Named(a, _)) => a,
                 _ => panic!("expected region"),
             };
             let id = state.lifetime(lifetime_key(ctxt, a));
@@ -1863,15 +2018,15 @@ fn erase_mir_predicates<'a, 'tcx>(
         }
         match pred.kind().skip_binder() {
             ClauseKind::RegionOutlives(pred) => {
-                let x = erase_hir_region(ctxt, state, &pred.0).expect("bound");
+                let x = erase_hir_region(ctxt, state, &pred.0.kind()).expect("bound");
                 let typ = Box::new(TypX::TypParam(x));
-                let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
+                let bound = erase_hir_region(ctxt, state, &pred.1.kind()).expect("bound");
                 let generic_bound = GenericBound { typ, bound_vars, bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
             ClauseKind::TypeOutlives(pred) => {
                 let typ = erase_ty(ctxt, state, &pred.0);
-                let bound = erase_hir_region(ctxt, state, &pred.1).expect("bound");
+                let bound = erase_hir_region(ctxt, state, &pred.1.kind()).expect("bound");
                 let generic_bound = GenericBound { typ, bound_vars, bound: Bound::Id(bound) };
                 generic_bounds.push(generic_bound);
             }
@@ -1934,7 +2089,7 @@ fn erase_mir_predicates<'a, 'tcx>(
                     let x_args = x_args.into_iter().map(|a| a.as_lifetime()).collect();
                     if let Bound::Trait { trait_path: _, args: _, equality } = &mut bound {
                         assert!(equality.is_none());
-                        let name = state.typ_param(assoc_item.name.to_ident_string(), None);
+                        let name = state.typ_param(assoc_item.name().to_ident_string(), None);
                         *equality = Some((name, x_args, typ_eq));
                     } else if matches!(&bound, Bound::Pointee | Bound::Thin) {
                         // keep as is
@@ -1976,7 +2131,7 @@ fn erase_mir_generics<'tcx>(
         let mir_ty = ctxt.tcx.type_of(id).skip_binder();
         if let TyKind::FnDef(..) = mir_ty.kind() {
             for bv in mir_ty.fn_sig(ctxt.tcx).bound_vars().iter() {
-                if let BoundVariableKind::Region(BoundRegionKind::BrNamed(a, _)) = bv {
+                if let BoundVariableKind::Region(BoundRegionKind::Named(a, _)) = bv {
                     let name = state.lifetime(lifetime_key(ctxt, a));
                     lifetimes.push(GenericParam { name, const_typ: None });
                 }
@@ -1986,19 +2141,18 @@ fn erase_mir_generics<'tcx>(
     for gparam in &mir_generics.own_params {
         match gparam.kind {
             GenericParamDefKind::Lifetime => {
-                let name = state.lifetime((gparam.name.to_string(), None));
+                let name = state.lifetime((gparam.name.to_string(), Some(gparam.index)));
                 lifetimes.push(GenericParam { name, const_typ: None });
             }
             GenericParamDefKind::Type { .. } => {
                 let name = state.typ_param(gparam.name.to_string(), Some(gparam.index));
                 typ_params.push(GenericParam { name, const_typ: None });
             }
-            GenericParamDefKind::Const { has_default: _, is_host_effect: false, .. } => {
+            GenericParamDefKind::Const { has_default: _, .. } => {
                 let name = state.typ_param(gparam.name.to_string(), None);
                 let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
                 typ_params.push(GenericParam { name, const_typ: Some(t) });
             }
-            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
         }
     }
     erase_mir_predicates(
@@ -2025,7 +2179,20 @@ fn erase_fn_common<'tcx>(
     if ctxt.ignored_functions.contains(&id) {
         return;
     }
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    if let Some(local_id) = id.as_local() {
+        let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_id);
+        let attrs = ctxt.tcx.hir_attrs(hir_id);
+        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+
+        if vattrs.unerased_proxy {
+            path = crate::rust_to_vir_func::fixup_unerased_proxy_path(&path, sig_span)
+                .expect("fixup_unerased_proxy_path");
+        }
+    }
+
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
     // TODO let is_verus_reveal = **path.segments.last().expect("segments.last") == VERUS_REVEAL_INTERNAL;
     if is_verus_spec {
@@ -2033,7 +2200,7 @@ fn erase_fn_common<'tcx>(
     }
     let fun_name = Arc::new(FunX { path: path.clone() });
     if let Some(f_vir) = &ctxt.functions[&fun_name] {
-        if f_vir.x.mode == Mode::Spec {
+        if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
         }
         if let Some(body_id) = body_id {
@@ -2151,6 +2318,23 @@ fn erase_fn_common<'tcx>(
             Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
         };
         state.enclosing_fun_id = None;
+
+        // Special case for trait with direct self argument
+        if body.is_none() && inputs.len() > 0 {
+            match inputs[0].kind() {
+                TyKind::Param(p) if p.name == kw::SelfUpper => {
+                    // Add Sized bound to make function declaration legal
+                    let generic_bound = GenericBound {
+                        typ: params[0].typ.clone(),
+                        bound_vars: vec![],
+                        bound: Bound::Sized,
+                    };
+                    generic_bounds.push(generic_bound);
+                }
+                _ => {}
+            }
+        }
+
         let decl = FunDecl {
             sig_span: sig_span,
             name_span,
@@ -2184,6 +2368,24 @@ fn import_fn<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId) {
     );
 }
 
+fn import_const_static<'tcx>(
+    ctxt: &mut Context<'tcx>,
+    state: &mut State,
+    id: DefId,
+    is_static: bool,
+) {
+    erase_const_or_static(
+        None,
+        ctxt,
+        state,
+        ctxt.tcx.def_ident_span(id).expect("const/static name span"),
+        id,
+        true,
+        None,
+        is_static,
+    );
+}
+
 fn erase_fn<'tcx>(
     krate: &'tcx Crate<'tcx>,
     ctxt: &mut Context<'tcx>,
@@ -2214,16 +2416,14 @@ fn erase_fn<'tcx>(
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+    let trait_id = trait_ref.skip_binder().def_id;
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     let span = ctxt.tcx.def_span(impl_id);
 
-    let args = remove_host_arg(
-        ctxt.tcx,
-        trait_ref.skip_binder().def_id,
-        trait_ref.skip_binder().args,
-        span,
-    )
-    .expect("remove_host_arg");
+    let args = trait_ref.skip_binder().args;
     let (trait_typ_args, _) = erase_generic_args(ctxt, state, args, true);
 
     let mut lifetimes: Vec<GenericParam> = Vec::new();
@@ -2243,10 +2443,20 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     let self_typ = erase_ty(ctxt, state, &self_ty);
     let trait_as_datatype = Box::new(TypX::Datatype(name.clone(), vec![], trait_typ_args));
 
+    if is_copy_or_clone {
+        if let TypX::Datatype(x, _, _) = &*self_typ {
+            if x.kind != IdKind::Datatype {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
         match assoc_item.kind {
-            rustc_middle::ty::AssocKind::Type => {
+            rustc_middle::ty::AssocKind::Type { .. } => {
                 let mut lifetimes: Vec<GenericParam> = Vec::new();
                 let mut typ_params: Vec<GenericParam> = Vec::new();
                 let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2262,7 +2472,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
                 assert!(typ_params.len() == 0);
                 let ty = ctxt.tcx.type_of(assoc_item.def_id).skip_binder();
                 let typ = erase_ty(ctxt, state, &ty);
-                let impl_name = state.typ_param(&assoc_item.name.to_string(), None);
+                let impl_name = state.typ_param(&assoc_item.name().to_string(), None);
                 assoc_typs.push((impl_name, lifetimes, typ));
             }
             _ => (),
@@ -2278,6 +2488,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         trait_polarity,
         trait_as_datatype,
         assoc_typs,
+        is_clone,
     };
 
     state.trait_impls.push(trait_impl);
@@ -2293,9 +2504,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             return;
         }
     }
-    if Some(trait_id) == ctxt.tcx.lang_items().copy_trait() {
-        return;
-    }
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     state.enclosing_trait_ids.push(trait_id);
 
@@ -2306,9 +2517,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     state.inside_trait_decl += 1;
     for assoc_item in assoc_items.in_definition_order() {
         match assoc_item.kind {
-            rustc_middle::ty::AssocKind::Const => {}
-            rustc_middle::ty::AssocKind::Fn => {}
-            rustc_middle::ty::AssocKind::Type => {
+            rustc_middle::ty::AssocKind::Const { .. } => {}
+            rustc_middle::ty::AssocKind::Fn { .. } => {}
+            rustc_middle::ty::AssocKind::Type { .. } => {
                 let mut lifetimes: Vec<GenericParam> = Vec::new();
                 let mut typ_params: Vec<GenericParam> = Vec::new();
                 let mut generic_bounds = Vec::new();
@@ -2332,7 +2543,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
                 );
                 assert!(typ_params.len() == 0);
                 assoc_typs.push((
-                    state.typ_param(assoc_item.name.to_ident_string(), None),
+                    state.typ_param(assoc_item.name().to_ident_string(), None),
                     lifetimes,
                     generic_bounds,
                 ));
@@ -2349,6 +2560,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     // (Note 2: if we allow cycles between a trait and its supertraits, we'll need a more
     // sophisticated algorithm.)
     let mut supertrait_may_have_assoc_types_or_copy = false;
+    if is_copy_or_clone {
+        supertrait_may_have_assoc_types_or_copy = true;
+    }
     for (pred, _) in ctxt.tcx.predicates_of(trait_id).predicates.iter() {
         match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
             (ClauseKind::Trait(pred), _bound_vars) => {
@@ -2366,7 +2580,13 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     }
 
     if supertrait_may_have_assoc_types_or_copy || assoc_typs.len() > 0 {
-        let name = state.trait_name(&path);
+        let name = if is_copy {
+            Id::new(IdKind::Builtin, 0, "Copy".to_owned())
+        } else if is_clone {
+            Id::new(IdKind::Builtin, 0, "Clone".to_owned())
+        } else {
+            state.trait_name(&path)
+        };
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();
         let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2382,15 +2602,20 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
         typ_params.remove(0); // remove Self type parameter
         let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
 
-        let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
-        state.trait_decl_set.insert(path.clone());
-        state.trait_decls.push(decl);
+        if !is_copy_or_clone {
+            let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
+            state.trait_decl_set.insert(path.clone());
+            state.trait_decls.push(decl);
+        }
 
-        for impl_id in ctxt.tcx.all_impls(trait_id) {
+        'imp: for impl_id in ctxt.tcx.all_impls(trait_id) {
             let mut datatypes: Vec<DefId> = Vec::new();
             let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
             for ty in trait_ref.skip_binder().args.types() {
-                collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
+                let result = collect_unreached_datatypes(ctxt, state, &mut datatypes, &ty);
+                if result.is_err() {
+                    continue 'imp;
+                }
                 for t in &datatypes {
                     state
                         .typs_used_in_trait_impls_reverse_map
@@ -2424,21 +2649,24 @@ fn erase_trait_item<'tcx>(
         trait_id = ex_trait_id_for;
     }
     for trait_item_ref in items {
-        let mut trait_item = tcx.hir().trait_item(trait_item_ref.id);
+        let mut trait_item = tcx.hir_trait_item(trait_item_ref.id);
         let TraitItem { ident, owner_id, .. } = trait_item;
         if let Some(ex_trait_id_for) = ex_trait_id_for {
             let assoc_item = tcx.associated_item(owner_id.to_def_id());
             let ex_assoc_items = tcx.associated_items(ex_trait_id_for);
-            let ex_assoc_item =
-                ex_assoc_items.find_by_name_and_kind(tcx, *ident, assoc_item.kind, ex_trait_id_for);
+            let ex_assoc_item = ex_assoc_items.find_by_ident_and_kind(
+                tcx,
+                *ident,
+                assoc_item.as_tag(),
+                ex_trait_id_for,
+            );
             if let Some(ex_assoc_item) = ex_assoc_item {
                 let local_id = ex_assoc_item
                     .def_id
                     .as_local()
                     .expect("erase_trait_item only called on locals");
                 let hir_id = tcx.local_def_id_to_hir_id(local_id);
-                trait_item =
-                    tcx.hir().trait_item(rustc_hir::TraitItemId { owner_id: hir_id.owner });
+                trait_item = tcx.hir_trait_item(rustc_hir::TraitItemId { owner_id: hir_id.owner });
             } else {
                 continue;
             }
@@ -2453,7 +2681,7 @@ fn erase_trait_item<'tcx>(
                 };
                 let id = owner_id.to_def_id();
 
-                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
+                let attrs = ctxt.tcx.hir_attrs(trait_item.hir_id());
                 let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
 
                 erase_fn(
@@ -2486,10 +2714,10 @@ fn erase_impl<'tcx>(
     for impl_item_ref in impll.items {
         match impl_item_ref.kind {
             AssocItemKind::Fn { .. } => {
-                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                let impl_item = ctxt.tcx.hir_impl_item(impl_item_ref.id);
                 let ImplItem { ident, owner_id, kind, .. } = impl_item;
                 let id = owner_id.to_def_id();
-                let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                let attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
                 let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
                 if crate_items.is_impl_item_external(impl_item_ref.id) {
                     continue;
@@ -2518,7 +2746,28 @@ fn erase_impl<'tcx>(
             AssocItemKind::Type => {
                 // handled in erase_trait
             }
-            _ => panic!("unexpected impl {:?}", impl_item_ref),
+            AssocItemKind::Const => {
+                let impl_item = ctxt.tcx.hir_impl_item(impl_item_ref.id);
+                let ImplItem { ident, owner_id, kind, .. } = impl_item;
+                let id = owner_id.to_def_id();
+                let attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                match &kind {
+                    ImplItemKind::Const(_, body_id) => {
+                        erase_const_or_static(
+                            Some(krate),
+                            ctxt,
+                            state,
+                            ident.span,
+                            id,
+                            vattrs.external_body,
+                            Some(body_id),
+                            false,
+                        );
+                    }
+                    _ => panic!(),
+                }
+            }
         }
     }
 }
@@ -2533,7 +2782,6 @@ fn erase_datatype<'tcx>(
     let datatype = Box::new(datatype);
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = state.datatype_name(&path);
-    let implements_copy = ctxt.copy_types.get(&id).cloned();
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2548,8 +2796,7 @@ fn erase_datatype<'tcx>(
     );
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
     let span = Some(span);
-    let decl =
-        DatatypeDecl { name, span, implements_copy, generic_params, generic_bounds, datatype };
+    let decl = DatatypeDecl { name, span, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);
 }
 
@@ -2558,15 +2805,15 @@ fn erase_variant_data<'tcx>(
     state: &mut State,
     variant: &VariantDef,
 ) -> Fields {
-    let get_attrs = |f_did: DefId| {
-        if let Some(rustc_hir::Node::Field(f_hir)) = ctxt.tcx.hir().get_if_local(f_did) {
-            ctxt.tcx.hir().attrs(f_hir.hir_id)
-        } else {
-            ctxt.tcx.item_attrs(f_did)
-        }
-    };
     let revise_typ = |f_did: DefId, typ: Typ| {
-        let mode = get_mode(Mode::Exec, get_attrs(f_did));
+        let attrs: Vec<_> = (if let Some(did) = f_did.as_local() {
+            ctxt.tcx.hir_attrs(ctxt.tcx.local_def_id_to_hir_id(did)).iter()
+        } else {
+            ctxt.tcx.attrs_for_def(f_did).iter()
+        })
+        .cloned()
+        .collect();
+        let mode = get_mode(Mode::Exec, &attrs[..]);
         if mode == Mode::Spec { Box::new(TypX::Phantom(typ)) } else { typ }
     };
     match variant.ctor_kind() {
@@ -2604,7 +2851,7 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
         // so introduce a dummy field for each lifetime/type variable
         match gparam.kind {
             GenericParamDefKind::Lifetime => {
-                let x = state.lifetime((gparam.name.to_string(), None));
+                let x = state.lifetime((gparam.name.to_string(), Some(gparam.index)));
                 fields.push(Box::new(TypX::Ref(TypX::mk_bool(), Some(x), Mutability::Not)));
             }
             GenericParamDefKind::Type { .. } => {
@@ -2623,11 +2870,13 @@ fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: 
 fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) {
     let span = ctxt.tcx.def_span(id);
 
-    let attrs = if let Some(rustc_hir::Node::Item(d_hir)) = ctxt.tcx.hir().get_if_local(id) {
-        ctxt.tcx.hir().attrs(d_hir.hir_id())
+    let attrs: Vec<_> = (if let Some(did) = id.as_local() {
+        ctxt.tcx.hir_attrs(ctxt.tcx.local_def_id_to_hir_id(did)).iter()
     } else {
-        ctxt.tcx.item_attrs(id)
-    };
+        ctxt.tcx.attrs_for_def(id).iter()
+    })
+    .cloned()
+    .collect();
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if let Some(
@@ -2642,7 +2891,7 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
 
-    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+    let vattrs = get_verifier_attrs(&attrs[..], None).expect("get_verifier_attrs");
     if vattrs.external_type_specification {
         return;
     }
@@ -2706,7 +2955,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         functions: HashMap::new(),
         datatypes: HashMap::new(),
         ignored_functions: HashSet::new(),
-        copy_types: HashMap::new(),
         calls: HashMap::new(),
         condition_modes: HashMap::new(),
         var_modes: HashMap::new(),
@@ -2779,13 +3027,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     for (hir_id, mode) in &erasure_hints.direct_var_modes {
         ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?}", v));
     }
-    if let Some(copy) = tcx.lang_items().copy_trait() {
-        for c in tcx.crates(()) {
-            for (copy_impl, _) in tcx.implementations_of_trait((*c, copy)) {
-                add_copy_type(&mut ctxt, &mut state, *copy_impl);
-            }
-        }
-    }
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
@@ -2797,14 +3038,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         continue;
                     }
                     match &item.kind {
-                        ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
-                            if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                                add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
-                            }
-                        }
                         ItemKind::Trait(
                             IsAuto::No,
                             Safety::Safe,
+                            _ident,
                             _trait_generics,
                             _bounds,
                             _trait_items,
@@ -2824,6 +3061,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             }
         }
     }
+    if let Some(id) = ctxt.tcx.lang_items().copy_trait() {
+        erase_trait(&ctxt, &mut state, id);
+    }
+    if let Some(id) = ctxt.tcx.lang_items().clone_trait() {
+        erase_trait(&ctxt, &mut state, id);
+    }
 
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
@@ -2833,7 +3076,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         // item is external
                         continue;
                     }
-                    let attrs = tcx.hir().attrs(item.hir_id());
+                    let attrs = tcx.hir_attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
                     if vattrs.internal_reveal_fn || vattrs.internal_const_body {
                         continue;
@@ -2846,32 +3089,33 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::ForeignMod { .. } => {}
                         ItemKind::Macro(..) => {}
                         ItemKind::TyAlias(..) => {}
-                        ItemKind::GlobalAsm(..) => {}
-                        ItemKind::Struct(_s, _generics) => {
+                        ItemKind::GlobalAsm { .. } => {}
+                        ItemKind::Struct(_ident, _s, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Enum(_e, _generics) => {
+                        ItemKind::Enum(_ident, _e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Union(_e, _generics) => {
+                        ItemKind::Union(_ident, _e, _generics) => {
                             state.reach_datatype(&ctxt, id);
                         }
-                        ItemKind::Const(_ty, _, body_id) | ItemKind::Static(_ty, _, body_id) => {
+                        ItemKind::Const(_ident, _ty, _, body_id)
+                        | ItemKind::Static(_ident, _ty, _, body_id) => {
                             if vattrs.size_of_global || vattrs.item_broadcast_use {
                                 continue;
                             }
                             erase_const_or_static(
-                                krate,
+                                Some(krate),
                                 &mut ctxt,
                                 &mut state,
                                 item.span,
                                 id,
                                 vattrs.external_body,
-                                body_id,
+                                Some(body_id),
                                 matches!(&item.kind, ItemKind::Static(..)),
                             );
                         }
-                        ItemKind::Fn(sig, _generics, body_id) => {
+                        ItemKind::Fn { ident, sig, body: body_id, .. } => {
                             if vattrs.reveal_group {
                                 continue;
                             }
@@ -2880,7 +3124,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                     krate,
                                     &mut ctxt,
                                     &mut state,
-                                    item.ident.span,
+                                    ident.span,
                                     id,
                                     sig,
                                     None,
@@ -2889,7 +3133,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                     Some(body_id),
                                 );
                             } else {
-                                let body = ctxt.tcx.hir().body(*body_id);
+                                let body = ctxt.tcx.hir_body(*body_id);
                                 let (def_id, _) = crate::rust_to_vir_func::get_external_def_id(
                                     ctxt.tcx,
                                     &ctxt.verus_items,
@@ -2910,6 +3154,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Trait(
                             IsAuto::No,
                             Safety::Safe | Safety::Unsafe,
+                            _ident,
                             _trait_generics,
                             _bounds,
                             trait_items,
@@ -2939,16 +3184,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Impl(impll) => {
                             erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
-                        ItemKind::OpaqueTy(OpaqueTy {
-                            generics: _,
-                            bounds: _,
-                            origin: OpaqueTyOrigin::AsyncFn(_),
-                            in_trait: _,
-                            lifetime_mapping: _,
-                        }) => {
-                            continue;
+                        ItemKind::TraitAlias(_, _, _) => {
+                            dbg!(item);
+                            panic!("unexpected item");
                         }
-                        _ => {
+                        ItemKind::Trait(IsAuto::Yes, _, _, _, _, _) => {
                             dbg!(item);
                             panic!("unexpected item");
                         }
@@ -2965,6 +3205,15 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         }
     }
     loop {
+        if let Some(const_or_static) = state.const_static_worklist.pop() {
+            import_const_static(
+                &mut ctxt,
+                &mut state,
+                const_or_static.id,
+                const_or_static.is_static,
+            );
+            continue;
+        }
         if let Some(id) = state.imported_fun_worklist.pop() {
             import_fn(&mut ctxt, &mut state, id);
             continue;

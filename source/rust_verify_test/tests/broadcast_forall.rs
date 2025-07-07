@@ -227,7 +227,7 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                broadcast use Ring_succ, Ring_prev;
+                broadcast use {Ring_succ, Ring_prev};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -306,7 +306,7 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                broadcast use Ring::succ_ensures, Ring::prev_ensures;
+                broadcast use {Ring::succ_ensures, Ring::prev_ensures};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -357,7 +357,7 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            broadcast use Ring_prev, Ring_succ;
+            broadcast use {Ring_prev, Ring_succ};
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
@@ -374,7 +374,7 @@ test_verify_one_file! {
             use crate::ring::*;
 
             proof fn t2(p: Ring) requires p.inv() {
-                broadcast use Ring_prev, Ring_succ;
+                broadcast use {Ring_prev, Ring_succ};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -626,4 +626,22 @@ test_verify_one_file! {
             broadcast use group_foo;
         }
     } => Err(err) => assert_vir_error_msg(err, "lemma_foo is not a broadcast proof fn")
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] broadcast_old_syntax_warning verus_code! {
+        broadcast use vstd::seq_lib::group_seq_properties, vstd::set_lib::group_set_properties;
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        assert!(err.warnings.iter().find(|w| w.message.contains("broadcast use")).iter().next().is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] broadcast_mut_params verus_code! {
+        pub broadcast proof fn seq_reverse_len<A>(s: &mut u8)
+            ensures
+                *s == *s
+        { }
+    } => Err(err) => assert_vir_error_msg(err, "broadcast function cannot have &mut parameters")
 }

@@ -132,6 +132,23 @@ fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
+#[doc(hidden)]
+#[verifier::external_body]
+#[rustc_diagnostic_item = "verus::vstd::vstd::proof_nonstatic_call"]
+proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
+    tracked f: F,
+    tracked args: Args,
+) -> (tracked output: Output) where F: FnOnce<Args, Output = Output>
+    requires
+        call_requires(f, args),
+    ensures
+        call_ensures(f, args, output),
+{
+    unimplemented!();
+}
+
 /// A tool to check one's reasoning while writing complex spec functions.
 /// Not intended to be used as a mechanism for instantiating quantifiers, `spec_affirm` should
 /// be removed from spec functions once they are complete.
@@ -163,12 +180,10 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 #[allow(dead_code)]
 pub uninterp spec fn arbitrary<A>() -> A;
 
-#[verifier::external_body]  /* vattr */
-#[allow(dead_code)]
-pub proof fn proof_from_false<A>() -> (tracked a: A) {
-    requires(false);
-    unimplemented!()
-}
+pub axiom fn proof_from_false<A>() -> (tracked a: A)
+    requires
+        false,
+;
 
 #[verifier::external_body]  /* vattr */
 #[allow(dead_code)]
@@ -327,7 +342,7 @@ macro_rules! assert_by_contradiction_internal {
 /// Finally, when the field is a _container_ type, e.g., `vec: Vec<AtomicU64<_, G, _>>` or
 /// `opt: Option<AtomicU64<_, G, _>>`, there are some additional complexities.
 /// We might need the invariant to be conditional (e.g., for an optional, the invariant would only
-/// exist if `opt.is_Some()`).
+/// exist if `opt is Some`).
 /// We might need to quantify over a variable (e.g., in a vector, we want to specify an invariant
 /// for each element, element `i` where `0 <= i < vec.len()`).
 /// Finally, we need to indicate the value actually getting the invariant (e.g., `self.vec[i]`).

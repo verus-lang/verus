@@ -3,7 +3,7 @@
 In [an earlier chapter](./spec_lib.md), we started with an outline of a proof:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_fail}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_fail}}
 ```
 
 and then filled in the crucial missing steps to complete the proof.
@@ -147,7 +147,7 @@ and the only way it can be `0` is if the set is the empty set:
 ```rust
 {
     if s1.is_empty() {
-        assume(s1.intersect(s2) === Set::empty());
+        assume(s1.intersect(s2) == Set::<A>::empty());
         assert(s1.intersect(s2).len() == 0);
         assert(s1.intersect(s2).len() <= s1.len());
     } else {
@@ -157,26 +157,6 @@ and the only way it can be `0` is if the set is the empty set:
 ```
 ```
 verification results:: verified: 1 errors: 0
-```
-
-If we change the `assume` to an `assert`, the assertion fails:
-
-```rust
-{
-    if s1.is_empty() {
-        assert(s1.intersect(s2) === Set::empty());
-        assert(s1.intersect(s2).len() == 0);
-        assert(s1.intersect(s2).len() <= s1.len());
-    } else {
-        ...
-    }
-}
-```
-```
-error: assertion failed
-   |
-   |         assert(s1.intersect(s2) === Set::empty());
-   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ assertion failed
 ```
 
 So we've narrowed in on the problem:
@@ -190,8 +170,7 @@ So we can add the extensionality assertion:
 ```rust
 {
     if s1.is_empty() {
-        assert(s1.intersect(s2) =~= Set::empty());
-        assert(s1.intersect(s2) === Set::empty());
+        assert(s1.intersect(s2) =~= Set::<A>::empty());
         assert(s1.intersect(s2).len() == 0);
         assert(s1.intersect(s2).len() <= s1.len());
     } else {
@@ -401,7 +380,7 @@ to be equal to `s1.remove(a).intersect(s2)`:
         assert(s1.remove(a).intersect(s2).len() + 1 <= s1.len());
 
         assert(s1.intersect(s2).len() <= s1.intersect(s2).remove(a).len() + 1);
-        assume(s1.intersect(s2).remove(a) === s1.remove(a).intersect(s2));
+        assume(s1.intersect(s2).remove(a) == s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).len() <= s1.remove(a).intersect(s2).len() + 1);
 
         assert(s1.intersect(s2).len() <= s1.len());
@@ -428,7 +407,6 @@ And again, the first thing to try is to assert extensional equality:
 
         assert(s1.intersect(s2).len() <= s1.intersect(s2).remove(a).len() + 1);
         assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
-        assert(s1.intersect(s2).remove(a) === s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).len() <= s1.remove(a).intersect(s2).len() + 1);
 
         assert(s1.intersect(s2).len() <= s1.len());
@@ -453,7 +431,6 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 {
     if s1.is_empty() {
         assert(s1.intersect(s2) =~= Set::empty());
-        assert(s1.intersect(s2) === Set::empty());
         assert(s1.intersect(s2).len() == 0);
         assert(s1.intersect(s2).len() <= s1.len());
     } else {
@@ -465,7 +442,6 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 
         assert(s1.intersect(s2).len() <= s1.intersect(s2).remove(a).len() + 1);
         assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
-        assert(s1.intersect(s2).remove(a) === s1.remove(a).intersect(s2));
         assert(s1.intersect(s2).len() <= s1.remove(a).intersect(s2).len() + 1);
 
         assert(s1.intersect(s2).len() <= s1.len());
@@ -486,5 +462,5 @@ The right amount of information is a matter of taste,
 but we can try to strike a reasonable balance between conciseness and informativeness:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_commented}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_commented}}
 ```

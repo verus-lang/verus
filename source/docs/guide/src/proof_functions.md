@@ -12,7 +12,7 @@ Specifically, `lemma_min` reveals that `min(x, y)` equals either `x` or `y` and
 is no larger than `x` and `y`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun_proof}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun_proof}}
 ```
 
 Like `exec` functions, `proof` functions may have `requires` and `ensures` clauses.
@@ -38,13 +38,13 @@ Consider an [earlier example](integers.md#integer-constants) that introduced
 variables inside an assertion:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_consts_infer}}
+{{#include ../../../../examples/guide/integers.rs:test_consts_infer}}
 ```
 
 We can write this in a more natural style using a proof block:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun_proof_block1}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun_proof_block1}}
 ```
 
 Here, the `proof` code inside the `proof` block can create local variables
@@ -64,7 +64,7 @@ a `proof` block is used to call `lemma_min`,
 allowing subsequent assertions about `min` to succeed.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:spec_fun_proof_block2}}
+{{#include ../../../../examples/guide/modes.rs:spec_fun_proof_block2}}
 ```
 
 # assert-by
@@ -98,5 +98,5 @@ because the information gained by the `lemma_min(100, 200)` call
 does not propagate outside the block that contains the call.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:assert_by}}
+{{#include ../../../../examples/guide/modes.rs:assert_by}}
 ```

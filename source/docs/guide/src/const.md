@@ -3,7 +3,7 @@
 `const` declarations can either be marked `spec` or left without a mode:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:const1}}
+{{#include ../../../../examples/guide/modes.rs:const1}}
 ```
 
 A `spec const` is like `spec` function with no arguments.

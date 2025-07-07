@@ -345,7 +345,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ret_mode_fail_requires ["--no-external-by-default"] => code! {
+    #[test] ret_mode_fail_requires ["--no-external-by-default", "exec_allows_no_decreases_clause"] => code! {
         fn f() {
             requires({while false {}; true});
         }
@@ -1497,4 +1497,20 @@ test_verify_one_file! {
             g(&*old(m));
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] axiom_with_body verus_code! {
+        axiom fn foo()
+            ensures true
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an `axiom` should not have a body")
+}
+
+test_verify_one_file! {
+    #[test] nonaxiom_without_body verus_code! {
+        proof fn foo()
+            ensures false;
+    } => Err(err) => assert_vir_error_msg(err, "a `proof` function must have a body")
 }

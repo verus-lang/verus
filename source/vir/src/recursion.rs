@@ -1,17 +1,17 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
-    VirErr,
+    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
+    VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
-use crate::context::Ctx;
+use crate::context::{Ctx, GraphBuilder};
 use crate::def::{
-    decrease_at_entry, rename_rec_param, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
+    FUEL_PARAM, FUEL_TYPE, Spanned, decrease_at_entry, rename_rec_param, unique_bound, unique_local,
 };
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::scc::Graph;
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
@@ -32,6 +32,9 @@ pub enum Node {
     TraitImpl(ImplPath),
     TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
+    // Everything in crate c depends on Crate(c)
+    // Crate(c) can depend on broadcast_use_by_default_when_this_crate_is_imported from other crates
+    Crate(crate::ast::Ident),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
@@ -43,6 +46,19 @@ struct Ctxt<'a> {
     num_decreases: Option<usize>,
     scc_rep: Node,
     ctx: &'a Ctx,
+}
+
+// Get edges, skipping past SpanInfo
+pub(crate) fn get_edges_from<'a>(graph: &'a Graph<Node>, t: &Node) -> Vec<&'a Node> {
+    let mut nodes: Vec<&'a Node> = Vec::new();
+    for node in graph.get_edges_from(t) {
+        if let Node::SpanInfo { .. } = node {
+            nodes.extend(get_edges_from(graph, node));
+        } else {
+            nodes.push(node);
+        }
+    }
+    nodes
 }
 
 pub(crate) fn get_callee(
@@ -230,7 +246,7 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
+pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
     body: &Exp,
@@ -296,8 +312,16 @@ fn check_termination<'a>(
     body: &Stm,
 ) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
     let num_decreases = function.x.decrease.len();
-    if num_decreases == 0 {
-        return Err(error(&function.span, "recursive function must have a decreases clause"));
+    if num_decreases == 0
+        && (function.x.mode != crate::ast::Mode::Exec
+            || (!function.x.attrs.exec_allows_no_decreases_clause
+                && !function.x.attrs.exec_assume_termination))
+    {
+        let mut e = error(&function.span, "recursive function must have a decreases clause");
+        if function.x.mode == crate::ast::Mode::Exec {
+            e = e.help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function");
+        }
+        return Err(e);
     }
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
@@ -369,8 +393,13 @@ pub(crate) fn check_termination_stm(
     function: &Function,
     proof_body: Option<Stm>,
     body: &Stm,
+    exec_with_no_termination_check: bool,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
+        return Ok((vec![], body.clone()));
+    }
+
+    if exec_with_no_termination_check && function.x.decrease.is_empty() {
         return Ok((vec![], body.clone()));
     }
 
@@ -390,7 +419,7 @@ pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
     reveal_group_set: &HashSet<Fun>,
-    call_graph: &mut Graph<Node>,
+    call_graph: &mut GraphBuilder<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -437,9 +466,24 @@ pub(crate) fn expand_call_graph(
             ) {
                 continue;
             }
+            let t_node = Node::Trait(trait_path.clone());
+            if let Some(origin_trait) = call_graph.replace_with.get(&t_node) {
+                if let Node::Trait(origin_trait) = origin_trait {
+                    if crate::recursive_types::suppress_bound_in_trait_decl(
+                        origin_trait,
+                        &function.x.typ_params,
+                        bound,
+                    ) {
+                        continue;
+                    }
+                }
+            }
         }
         let tr = match &**bound {
-            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
+            GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
             GenericBoundX::ConstTyp(_, _) => {
                 continue;

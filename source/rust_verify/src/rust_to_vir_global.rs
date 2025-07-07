@@ -21,12 +21,12 @@ pub(crate) fn process_const_early<'tcx>(
     typs_sizes_set: &mut std::collections::HashMap<TypIgnoreImplPaths, u128>,
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
-    let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+    let attrs = ctxt.tcx.hir_attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
-        let err = crate::util::err_span(item.span, "invalid global size_of");
-        let ItemKind::Const(_ty, generics, body_id) = item.kind else {
-            return err;
+        let err = || crate::util::err_span(item.span, "invalid global size_of");
+        let ItemKind::Const(_ident, _ty, generics, body_id) = item.kind else {
+            return err();
         };
         unsupported_err_unless!(
             generics.params.len() == 0 && generics.predicates.len() == 0,
@@ -40,31 +40,31 @@ pub(crate) fn process_const_early<'tcx>(
         let types = crate::rust_to_vir_func::body_id_to_types(ctxt.tcx, &body_id);
 
         let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
-            return err;
+            return err();
         };
         if block.stmts.len() < 1 {
-            return err;
+            return err();
         }
         let rustc_hir::StmtKind::Semi(expr) = block.stmts[0].kind else {
-            return err;
+            return err();
         };
         let rustc_hir::ExprKind::Call(fun, args) = expr.kind else {
-            return err;
+            return err();
         };
         let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(None, path)) = fun.kind else {
-            return err;
+            return err();
         };
         let last_segment = path.segments.last().expect("one segment in path");
         if ctxt.verus_items.id_to_name.get(&last_segment.res.def_id())
             != Some(&VerusItem::Global(crate::verus_items::GlobalItem::SizeOf))
         {
-            return err;
+            return err();
         }
         let Some(generic_args) = last_segment.args else {
-            return err;
+            return err();
         };
         let rustc_hir::GenericArg::Type(ty) = generic_args.args[0] else {
-            return err;
+            return err();
         };
         let ty = types.node_type(ty.hir_id);
         let ty = crate::rust_to_vir_base::mid_ty_to_vir(
@@ -76,14 +76,14 @@ pub(crate) fn process_const_early<'tcx>(
             true,
         )?;
         let rustc_hir::ExprKind::Lit(lit) = args[0].kind else {
-            return err;
+            return err();
         };
         let rustc_ast::LitKind::Int(size, rustc_ast::LitIntType::Unsuffixed) = lit.node else {
-            return err;
+            return err();
         };
         let size = size.get();
 
-        vir::layout::layout_of_typ_supported(&ty, &crate::spans::err_air_span(item.span))?;
+        vir::layout::layout_of_typ_supported(&ty, &ctxt.spans.to_air_span(item.span))?;
 
         match typs_sizes_set.entry(TypIgnoreImplPaths(ty.clone())) {
             std::collections::hash_map::Entry::Occupied(_occ) => {

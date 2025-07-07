@@ -11,7 +11,7 @@ which can only be used in ghost code.
 As another example, ghost code can talk about the result of division by zero:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:ghost_abilities0}}
+{{#include ../../../../examples/guide/modes.rs:ghost_abilities0}}
 ```
 
 This simply reflects the SMT solver's willingness to reason about the result of division by zero
@@ -36,7 +36,7 @@ For example, the following `spec` functions create and duplicate values of type 
 defined in another module with private fields and without the `Copy` trait:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:ghost_abilities1}}
+{{#include ../../../../examples/guide/modes.rs:ghost_abilities1}}
 ```
 
 These operations are not allowed in `exec` code.
@@ -45,7 +45,7 @@ what happens in ghost code stays in ghost code.
 Any attempt to use a value from ghost code in `exec` code will result in a compile-time error:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:ghost_abilities2}}
+{{#include ../../../../examples/guide/modes.rs:ghost_abilities2}}
 ```
 
 ```
@@ -59,7 +59,8 @@ As an example of ghost code that uses these abilities,
 a call to the Verus [`Seq::index(...)` function](https://github.com/verus-lang/verus/blob/main/source/vstd/seq.rs)
 can duplicate a value from the sequence, if the index `i` is within bounds,
 and create a value out of thin air if `i` is out of bounds:
-```
+
+```rust
 impl<A> Seq<A> {
 ...
     /// Gets the value at the given index `i`.

@@ -54,6 +54,7 @@ pub(crate) enum TypX {
         name: Id,
         assoc_typ_args: Vec<Id>,
     },
+    PointeeMetadata(Typ),
     Closure,
     FnDef,
     RawPtr(Typ, rustc_middle::ty::Mutability),
@@ -149,6 +150,7 @@ pub(crate) enum Bound {
     Id(Id),
     Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Id>, Typ)> },
     Fn(ClosureKind, Typ, Typ),
+    ProofFn(ClosureKind),
 }
 
 // where typ: bound
@@ -183,15 +185,13 @@ pub(crate) struct TraitImpl {
     pub(crate) trait_as_datatype: Typ,
     pub(crate) trait_polarity: rustc_middle::ty::ImplPolarity,
     pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
+    pub(crate) is_clone: bool,
 }
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
     pub(crate) span: Option<Span>,
-    // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
-    // If so, for each GenericParam A say whether clone and copy require A: Clone and A: Copy
-    pub(crate) implements_copy: Option<Vec<bool>>,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
     pub(crate) datatype: Box<Datatype>,

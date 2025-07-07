@@ -11,7 +11,7 @@ pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vir_macros::{to_node_impl, ToDebugSNode};
+use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,10 +263,16 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
     ConstInt(BigInt),
+    /// Const bool type argument
+    ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
 }
@@ -301,7 +308,7 @@ pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
-    TraitBound(Path, Typs),
+    TraitBound(TraitId, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
@@ -540,7 +547,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -666,6 +674,8 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
+    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -687,10 +697,14 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
+    /// Call to a proof function with argument modes and return mode
+    ProofFn(Arc<Vec<Mode>>, Mode),
     /// Dynamically dispatched function
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
+    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
+    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -789,8 +803,10 @@ pub enum ExprX {
     /// Specification closure
     Closure(VarBinders<Typ>, Expr),
     /// Executable closure
-    ExecClosure {
+    NonSpecClosure {
         params: VarBinders<Typ>,
+        /// If this is a proof_fn, record the args/ret modes; otherwise, None
+        proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
@@ -857,12 +873,16 @@ pub enum ExprX {
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
     Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    /// Enter a proof block from inside spec-mode code
+    ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
     /// never-to-any conversion
     NeverToAny(Expr),
+    /// nondeterministic choice
+    Nondeterministic,
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -895,13 +915,19 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum TraitId {
+    Path(Path),
+    Sized,
+}
+
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
-    Trait(Path, Typs),
+    Trait(TraitId, Typs),
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
@@ -938,6 +964,7 @@ pub struct AutoExtEqual {
     pub assert: bool,
     pub assert_by: bool,
     pub ensures: bool,
+    pub invariant: bool,
 }
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
@@ -994,6 +1021,10 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Whether to assume that this function terminates
+    pub exec_assume_termination: bool,
+    /// Whether to allow this function to not terminate
+    pub exec_allows_no_decreases_clause: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1109,7 +1140,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination
@@ -1220,6 +1252,11 @@ pub struct DatatypeX {
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
     pub user_defined_invariant_fn: Option<Fun>,
+    /// This is an optional value -- None means "always sized"
+    /// whereas Some(T) means "The given type is Sized iff T is Sized".
+    /// For structs, this is usually the last field of the struct, or is derived from it.
+    /// For enums, this is always None.
+    pub sized_constraint: Option<Typ>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
@@ -1237,6 +1274,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
+    // Some((TSpec, TSpecImpl))
+    pub external_trait_extension: Option<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }

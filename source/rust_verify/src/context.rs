@@ -1,9 +1,9 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
-use rustc_ast::Attribute;
+use rustc_hir::Attribute;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
-use rustc_span::def_id::DefId;
 use rustc_span::SpanData;
+use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{Expr, Ident, Mode, Pattern};
 use vir::messages::AstId;
@@ -44,6 +44,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
+    // loop_isolation for the nearest enclosing loop, false otherwise
+    pub(crate) loop_isolation: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {

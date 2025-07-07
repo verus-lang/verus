@@ -11,18 +11,20 @@ enum Mode {
     ExpectSuccess,
     ExpectErrors,
     ExpectFailures,
+    ExpectWarnings,
 }
 
-examples_in_dir!("../rust_verify/example");
-examples_in_dir!("../rust_verify/example/guide");
-examples_in_dir!("../rust_verify/example/state_machines");
-examples_in_dir!("../rust_verify/example/summer_school");
-examples_in_dir!("../rust_verify/example/state_machines/tutorial");
-examples_in_dir!("../rust_verify/example/state_machines/reference-examples");
-examples_in_dir!("../rust_verify/example/std_test");
+examples_in_dir!("../../examples");
+examples_in_dir!("../../examples/guide");
+examples_in_dir!("../../examples/pcm");
+examples_in_dir!("../../examples/state_machines");
+examples_in_dir!("../../examples/summer_school");
+examples_in_dir!("../../examples/state_machines/tutorial");
+examples_in_dir!("../../examples/state_machines/reference-examples");
+examples_in_dir!("../../examples/std_test");
 
 #[cfg(feature = "singular")]
-examples_in_dir!("../rust_verify/example/integer_ring");
+examples_in_dir!("../../examples/integer_ring");
 
 fn run_example_for_file(file_path: &str) {
     let relative_path = Path::new(file_path);
@@ -49,6 +51,7 @@ fn run_example_for_file(file_path: &str) {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
+            "expect-warnings" => mode = Mode::ExpectWarnings,
             "expand-errors" => {
                 mode = Mode::ExpectFailures;
                 options.push("--expand-errors");
@@ -88,12 +91,18 @@ fn run_example_for_file(file_path: &str) {
         relative_path.parent().expect("no parent dir"),
         &relative_path,
         true,
-        false,
+        true,
     );
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: (\d+) verified, (\d+) errors").unwrap();
     let stdout = std::str::from_utf8(&output.stdout).expect("invalid stdout encoding");
+    let stderr = std::str::from_utf8(&output.stderr).expect("invalid stderr encoding").trim();
+    let mut errors = Vec::new();
+    let mut expand_errors_notes = Vec::new();
+    let mut is_failure = false;
+    let (warnings, _notes) =
+        parse_diags(stderr, &mut errors, &mut expand_errors_notes, &mut is_failure);
     let verifier_output: Option<(u64, u64)> = re.captures_iter(stdout).next().map(|x| {
         (
             x[1].parse().expect("invalid verifier output"),
@@ -108,8 +117,18 @@ fn run_example_for_file(file_path: &str) {
                     Some((_, 0)) => true,
                     _ => false,
                 }
+                && !is_failure
+                && warnings.len() == 0
         }
         Mode::ExpectErrors => !output.status.success(),
+        Mode::ExpectWarnings => {
+            output.status.success()
+                && match verifier_output {
+                    Some((_, 0)) => true,
+                    _ => false,
+                }
+                && warnings.len() > 0
+        }
         Mode::ExpectFailures => {
             !output.status.success()
                 && match verifier_output {
@@ -121,10 +140,11 @@ fn run_example_for_file(file_path: &str) {
 
     if !success {
         eprintln!("- example {} - mode: {:?} - failed -", &path, mode);
-        eprintln!(
-            "- stderr -\n{}\n",
-            std::str::from_utf8(&output.stderr).expect("invalid stderr encoding")
-        );
+        if warnings.len() > 0 {
+            for w in warnings {
+                eprintln!("- warning - {}", w.rendered);
+            }
+        }
         eprintln!("- stdout -\n{}\n", stdout);
         assert!(false);
     }

@@ -34,10 +34,10 @@ calc! {
 For example,
 
 ```rust
-{{#include ../../../rust_verify/example/guide/calc.rs:simple}}
+{{#include ../../../../examples/guide/calc.rs:simple}}
 ```
 
-which is equivalent to proving `a <= 5` using `a <= b <= 5`. In this case, each
+which is equivalent to proving `a <= 5` using `a <= a + 3 <= 5`. In this case, each
 of the intermediate proofs are trivial, thus have an empty `{}` block, but in
 general, can have arbitrary proofs inside their blocks.
 
@@ -52,7 +52,7 @@ limiting proof-context pollution.
 Currently, the `calc!` macro supports common transitive relations for `R` (such
 as `==` and `<=`). This set of relations may be extended in the future.
 
-## Relating Relations to Relations
+## Using Different Relations for Intermediate Steps
 
 While a relation like `<=` might be useful to use like above, it is possible
 that not every intermediate step needs a `<=`; sometimes one might be able to be
@@ -61,15 +61,15 @@ reasons) might be useful. For example, one might want to say `a_1 <= a_2 == a_3
 <= a_4 < a_5 <= ...`.
 
 This is supported by `calc` by specifying the extra intermediate relations
-inline (with the default being the high-level relation). These relations are
-checked to be consistent with the top-level relation, in order to maintain
-transitivity (so for example, using `>` in the above chain would be caught and
-reported with a helpful message).
+inline (with the default being the top-level relation). These relations are
+checked to be consistent with the top-level relation, to maintain
+transitivity. So, for example, using `>` in the above chain would be caught
+and reported with a helpful error message.
 
 A simple example of using intermediate relations looks like the following:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/calc.rs:transitive}}
+{{#include ../../../../examples/guide/calc.rs:transitive}}
 ```
 
 This example is equivalent to saying `x <= y` using `x == 5 - 3 < 5 <= y`.
