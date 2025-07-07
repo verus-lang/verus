@@ -44,18 +44,9 @@ pub trait ExFrom<T>: Sized {
     type ExternalTraitSpecificationFor: core::convert::From<T>;
 }
 
-/// WARNING: the specification of PartialEq is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExPartialEq<Rhs: ?Sized> {
     type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-
-    #[verifier::strong_call_ensures]
-    fn eq(&self, other: &Rhs) -> bool;
-
-    fn ne(&self, other: &Rhs) -> (r: bool)
-        ensures
-            default_ensures(call_ensures(Self::eq, (self, other), !r)),
-    ;
 }
 
 #[verifier::external_trait_specification]
@@ -63,66 +54,11 @@ pub trait ExEq: PartialEq {
     type ExternalTraitSpecificationFor: core::cmp::Eq;
 }
 
-/// WARNING: the specification of PartialOrd is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
     type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-
-    #[verifier::strong_call_ensures]
-    fn partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
-
-    fn lt(&self, other: &Rhs) -> (r: bool)
-        ensures
-            default_ensures(
-                exists|o|
-                    {
-                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                        &&& r <==> o == Some(core::cmp::Ordering::Less)
-                    },
-            ),
-    ;
-
-    fn le(&self, other: &Rhs) -> (r: bool)
-        ensures
-            default_ensures(
-                exists|o|
-                    {
-                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                        &&& r <==> o matches Some(
-                            core::cmp::Ordering::Less
-                            | core::cmp::Ordering::Equal,
-                        )
-                    },
-            ),
-    ;
-
-    fn gt(&self, other: &Rhs) -> (r: bool)
-        ensures
-            default_ensures(
-                exists|o|
-                    {
-                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                        &&& r <==> o == Some(core::cmp::Ordering::Greater)
-                    },
-            ),
-    ;
-
-    fn ge(&self, other: &Rhs) -> (r: bool)
-        ensures
-            default_ensures(
-                exists|o|
-                    {
-                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                        &&& r <==> o matches Some(
-                            core::cmp::Ordering::Greater
-                            | core::cmp::Ordering::Equal,
-                        )
-                    },
-            ),
-    ;
 }
 
-/// WARNING: the specification of Ord is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExOrd: Eq + PartialOrd {
     type ExternalTraitSpecificationFor: Ord;
