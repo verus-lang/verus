@@ -1775,3 +1775,18 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "E in a non-positive position")
 }
+
+test_verify_one_file_with_options! {
+    #[test] output_param_covariant ["vstd"] => verus_code! {
+        struct S;
+
+        proof fn test<'a>(tracked f: proof_fn<'a>() -> tracked &'a S) {
+        }
+
+        proof fn test2<'a, 'b>(tracked f: proof_fn<'a>() -> tracked &'b S)
+            where 'b: 'a
+        {
+            test(f);
+        }
+    } => Ok(())
+}
