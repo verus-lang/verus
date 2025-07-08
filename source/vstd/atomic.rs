@@ -37,11 +37,8 @@ macro_rules! make_unsigned_integer_atomic {
 
         } // verus!
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
-        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
-        }
+        atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
+        atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
     };
 }
 
@@ -71,22 +68,17 @@ macro_rules! make_signed_integer_atomic {
 
         } // verus!
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
-        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
-        }
+        atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
+        atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
     };
 }
 
 macro_rules! make_bool_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
-        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
-            atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
-        }
+
+        atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
+        atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
     };
 }
 
@@ -193,125 +185,252 @@ macro_rules! atomic_common_methods {
     ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
         verus!{
 
-        pub uninterp spec fn id(&self) -> int;
+            #[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
+            impl $at_ident {
+                pub uninterp spec fn id(&self) -> int;
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
-            ensures
-                equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
-        {
-            let p = $at_ident { ato: <$rust_ty>::new(i) };
-            (p, Tracked::assume_new())
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
+                    ensures
+                        equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
+                {
+                    let p = $at_ident { ato: <$rust_ty>::new(i) };
+                    (p, Tracked::assume_new())
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn load(&self, Tracked(perm): Tracked<&$p_ident>) -> (ret: $value_ty)
-            requires
-                equal(self.id(), perm.view().patomic),
-            ensures equal(perm.view().value, ret),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.load(Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn load(&self, Tracked(perm): Tracked<&$p_ident>) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), perm.view().patomic),
+                    ensures equal(perm.view().value, ret),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.load(Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures equal(perm.view().value, v) && equal(self.id(), perm.view().patomic),
-            opens_invariants none
-            no_unwind
-        {
-            self.ato.store(v, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures equal(perm.view().value, v) && equal(self.id(), perm.view().patomic),
+                    opens_invariants none
+                    no_unwind
+                {
+                    self.ato.store(v, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn compare_exchange(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(self.id(), perm.view().patomic)
-                && match ret {
-                    Result::Ok(r) =>
-                           current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
-                        && equal(r, old(perm).view().value),
-                    Result::Err(r) =>
-                           current $($addr)* != old(perm).view().value $($addr)*
-                        && equal(perm.view().value, old(perm).view().value)
-                        && equal(r, old(perm).view().value),
-                },
-            opens_invariants none
-            no_unwind
-        {
-            match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(x) => Result::Ok(x),
-                Err(x) => Result::Err(x),
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn compare_exchange(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(self.id(), perm.view().patomic)
+                        && match ret {
+                            Result::Ok(r) =>
+                                current $($addr)* == old(perm).view().value $($addr)*
+                                && equal(perm.view().value, new)
+                                && equal(r, old(perm).view().value),
+                            Result::Err(r) =>
+                                current $($addr)* != old(perm).view().value $($addr)*
+                                && equal(perm.view().value, old(perm).view().value)
+                                && equal(r, old(perm).view().value),
+                        },
+                    opens_invariants none
+                    no_unwind
+                {
+                    match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                        Ok(x) => Result::Ok(x),
+                        Err(x) => Result::Err(x),
+                    }
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn compare_exchange_weak(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(self.id(), perm.view().patomic)
+                        && match ret {
+                            Result::Ok(r) =>
+                                current $($addr)* == old(perm).view().value $($addr)*
+                                && equal(perm.view().value, new)
+                                && equal(r, old(perm).view().value),
+                            Result::Err(r) =>
+                                equal(perm.view().value, old(perm).view().value)
+                                && equal(r, old(perm).view().value),
+                        },
+                    opens_invariants none
+                    no_unwind
+                {
+                    match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                        Ok(x) => Result::Ok(x),
+                        Err(x) => Result::Err(x),
+                    }
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn swap(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(perm.view().value, v)
+                        && equal(old(perm).view().value, ret)
+                        && equal(self.id(), perm.view().patomic),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.swap(v, Ordering::SeqCst);
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                pub fn into_inner(self, Tracked(perm): Tracked<$p_ident>) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), perm.view().patomic),
+                    ensures equal(perm.view().value, ret),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.into_inner();
+                }
             }
         }
+    };
+    ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ], $typ_name: ident, $typ_param: ident) => {
+        verus!{
+            #[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
+            impl<$typ_param> $typ_name<$typ_param> {
+                pub uninterp spec fn id(&self) -> int;
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn compare_exchange_weak(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(self.id(), perm.view().patomic)
-                && match ret {
-                    Result::Ok(r) =>
-                           current $($addr)* == old(perm).view().value $($addr)*
-                        && equal(perm.view().value, new)
-                        && equal(r, old(perm).view().value),
-                    Result::Err(r) =>
-                           equal(perm.view().value, old(perm).view().value)
-                        && equal(r, old(perm).view().value),
-                },
-            opens_invariants none
-            no_unwind
-        {
-            match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(x) => Result::Ok(x),
-                Err(x) => Result::Err(x),
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                pub const fn new(i: $value_ty) -> (res: ($at_ident, Tracked<$p_ident>))
+                    ensures
+                        equal(res.1@.view(), $p_data_ident{ patomic: res.0.id(), value: i }),
+                {
+                    let p = $at_ident { ato: <$rust_ty>::new(i) };
+                    (p, Tracked::assume_new())
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn load(&self, Tracked(perm): Tracked<&$p_ident>) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), perm.view().patomic),
+                    ensures equal(perm.view().value, ret),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.load(Ordering::SeqCst);
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn store(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures equal(perm.view().value, v) && equal(self.id(), perm.view().patomic),
+                    opens_invariants none
+                    no_unwind
+                {
+                    self.ato.store(v, Ordering::SeqCst);
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn compare_exchange(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(self.id(), perm.view().patomic)
+                        && match ret {
+                            Result::Ok(r) =>
+                                current $($addr)* == old(perm).view().value $($addr)*
+                                && equal(perm.view().value, new)
+                                && equal(r, old(perm).view().value),
+                            Result::Err(r) =>
+                                current $($addr)* != old(perm).view().value $($addr)*
+                                && equal(perm.view().value, old(perm).view().value)
+                                && equal(r, old(perm).view().value),
+                        },
+                    opens_invariants none
+                    no_unwind
+                {
+                    match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                        Ok(x) => Result::Ok(x),
+                        Err(x) => Result::Err(x),
+                    }
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn compare_exchange_weak(&self, Tracked(perm): Tracked<&mut $p_ident>, current: $value_ty, new: $value_ty) -> (ret: Result<$value_ty, $value_ty>)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(self.id(), perm.view().patomic)
+                        && match ret {
+                            Result::Ok(r) =>
+                                current $($addr)* == old(perm).view().value $($addr)*
+                                && equal(perm.view().value, new)
+                                && equal(r, old(perm).view().value),
+                            Result::Err(r) =>
+                                equal(perm.view().value, old(perm).view().value)
+                                && equal(r, old(perm).view().value),
+                        },
+                    opens_invariants none
+                    no_unwind
+                {
+                    match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                        Ok(x) => Result::Ok(x),
+                        Err(x) => Result::Err(x),
+                    }
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn swap(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(perm.view().value, v)
+                        && equal(old(perm).view().value, ret)
+                        && equal(self.id(), perm.view().patomic),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.swap(v, Ordering::SeqCst);
+                }
+
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                pub fn into_inner(self, Tracked(perm): Tracked<$p_ident>) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), perm.view().patomic),
+                    ensures equal(perm.view().value, ret),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.into_inner();
+                }
             }
-        }
-
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn swap(&self, Tracked(perm): Tracked<&mut $p_ident>, v: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                   equal(perm.view().value, v)
-                && equal(old(perm).view().value, ret)
-                && equal(self.id(), perm.view().patomic),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.swap(v, Ordering::SeqCst);
-        }
-
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        pub fn into_inner(self, Tracked(perm): Tracked<$p_ident>) -> (ret: $value_ty)
-            requires
-                equal(self.id(), perm.view().patomic),
-            ensures equal(perm.view().value, ret),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.into_inner();
-        }
-
         }
     };
 }
@@ -320,166 +439,169 @@ macro_rules! atomic_integer_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         verus!{
 
-        // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
-        // for Rust's atomics (in contrast to ordinary arithmetic)
+            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+            impl $at_ident {
+                // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
+                // for Rust's atomics (in contrast to ordinary arithmetic)
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_add_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $wrap_add(old(perm).view().value as int, n as int),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_add(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_add_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value as int == $wrap_add(old(perm).view().value as int, n as int),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_add(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_sub_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value as int == $wrap_sub(old(perm).view().value as int, n as int),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_sub(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_sub_wrapping(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value as int == $wrap_sub(old(perm).view().value as int, n as int),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_sub(n, Ordering::SeqCst);
+                }
 
-        // fetch_add and fetch_sub are more natural in the common case that you
-        // don't expect wrapping
+                // fetch_add and fetch_sub are more natural in the common case that you
+                // don't expect wrapping
 
-        #[inline(always)]
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_add(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-                (<$value_ty>::MIN as int) <= old(perm).view().value + n,
-                old(perm).view().value + n <= (<$value_ty>::MAX as int),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value + n,
-            opens_invariants none
-            no_unwind
-        {
-            self.fetch_add_wrapping(Tracked(&mut *perm), n)
-        }
+                #[inline(always)]
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_add(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                        (<$value_ty>::MIN as int) <= old(perm).view().value + n,
+                        old(perm).view().value + n <= (<$value_ty>::MAX as int),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == old(perm).view().value + n,
+                    opens_invariants none
+                    no_unwind
+                {
+                    self.fetch_add_wrapping(Tracked(&mut *perm), n)
+                }
 
-        #[inline(always)]
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_sub(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-                (<$value_ty>::MIN as int) <= old(perm).view().value - n,
-                old(perm).view().value - n <= <$value_ty>::MAX as int,
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == old(perm).view().value - n,
-            opens_invariants none
-            no_unwind
-        {
-            self.fetch_sub_wrapping(Tracked(&mut *perm), n)
-        }
+                #[inline(always)]
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_sub(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                        (<$value_ty>::MIN as int) <= old(perm).view().value - n,
+                        old(perm).view().value - n <= <$value_ty>::MAX as int,
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == old(perm).view().value - n,
+                    opens_invariants none
+                    no_unwind
+                {
+                    self.fetch_sub_wrapping(Tracked(&mut *perm), n)
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value & n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_and(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == (old(perm).view().value & n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_and(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value | n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_or(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == (old(perm).view().value | n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_or(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (old(perm).view().value ^ n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_xor(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == (old(perm).view().value ^ n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_xor(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == !(old(perm).view().value & n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_nand(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == !(old(perm).view().value & n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_nand(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_max(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_max(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_max(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == (if old(perm).view().value > n { old(perm).view().value } else { n }),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_max(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_min(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret),
-                perm.view().patomic == old(perm).view().patomic,
-                perm.view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_min(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_min(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret),
+                        perm.view().patomic == old(perm).view().patomic,
+                        perm.view().value == (if old(perm).view().value < n { old(perm).view().value } else { n }),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_min(n, Ordering::SeqCst);
+                }
 
+            }
         }
     };
 }
@@ -487,71 +609,74 @@ macro_rules! atomic_integer_methods {
 macro_rules! atomic_bool_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         verus!{
+            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+            impl $at_ident {
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                   equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value && n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_and(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_and(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret)
+                        && perm.view().patomic == old(perm).view().patomic
+                        && perm.view().value == (old(perm).view().value && n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_and(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                  equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == (old(perm).view().value || n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_or(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_or(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret)
+                        && perm.view().patomic == old(perm).view().patomic
+                        && perm.view().value == (old(perm).view().value || n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_or(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_xor(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret)
+                        && perm.view().patomic == old(perm).view().patomic
+                        && perm.view().value == ((old(perm).view().value && !n) || (!old(perm).view().value && n)),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_xor(n, Ordering::SeqCst);
+                }
 
-        #[inline(always)]
-        #[verifier::external_body] /* vattr */
-        #[verifier::atomic] /* vattr */
-        pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
-            requires
-                equal(self.id(), old(perm).view().patomic),
-            ensures
-                equal(old(perm).view().value, ret)
-                && perm.view().patomic == old(perm).view().patomic
-                && perm.view().value == !(old(perm).view().value && n),
-            opens_invariants none
-            no_unwind
-        {
-            return self.ato.fetch_nand(n, Ordering::SeqCst);
-        }
+                #[inline(always)]
+                #[verifier::external_body] /* vattr */
+                #[verifier::atomic] /* vattr */
+                pub fn fetch_nand(&self, Tracked(perm): Tracked<&mut $p_ident>, n: $value_ty) -> (ret: $value_ty)
+                    requires
+                        equal(self.id(), old(perm).view().patomic),
+                    ensures
+                        equal(old(perm).view().value, ret)
+                        && perm.view().patomic == old(perm).view().patomic
+                        && perm.view().value == !(old(perm).view().value && n),
+                    opens_invariants none
+                    no_unwind
+                {
+                    return self.ato.fetch_nand(n, Ordering::SeqCst);
+                }
 
+            }
         }
     };
 }
@@ -656,17 +781,16 @@ make_signed_integer_atomic!(
 
 atomic_types_generic!(PAtomicPtr, PermissionPtr, PermissionDataPtr, AtomicPtr<T>, *mut T);
 
-#[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
-impl<T> PAtomicPtr<T> {
-    atomic_common_methods!(
-        PAtomicPtr::<T>,
-        PermissionPtr::<T>,
-        PermissionDataPtr::<T>,
-        AtomicPtr::<T>,
-        *mut T,
-        [ .view().addr ]
-    );
-}
+atomic_common_methods!(
+    PAtomicPtr::<T>,
+    PermissionPtr::<T>,
+    PermissionDataPtr::<T>,
+    AtomicPtr::<T>,
+    *mut T,
+    [ .view().addr ],
+    PAtomicPtr,
+    T
+);
 
 verus! {
 

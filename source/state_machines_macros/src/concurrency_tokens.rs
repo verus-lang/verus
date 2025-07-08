@@ -371,6 +371,9 @@ pub fn output_token_types_and_fns(
         }
     }
 
+    let insttype = inst_type(&bundle.sm);
+    let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
+
     let mut errors = Vec::new();
     for tr in &bundle.sm.transitions {
         if tr.kind == TransitionKind::ReadonlyTransition {
@@ -379,7 +382,13 @@ pub fn output_token_types_and_fns(
 
         match exchange_stream(bundle, tr, safety_condition_lemmas) {
             Ok(stream) => {
-                inst_impl_token_stream.extend(stream);
+                token_stream.extend(quote! {
+                    ::builtin_macros::verus!{
+                        #impldecl {
+                            #stream
+                        }
+                    }
+                });
             }
             Err(err) => {
                 errors.push(err);
@@ -388,8 +397,6 @@ pub fn output_token_types_and_fns(
     }
     combine_errors_or_ok(errors)?;
 
-    let insttype = inst_type(&bundle.sm);
-    let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     let copy_impl = trusted_copy(&insttype, &bundle.sm.generics);
 
     token_stream.extend(quote! {
@@ -1020,16 +1027,14 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        ::builtin_macros::verus!{
-            #[cfg(verus_keep_ghost_body)]
-            #[verifier::external_body] /* vattr */
-            pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
-                #req_stream
-                #ens_stream
-            {
-                #extra_deps
-                ::core::unimplemented!();
-            }
+        #[cfg(verus_keep_ghost_body)]
+        #[verifier::external_body] /* vattr */
+        pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
+            #req_stream
+            #ens_stream
+        {
+            #extra_deps
+            ::core::unimplemented!();
         }
     });
 }

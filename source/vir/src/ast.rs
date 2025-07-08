@@ -548,7 +548,7 @@ pub enum HeaderExprX {
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     /// (regular ensures, default ensures)
-    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
+    Ensures(Option<(VarIdent, Option<Typ>)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
