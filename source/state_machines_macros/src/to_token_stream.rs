@@ -44,6 +44,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     output_other_fns(
         &bundle,
+        &mut root_stream,
         &mut impl_stream,
         &bundle.extras.invariants,
         &bundle.extras.lemmas,
@@ -1071,11 +1072,13 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
 
 fn output_other_fns(
     bundle: &SMBundle,
+    root_stream: &mut TokenStream,
     impl_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
     normal_fns: &Vec<ImplItemFn>,
 ) {
+    let impl_decl = impl_decl_stream(&get_self_ty(&bundle.sm), &bundle.sm.generics);
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
         quote! { true }
@@ -1098,7 +1101,14 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        impl_stream.extend(quote! { #[cfg(verus_keep_ghost_body)] ::builtin_macros::verus!{ #f } });
+        root_stream.extend(quote! {
+            ::builtin_macros::verus!{
+                #impl_decl{
+                    #[cfg(verus_keep_ghost_body)]
+                    #f
+                }
+            }
+        });
     }
 
     for inv in invariants {
@@ -1126,9 +1136,13 @@ fn output_other_fns(
         let span = f.sig.span(); // TODO better span choice
         set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
-        impl_stream.extend(quote! {
-          #[cfg(verus_keep_ghost_body)]
-          ::builtin_macros::verus!{ #f }
+        root_stream.extend(quote! {
+          ::builtin_macros::verus!{
+            #impl_decl{
+                #[cfg(verus_keep_ghost_body)]
+                #f
+            }
+        }
         })
     }
 
@@ -1137,9 +1151,11 @@ fn output_other_fns(
         iim.to_tokens(&mut normal_fn_stream);
     }
 
-    impl_stream.extend(quote! {
+    root_stream.extend(quote! {
         ::builtin_macros::verus!{
-            #normal_fn_stream
+            #impl_decl{
+                #normal_fn_stream
+            }
         }
     });
 }
