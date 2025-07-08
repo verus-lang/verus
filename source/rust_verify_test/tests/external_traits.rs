@@ -524,6 +524,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_extension_trait_impl_axioms verus_code! {
+        #[verifier::external]
+        trait T {}
+        #[verifier::external]
+        impl T for u32 {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+            type ExternalTraitSpecificationFor: T;
+        }
+        impl TSpecImpl for u32 {
+        }
+
+        uninterp spec fn f<A>(x: A) -> bool;
+
+        broadcast proof fn p<A: TSpec>(x: A)
+            ensures #[trigger] f(x)
+        {
+            admit();
+        }
+
+        proof fn test1() {
+            assert(f(5u32)); // FAILS
+        }
+
+        proof fn test2() {
+            broadcast use p;
+            assert(f(5u32));
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_trait_auto_import verus_code! {
         #[verifier::external]
         trait T {}
