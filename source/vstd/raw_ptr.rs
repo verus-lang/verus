@@ -325,6 +325,7 @@ impl<T> PointsTo<[T]> {
     pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
         requires
             start_index + len <= self.mem_contents_seq().len(),
+            self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX,
         ensures
             sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
                 PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },

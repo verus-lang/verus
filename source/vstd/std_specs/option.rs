@@ -28,15 +28,18 @@ impl<T: DeepView> DeepView for Option<T> {
 
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
+    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Some(&self) -> bool;
-
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
+    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Some_0(&self) -> T;
 
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
+    // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_None(&self) -> bool;
 
