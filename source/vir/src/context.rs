@@ -312,6 +312,9 @@ impl GlobalCtx {
             trait_impl_map.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
         }
         for trait_impl in &krate.trait_impls {
+            if trait_impl.x.external_trait_blanket {
+                continue;
+            }
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
@@ -319,7 +322,7 @@ impl GlobalCtx {
                 for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
                     if let ImplPath::TraitImplPath(imp) = imp {
                         if let Some(candidate) = trait_impl_map.get(imp) {
-                            if &candidate.x.trait_path == t {
+                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
                                 candidates.push(candidate.clone());
                             }
                         }
@@ -374,6 +377,9 @@ impl GlobalCtx {
             }
         }
         for t in &krate.trait_impls {
+            if t.x.external_trait_blanket {
+                continue;
+            }
             // Heuristic: put trait impls first, because they are likely to precede
             // many functions that rely on them.
             func_call_graph
