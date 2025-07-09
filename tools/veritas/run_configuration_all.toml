@@ -57,3 +57,25 @@ git_url = "https://github.com/verus-lang/verified-node-replication.git"
 revspec = "main"
 crate_root = "verified-node-replication/src/lib.rs"
 extra_args = ["--crate-type=dylib"]
+
+[[project]]
+name = "vest"
+git_url = "https://github.com/secure-foundations/vest.git"
+revspec = "main"
+crate_root = "vest/src/lib.rs"
+
+[[project]]
+name = "vest-tls"
+git_url = "https://github.com/secure-foundations/vest.git"
+revspec = "main"
+crate_root = "vest-dsl/tls/src/lib.rs"
+extra_args = [
+    "--import", "vest=../../vest/vest.verusdata",
+    "--extern", "vest=../../vest/libvest.rlib",
+    "--rlimit", "50",
+]
+prepare_script = """
+pushd ../../vest
+make
+popd
+"""
