@@ -245,40 +245,66 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+impl<T: super::core::PartialEqSpec> super::core::PartialEqSpecImpl for Option<T> {
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Option<T>) -> bool {
+        match (self, other) {
+            (None, None) => true,
+            (Some(x), Some(y)) => x.eq_spec(y),
+            _ => false,
+        }
+    }
+}
+
 pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
     x: &Option<T>,
     y: &Option<T>,
-) -> (res: bool)
-    ensures
-        (match (x, y) {
-            (None, None) => res,
-            (Some(xx), Some(yy)) => call_ensures(T::eq, (xx, yy), res),
-            _ => !res,
-        }),
+) -> bool
 ;
+
+impl<T: super::core::PartialOrdSpec> super::core::PartialOrdSpecImpl for Option<T> {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        T::obeys_partial_cmp_spec()
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &Option<T>) -> Option<core::cmp::Ordering> {
+        match (self, other) {
+            (None, None) => Some(core::cmp::Ordering::Equal),
+            (None, Some(_)) => Some(core::cmp::Ordering::Less),
+            (Some(_), None) => Some(core::cmp::Ordering::Greater),
+            (Some(x), Some(y)) => x.partial_cmp_spec(y),
+        }
+    }
+}
 
 pub assume_specification<T: PartialOrd>[ <Option<T> as PartialOrd>::partial_cmp ](
     x: &Option<T>,
     y: &Option<T>,
-) -> (res: Option<core::cmp::Ordering>)
-    ensures
-        (match (x, y) {
-            (None, None) => res == Some(core::cmp::Ordering::Equal),
-            (None, Some(_)) => res == Some(core::cmp::Ordering::Less),
-            (Some(_), None) => res == Some(core::cmp::Ordering::Greater),
-            (Some(xx), Some(yy)) => call_ensures(T::partial_cmp, (xx, yy), res),
-        }),
+) -> Option<core::cmp::Ordering>
 ;
 
-pub assume_specification<T: Ord>[ <Option<T> as Ord>::cmp ](x: &Option<T>, y: &Option<T>) -> (res:
-    core::cmp::Ordering)
-    ensures
-        (match (x, y) {
-            (None, None) => res == core::cmp::Ordering::Equal,
-            (None, Some(_)) => res == core::cmp::Ordering::Less,
-            (Some(_), None) => res == core::cmp::Ordering::Greater,
-            (Some(xx), Some(yy)) => call_ensures(T::cmp, (xx, yy), res),
-        }),
+impl<T: super::core::OrdSpec> super::core::OrdSpecImpl for Option<T> {
+    open spec fn obeys_cmp_spec() -> bool {
+        T::obeys_cmp_spec()
+    }
+
+    open spec fn cmp_spec(&self, other: &Option<T>) -> core::cmp::Ordering {
+        match (self, other) {
+            (None, None) => core::cmp::Ordering::Equal,
+            (None, Some(_)) => core::cmp::Ordering::Less,
+            (Some(_), None) => core::cmp::Ordering::Greater,
+            (Some(x), Some(y)) => x.cmp_spec(y),
+        }
+    }
+}
+
+pub assume_specification<T: Ord>[ <Option<T> as Ord>::cmp ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> core::cmp::Ordering
 ;
 
 // ok_or

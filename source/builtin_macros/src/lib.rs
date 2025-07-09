@@ -28,6 +28,7 @@ mod topological_sort;
 mod unerased_proxies;
 
 decl_derive!([Structural] => structural::derive_structural);
+decl_derive!([StructuralEq] => structural::derive_structural_eq);
 
 decl_attribute! {
     [is_variant] =>

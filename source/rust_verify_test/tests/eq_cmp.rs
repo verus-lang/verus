@@ -7,15 +7,15 @@ test_verify_one_file! {
     #[test] eq_cmp1 verus_code! {
         use vstd::laws_eq::*;
         use vstd::laws_cmp::*;
+        use vstd::std_specs::core::{OrdSpec, PartialEqSpec, PartialOrdSpec};
         use core::cmp::Ordering;
 
-        fn test_eq<T: Ord>(x: &T, y: &T) -> (r: bool)
+        fn test_eq<T: PartialEqSpec + PartialOrdSpec + OrdSpec>(x: &T, y: &T) -> (r: bool)
             requires
                 obeys_cmp_spec::<T>(),
             ensures
-                r <==> eq_result(*x, *y),
+                r <==> x.eq_spec(y),
         {
-            reveal(obeys_eq_partial_eq);
             reveal(obeys_cmp_partial_ord);
             reveal(obeys_cmp_ord);
 
@@ -28,13 +28,12 @@ test_verify_one_file! {
             true
         }
 
-        fn test_eq_wrong<T: Ord>(x: &T, y: &T) -> (r: bool)
+        fn test_eq_wrong<T: PartialEqSpec + PartialOrdSpec + Ord>(x: &T, y: &T) -> (r: bool)
             requires
                 obeys_cmp_spec::<T>(),
             ensures
-                r <==> eq_result(*x, *y),
+                r <==> x.eq_spec(y),
         {
-            reveal(obeys_eq_partial_eq);
             reveal(obeys_cmp_partial_ord);
             reveal(obeys_cmp_ord);
 
@@ -48,8 +47,6 @@ test_verify_one_file! {
         }
 
         fn test() {
-            reveal(obeys_eq_partial_eq);
-
             let b = test_eq(&Some(5u8), &Some(4u8 + 1));
             assert(b);
 
@@ -67,6 +64,15 @@ test_verify_one_file! {
                 self.0 == other.0 && self.1 == other.1
             }
         }
+        impl vstd::std_specs::core::PartialEqSpecImpl for P {
+            closed spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            closed spec fn eq_spec(&self, other: &P) -> bool {
+                self == other
+            }
+        }
         impl Eq for P {
         }
 
@@ -75,8 +81,6 @@ test_verify_one_file! {
                 #[trigger] obeys_eq_spec::<P>(),
         {
             reveal(obeys_eq_spec_properties);
-            reveal(obeys_eq_partial_eq);
-            lemma_ensures_partial_eq(|x: P, y: P| x == y);
         }
 
         broadcast proof fn lemma_s_obeys_concrete_eq()
@@ -91,7 +95,7 @@ test_verify_one_file! {
             assert(!b);
         }
 
-        #[derive(PartialEq, Eq, Structural)]
+        #[derive(PartialEq, Eq, StructuralEq)]
         struct S(u8, bool);
 
         fn check_eq<T: Eq>(x: &T, y: &T) -> (b: bool)

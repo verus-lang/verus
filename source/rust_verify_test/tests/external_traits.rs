@@ -387,14 +387,14 @@ test_verify_one_file! {
         use vstd::std_specs::core::PartialEqSpec;
         broadcast proof fn axiom_spec_eq_u8(x: u8, y: u8)
             ensures
-                #[trigger] x.spec_eq(&y) <==> x == y,
+                #[trigger] x.eq_spec(&y) <==> x == y,
         {
             admit();
         }
         fn test(u: u8, v: u8) {
             broadcast use axiom_spec_eq_u8;
-            assert(u.spec_eq(&u));
-            assert(u.spec_eq(&v)); // FAILS
+            assert(u.eq_spec(&u));
+            assert(u.eq_spec(&v)); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
