@@ -59,6 +59,13 @@ impl PathX {
             _ => false,
         }
     }
+
+    pub fn is_vstd_path(&self) -> bool {
+        match &self.krate {
+            Some(k) if &**k == "vstd" => true,
+            _ => false,
+        }
+    }
 }
 
 pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
