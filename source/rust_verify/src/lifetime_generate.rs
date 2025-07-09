@@ -3210,6 +3210,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Impl(impll) => {
+                            if vattrs.external_trait_blanket {
+                                continue;
+                            }
                             erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
                         ItemKind::TraitAlias(_, _, _) => {

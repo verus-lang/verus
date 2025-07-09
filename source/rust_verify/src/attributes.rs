@@ -962,7 +962,6 @@ pub(crate) struct ExternalAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) external_trait_specification: bool,
-    pub(crate) external_trait_blanket: bool,
     pub(crate) sets_mode: bool,
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
@@ -1081,7 +1080,6 @@ pub(crate) fn get_external_attrs(
         external_fn_specification: false,
         external_type_specification: false,
         external_trait_specification: false,
-        external_trait_blanket: false,
         external: false,
         verify: false,
         sets_mode: false,
@@ -1106,7 +1104,6 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
-            Attr::ExternalTraitBlanket => es.external_trait_blanket = true,
             Attr::ExternalAutoDerives(None) => {
                 es.external_auto_derives = AutoDerivesAttr::AllExternal
             }
