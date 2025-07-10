@@ -33,13 +33,13 @@ pub enum VerusExtern {
 
 fn verus_builtin_std() -> Box<[(VerusExtern, &'static str, String)]> {
     vec![
-        (VerusExtern::Macros, "builtin_macros", format!("{LIB_PRE}builtin_macros.{LIB_DL}")),
+        (VerusExtern::Macros, "verus_builtin_macros", format!("{LIB_PRE}verus_builtin_macros.{LIB_DL}")),
         (
             VerusExtern::Macros,
             "verus_state_machines_macros",
             format!("{LIB_PRE}verus_state_machines_macros.{LIB_DL}"),
         ),
-        (VerusExtern::Builtin, "builtin", format!("libbuiltin.rlib")),
+        (VerusExtern::Builtin, "verus_builtin", format!("libverus_builtin.rlib")),
         (VerusExtern::Vstd, "vstd", format!("libvstd.rlib")),
     ]
     .into_boxed_slice()

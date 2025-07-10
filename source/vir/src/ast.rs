@@ -337,7 +337,7 @@ pub enum UnaryOp {
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
     Clip { range: IntRange, truncate: bool },
-    /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
+    /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
     CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode, kind: ModeCoercion },
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
@@ -351,9 +351,9 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
-    /// Used only for handling builtin::strslice_len
+    /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Used only for handling builtin::strslice_is_ascii
+    /// Used only for handling verus_builtin::strslice_is_ascii
     StrIsAscii,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
@@ -380,7 +380,7 @@ pub struct FieldOpr {
     pub datatype: Dt,
     pub variant: Ident,
     pub field: Ident,
-    /// Does this come from a get_variant_field / get_union_field builtin?
+    /// Does this come from a get_variant_field / get_union_field verus_builtin?
     /// (This is relevant for mode-checking.)
     pub get_variant: bool,
     pub check: VariantCheck,
@@ -492,7 +492,7 @@ pub enum BinaryOp {
     Xor,
     /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
-    /// the is_smaller_than builtin, used for decreases (true for <, false for ==)
+    /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
@@ -506,9 +506,9 @@ pub enum BinaryOp {
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
-    /// Used only for handling builtin::strslice_get_char
+    /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Used only for handling builtin::array_index
+    /// Used only for handling verus_builtin::array_index
     ArrayIndex,
 }
 

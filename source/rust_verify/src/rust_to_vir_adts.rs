@@ -646,8 +646,8 @@ pub(crate) fn check_item_external<'tcx>(
         ctxt.verus_items.id_to_name.get(&external_def_id),
         Some(crate::verus_items::VerusItem::External(_))
     );
-    if !is_builtin_external && path.krate == Some(Arc::new("builtin".to_string())) {
-        return err_span(span, "cannot apply `external_type_specification` to Verus builtin types");
+    if !is_builtin_external && path.krate == Some(Arc::new("verus_builtin".to_string())) {
+        return err_span(span, "cannot apply `external_type_specification` to Verus verus_builtin types");
     }
 
     let proxy_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, proxy_adt_def.did());

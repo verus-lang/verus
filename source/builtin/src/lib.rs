@@ -15,7 +15,7 @@
 use core::marker::PhantomData;
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::admit"]
+#[rustc_diagnostic_item = "verus::verus_builtin::admit"]
 #[verifier::proof]
 pub fn admit() {
     unimplemented!();
@@ -23,7 +23,7 @@ pub fn admit() {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::no_method_body"]
+#[rustc_diagnostic_item = "verus::verus_builtin::no_method_body"]
 #[verifier::proof]
 pub fn no_method_body() -> ! {
     unimplemented!()
@@ -31,7 +31,7 @@ pub fn no_method_body() -> ! {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::requires"]
+#[rustc_diagnostic_item = "verus::verus_builtin::requires"]
 #[verifier::proof]
 pub fn requires<A>(_a: A) {
     unimplemented!();
@@ -39,7 +39,7 @@ pub fn requires<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::ensures"]
+#[rustc_diagnostic_item = "verus::verus_builtin::ensures"]
 #[verifier::proof]
 pub fn ensures<A>(_a: A) {
     unimplemented!();
@@ -47,7 +47,7 @@ pub fn ensures<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::returns"]
+#[rustc_diagnostic_item = "verus::verus_builtin::returns"]
 #[verifier::proof]
 pub fn returns<A>(_a: A) {
     unimplemented!();
@@ -55,7 +55,7 @@ pub fn returns<A>(_a: A) {
 
 // Can only appear at beginning of spec function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::recommends"]
+#[rustc_diagnostic_item = "verus::verus_builtin::recommends"]
 #[verifier::proof]
 pub fn recommends<A>(_a: A) {
     unimplemented!();
@@ -63,7 +63,7 @@ pub fn recommends<A>(_a: A) {
 
 // Can only appear at beginning of loop body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::invariant_except_break"]
+#[rustc_diagnostic_item = "verus::verus_builtin::invariant_except_break"]
 #[verifier::proof]
 pub fn invariant_except_break<A>(_a: A) {
     unimplemented!();
@@ -71,7 +71,7 @@ pub fn invariant_except_break<A>(_a: A) {
 
 // Can only appear at beginning of loop body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::invariant"]
+#[rustc_diagnostic_item = "verus::verus_builtin::invariant"]
 #[verifier::proof]
 pub fn invariant<A>(_a: A) {
     unimplemented!();
@@ -79,7 +79,7 @@ pub fn invariant<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::decreases"]
+#[rustc_diagnostic_item = "verus::verus_builtin::decreases"]
 #[verifier::proof]
 pub fn decreases<A>(_a: A) {
     unimplemented!();
@@ -89,14 +89,14 @@ pub fn decreases<A>(_a: A) {
 // decrease_when is automatically added to list of recommends
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
-#[rustc_diagnostic_item = "verus::builtin::decreases_when"]
+#[rustc_diagnostic_item = "verus::verus_builtin::decreases_when"]
 pub fn decreases_when(_b: bool) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::decreases_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::decreases_by"]
 #[verifier::proof]
 pub fn decreases_by<F>(_f: F) {
     unimplemented!();
@@ -104,7 +104,7 @@ pub fn decreases_by<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::recommends_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::recommends_by"]
 #[verifier::proof]
 pub fn recommends_by<F>(_f: F) {
     unimplemented!();
@@ -112,7 +112,7 @@ pub fn recommends_by<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::extra_dependency"]
+#[rustc_diagnostic_item = "verus::verus_builtin::extra_dependency"]
 #[verifier::proof]
 pub fn extra_dependency<F>(_f: F) {
     unimplemented!();
@@ -120,7 +120,7 @@ pub fn extra_dependency<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::opens_invariants_none"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_none"]
 #[verifier::proof]
 pub fn opens_invariants_none() {
     unimplemented!();
@@ -128,7 +128,7 @@ pub fn opens_invariants_none() {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::opens_invariants_any"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_any"]
 #[verifier::proof]
 pub fn opens_invariants_any() {
     unimplemented!();
@@ -136,7 +136,7 @@ pub fn opens_invariants_any() {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::opens_invariants"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants"]
 #[verifier::proof]
 pub fn opens_invariants<A>(_a: A) {
     unimplemented!();
@@ -144,7 +144,7 @@ pub fn opens_invariants<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::opens_invariants_except"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_except"]
 #[verifier::proof]
 pub fn opens_invariants_except<A>(_a: A) {
     unimplemented!();
@@ -152,33 +152,33 @@ pub fn opens_invariants_except<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::opens_invariants_set"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_set"]
 #[verifier::proof]
 pub fn opens_invariants_set<A>(_a: A) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::no_unwind"]
+#[rustc_diagnostic_item = "verus::verus_builtin::no_unwind"]
 #[verifier::proof]
 pub fn no_unwind() {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::no_unwind_when"]
+#[rustc_diagnostic_item = "verus::verus_builtin::no_unwind_when"]
 #[verifier::proof]
 pub fn no_unwind_when(_b: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_hide"]
 #[verifier::proof]
 pub const fn reveal_hide_(_f: fn(), _n: u32) {}
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal_hide_internal_path"]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_hide_internal_path"]
 pub fn reveal_hide_internal_path_<A>(_x: A) {
     unimplemented!();
 }
@@ -186,28 +186,28 @@ pub fn reveal_hide_internal_path_<A>(_x: A) {
 /// Mark an ensures clause in a trait as applying just to the default implementation,
 /// not the trait declaration in general
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::default_ensures"]
+#[rustc_diagnostic_item = "verus::verus_builtin::default_ensures"]
 #[verifier::spec]
 pub fn default_ensures(_b: bool) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::imply"]
+#[rustc_diagnostic_item = "verus::verus_builtin::imply"]
 #[verifier::spec]
 pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::forall"]
+#[rustc_diagnostic_item = "verus::verus_builtin::forall"]
 #[verifier::spec]
 pub fn forall<A>(_a: A) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::exists"]
+#[rustc_diagnostic_item = "verus::verus_builtin::exists"]
 #[verifier::spec]
 pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
@@ -215,7 +215,7 @@ pub fn exists<A>(_a: A) -> bool {
 
 // choose(|x: t| P(x))
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::choose"]
+#[rustc_diagnostic_item = "verus::verus_builtin::choose"]
 #[verifier::spec]
 pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {
     unimplemented!()
@@ -223,7 +223,7 @@ pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {
 
 // let (x1, ..., xn): (t1, ..., tn) = choose_tuple(|x1: t1, ..., xn: tn| P(x1, ..., xn));
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::choose_tuple"]
+#[rustc_diagnostic_item = "verus::verus_builtin::choose_tuple"]
 #[verifier::spec]
 pub fn choose_tuple<A, F>(_f: F) -> A {
     unimplemented!()
@@ -233,7 +233,7 @@ pub fn choose_tuple<A, F>(_f: F) -> A {
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall( |x: int, y: int| with_triggers(  ( (f(x), g(y)), (h(x, y),), (m(y, x),) )  ,  body  ) )
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::with_triggers"]
+#[rustc_diagnostic_item = "verus::verus_builtin::with_triggers"]
 #[verifier::spec]
 pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
     body
@@ -251,119 +251,119 @@ macro_rules! with_triggers {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::equal"]
+#[rustc_diagnostic_item = "verus::verus_builtin::equal"]
 #[verifier::spec]
 pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::ext_equal"]
+#[rustc_diagnostic_item = "verus::verus_builtin::ext_equal"]
 #[verifier::spec]
 pub fn ext_equal<A>(_: A, _: A) -> bool {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::ext_equal_deep"]
+#[rustc_diagnostic_item = "verus::verus_builtin::ext_equal_deep"]
 #[verifier::spec]
 pub fn ext_equal_deep<A>(_: A, _: A) -> bool {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::old"]
+#[rustc_diagnostic_item = "verus::verus_builtin::old"]
 #[verifier::spec]
 pub fn old<A: ?Sized>(_: &mut A) -> &mut A {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::is_variant"]
+#[rustc_diagnostic_item = "verus::verus_builtin::is_variant"]
 #[verifier::spec]
 pub fn is_variant<Adt>(_a: Adt, _variant: &str) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::get_variant_field"]
+#[rustc_diagnostic_item = "verus::verus_builtin::get_variant_field"]
 #[verifier::spec]
 pub fn get_variant_field<Adt, Field>(_a: Adt, _variant: &str, _field: &str) -> Field {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::get_union_field"]
+#[rustc_diagnostic_item = "verus::verus_builtin::get_union_field"]
 #[verifier::spec]
 pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assume_"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assume_"]
 #[verifier::proof]
 pub fn assume_(_: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_"]
 #[verifier::proof]
 pub fn assert_(_: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_by"]
 #[verifier::proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_by_compute"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_by_compute"]
 #[verifier::proof]
 pub fn assert_by_compute(_: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_by_compute_only"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_by_compute_only"]
 #[verifier::proof]
 pub fn assert_by_compute_only(_: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_nonlinear_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_nonlinear_by"]
 #[verifier::proof]
 pub fn assert_nonlinear_by(_: ()) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_bitvector_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_bitvector_by"]
 #[verifier::proof]
 pub fn assert_bitvector_by(_: ()) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_forall_by"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_forall_by"]
 #[verifier::proof]
 pub fn assert_forall_by<A>(_a: A) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::assert_bit_vector"]
+#[rustc_diagnostic_item = "verus::verus_builtin::assert_bit_vector"]
 #[verifier::proof]
 pub fn assert_bit_vector(_: bool) {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::use_type_invariant"]
+#[rustc_diagnostic_item = "verus::verus_builtin::use_type_invariant"]
 #[verifier::proof]
 pub fn use_type_invariant<A>(_a: A) {
     unimplemented!();
@@ -373,14 +373,14 @@ pub fn use_type_invariant<A>(_a: A) {
 // Ghost, Tracked
 //
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Ghost")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Ghost")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
 pub struct Ghost<A> {
     phantom: PhantomData<A>,
 }
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Tracked")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
 pub struct Tracked<A> {
@@ -395,14 +395,14 @@ impl<A> core::fmt::Debug for Tracked<A> {
 
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Ghost::view"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Ghost::new"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::new"]
     #[verifier::spec]
     #[verifier::external_body]
     pub const fn new(_a: A) -> Ghost<A> {
@@ -429,7 +429,7 @@ impl<A> Ghost<A> {
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the Borrow trait
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Ghost::borrow"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::borrow"]
     #[verifier::spec]
     #[verifier::external_body]
     pub fn borrow(&self) -> &A {
@@ -441,7 +441,7 @@ impl<A> Ghost<A> {
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the BorrowMut trait
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Ghost::borrow_mut"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::borrow_mut"]
     #[verifier::proof]
     #[verifier::external]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
@@ -454,14 +454,14 @@ impl<A> Ghost<A> {
 
 impl<A> Tracked<A> {
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Tracked::view"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Tracked::new"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::new"]
     #[verifier::proof]
     #[verifier::external_body]
     pub const fn new(#[verifier::proof] _a: A) -> Tracked<A> {
@@ -484,7 +484,7 @@ impl<A> Tracked<A> {
     }
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Tracked::get"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::get"]
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
@@ -494,7 +494,7 @@ impl<A> Tracked<A> {
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the Borrow trait
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Tracked::borrow"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::borrow"]
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
@@ -507,7 +507,7 @@ impl<A> Tracked<A> {
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the BorrowMut trait
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::Tracked::borrow_mut"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::borrow_mut"]
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
@@ -540,7 +540,7 @@ impl<A: Copy> Clone for Tracked<A> {
 impl<A: Copy> Copy for Tracked<A> {}
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
+#[rustc_diagnostic_item = "verus::verus_builtin::ghost_exec"]
 #[verifier::external_body]
 pub const fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
     core::mem::forget(_a);
@@ -548,7 +548,7 @@ pub const fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
+#[rustc_diagnostic_item = "verus::verus_builtin::tracked_exec"]
 #[verifier::external_body]
 pub const fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
     core::mem::forget(_a);
@@ -556,7 +556,7 @@ pub const fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::tracked_exec_borrow"]
+#[rustc_diagnostic_item = "verus::verus_builtin::tracked_exec_borrow"]
 #[verifier::external_body]
 pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A> {
     // TODO: implement this (using unsafe) or mark function as ghost (if supported by Rust)
@@ -567,7 +567,7 @@ pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A
 // int and nat
 //
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::int")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::int")]
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 pub struct int;
@@ -636,7 +636,7 @@ impl core::cmp::Ord for int {
     }
 }
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::nat")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::nat")]
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 pub struct nat;
@@ -700,7 +700,7 @@ impl core::cmp::Ord for nat {
 // Structural
 //
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Structural")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Structural")]
 pub unsafe trait Structural {
     #[doc(hidden)]
     fn assert_receiver_is_structural(&self) -> () {}
@@ -831,7 +831,7 @@ impl<T> AlwaysSyncSend<T> {
 // Marker for integer types (i8 ... u128, isize, usize, nat, int)
 // so that we get reasonable type error messages when someone uses a non-Integer type
 // in an arithmetic operation.
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Integer")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Integer")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub unsafe trait Integer: Copy {
     const CONST_DEFAULT: Self;
@@ -907,7 +907,7 @@ unsafe impl Boolean for bool {
 
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_literal_integer"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_integer"]
 #[allow(non_camel_case_types)]
 #[verifier::spec]
 pub const fn spec_literal_integer<
@@ -921,7 +921,7 @@ pub const fn spec_literal_integer<
 // spec literals of the form "33int",
 // or spec literals in positions syntactically expected to be int (e.g. in "x + 33")
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_literal_int"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_int"]
 #[verifier::spec]
 pub const fn spec_literal_int(_s: &str) -> int {
     int
@@ -929,7 +929,7 @@ pub const fn spec_literal_int(_s: &str) -> int {
 
 // spec literals of the form "33nat"
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_literal_nat"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_nat"]
 #[verifier::spec]
 pub const fn spec_literal_nat(_s: &str) -> nat {
     nat
@@ -937,7 +937,7 @@ pub const fn spec_literal_nat(_s: &str) -> nat {
 
 // Fixed-width add
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::add"]
+#[rustc_diagnostic_item = "verus::verus_builtin::add"]
 #[verifier::spec]
 pub const fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     IntegerType::CONST_DEFAULT
@@ -945,7 +945,7 @@ pub const fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 
 // Fixed-width sub
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::sub"]
+#[rustc_diagnostic_item = "verus::verus_builtin::sub"]
 #[verifier::spec]
 pub const fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     IntegerType::CONST_DEFAULT
@@ -953,7 +953,7 @@ pub const fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 
 // Fixed-width mul
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::mul"]
+#[rustc_diagnostic_item = "verus::verus_builtin::mul"]
 #[verifier::spec]
 pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
     IntegerType::CONST_DEFAULT
@@ -961,14 +961,14 @@ pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 
 // represent "expr as typ", including converting to and from int and nat
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_cast_integer"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_cast_integer"]
 #[verifier::spec]
 pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
     To::CONST_DEFAULT
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_eq"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_eq"]
 #[verifier::spec]
 pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
@@ -976,22 +976,22 @@ pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
 
 pub trait SpecOrd<Rhs = Self> {
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecOrd::spec_lt"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecOrd::spec_lt"]
     #[verifier::spec]
     fn spec_lt(self, rhs: Rhs) -> bool;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecOrd::spec_le"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecOrd::spec_le"]
     #[verifier::spec]
     fn spec_le(self, rhs: Rhs) -> bool;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecOrd::spec_gt"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecOrd::spec_gt"]
     #[verifier::spec]
     fn spec_gt(self, rhs: Rhs) -> bool;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecOrd::spec_ge"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecOrd::spec_ge"]
     #[verifier::spec]
     fn spec_ge(self, rhs: Rhs) -> bool;
 }
@@ -1000,7 +1000,7 @@ pub trait SpecNeg {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecNeg::spec_neg"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecNeg::spec_neg"]
     #[verifier::spec]
     fn spec_neg(self) -> Self::Output;
 }
@@ -1009,7 +1009,7 @@ pub trait SpecAdd<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecAdd::spec_add"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecAdd::spec_add"]
     #[verifier::spec]
     fn spec_add(self, rhs: Rhs) -> Self::Output;
 }
@@ -1018,7 +1018,7 @@ pub trait SpecSub<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecSub::spec_sub"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecSub::spec_sub"]
     #[verifier::spec]
     fn spec_sub(self, rhs: Rhs) -> Self::Output;
 }
@@ -1027,7 +1027,7 @@ pub trait SpecMul<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecMul::spec_mul"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecMul::spec_mul"]
     #[verifier::spec]
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
@@ -1036,7 +1036,7 @@ pub trait SpecEuclideanDiv<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecEuclideanDiv::spec_euclidean_div"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecEuclideanDiv::spec_euclidean_div"]
     #[verifier::spec]
     fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
 }
@@ -1045,7 +1045,7 @@ pub trait SpecEuclideanMod<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecEuclideanMod::spec_euclidean_mod"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecEuclideanMod::spec_euclidean_mod"]
     #[verifier::spec]
     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
 }
@@ -1054,7 +1054,7 @@ pub trait SpecBitAnd<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecBitAnd::spec_bitand"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecBitAnd::spec_bitand"]
     #[verifier::spec]
     fn spec_bitand(self, rhs: Rhs) -> Self::Output;
 }
@@ -1063,7 +1063,7 @@ pub trait SpecBitOr<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecBitOr::spec_bitor"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecBitOr::spec_bitor"]
     #[verifier::spec]
     fn spec_bitor(self, rhs: Rhs) -> Self::Output;
 }
@@ -1072,7 +1072,7 @@ pub trait SpecBitXor<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecBitXor::spec_bitxor"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecBitXor::spec_bitxor"]
     #[verifier::spec]
     fn spec_bitxor(self, rhs: Rhs) -> Self::Output;
 }
@@ -1081,7 +1081,7 @@ pub trait SpecShl<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecShl::spec_shl"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecShl::spec_shl"]
     #[verifier::spec]
     fn spec_shl(self, rhs: Rhs) -> Self::Output;
 }
@@ -1090,7 +1090,7 @@ pub trait SpecShr<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::builtin::SpecShr::spec_shr"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecShr::spec_shr"]
     #[verifier::spec]
     fn spec_shr(self, rhs: Rhs) -> Self::Output;
 }
@@ -1101,49 +1101,49 @@ pub struct SpecChain {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_value"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_value"]
 #[verifier::spec]
 pub fn spec_chained_value<IntegerType: Integer>(_a: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_le"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_le"]
 #[verifier::spec]
 pub fn spec_chained_le<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_lt"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_lt"]
 #[verifier::spec]
 pub fn spec_chained_lt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_ge"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_ge"]
 #[verifier::spec]
 pub fn spec_chained_ge<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_gt"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_gt"]
 #[verifier::spec]
 pub fn spec_chained_gt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_cmp"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_cmp"]
 #[verifier::spec]
 pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::spec_chained_eq"]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_eq"]
 #[verifier::spec]
 pub fn spec_chained_eq<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
     unimplemented!()
@@ -1334,34 +1334,34 @@ impl_binary_op!(SpecShr, spec_shr, Self, [
 ]);
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::strslice_is_ascii"]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_is_ascii"]
 #[verifier::spec]
 pub fn strslice_is_ascii<A>(_a: A) -> bool {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::strslice_len"]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_len"]
 #[verifier::spec]
 pub fn strslice_len<A>(_a: A) -> nat {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::strslice_get_char"]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_get_char"]
 #[verifier::spec]
 pub fn strslice_get_char<A>(_a: A, _i: int) -> char {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal_strlit"]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_strlit"]
 #[verifier::proof]
 pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnSpec")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FnSpec")]
 pub struct FnSpec<Args, Output> {
     phantom: PhantomData<(Args, Output)>,
 }
@@ -1389,7 +1389,7 @@ impl<Args: core::marker::Tuple, Output> Fn<Args> for FnSpec<Args, Output> {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::closure_to_fn_spec"]
+#[rustc_diagnostic_item = "verus::verus_builtin::closure_to_fn_spec"]
 pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
     _f: F,
 ) -> FnSpec<Args, F::Output> {
@@ -1397,13 +1397,13 @@ pub fn closure_to_fn_spec<Args: core::marker::Tuple, F: FnOnce<Args>>(
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::call_requires"]
+#[rustc_diagnostic_item = "verus::verus_builtin::call_requires"]
 pub fn call_requires<Args: core::marker::Tuple, F: FnOnce<Args>>(_f: F, _args: Args) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::call_ensures"]
+#[rustc_diagnostic_item = "verus::verus_builtin::call_ensures"]
 pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
     _f: F,
     _args: Args,
@@ -1415,7 +1415,7 @@ pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
 // Support for proof_fn
 
 /// FnProof is the type of proof closures; the syntax proof_fn is used to wrap FnProof
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProof")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FnProof")]
 pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
     _no_sync_send: NoSyncSend,
     _lifetime: PhantomData<&'a fn(Args) -> Output>,
@@ -1425,7 +1425,7 @@ pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
 }
 
 #[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FOpts")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FOpts")]
 pub struct FOpts<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> {
     _no_sync_send: NoSyncSend,
     _req_ens: PhantomData<ReqEns>,
@@ -1446,21 +1446,21 @@ pub const PROOF_FN_SYNC: u8 = 6;
 
 // tracked
 #[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Trk")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Trk")]
 pub struct Trk;
 
 // ReqEns
 #[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::RqEn")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::RqEn")]
 pub struct RqEn<R>(PhantomData<R>);
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnOnce")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnOnce")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFnOnce {}
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnMut")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFnMut")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFnMut: ProofFnOnce {}
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFn")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ProofFn")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFn: ProofFnMut {}
 
@@ -1477,12 +1477,12 @@ pub trait ProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {}
 pub trait ProofFnReqEnsDef<Args, Output> {
     #[cfg(verus_keep_ghost)]
     #[verifier::spec]
-    #[rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::req"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::ProofFnReqEnsDef::req"]
     fn req(_args: Args) -> bool;
 
     #[cfg(verus_keep_ghost)]
     #[verifier::spec]
-    #[rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::ens"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::ProofFnReqEnsDef::ens"]
     fn ens(_args: Args, _output: Output) -> bool;
 }
 
@@ -1644,7 +1644,7 @@ impl ConfirmTracked for () {}
 // we check ArgModes in the conversion to VIR
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::closure_to_fn_proof")]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::closure_to_fn_proof")]
 pub fn closure_to_fn_proof<
     'a,
     const USAGE: u8,
@@ -1673,43 +1673,43 @@ where
 
 // Intrinsics defined in the AIR prelude related to word-sizes and bounded ints
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::unsigned_max"]
+#[rustc_diagnostic_item = "verus::verus_builtin::unsigned_max"]
 pub fn unsigned_max(_word_bits: nat) -> nat {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::signed_min"]
+#[rustc_diagnostic_item = "verus::verus_builtin::signed_min"]
 pub fn signed_min(_word_bits: nat) -> nat {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::signed_max"]
+#[rustc_diagnostic_item = "verus::verus_builtin::signed_max"]
 pub fn signed_max(_word_bits: nat) -> nat {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::arch_word_bits"]
+#[rustc_diagnostic_item = "verus::verus_builtin::arch_word_bits"]
 pub fn arch_word_bits() -> nat {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::is_smaller_than"]
+#[rustc_diagnostic_item = "verus::verus_builtin::is_smaller_than"]
 pub fn is_smaller_than<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::is_smaller_than_lexicographic"]
+#[rustc_diagnostic_item = "verus::verus_builtin::is_smaller_than_lexicographic"]
 pub fn is_smaller_than_lexicographic<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::is_smaller_than_recursive_function_field"]
+#[rustc_diagnostic_item = "verus::verus_builtin::is_smaller_than_recursive_function_field"]
 pub fn is_smaller_than_recursive_function_field<A, B>(_: A, _: B) -> bool {
     unimplemented!();
 }
@@ -1736,7 +1736,7 @@ macro_rules! decreases_to_internal {
 #[cfg(not(verus_verify_core))]
 macro_rules! decreases_to {
     ($($x:tt)*) => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
+        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::decreases_to_internal!($($x)*))
     };
 }
 
@@ -1744,7 +1744,7 @@ macro_rules! decreases_to {
 #[cfg(verus_verify_core)]
 macro_rules! decreases_to_internal {
     ($($x:expr),* $(,)? => $($y:expr),* $(,)?) => {
-        $crate::builtin::is_smaller_than_lexicographic(($($y,)*), ($($x,)*))
+        $crate::verus_builtin::is_smaller_than_lexicographic(($($y,)*), ($($x,)*))
     }
 }
 
@@ -1752,7 +1752,7 @@ macro_rules! decreases_to_internal {
 #[cfg(verus_verify_core)]
 macro_rules! decreases_to {
     ($($x:tt)*) => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::builtin::decreases_to_internal!($($x)*))
+        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::verus_builtin::decreases_to_internal!($($x)*))
     };
 }
 
@@ -1762,26 +1762,26 @@ pub use decreases_to;
 pub use decreases_to_internal;
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
+#[rustc_diagnostic_item = "verus::verus_builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]
 pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::global_size_of"]
+#[rustc_diagnostic_item = "verus::verus_builtin::global_size_of"]
 #[verifier::spec]
 pub const fn global_size_of<T>(_bytes: usize) {}
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::inline_air_stmt"]
+#[rustc_diagnostic_item = "verus::verus_builtin::inline_air_stmt"]
 #[verifier::proof]
 pub fn inline_air_stmt(_s: &str) {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::array_index"]
+#[rustc_diagnostic_item = "verus::verus_builtin::array_index"]
 #[verifier::spec]
 pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()

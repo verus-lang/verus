@@ -186,7 +186,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                         Some(VerusRoot { path, in_vargo: false })
                     } else {
                         // TODO suppress warning when building verus itself
-                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the verus_builtin and vstd crates are likely missing");
                         None
                     }
                 })
