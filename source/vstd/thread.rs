@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 use super::pervasive::*;
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use core::marker;
 
 verus! {

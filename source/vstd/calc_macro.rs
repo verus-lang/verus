@@ -49,7 +49,7 @@ verus! {
 #[macro_export]
 macro_rules! calc {
     ($($tt:tt)*) => {
-        ::builtin_macros::calc_proc_macro!($($tt)*)
+        ::verus_builtin_macros::calc_proc_macro!($($tt)*)
     };
 }
 
