@@ -754,3 +754,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_const_fn_eval_via_proxy code!{
+        use vstd::prelude::*;
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        pub const fn const_fn(x: u64) -> u64 {
+            x
+        }
+
+        pub const X: u64 = const_fn(1);
+    } => Ok(())
+}
