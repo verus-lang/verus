@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::case_on_init;

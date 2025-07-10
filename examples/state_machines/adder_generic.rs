@@ -1,6 +1,6 @@
 // rust_verify/tests/example.rs expect-warnings
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 use vstd::{pervasive::*, *};
 
 use verus_state_machines_macros::state_machine;

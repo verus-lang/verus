@@ -1,6 +1,6 @@
 // rust_verify/tests/example.rs expect-warnings
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use verus_state_machines_macros::*;
 use vstd::prelude::*;
 
