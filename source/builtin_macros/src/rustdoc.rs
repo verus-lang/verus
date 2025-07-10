@@ -236,7 +236,7 @@ fn encoded_sig_info(sig: &Signature) -> String {
     let broadcast = sig.broadcast.is_some();
 
     // JSON blob is parsed by the verusdoc post-processor into a `DocModeInfo` object.
-    // I decided not to pull in serde as a dependency for builtin_macros,
+    // I decided not to pull in serde as a dependency for verus_builtin_macros,
     // but if serialization gets too complicated, we should probably do that instead.
 
     // We put it in a comment to avoid extra syntax highlighting or anything that would

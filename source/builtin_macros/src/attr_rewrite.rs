@@ -624,7 +624,7 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> sy
     let stmts = vec![
         syn::Stmt::Expr(
             syn::Expr::Verbatim(
-                quote_spanned_builtin!(builtin, span => #builtin::requires([false])),
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
             ),
             Some(syn::token::Semi { spans: [span] }),
         ),

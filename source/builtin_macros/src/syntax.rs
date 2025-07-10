@@ -289,10 +289,10 @@ impl ProofFnTypeArg {
         let s = s.map(|s| format_ident!("{}", s));
         let stream = match (self, s, n) {
             (ProofFnTypeArg::ReqEns(t), Some(s), None) => {
-                quote_spanned_builtin!(builtin, span => #builtin::#s<#t>)
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::#s<#t>)
             }
             (_, Some(s), _) => {
-                quote_spanned_builtin!(builtin, span => #builtin::#s)
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::#s)
             }
             (_, _, Some(n)) => {
                 quote_spanned!(span => #n)
@@ -448,7 +448,7 @@ fn merge_default_ensures(
     let DefaultEnsures { token, mut exprs } = default_ensures;
     for expr in exprs.exprs.iter_mut() {
         let span = expr.span();
-        *expr = parse_quote_spanned_builtin!(builtin, span => #builtin::default_ensures(#expr));
+        *expr = parse_quote_spanned_builtin!(verus_builtin, span => #verus_builtin::default_ensures(#expr));
     }
     if let Some(mut ensures) = ensures {
         for expr in exprs.exprs.into_iter() {
@@ -528,7 +528,7 @@ impl Visitor {
                 }
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
+                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::requires([#exprs])),
                     ),
                     Some(Semi { spans: [token.span] }),
                 ));
@@ -540,14 +540,14 @@ impl Visitor {
                     self.visit_expr_mut(expr);
                 }
                 spec_stmts.push(Stmt::Expr(
-                    Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
+                    Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::recommends([#exprs]))),
                     Some(Semi { spans: [token.span] }),
                 ));
             }
             if let Some((via_token, via_expr)) = via {
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::recommends_by(#via_expr)),
+                        quote_spanned_builtin!(verus_builtin, via_expr.span() => #verus_builtin::recommends_by(#via_expr)),
                     ),
                     Some(Semi { spans: [via_token.span] }),
                 ));
@@ -587,7 +587,7 @@ impl Visitor {
                                 }
                                 ExtractQuantTriggersFound::Triggers(tuple) => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #e)),
+                                        quote_spanned_builtin!(verus_builtin, span => #verus_builtin::with_triggers(#tuple, #e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::None => unreachable!(),
@@ -612,14 +612,14 @@ impl Visitor {
                         }
                         spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])),
                             ),
                             Some(Semi { spans: [token.span] }),
                         ));
                     } else {
                         spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures([#exprs])),
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])),
                             ),
                             Some(Semi { spans: [token.span] }),
                         ));
@@ -634,7 +634,7 @@ impl Visitor {
                 }
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
+                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::returns([#exprs])),
                     ),
                     Some(Semi { spans: [token.span] }),
                 ));
@@ -653,7 +653,7 @@ impl Visitor {
             }
             spec_stmts.push(Stmt::Expr(
                 Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, token.span => #builtin::decreases((#exprs))),
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::decreases((#exprs))),
                 ),
                 Some(Semi { spans: [token.span] }),
             ));
@@ -661,7 +661,7 @@ impl Visitor {
                 self.visit_expr_mut(&mut when_expr);
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::decreases_when(#when_expr)),
+                        quote_spanned_builtin!(verus_builtin, when_expr.span() => #verus_builtin::decreases_when(#when_expr)),
                     ),
                     Some(Semi { spans: [when_token.span] }),
                 ));
@@ -669,7 +669,7 @@ impl Visitor {
             if let Some((via_token, via_expr)) = via {
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::decreases_by(#via_expr)),
+                        quote_spanned_builtin!(verus_builtin, via_expr.span() => #verus_builtin::decreases_by(#via_expr)),
                     ),
                     Some(Semi { spans: [via_token.span] }),
                 ));
@@ -680,7 +680,7 @@ impl Visitor {
                 InvariantNameSet::Any(any) => {
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, any.span() => #builtin::opens_invariants_any()),
+                            quote_spanned_builtin!(verus_builtin, any.span() => #verus_builtin::opens_invariants_any()),
                         ),
                         Some(Semi { spans: [any.span()] }),
                     ));
@@ -688,7 +688,7 @@ impl Visitor {
                 InvariantNameSet::None(none) => {
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, none.span() => #builtin::opens_invariants_none()),
+                            quote_spanned_builtin!(verus_builtin, none.span() => #verus_builtin::opens_invariants_none()),
                         ),
                         Some(Semi { spans: [none.span()] }),
                     ));
@@ -699,7 +699,7 @@ impl Visitor {
                     }
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, bracket_token.span.join() => #builtin::opens_invariants([#exprs])),
+                            quote_spanned_builtin!(verus_builtin, bracket_token.span.join() => #verus_builtin::opens_invariants([#exprs])),
                         ),
                         Some(Semi { spans: [bracket_token.span.close()] }),
                     ));
@@ -708,7 +708,7 @@ impl Visitor {
                     self.visit_expr_mut(&mut expr);
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, expr.span() => #builtin::opens_invariants_set(#expr)),
+                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set(#expr)),
                         ),
                         Some(Semi { spans: [expr.span()] }),
                     ));
@@ -721,14 +721,14 @@ impl Visitor {
                 self.visit_expr_mut(&mut when_expr);
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::no_unwind_when(#when_expr)),
+                        quote_spanned_builtin!(verus_builtin, when_expr.span() => #verus_builtin::no_unwind_when(#when_expr)),
                     ),
                     Some(Semi { spans: [when_token.span] }),
                 ));
             } else {
                 spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span() => #builtin::no_unwind()),
+                        quote_spanned_builtin!(verus_builtin, token.span() => #verus_builtin::no_unwind()),
                     ),
                     Some(Semi { spans: [token.span] }),
                 ));
@@ -1260,7 +1260,7 @@ impl Visitor {
                     (true, vec![])
                 } else {
                     let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
+                        quote_spanned_builtin!(verus_builtin, span => #verus_builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #verus_builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
                     ), None)).collect();
                     let mut attrs = attrs.clone();
                     if self.inside_ghost == 0 {
@@ -1455,15 +1455,15 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { builtin, vstd, span =>
+                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
-                                    #builtin::global_size_of::<#type_>(#size_lit);
+                                    #verus_builtin::global_size_of::<#type_>(#size_lit);
 
                                     #static_assert_size
                                     #static_assert_align
                                 };
 
-                                ::builtin_macros::verus! {
+                                ::verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -1496,7 +1496,7 @@ impl Visitor {
                         *item = Item::Verbatim(quote! { const _: () = (); });
                     } else {
                         let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
+                            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #verus_builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
                         ), None)).collect();
                         let block =
                             Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
@@ -1709,14 +1709,14 @@ impl Visitor {
                                 == Some("cfg".to_string())
                         })
                         .collect();
-                    let block = Expr::Verbatim(quote_spanned_builtin!(builtin, span => {
+                    let block = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => {
                         #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
-                            #builtin::reveal_hide_internal_path_(#path)
+                            #verus_builtin::reveal_hide_internal_path_(#path)
                         } __VERUS_REVEAL_INTERNAL__
                     }));
                     let one = Expr::Verbatim(quote_spanned!(span => 1));
-                    let mut expr: Expr = parse_quote_spanned_builtin!(builtin, span =>
-                        #builtin::reveal_hide_(#block, #one)
+                    let mut expr: Expr = parse_quote_spanned_builtin!(verus_builtin, span =>
+                        #verus_builtin::reveal_hide_(#block, #one)
                     );
                     expr.replace_attrs(attrs);
                     let stmt = Stmt::Expr(expr, Some(Token![;](span)));
@@ -1941,12 +1941,12 @@ impl Visitor {
 
         let span = cur_expr.span();
         let mut toks =
-            quote_spanned_builtin!(builtin, span => #builtin::spec_chained_value(#cur_expr));
+            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_value(#cur_expr));
         for (right, op, span) in rights.iter().rev() {
             let ident = Ident::new(op, *span);
-            toks = quote_spanned_builtin!(builtin, *span => #builtin::#ident(#toks, #right));
+            toks = quote_spanned_builtin!(verus_builtin, *span => #verus_builtin::#ident(#toks, #right));
         }
-        toks = quote_spanned_builtin!(builtin, span => #builtin::spec_chained_cmp(#toks));
+        toks = quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_cmp(#toks));
 
         *expr = Expr::Verbatim(toks);
 
@@ -1954,7 +1954,7 @@ impl Visitor {
     }
 
     /// Turn `forall|x| ...`
-    /// into `#builtin::forall(|x| ...)`
+    /// into `#verus_builtin::forall(|x| ...)`
     /// and similarly for `exists` and `choose`
     ///
     /// Also handle trigger attributes.
@@ -2038,7 +2038,7 @@ impl Visitor {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
                     closure.body = Box::new(Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #body)),
+                        quote_spanned_builtin!(verus_builtin, span => #verus_builtin::with_triggers(#tuple, #body)),
                     ));
                 }
                 _ => panic!("expected closure for quantifier"),
@@ -2052,10 +2052,10 @@ impl Visitor {
 
         match unary.op {
             UnOp::Forall(..) => {
-                *expr = quote_verbatim!(builtin, span, attrs => #builtin::forall(#arg));
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::forall(#arg));
             }
             UnOp::Exists(..) => {
-                *expr = quote_verbatim!(builtin, span, attrs => #builtin::exists(#arg));
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::exists(#arg));
             }
             UnOp::Choose(..) => {
                 fn in_ty_to_ty_arg(arg: &Option<syn_verus::PatType>) -> TokenStream {
@@ -2067,12 +2067,12 @@ impl Visitor {
                 match &closure_input_types[..] {
                     [in_ty] => {
                         let targ = in_ty_to_ty_arg(in_ty);
-                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose::<#targ, _>(#arg));
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::choose::<#targ, _>(#arg));
                     }
                     _ => {
                         let targs: Punctuated<TokenStream, syn_verus::token::Comma> =
                             closure_input_types.iter().map(in_ty_to_ty_arg).collect();
-                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose_tuple::<(#targs,), _>(#arg));
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::choose_tuple::<(#targs,), _>(#arg));
                     }
                 }
             }
@@ -2178,7 +2178,7 @@ impl Visitor {
                 let base = is_.base;
                 let variant_str = is_.variant_ident.to_string();
                 *expr = Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::is_variant(#base, #variant_str)),
                 );
             }
             Expr::IsNot(isnot_) => {
@@ -2187,7 +2187,7 @@ impl Visitor {
                 let base = isnot_.base;
                 let variant_str = isnot_.variant_ident.to_string();
                 *expr = Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => !(#builtin::is_variant(#base, #variant_str))),
+                    quote_spanned_builtin!(verus_builtin, span => !(#verus_builtin::is_variant(#base, #variant_str))),
                 );
             }
             Expr::Has(has) => {
@@ -2371,7 +2371,7 @@ impl Visitor {
         } else if let Some(imply) = ply {
             let attrs = std::mem::take(&mut binary.attrs);
             let func =
-                Box::new(Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::imply)));
+                Box::new(Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => #verus_builtin::imply)));
             let paren_token = Paren { span: into_spans(span) };
             let mut args = Punctuated::new();
             if imply {
@@ -2388,13 +2388,13 @@ impl Visitor {
             let attrs = std::mem::take(&mut binary.attrs);
             let func = match binary.op {
                 BinOp::BigEq(_) | BinOp::BigNe(_) => Box::new(Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::equal),
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::equal),
                 )),
                 BinOp::ExtEq(_) | BinOp::ExtNe(_) => Box::new(Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::ext_equal),
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::ext_equal),
                 )),
                 BinOp::ExtDeepEq(_) | BinOp::ExtDeepNe(_) => Box::new(Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::ext_equal_deep),
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::ext_equal_deep),
                 )),
                 _ => unreachable!(),
             };
@@ -2420,11 +2420,11 @@ impl Visitor {
             match binary.op {
                 BinOp::Eq(..) => {
                     *expr =
-                        quote_verbatim!(builtin, span, attrs => #builtin::spec_eq(#left, #right));
+                        quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Ne(..) => {
                     *expr =
-                        quote_verbatim!(builtin, span, attrs => ! #builtin::spec_eq(#left, #right));
+                        quote_verbatim!(verus_builtin, span, attrs => ! #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Le(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
@@ -2512,7 +2512,7 @@ impl Visitor {
             let src = cast.expr;
             let attrs = cast.attrs;
             let ty = cast.ty;
-            *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_cast_integer::<_, #ty>(#src));
+            *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
@@ -2538,17 +2538,17 @@ impl Visitor {
                     InsideArith::None => {
                         // We don't know which integer type to use,
                         // so defer the decision to type inference.
-                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_integer(#n));
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_integer(#n));
                     }
                     InsideArith::Widen if n.starts_with("-") => {
                         // Use int inside +, -, etc., since these promote to int anyway
                         *expr =
-                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
+                            quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
                     }
                     InsideArith::Widen => {
                         // Use int inside +, -, etc., since these promote to int anyway
                         *expr =
-                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
+                            quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
                     }
                     InsideArith::Fixed => {
                         // We generally won't want int/nat literals for bitwise ops,
@@ -2556,9 +2556,9 @@ impl Visitor {
                     }
                 }
             } else if lit.suffix() == "int" {
-                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
             } else if lit.suffix() == "nat" {
-                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
             } else {
                 // Has a native Rust integer suffix, so leave it as a native Rust literal
             }
@@ -2582,7 +2582,7 @@ impl Visitor {
         let span = assume.assume_token.span;
         let arg = assume.expr;
         let attrs = assume.attrs;
-        *expr = quote_verbatim!(builtin, span, attrs => #builtin::assume_(#arg));
+        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assume_(#arg));
 
         self.auto_proof_block(expr, span);
 
@@ -2615,7 +2615,7 @@ impl Visitor {
                         *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a 'requires' clause"));
                     } else {
                         *expr = Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute(#arg)),
+                            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::assert_by_compute(#arg)),
                         );
                     }
                 }
@@ -2626,7 +2626,7 @@ impl Visitor {
                         *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
                     } else {
                         *expr = Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute_only(#arg)),
+                            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::assert_by_compute_only(#arg)),
                         );
                     }
                 }
@@ -2643,22 +2643,22 @@ impl Visitor {
                     if let Some(Requires { token, exprs }) = &assert.requires {
                         stmts.push(Stmt::Expr(
                             Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::requires([#exprs])),
                             ),
                             Some(Semi { spans: [token.span] }),
                         ));
                     }
                     stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, span => #builtin::ensures(#arg)),
+                            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::ensures(#arg)),
                         ),
                         Some(Semi { spans: [span] }),
                     ));
                     block.stmts.splice(0..0, stmts);
                     let assert_x_by: Expr = if prover_id == "bit_vector" {
-                        quote_verbatim!(builtin, span, attrs => #builtin::assert_bitvector_by(#block))
+                        quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assert_bitvector_by(#block))
                     } else {
-                        quote_verbatim!(builtin, span, attrs => #builtin::assert_nonlinear_by(#block))
+                        quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assert_nonlinear_by(#block))
                     };
                     *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
                 }
@@ -2672,11 +2672,11 @@ impl Visitor {
                 *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
             } else {
                 *expr =
-                    quote_verbatim!(builtin, span, attrs => {#builtin::assert_by(#arg, #block);});
+                    quote_verbatim!(verus_builtin, span, attrs => {#verus_builtin::assert_by(#arg, #block);});
             }
         } else {
             // Normal 'assert'
-            *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#arg));
+            *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::assert_(#arg));
         }
 
         self.auto_proof_block(expr, span);
@@ -2710,7 +2710,7 @@ impl Visitor {
             }
             Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
                 arg = Box::new(Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #arg)),
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::with_triggers(#tuple, #arg)),
                 ));
             }
             Ok(ExtractQuantTriggersFound::None) => {}
@@ -2723,14 +2723,14 @@ impl Visitor {
         let mut block = assert.body;
         let mut stmts: Vec<Stmt> = Vec::new();
         if let Some((_, rhs)) = assert.implies {
-            stmts.push(stmt_with_semi!(builtin, span => #builtin::requires(#arg)));
-            stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#rhs)));
+            stmts.push(stmt_with_semi!(verus_builtin, span => #verus_builtin::requires(#arg)));
+            stmts.push(stmt_with_semi!(verus_builtin, span => #verus_builtin::ensures(#rhs)));
         } else {
-            stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#arg)));
+            stmts.push(stmt_with_semi!(verus_builtin, span => #verus_builtin::ensures(#arg)));
         }
         block.stmts.splice(0..0, stmts);
         *expr = Expr::Verbatim(
-            quote_spanned_builtin!(builtin, span => {#builtin::assert_forall_by(|#inputs| #block);}),
+            quote_spanned_builtin!(verus_builtin, span => {#verus_builtin::assert_forall_by(|#inputs| #block);}),
         );
 
         self.auto_proof_block(expr, span);
@@ -2780,7 +2780,7 @@ impl Visitor {
             )
         } else {
             Expr::Verbatim(
-                quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, #reveal_fuel) ),
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #verus_builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, #reveal_fuel) ),
             )
         };
         if is_hide {
@@ -2849,9 +2849,9 @@ impl Visitor {
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                     quote_spanned!(span => Tracked::assume_new_fallback(|| unreachable!()))
                 } else if is_inside_ghost {
-                    quote_spanned_builtin!(builtin, span => #builtin::Tracked::new(#inner))
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked::new(#inner))
                 } else {
-                    quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
                 });
             } else {
                 // Ghost(...)
@@ -2859,9 +2859,9 @@ impl Visitor {
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
                     quote_spanned!(span => Ghost::assume_new_fallback(|| unreachable!()))
                 } else if is_inside_ghost {
-                    quote_spanned_builtin!(builtin, span => #builtin::Ghost::new(#inner))
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost::new(#inner))
                 } else {
-                    quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
+                    quote_spanned_builtin!(verus_builtin, span => #[verifier::ghost_wrapper] /* vattr */ #verus_builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
                 });
             }
         } else if let Expr::Unary(unary) = expr {
@@ -2914,8 +2914,8 @@ impl Visitor {
                 let err = "ghost closures cannot have requires/ensures";
                 *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
             } else {
-                *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                    #builtin::closure_to_fn_spec(#clos)
+                *expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                    #verus_builtin::closure_to_fn_spec(#clos)
                 ));
             }
         } else if is_proof_fn && self.inside_ghost == 0 {
@@ -2973,11 +2973,11 @@ impl Visitor {
                 }
                 let paren_token = Paren { span: into_spans(clos.span()) };
                 let args = Expr::Tuple(ExprTuple { attrs: vec![], paren_token, elems });
-                stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                    #builtin::requires([<#t as #builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
+                stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
+                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
                 ));
-                stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                    #builtin::ensures(|ret| [<#t as #builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
+                stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
+                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
                 ));
             }
             if let Some(Requires { token, mut exprs }) = requires {
@@ -2985,7 +2985,7 @@ impl Visitor {
                     self.visit_expr_mut(expr);
                 }
                 stmts.push(stmt_with_semi!(
-                    builtin, token.span => #builtin::requires([#exprs])));
+                    verus_builtin, token.span => #verus_builtin::requires([#exprs])));
             }
             if let Some(Ensures { token, mut exprs, attrs }) = ensures {
                 if attrs.len() > 0 {
@@ -2998,10 +2998,10 @@ impl Visitor {
                     }
                     if let Some((p, ty)) = ret_pat {
                         stmts.push(stmt_with_semi!(
-                            builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])));
+                            verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])));
                     } else {
                         stmts.push(stmt_with_semi!(
-                            builtin, token.span => #builtin::ensures([#exprs])));
+                            verus_builtin, token.span => #verus_builtin::ensures([#exprs])));
                     }
                 }
             }
@@ -3026,8 +3026,8 @@ impl Visitor {
                 let arg_modes =
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let ret_mode = proof_fn_track_to_type(span, ret_tracked);
-                new_expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                    #builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
+                new_expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
@@ -3068,23 +3068,23 @@ impl Visitor {
         };
         if let Some(InvariantExceptBreak { token, exprs }) = invariant_except_breaks {
             if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(builtin, token.span =>
-                    #builtin::invariant_except_break([#exprs])
+                stmts.push(stmt_with_semi!(verus_builtin, token.span =>
+                    #verus_builtin::invariant_except_break([#exprs])
                 ));
             }
         }
         if let Some(Invariant { token, exprs }) = invariants {
             if exprs.exprs.len() > 0 && old_style {
-                stmts.push(stmt_with_semi!(builtin, token.span =>
-                    #builtin::invariant_except_break([#exprs])
+                stmts.push(stmt_with_semi!(verus_builtin, token.span =>
+                    #verus_builtin::invariant_except_break([#exprs])
                 ));
             } else if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(builtin, token.span => #builtin::invariant([#exprs])));
+                stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::invariant([#exprs])));
             }
         }
         if let Some(InvariantEnsures { token, exprs }) = invariant_ensures {
             if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(builtin, token.span => #builtin::invariant([#exprs])));
+                stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::invariant([#exprs])));
             }
         }
         if let Some(Ensures { token, exprs, attrs }) = ensures {
@@ -3093,7 +3093,7 @@ impl Visitor {
                 let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
                 stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
             } else if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(builtin, token.span => #builtin::ensures([#exprs])));
+                stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])));
             }
         }
         if let Some(Decreases { token, exprs }) = decreases {
@@ -3104,7 +3104,7 @@ impl Visitor {
                     stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
-            stmts.push(stmt_with_semi!(builtin, token.span => #builtin::decreases((#exprs))));
+            stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::decreases((#exprs))));
         }
         self.inside_ghost -= 1;
     }
@@ -3134,7 +3134,7 @@ impl Visitor {
         //                      ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y,
         //                          &VERUS_exec_iter),
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                          builtin::infer_spec_for_loop_iter(
+        //                          verus_builtin::infer_spec_for_loop_iter(
         //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)),
         //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
@@ -3247,7 +3247,7 @@ impl Visitor {
         let expr_inv = expr.clone();
         //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
         //              ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                  builtin::infer_spec_for_loop_iter(
+        //                  verus_builtin::infer_spec_for_loop_iter(
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)),
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
@@ -3260,7 +3260,7 @@ impl Visitor {
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                builtin::infer_spec_for_loop_iter(
+                verus_builtin::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(VERUS_iter)),
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
@@ -3820,7 +3820,7 @@ impl VisitMut for Visitor {
         } else if self.erase_ghost.keep() && is_spec_method {
             let span = method.sig.fn_token.span;
             stmts.push(Stmt::Expr(
-                Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body())),
                 None,
             ));
             let block = Block { brace_token: Brace(span), stmts };
@@ -3997,8 +3997,8 @@ impl VisitMut for Visitor {
                     }
                 };
 
-                *ty = Type::Verbatim(quote_spanned_builtin! { builtin, span =>
-                    #builtin::FnSpec<(#(#param_types ,)*), #out_type>
+                *ty = Type::Verbatim(quote_spanned_builtin! { verus_builtin, span =>
+                    #verus_builtin::FnSpec<(#(#param_types ,)*), #out_type>
                 });
             }
             Type::FnProof(TypeFnProof {
@@ -4062,8 +4062,8 @@ impl VisitMut for Visitor {
                         }
                     };
                     let (usage, req_ens, copy, send, sync) = opts.to_types(options.span());
-                    Type::Verbatim(quote_spanned_builtin!(builtin, span =>
-                        #builtin::FOpts<#usage, #req_ens, #copy, #send, #sync>
+                    Type::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                        #verus_builtin::FOpts<#usage, #req_ens, #copy, #send, #sync>
                     ))
                 };
 
@@ -4071,12 +4071,12 @@ impl VisitMut for Visitor {
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let out_mode = proof_fn_track_to_type(span, out_tracked);
                 if let Some(life) = life {
-                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
-                        #builtin::FnProof<#life, #options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
+                    *ty = Type::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                        #verus_builtin::FnProof<#life, #options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
                     ));
                 } else {
-                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
-                        #builtin::FnProof<#options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
+                    *ty = Type::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                        #verus_builtin::FnProof<#options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
                     ));
                 }
             }
@@ -5114,9 +5114,9 @@ pub(crate) struct Builtin(pub Span);
 impl ToTokens for Builtin {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         if crate::cfg_verify_core() {
-            tokens.extend(quote_spanned! { self.0 => crate::builtin });
+            tokens.extend(quote_spanned! { self.0 => crate::verus_builtin });
         } else {
-            tokens.extend(quote_spanned! { self.0 => ::builtin });
+            tokens.extend(quote_spanned! { self.0 => ::verus_builtin });
         }
     }
 }

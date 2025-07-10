@@ -31,13 +31,13 @@ pub fn calc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             block: block.clone(),
         }));
         output_steps
-            .push(quote_spanned_builtin! (builtin, block.span() => #builtin::assert_by(#op_expr, { #block })));
+            .push(quote_spanned_builtin! (verus_builtin, block.span() => #verus_builtin::assert_by(#op_expr, { #block })));
     }
     let combined_block = quote! {
         #(#output_steps);*
     };
     let top_level = input.reln.op.to_expr(&input.steps[0].0, &input.last);
-    quote_builtin!(builtin => #builtin::assert_by(#top_level, { #combined_block });).into()
+    quote_builtin!(verus_builtin => #verus_builtin::assert_by(#top_level, { #combined_block });).into()
 }
 
 #[derive(Debug)]
@@ -177,14 +177,14 @@ impl RelationOp {
         let right = rewrite_expr_to_token_stream(right);
 
         match self {
-            Eq => quote_builtin! { builtin => #builtin::equal(#left, #right) },
+            Eq => quote_builtin! { verus_builtin => #verus_builtin::equal(#left, #right) },
             Lt => quote! { #left < #right },
             Leq => quote! { #left <= #right },
             Gt => quote! { #left > #right },
             Geq => quote! { #left >= #right },
-            Implies => quote_builtin! { builtin => #builtin::imply(#left, #right) },
+            Implies => quote_builtin! { verus_builtin => #verus_builtin::imply(#left, #right) },
             Iff => {
-                quote_builtin! { builtin => #builtin::imply(#left, #right) && #builtin::imply(#right, #left) }
+                quote_builtin! { verus_builtin => #verus_builtin::imply(#left, #right) && #verus_builtin::imply(#right, #left) }
             }
         }
     }
