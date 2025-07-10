@@ -1241,16 +1241,16 @@ macro_rules! assert_sets_equal {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_sets_equal_internal {
-    (::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
     };
-    (::verus_builtin::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
     };
-    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
     };
-    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {

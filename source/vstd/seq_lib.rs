@@ -3566,16 +3566,16 @@ macro_rules! assert_seqs_equal {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
-    (::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
-    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
