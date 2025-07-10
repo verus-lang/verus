@@ -68,14 +68,14 @@ fn main() {
     #[cfg(target_os = "windows")]
     let (pre, dl) = ("", "dll");
 
-    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
+    let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path = verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
-        verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
+        verus_target_path.join(format!("{}verus_state_machines_macros.{}", pre, dl));
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
@@ -86,11 +86,11 @@ fn main() {
     let mut child_args: Vec<String> = vec![
         "--internal-test-mode".to_string(),
         "--extern".to_string(),
-        format!("builtin={lib_builtin_path}"),
+        format!("verus_builtin={lib_builtin_path}"),
         "--extern".to_string(),
-        format!("builtin_macros={lib_builtin_macros_path}"),
+        format!("verus_builtin_macros={lib_builtin_macros_path}"),
         "--extern".to_string(),
-        format!("state_machines_macros={lib_state_machines_macros_path}"),
+        format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
         "--crate-type=lib".to_string(),
         "--export".to_string(),
         verus_target_path.join(VSTD_VIR).to_str().unwrap().to_string(),
