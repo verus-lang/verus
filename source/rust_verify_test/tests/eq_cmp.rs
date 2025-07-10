@@ -7,10 +7,10 @@ test_verify_one_file! {
     #[test] eq_cmp1 verus_code! {
         use vstd::laws_eq::*;
         use vstd::laws_cmp::*;
-        use vstd::std_specs::core::{OrdSpec, PartialEqSpec, PartialOrdSpec};
+        use vstd::std_specs::cmp::{OrdSpec, PartialEqSpec, PartialOrdSpec};
         use core::cmp::Ordering;
 
-        fn test_eq<T: PartialEqSpec + PartialOrdSpec + OrdSpec>(x: &T, y: &T) -> (r: bool)
+        fn test_eq<T: Ord>(x: &T, y: &T) -> (r: bool)
             requires
                 obeys_cmp_spec::<T>(),
             ensures
@@ -28,7 +28,7 @@ test_verify_one_file! {
             true
         }
 
-        fn test_eq_wrong<T: PartialEqSpec + PartialOrdSpec + Ord>(x: &T, y: &T) -> (r: bool)
+        fn test_eq_wrong<T: Ord>(x: &T, y: &T) -> (r: bool)
             requires
                 obeys_cmp_spec::<T>(),
             ensures
@@ -64,7 +64,7 @@ test_verify_one_file! {
                 self.0 == other.0 && self.1 == other.1
             }
         }
-        impl vstd::std_specs::core::PartialEqSpecImpl for P {
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for P {
             closed spec fn obeys_eq_spec() -> bool {
                 true
             }
@@ -90,8 +90,13 @@ test_verify_one_file! {
             reveal(obeys_concrete_eq);
         }
 
-        fn test_p() {
+        fn test_p_eq() {
             let b = P(3, true).eq(&P(3, false));
+            assert(!b);
+        }
+
+        fn test_p_ee() {
+            let b = P(3, true) == P(3, false);
             assert(!b);
         }
 

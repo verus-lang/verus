@@ -52,6 +52,7 @@ pub mod pcm_lib;
 pub mod pervasive;
 pub mod proph;
 pub mod raw_ptr;
+pub mod relations;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
@@ -66,16 +67,15 @@ pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
+pub mod tokens;
 pub mod view;
 
-pub mod relations;
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;
 
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
-pub mod tokens;
 
 use prelude::*;
 

@@ -2,42 +2,42 @@
 #![allow(unused_imports)]
 
 use super::prelude::*;
-use super::std_specs::core::PartialEqSpec;
+use super::std_specs::cmp::PartialEqSpec;
 use super::view::*;
 
 verus! {
 
 #[verifier::opaque]
-pub open spec fn obeys_eq_spec_properties<T: PartialEqSpec>() -> bool {
+pub open spec fn obeys_eq_spec_properties<T: PartialEq>() -> bool {
     &&& forall|x: T, y: T| #[trigger] x.eq_spec(&y) <==> y.eq_spec(&x)
     &&& forall|x: T, y: T, z: T|
         x.eq_spec(&y) && #[trigger] y.eq_spec(&z) ==> #[trigger] x.eq_spec(&z)
 }
 
-pub open spec fn obeys_eq_spec<T: PartialEqSpec>() -> bool {
+pub open spec fn obeys_eq_spec<T: PartialEq>() -> bool {
     &&& T::obeys_eq_spec()
     &&& obeys_eq_spec_properties::<T>()
 }
 
 #[verifier::opaque]
-pub open spec fn obeys_concrete_eq<T: PartialEqSpec>() -> bool {
+pub open spec fn obeys_concrete_eq<T: PartialEq>() -> bool {
     &&& T::obeys_eq_spec()
     &&& forall|x: T, y: T| x.eq_spec(&y) <==> x == y
 }
 
 #[verifier::opaque]
-pub open spec fn obeys_view_eq<T: PartialEqSpec + View>() -> bool {
+pub open spec fn obeys_view_eq<T: PartialEq + View>() -> bool {
     &&& T::obeys_eq_spec()
     &&& forall|x: T, y: T| x.eq_spec(&y) <==> x@ == y@
 }
 
 #[verifier::opaque]
-pub open spec fn obeys_deep_eq<T: PartialEqSpec + DeepView>() -> bool {
+pub open spec fn obeys_deep_eq<T: PartialEq + DeepView>() -> bool {
     &&& T::obeys_eq_spec()
     &&& forall|x: T, y: T| x.eq_spec(&y) <==> x.deep_view() == y.deep_view()
 }
 
-pub broadcast proof fn axiom_structural_obeys_concrete_eq<T: PartialEqSpec + Structural>()
+pub broadcast proof fn axiom_structural_obeys_concrete_eq<T: PartialEq + Structural>()
     requires
         T::obeys_eq_spec(),
         forall|x: T, y: T| x.eq_spec(&y) <==> x == y,
@@ -118,7 +118,7 @@ primitive_laws_eq!(usize, usize_laws);
 
 primitive_laws_eq!(isize, isize_laws);
 
-pub broadcast proof fn lemma_option_obeys_eq_spec<T: PartialEqSpec>()
+pub broadcast proof fn lemma_option_obeys_eq_spec<T: PartialEq>()
     requires
         obeys_eq_spec::<T>(),
     ensures
@@ -127,7 +127,7 @@ pub broadcast proof fn lemma_option_obeys_eq_spec<T: PartialEqSpec>()
     reveal(obeys_eq_spec_properties);
 }
 
-pub broadcast proof fn lemma_option_obeys_concrete_eq<T: PartialEqSpec>()
+pub broadcast proof fn lemma_option_obeys_concrete_eq<T: PartialEq>()
     requires
         obeys_concrete_eq::<T>(),
     ensures
@@ -136,7 +136,7 @@ pub broadcast proof fn lemma_option_obeys_concrete_eq<T: PartialEqSpec>()
     reveal(obeys_concrete_eq);
 }
 
-pub broadcast proof fn lemma_option_obeys_view_eq<T: PartialEqSpec + View>()
+pub broadcast proof fn lemma_option_obeys_view_eq<T: PartialEq + View>()
     requires
         obeys_concrete_eq::<T>(),
     ensures
@@ -146,7 +146,7 @@ pub broadcast proof fn lemma_option_obeys_view_eq<T: PartialEqSpec + View>()
     reveal(obeys_view_eq);
 }
 
-pub broadcast proof fn lemma_option_obeys_deep_eq<T: PartialEqSpec + DeepView>()
+pub broadcast proof fn lemma_option_obeys_deep_eq<T: PartialEq + DeepView>()
     requires
         obeys_deep_eq::<T>(),
     ensures

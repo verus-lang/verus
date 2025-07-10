@@ -17,7 +17,7 @@ macro_rules! num_specs {
             pub assume_specification[<$uN as Clone>::clone](x: &$uN) -> (res: $uN)
                 ensures res == x;
 
-            impl super::super::core::PartialEqSpecImpl for $uN {
+            impl super::super::cmp::PartialEqSpecImpl for $uN {
                 open spec fn obeys_eq_spec() -> bool {
                     true
                 }
@@ -27,7 +27,7 @@ macro_rules! num_specs {
                 }
             }
 
-            impl super::super::core::PartialOrdSpecImpl for $uN {
+            impl super::super::cmp::PartialOrdSpecImpl for $uN {
                 open spec fn obeys_partial_cmp_spec() -> bool {
                     true
                 }
@@ -43,7 +43,7 @@ macro_rules! num_specs {
                 }
             }
 
-            impl super::super::core::OrdSpecImpl for $uN {
+            impl super::super::cmp::OrdSpecImpl for $uN {
                 open spec fn obeys_cmp_spec() -> bool {
                     true
                 }
@@ -175,7 +175,7 @@ macro_rules! num_specs {
             pub assume_specification[<$iN as Clone>::clone](x: &$iN) -> (res: $iN)
                 ensures res == x;
 
-            impl super::super::core::PartialEqSpecImpl for $iN {
+            impl super::super::cmp::PartialEqSpecImpl for $iN {
                 open spec fn obeys_eq_spec() -> bool {
                     true
                 }
@@ -185,7 +185,7 @@ macro_rules! num_specs {
                 }
             }
 
-            impl super::super::core::PartialOrdSpecImpl for $iN {
+            impl super::super::cmp::PartialOrdSpecImpl for $iN {
                 open spec fn obeys_partial_cmp_spec() -> bool {
                     true
                 }
@@ -201,7 +201,7 @@ macro_rules! num_specs {
                 }
             }
 
-            impl super::super::core::OrdSpecImpl for $iN {
+            impl super::super::cmp::OrdSpecImpl for $iN {
                 open spec fn obeys_cmp_spec() -> bool {
                     true
                 }

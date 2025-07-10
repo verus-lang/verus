@@ -384,7 +384,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_extension_vstd verus_code! {
-        use vstd::std_specs::core::PartialEqSpec;
+        use vstd::std_specs::cmp::PartialEqSpec;
         broadcast proof fn axiom_spec_eq_u8(x: u8, y: u8)
             ensures
                 #[trigger] x.eq_spec(&y) <==> x == y,

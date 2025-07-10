@@ -3,13 +3,13 @@
 
 use super::laws_eq::*;
 use super::prelude::*;
-use super::std_specs::core::{OrdSpec, PartialEqSpec, PartialOrdSpec};
+use super::std_specs::cmp::{OrdSpec, PartialEqSpec, PartialOrdSpec};
 use core::cmp::Ordering;
 
 verus! {
 
 #[verifier::opaque]
-pub open spec fn obeys_partial_cmp_spec_properties<T: PartialOrdSpec>() -> bool {
+pub open spec fn obeys_partial_cmp_spec_properties<T: PartialOrd>() -> bool {
     &&& forall|x: T, y: T| #[trigger]
         x.partial_cmp_spec(&y) == Some(Ordering::Equal) <==> x.eq_spec(&y)
     &&& forall|x: T, y: T| #[trigger]
@@ -29,14 +29,14 @@ pub open spec fn obeys_partial_cmp_spec_properties<T: PartialOrdSpec>() -> bool 
 }
 
 #[verifier::opaque]
-pub open spec fn obeys_cmp_partial_ord<T: PartialOrdSpec>() -> bool {
+pub open spec fn obeys_cmp_partial_ord<T: PartialOrd>() -> bool {
     &&& T::obeys_eq_spec()
     &&& T::obeys_partial_cmp_spec()
     &&& forall|x: T, y: T| x.eq_spec(&y) <==> x.partial_cmp_spec(&y) == Some(Ordering::Equal)
 }
 
 #[verifier::opaque]
-pub open spec fn obeys_cmp_ord<T: OrdSpec>() -> bool {
+pub open spec fn obeys_cmp_ord<T: Ord>() -> bool {
     &&& T::obeys_cmp_spec()
     &&& forall|x: T, y: T|
         #![trigger x.partial_cmp_spec(&y)]
@@ -44,7 +44,7 @@ pub open spec fn obeys_cmp_ord<T: OrdSpec>() -> bool {
         x.partial_cmp_spec(&y) == Some(x.cmp_spec(&y))
 }
 
-pub open spec fn obeys_cmp_spec<T: OrdSpec>() -> bool {
+pub open spec fn obeys_cmp_spec<T: Ord>() -> bool {
     &&& obeys_eq_spec::<T>()
     &&& obeys_cmp_partial_ord::<T>()
     &&& obeys_cmp_ord::<T>()
@@ -97,7 +97,7 @@ num_laws_cmp!(usize, usize_laws);
 
 num_laws_cmp!(isize, isize_laws);
 
-pub broadcast proof fn lemma_option_obeys_cmp_spec<T: PartialEqSpec + PartialOrdSpec + OrdSpec>()
+pub broadcast proof fn lemma_option_obeys_cmp_spec<T: Ord>()
     requires
         obeys_cmp_spec::<T>(),
     ensures

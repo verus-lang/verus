@@ -265,7 +265,7 @@ test_verify_one_file! {
             }
         }
 
-        impl vstd::std_specs::core::PartialEqSpecImpl for S {
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for S {
             closed spec fn obeys_eq_spec() -> bool {
                 false
             }
