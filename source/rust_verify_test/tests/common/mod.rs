@@ -263,10 +263,10 @@ pub fn run_verus(
         .join(profile);
 
     let verus_target_path_str = verus_target_path.to_str().unwrap();
-    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
+    let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path = verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
@@ -336,13 +336,13 @@ pub fn run_verus(
     );
     if !is_core {
         verus_args.extend(
-            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+            vec!["--extern".to_string(), format!("verus_builtin={lib_builtin_path}")].into_iter(),
         );
     }
     verus_args.extend(
         vec![
             "--extern".to_string(),
-            format!("builtin_macros={lib_builtin_macros_path}"),
+            format!("verus_builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
@@ -420,8 +420,8 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    use builtin::*;
-    use builtin_macros::*;
+    use verus_builtin::*;
+    use verus_builtin_macros::*;
 };
 
 #[allow(dead_code)]
@@ -433,7 +433,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         if *x == "exec_allows_no_decreases_clause" {
             exec_allows_no_decreases_clause = true;
             false
-        } else if *x == "no-auto-import-builtin" {
+        } else if *x == "no-auto-import-verus_builtin" {
             no_prelude = true;
             false
         } else {

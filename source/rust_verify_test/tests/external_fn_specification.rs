@@ -682,7 +682,7 @@ test_verify_one_file! {
         pub fn x() {
             admit()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot apply `assume_specification` to Verus builtin functions")
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply `assume_specification` to Verus verus_builtin functions")
 }
 
 // Associated functions
@@ -1394,7 +1394,7 @@ test_verify_one_file! {
         mod moo {
             #[verifier::verify]
             fn stuff() {
-                builtin::assert_(false);
+                verus_builtin::assert_(false);
             }
         }
     } => Ok(err) => {

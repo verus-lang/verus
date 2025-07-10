@@ -1020,7 +1020,7 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        ::builtin_macros::verus!{
+        ::verus_builtin_macros::verus!{
             #[cfg(verus_keep_ghost_body)]
             #[verifier::external_body] /* vattr */
             pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret

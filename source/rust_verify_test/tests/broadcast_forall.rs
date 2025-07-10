@@ -164,7 +164,7 @@ test_verify_one_file! {
 
 const RING_ALGEBRA: &str = verus_code_str! {
     mod ring {
-        use builtin::*;
+        use verus_builtin::*;
 
         pub struct Ring {
             pub i: nat,
@@ -204,7 +204,7 @@ const RING_ALGEBRA: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] test_ring_algebra_basic RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             proof fn t1(p: Ring) requires p.inv() {
@@ -243,7 +243,7 @@ test_verify_one_file! {
 
 const RING_ALGEBRA_MEMBERS: &str = verus_code_str! {
     mod ring {
-        use builtin::*;
+        use verus_builtin::*;
 
         pub struct Ring {
             pub i: nat,
@@ -283,7 +283,7 @@ const RING_ALGEBRA_MEMBERS: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] test_ring_algebra_member RING_ALGEBRA_MEMBERS.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             proof fn t1(p: Ring) requires p.inv() {
@@ -323,7 +323,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_mod_level_1 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             broadcast use Ring_succ;
@@ -338,7 +338,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_mod_level_2 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             broadcast use Ring_properties;
@@ -354,7 +354,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_mod_level_3 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             broadcast use {Ring_prev, Ring_succ};
@@ -370,7 +370,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_broadcast_use_stmt_1 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             proof fn t2(p: Ring) requires p.inv() {
@@ -385,7 +385,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_reveal_broadcast RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             proof fn t2(p: Ring) requires p.inv() {
@@ -401,7 +401,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_mod_level_not_allowed_1 RING_ALGEBRA.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             broadcast use Ring_prev;
@@ -455,7 +455,7 @@ test_verify_one_file! {
 
 const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
     mod ring {
-        use builtin::*;
+        use verus_builtin::*;
 
         pub struct Ring<T: Copy> {
             pub i: nat,
@@ -496,7 +496,7 @@ const RING_ALGEBRA_MEMBERS_GENERIC: &str = verus_code_str! {
 test_verify_one_file! {
     #[test] test_ring_algebra_member_generic RING_ALGEBRA_MEMBERS_GENERIC.to_string() + verus_code_str! {
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             broadcast use Ring::properties;
@@ -507,7 +507,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_ring_algebra_exec verus_code! {
         mod ring {
-            use builtin::*;
+            use verus_builtin::*;
 
             pub struct Ring {
                 pub i: u64,
@@ -544,7 +544,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::ring::*;
 
             fn t2(p: Ring) requires p.inv() {

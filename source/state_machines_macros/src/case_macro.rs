@@ -84,7 +84,7 @@ pub fn case_on(
             };
             quote! {
                 #step::#step_name(#(#params),*) => {
-                    ::builtin::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
+                    ::verus_builtin::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
                         reveal(#reveal_next_by);
                     });
                     #block
@@ -94,12 +94,12 @@ pub fn case_on(
         .collect();
 
     let res = quote! {
-        ::builtin_macros::verus_proof_expr!{
+        ::verus_builtin_macros::verus_proof_expr!{
             {
                 reveal(#reveal_next);
                 match (choose |step: #step| #next_by(#pre_post, #label_arg step)) {
                     #step::dummy_to_use_type_params(_) => {
-                        ::builtin::assert_by(false, {
+                        ::verus_builtin::assert_by(false, {
                             reveal(#reveal_next_by);
                         });
                     }

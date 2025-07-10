@@ -344,7 +344,7 @@ test_verify_one_file! {
     #[test] fn_calls_bad3 verus_code! {
         mod privacy_invasion {
             #[allow(unused_imports)]
-            use builtin::assert_by_compute_only;
+            use verus_builtin::assert_by_compute_only;
 
             mod mostly_private {
                 pub closed spec fn f() -> u32 { 1 }

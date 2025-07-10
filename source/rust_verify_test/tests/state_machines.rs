@@ -11,8 +11,8 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::set::*;
     #[allow(unused_imports)] use vstd::multiset::*;
     #[allow(unused_imports)] use vstd::pervasive::*;
-    #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use builtin_macros::*;
+    #[allow(unused_imports)] use verus_builtin::*;
+    #[allow(unused_imports)] use verus_builtin_macros::*;
     #[allow(unused_imports)] use verus_state_machines_macros::*;
 
     verus!{

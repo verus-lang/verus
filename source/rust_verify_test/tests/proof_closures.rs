@@ -1529,7 +1529,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Once]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnMut` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFnMut` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
@@ -1539,7 +1539,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Once]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFn` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFn` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
@@ -1549,7 +1549,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Mut]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFn` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFn` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
