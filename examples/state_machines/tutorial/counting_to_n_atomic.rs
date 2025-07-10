@@ -2,7 +2,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use state_machines_macros::state_machine;
+use verus_state_machines_macros::state_machine;
 use vstd::{pervasive::*, *};
 
 // ANCHOR: main

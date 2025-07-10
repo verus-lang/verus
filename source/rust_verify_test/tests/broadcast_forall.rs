@@ -127,7 +127,7 @@ test_verify_one_file! {
         // it needed.
 
         use vstd::*;
-        use state_machines_macros::*;
+        use verus_state_machines_macros::*;
 
         pub uninterp spec fn f() -> bool;
 

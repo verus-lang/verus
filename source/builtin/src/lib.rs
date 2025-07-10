@@ -755,7 +755,7 @@ struct NoSyncSend {
     _no_send_sync: core::marker::PhantomData<*const ()>,
 }
 
-// Used by state_machine_macros codegen
+// Used by verus_state_machines_macros codegen
 #[doc(hidden)]
 #[allow(dead_code)]
 pub struct SyncSendIfSyncSend<T> {

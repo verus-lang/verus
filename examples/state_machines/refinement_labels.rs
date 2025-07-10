@@ -4,9 +4,9 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::case_on_init;
-use state_machines_macros::case_on_next;
-use state_machines_macros::state_machine;
+use verus_state_machines_macros::case_on_init;
+use verus_state_machines_macros::case_on_next;
+use verus_state_machines_macros::state_machine;
 
 state_machine! {
     B {

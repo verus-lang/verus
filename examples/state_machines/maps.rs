@@ -4,7 +4,7 @@ use builtin::*;
 use vstd::map::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 tokenized_state_machine!(
     X {

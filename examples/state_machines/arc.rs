@@ -4,7 +4,7 @@
 // ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 use vstd::cell::*;
 use vstd::invariant::*;
 use vstd::modes::*;

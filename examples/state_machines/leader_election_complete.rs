@@ -5,7 +5,7 @@ use builtin_macros::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::state_machine;
+use verus_state_machines_macros::state_machine;
 
 verus! {
 

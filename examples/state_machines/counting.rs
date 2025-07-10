@@ -3,7 +3,7 @@
 use builtin::*;
 use vstd::prelude::*;
 use vstd::multiset::*;
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 tokenized_state_machine!{ CountingPermissions<T> {
     fields {

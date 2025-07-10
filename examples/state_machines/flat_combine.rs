@@ -8,7 +8,7 @@ use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, *};
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 // Based off of the FlatCombine system from Seagull-NR.
 // A major difference is that one didn't make any use of storage, because storage was

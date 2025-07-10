@@ -13,7 +13,7 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::pervasive::*;
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
-    #[allow(unused_imports)] use state_machines_macros::*;
+    #[allow(unused_imports)] use verus_state_machines_macros::*;
 
     verus!{
 
@@ -7029,7 +7029,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] step_is_variant IMPORTS.to_string() + verus_code_str! {
-        use state_machines_macros::state_machine;
+        use verus_state_machines_macros::state_machine;
 
         state_machine! { X {
             fields {

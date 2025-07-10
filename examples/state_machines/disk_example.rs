@@ -3,7 +3,7 @@
 
 use builtin::*;
 use builtin_macros::*;
-use state_machines_macros::*;
+use verus_state_machines_macros::*;
 use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
