@@ -159,22 +159,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "builtin"
-version = "0.1.0"
-
-[[package]]
-name = "builtin_macros"
-version = "0.1.0"
-dependencies = [
- "prettyplease_verus",
- "proc-macro2",
- "quote",
- "syn 2.0.101",
- "syn_verus",
- "synstructure 0.13.0",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1882,16 +1866,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "state_machines_macros"
-version = "0.1.0"
-dependencies = [
- "indexmap 1.9.3",
- "proc-macro2",
- "quote",
- "syn_verus",
-]
-
-[[package]]
 name = "string_cache"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2282,6 +2256,32 @@ dependencies = [
  "win32job",
  "yansi",
  "zip",
+]
+
+[[package]]
+name = "verus_builtin"
+version = "0.1.0"
+
+[[package]]
+name = "verus_builtin_macros"
+version = "0.1.0"
+dependencies = [
+ "prettyplease_verus",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+ "syn_verus",
+ "synstructure 0.13.0",
+]
+
+[[package]]
+name = "verus_state_machines_macros"
+version = "0.1.0"
+dependencies = [
+ "indexmap 1.9.3",
+ "proc-macro2",
+ "quote",
+ "syn_verus",
 ]
 
 [[package]]
