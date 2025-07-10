@@ -408,7 +408,7 @@ macro_rules! assert_maps_equal_internal {
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[verifier::spec] let m1 = $crate::vstd::map::check_argument_is_map($m1);
         #[verifier::spec] let m2 = $crate::vstd::map::check_argument_is_map($m2);
-        ::verus_builtin::assert_by(::builtin::equal(m1, m2), {
+        ::verus_builtin::assert_by(::verus_builtin::equal(m1, m2), {
             ::verus_builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,
                 // and maybe give an error message in english as well
@@ -420,7 +420,7 @@ macro_rules! assert_maps_equal_internal {
                 ]);
                 { $bblock }
             });
-            ::verus_builtin::assert_(::builtin::ext_equal(m1, m2));
+            ::verus_builtin::assert_(::verus_builtin::ext_equal(m1, m2));
         });
     }
 }
