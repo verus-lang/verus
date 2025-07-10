@@ -83,13 +83,14 @@ Generate additional items:
         // omitted for erase_all
         fn sn(...) -> ...;
     }
-    #[verifier::external]
     #[verus::internal(external_trait_blanket)]
     impl<A: T + ?Sized> TSpec for A {
         // omitted for erase_all
+        #[verifier::external_body]
         fn s1(...) -> ... { panic!() }
         ...
         // omitted for erase_all
+        #[verifier::external_body]
         fn sn(...) -> ... { panic!() }
     }
 Note: these generated items are trusted;
@@ -113,7 +114,7 @@ fn expand_extension_trait(
                 let mut f_tspec = f.clone();
                 let mut f_tspec_impl = f.clone();
                 let mut f_blanket = ImplItemFn {
-                    attrs: vec![],
+                    attrs: vec![parse_quote_spanned!(span => #[verifier::external_body])],
                     vis: Visibility::Inherited,
                     defaultness: None,
                     sig: f.sig.clone(),
@@ -161,7 +162,6 @@ fn expand_extension_trait(
         parse_quote_spanned!(span => #tr_spec)
     };
     let mut blanket_impl = new_impl_for_trait(tr, &tr_spec_path, self_ty);
-    blanket_impl.attrs.push(parse_quote_spanned!(span => #[verifier::external]));
     blanket_impl.attrs.push(mk_verus_attr(span, quote_spanned!(span => external_trait_blanket)));
     blanket_impl.attrs.push(mk_rust_attr(
         span,

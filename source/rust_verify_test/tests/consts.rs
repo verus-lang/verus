@@ -162,6 +162,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] static_mut_unsupported verus_code! {
+        static mut x: u64 = 0;
+    } => Err(e) => assert_vir_error_msg(e, "Verus does not support 'static mut'")
+}
+
+test_verify_one_file! {
     #[test] test_use_static_twice verus_code! {
         #[verifier::external_body]
         struct X { }
@@ -467,4 +473,33 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] assoc_const_fn verus_code! {
+        struct A {
+            u: u64,
+        }
+
+        impl A {
+            const fn get_a(&self) -> (ret: u64)
+                ensures ret == self.u
+            {
+                self.u
+            }
+
+            exec const R: u64 = Self::get_a(&A { u: 5 });
+
+            fn test(&self) {
+                let r = Self::get_a(&A { u: 5 });
+                assert(r == 5);
+            }
+
+            const fn get_a_fail(&self) -> (ret: u64)
+                ensures ret != self.u
+            {
+                return self.u; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
