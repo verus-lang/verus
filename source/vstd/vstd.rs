@@ -35,6 +35,10 @@ pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
 pub mod invariant;
+#[cfg(verus_keep_ghost)]
+pub mod laws_cmp;
+#[cfg(verus_keep_ghost)]
+pub mod laws_eq;
 pub mod layout;
 pub mod logatom;
 pub mod map;
@@ -48,6 +52,7 @@ pub mod pcm_lib;
 pub mod pervasive;
 pub mod proph;
 pub mod raw_ptr;
+pub mod relations;
 pub mod rwlock;
 pub mod seq;
 pub mod seq_lib;
@@ -62,16 +67,15 @@ pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
+pub mod tokens;
 pub mod view;
 
-pub mod relations;
 #[cfg(verus_keep_ghost)]
 pub mod std_specs;
 
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
-pub mod tokens;
 
 use prelude::*;
 
@@ -90,6 +94,8 @@ pub broadcast group group_vstd_default {
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,
     function::group_function_axioms,
+    laws_eq::group_laws_eq,
+    laws_cmp::group_laws_cmp,
     //
     // Rust types
     //
