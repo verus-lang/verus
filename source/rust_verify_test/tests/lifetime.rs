@@ -1223,3 +1223,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
+
+test_verify_one_file! {
+    #[test] regression_issue1296 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait A {
+            type Iter<'a>: B<'a, E = Self::E> where Self: 'a;
+            type E;
+
+            fn things<'a>(&'a mut self) -> Result<Self::Iter<'a>, Self::E>;
+        }
+
+        pub trait B<'a> {
+            type E;
+        }
+    } => Ok(())
+}
