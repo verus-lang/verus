@@ -1153,3 +1153,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: &mut dereference in this position (note: &mut dereference is implicit here)")
 }
+
+test_verify_one_file! {
+    #[test] regression_issue835 verus_code! {
+        pub const B: u64 = 7;
+
+        fn test(a: usize) {
+            proof {
+                if a <= B {
+                } else {
+                }
+            }
+        }
+    } => Ok(())
+}
