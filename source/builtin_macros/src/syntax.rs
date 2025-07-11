@@ -1701,14 +1701,19 @@ impl Visitor {
                 .iter()
                 .map(|path| {
                     let mut path = path.clone();
-                    let attrs = path
-                        .attrs
-                        .extract_if(0..path.attrs.len(), |attr| {
-                            // move any cfg attrs from path to the stmt
-                            attr.path().get_ident().map(|i| i.to_string())
-                                == Some("cfg".to_string())
-                        })
-                        .collect();
+                    let mut attrs = Vec::new();
+                    // move any cfg attrs from path to the stmt
+                    let mut i = 0;
+                    while i < path.attrs.len() {
+                        if path.attrs[i].path().get_ident().map(|i| i.to_string())
+                            == Some("cfg".to_string())
+                        {
+                            let elt = path.attrs.remove(i);
+                            attrs.push(elt);
+                        } else {
+                            i += 1;
+                        }
+                    }
                     let block = Expr::Verbatim(quote_spanned_builtin!(builtin, span => {
                         #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
                             #builtin::reveal_hide_internal_path_(#path)
