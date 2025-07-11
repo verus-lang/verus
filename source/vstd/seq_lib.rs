@@ -3559,7 +3559,7 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        $crate::prelude::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
@@ -3590,7 +3590,7 @@ macro_rules! assert_seqs_equal_internal {
         $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
             $crate::vstd::prelude::assert_(s1.len() == s2.len());
             $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
-                $crate::vstd::prelude::requires(::verus_builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::requires($crate::prelude::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });

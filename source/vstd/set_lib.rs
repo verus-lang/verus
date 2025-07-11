@@ -1234,7 +1234,7 @@ pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
 #[macro_export]
 macro_rules! assert_sets_equal {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::set_lib::assert_sets_equal_internal!($($tail)*))
+        $crate::prelude::verus_proof_macro_exprs!($crate::vstd::set_lib::assert_sets_equal_internal!($($tail)*))
     };
 }
 

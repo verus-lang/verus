@@ -1039,7 +1039,7 @@ macro_rules! set_internal {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
+        $crate::prelude::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
     };
 }
 
