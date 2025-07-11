@@ -2014,9 +2014,48 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // Set `dest_id` variable to the returned expression.
 
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
-                    let ret_exp =
-                        ret_exp.as_ref().expect("if dest is provided, expr must be provided");
-                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
+                    let (is_in_opaque_func, ret_op) = ctx
+                        .fun
+                        .as_ref()
+                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
+                        .map_or((false, None), |fun| {
+                            (
+                                matches!(fun.x.ret.x.typ.as_ref(), TypX::Opaque { .. }),
+                                Some(fun.x.ret.clone()),
+                            )
+                        });
+
+                    let ret_exp = if is_in_opaque_func {
+                        &crate::poly::coerce_exp_to_poly(
+                            ctx,
+                            ret_exp.as_ref().expect("if dest is provided, expr must be provided"),
+                        )
+                    } else {
+                        ret_exp.as_ref().expect("if dest is provided, expr must be provided")
+                    };
+
+                    let mut stmts =
+                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
+                    if is_in_opaque_func {
+                        let ret = ret_op.as_ref().expect("opaque function has no return type");
+                        let ret_expr_typs = typ_to_ids(&ret_exp.typ);
+                        let ret_value_typs = typ_to_ids(&ret.x.typ);
+                        let decr = ExprX::Binary(
+                            air::ast::BinaryOp::Eq,
+                            ret_expr_typs[0].clone(),
+                            ret_value_typs[0].clone(),
+                        );
+                        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
+                        let typ = ExprX::Binary(
+                            air::ast::BinaryOp::Eq,
+                            ret_expr_typs[1].clone(),
+                            ret_value_typs[1].clone(),
+                        );
+                        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
+                        stmts.push(assume_decr);
+                        stmts.push(assume_typ);
+                    }
+                    stmts
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that

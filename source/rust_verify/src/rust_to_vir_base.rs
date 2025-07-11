@@ -1055,7 +1055,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             use crate::rustc_trait_selection::traits::NormalizeExt;
             let param_env = tcx.param_env(param_env_src);
             let infcx =
-                tcx.infer_ctxt().ignoring_regions().build(rustc_type_ir::TypingMode::PostAnalysis);
+                tcx.infer_ctxt().ignoring_regions().build(rustc_type_ir::TypingMode::Analysis {
+                    defining_opaque_types_and_generators: Default::default(),
+                });
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);

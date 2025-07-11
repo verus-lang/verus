@@ -3,6 +3,16 @@
 mod common;
 use common::*;
 
+fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
+    assert_eq!(err.errors.len(), 1);
+    let err0 = &err.errors[0];
+    assert!(err0.code.is_none());
+    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
+    assert!(err0.spans.len() == 2 || err0.spans.len() == 3);
+    assert_spans_contain(err0, typ1);
+    assert_spans_contain(err0, typ2);
+}
+
 test_verify_one_file! {
     #[test] test_return_opaque_type verus_code! {
         use vstd::prelude::*;
@@ -92,17 +102,17 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_no_opaque_types_from_traits verus_code! {
     use vstd::prelude::*;
-        trait DummyTraitA{}
-        impl<T> DummyTraitA for T {}
-        trait DummyTraitB {
-            fn foo(&self) -> impl DummyTraitA;
-        }
+    trait DummyTraitA{}
+    impl<T> DummyTraitA for T {}
+    trait DummyTraitB {
+        fn foo(&self) -> impl DummyTraitA;
+    }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not yet support Opaque types in trait def")
 }
 
 test_verify_one_file! {
     #[test] test_opaque_function_with_ensures verus_code! {
-    use vstd::prelude::*;
+        use vstd::prelude::*;
         trait DummyTraitA{}
         impl<T> DummyTraitA for T {}
         fn foo() -> (ret: impl DummyTraitA)
@@ -111,5 +121,62 @@ test_verify_one_file! {
         {
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "function with opaque type does not yet support ensure clause")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_function_return_value_type verus_code! {
+        use vstd::prelude::*;
+        trait DummyTraitA{}
+        impl<T> DummyTraitA for T {}
+        fn foo() -> (ret: impl DummyTraitA)
+            ensures
+                ret == ret,
+                ret == true,
+        {
+            true
+        }
+    } => Err(err) => assert_spec_eq_type_err(err, "opaque_ty", "bool")
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_projection_without_annotation  verus_code! {
+        use vstd::prelude::*;
+        trait DummyTraitA{
+            type Output;
+            spec fn get_output(&self) -> Self::Output;
+        }
+        impl<T> DummyTraitA for T {
+            type Output = T;
+            uninterp spec fn get_output(&self) -> Self::Output;
+        }
+        fn foo() -> (ret: impl DummyTraitA)
+            ensures
+                ret == ret,
+                ret.get_output() == true,
+        {
+            true
+        }
+    } => Err(err) => assert_spec_eq_type_err(err, "<opaque_ty as test_crate::DummyTraitA>::Output", "bool")
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_projection_with_annotation verus_code! {
+        use vstd::prelude::*;
+        trait DummyTraitA{
+            type Output;
+            spec fn get_output(&self) -> Self::Output;
+        }
+        impl<T> DummyTraitA for T {
+            type Output = T;
+            uninterp spec fn get_output(&self) -> Self::Output;
+        }
+        fn foo() -> (ret: impl DummyTraitA)
+            ensures
+                ret == ret,
+                ret.get_output() == true,  // FAILS
+        {
+            true
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
