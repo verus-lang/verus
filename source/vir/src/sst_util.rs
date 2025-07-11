@@ -450,6 +450,12 @@ impl ExpX {
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
                 }
+                UnaryOp::MutRefCurrent => {
+                    (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::MutRefFuture => {
+                    (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
@@ -759,6 +765,24 @@ pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
+pub fn sst_mut_ref_current(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_current expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefCurrent;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
+pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefFuture;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
 pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
     match ext {
         None => sst_equal(span, e1, e2),
@@ -815,6 +839,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
             LocalDeclKind::Nondeterministic => false,
+            LocalDeclKind::BorrowMut => false,
         }
     }
 }
