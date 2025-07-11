@@ -760,7 +760,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     if matches!(expr_item, ExprItem::ClosureToFnSpec) {
                         return err_span(args[0].span, "cannot use spec_fn closure in 'exec' mode");
                     } else {
-                        return err_span(args[0].span, "cannot use proof_fn closure in 'exec' mode");
+                        return err_span(
+                            args[0].span,
+                            "cannot use proof_fn closure in 'exec' mode",
+                        );
                     }
                 }
                 if let ExprKind::Closure(..) = &args[0].kind {
