@@ -119,7 +119,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    fn new() -> State {
+    pub(crate) fn new() -> State {
         State {
             rename_count: 0,
             reached: HashSet::new(),
