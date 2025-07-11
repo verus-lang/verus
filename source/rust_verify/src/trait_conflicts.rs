@@ -161,6 +161,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
+        vir::ast::TypX::MutRef(_) => todo!(),
     }
 }
 

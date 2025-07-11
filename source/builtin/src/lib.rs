@@ -1815,3 +1815,31 @@ pub fn dummy_capture_new<'a>() -> DummyCapture<'a> {
 pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::resolve"]
+#[verifier::spec]
+pub fn resolve<T>(_t: T) {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::has_resolved"]
+#[verifier::spec]
+pub fn has_resolved<T>(_t: T) -> bool {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_current"]
+#[verifier::spec]
+pub fn mut_ref_current<T>(_mut_ref: &mut T) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_future"]
+#[verifier::spec]
+pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
+    unimplemented!()
+}

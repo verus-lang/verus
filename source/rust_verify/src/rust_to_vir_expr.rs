@@ -381,6 +381,14 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 Mutability::Not => false,
                 Mutability::Mut => true,
             };
+
+            // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
+            // mutable reference (or if it contains a nested mutable reference),
+            // even if the variable is not marked 'mut'.
+            // Conservatively mark all variables non-mutable for now
+            // TODO be more precise about this.
+            let mutable = mutable || bctx.ctxt.cmd_line_args.new_mut_ref;
+
             let name = local_to_var(x, canonical.local_id);
             match subpat {
                 None => PatternX::Var { name, mutable },
@@ -945,6 +953,14 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         }
     };
 
+    let get_inner2_ty = || {
+        if adjustment_idx == 2 {
+            bctx.types.expr_ty(expr)
+        } else {
+            adjustments[adjustment_idx - 3].target
+        }
+    };
+
     let adjustment = &adjustments[adjustment_idx - 1];
 
     match &adjustment.kind {
@@ -962,14 +978,25 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
-            let inner = expr_to_vir_with_adjustments(
+            let inner_expr = expr_to_vir_with_adjustments(
                 bctx,
                 expr,
                 new_modifier,
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            Ok(strip_vir_ref_decoration(inner))
+            let inner_ty = get_inner_ty();
+            if bctx.ctxt.cmd_line_args.new_mut_ref
+                && matches!(inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
+            {
+                let t = match &*inner_expr.typ {
+                    TypX::MutRef(t) => t.clone(),
+                    _ => panic!("expected mut ref"),
+                };
+                Ok(bctx.spanned_typed_new(expr.span, &t, ExprX::DerefMut(inner_expr)))
+            } else {
+                Ok(strip_vir_ref_decoration(inner_expr))
+            }
         }
         Adjust::Deref(Some(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
@@ -1012,7 +1039,43 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             Ok(new_expr)
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
-            if current_modifier.deref_mut {
+            if bctx.ctxt.cmd_line_args.new_mut_ref {
+                // Rust often inserts &mut* adjustments in argument positions.
+                // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
+                // (This is done to force a reborrow.)
+                // We actually don't want this in spec contexts, so we detect this
+                // case and skip it.
+                if adjustment_idx >= 2
+                    && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
+                {
+                    let inner_inner_ty = get_inner2_ty();
+                    if inner_inner_ty != adjustment.target {
+                        panic!("Verus Internal Error: Implicit &mut * expected the same type");
+                    }
+                    // TODO: we need to improve this condition to work for tracked code
+                    if bctx.in_ghost {
+                        return expr_to_vir_with_adjustments(
+                            bctx,
+                            expr,
+                            current_modifier,
+                            adjustments,
+                            adjustment_idx - 2,
+                        );
+                    }
+                }
+
+                let e = expr_to_vir_with_adjustments(
+                    bctx,
+                    expr,
+                    current_modifier,
+                    adjustments,
+                    adjustment_idx - 1,
+                )?;
+                let place = crate::places::expr_to_place_for_mut_ref(&e)?;
+                let x = ExprX::BorrowMut(place);
+                let typ = Arc::new(TypX::MutRef(e.typ.clone()));
+                Ok(bctx.spanned_typed_new(expr.span, &typ, x))
+            } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
                 new_modifier.deref_mut = false;
@@ -1810,7 +1873,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             Ok(new_expr)
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
-            if current_modifier.deref_mut {
+            if bctx.ctxt.cmd_line_args.new_mut_ref {
+                let e = expr_to_vir(bctx, e, modifier)?;
+                let place = crate::places::expr_to_place_for_mut_ref(&e)?;
+                let x = ExprX::BorrowMut(place);
+                let typ = Arc::new(TypX::MutRef(e.typ.clone()));
+                Ok(bctx.spanned_typed_new(expr.span, &typ, x))
+            } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
                 new_modifier.deref_mut = false;
@@ -2575,6 +2644,22 @@ fn expr_assign_to_vir_innermost<'tcx>(
     modifier: ExprModifier,
     op_kind: Option<&Spanned<AssignOpKind>>,
 ) -> Result<vir::ast::Expr, vir::messages::Message> {
+    if bctx.ctxt.cmd_line_args.new_mut_ref {
+        let vir_lhs = expr_to_vir(bctx, lhs, modifier)?;
+        let vir_place = crate::places::expr_to_place_for_mut_ref(&vir_lhs)?;
+        let vir_rhs = expr_to_vir(bctx, rhs, modifier)?;
+
+        let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+        let op = match op_kind {
+            Some(op) => {
+                Some(assignop_kind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?)
+            }
+            None => None,
+        };
+
+        return mk_expr(ExprX::AssignToPlace { place: vir_place, rhs: vir_rhs, op: op });
+    }
+
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
         Ok(match lhs.kind {
             ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
@@ -3236,8 +3321,18 @@ fn deref_expr_to_vir<'tcx>(
     let inner_expr = expr_to_vir_inner(bctx, arg, modifier)?;
 
     if !bctx.types.is_method_call(expr) || auto_deref_supported_for_ty(bctx.ctxt.tcx, &arg_ty) {
-        // Normal dereference, just strip the inner expression.
-        Ok(strip_vir_ref_decoration(inner_expr))
+        if bctx.ctxt.cmd_line_args.new_mut_ref
+            && matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
+        {
+            let t = match &*inner_expr.typ {
+                TypX::MutRef(t) => t.clone(),
+                _ => panic!("expected mut ref"),
+            };
+            Ok(bctx.spanned_typed_new(expr.span, &t, ExprX::DerefMut(inner_expr)))
+        } else {
+            // Normal dereference, just strip the inner expression.
+            Ok(strip_vir_ref_decoration(inner_expr))
+        }
     } else {
         // Overloaded dereference other than internally implemented ones.
         // Insert a function call to the overloaded method.
