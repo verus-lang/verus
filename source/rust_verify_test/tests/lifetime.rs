@@ -1167,3 +1167,59 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] regression_issue959 verus_code! {
+        pub struct S<'a> {
+            pub data: &'a u8,
+        }
+
+        type Res<'a, T> = Result<(S<'a>, T), Err>;
+
+        enum Result<A, B> {
+            Ok(A),
+            Err(B),
+        }
+
+        pub enum Err {
+            A,
+        }
+
+        fn test<'a>(s: S<'a>) -> Res<'a, u8> {
+            let cls = |s: S<'a>| -> Res<'a, u8> { ok(s) };
+            Result::Ok((s, 0))
+        }
+
+        fn ok<'a>(s: S<'a>) -> Res<'a, u8> {
+            Result::Ok((s, 0))
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_issue959_fails verus_code! {
+        pub struct S<'a> {
+            pub data: &'a u8,
+        }
+
+        type Res<'a, T> = Result<(S<'a>, T), Err>;
+
+        enum Result<A, B> {
+            Ok(A),
+            Err(B),
+        }
+
+        pub enum Err {
+            A,
+        }
+
+        fn test<'a>(s: S<'a>) -> Res<'a, u8> {
+            let cls = |s: S| -> Res<'a, u8> { ok(s) };
+            Result::Ok((s, 0))
+        }
+
+        fn ok<'a>(s: S<'a>) -> Res<'a, u8> {
+            Result::Ok((s, 0))
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
+}
