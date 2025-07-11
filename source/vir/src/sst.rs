@@ -54,6 +54,7 @@ pub enum InternalFun {
     CheckDecreaseInt,
     CheckDecreaseHeight,
     OpenInvariantMask(Fun, usize),
+    HasResolved,
 }
 
 #[derive(Debug, Clone, Hash, ToDebugSNode)]
@@ -231,6 +232,7 @@ pub enum LocalDeclKind {
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
+    BorrowMut,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

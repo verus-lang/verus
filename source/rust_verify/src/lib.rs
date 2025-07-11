@@ -57,6 +57,7 @@ pub mod lifetime;
 mod lifetime_ast;
 mod lifetime_emit;
 mod lifetime_generate;
+pub mod places;
 pub mod profiler;
 mod resolve_traits;
 pub mod reveal_hide;

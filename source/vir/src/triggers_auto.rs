@@ -353,7 +353,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 CallFun::InternalFun(
                     InternalFun::CheckDecreaseInt
                     | InternalFun::CheckDecreaseHeight
-                    | InternalFun::OpenInvariantMask(..),
+                    | InternalFun::OpenInvariantMask(..)
+                    | InternalFun::HasResolved,
                 ) => (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms)))),
             }
         }
@@ -399,6 +400,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
