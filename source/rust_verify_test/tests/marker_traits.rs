@@ -47,7 +47,7 @@ macro_rules! check_not_copy {
                 }
                 ".replace("$tparams", $tparams)
                 .replace("$t", $t)
-            => Err(e) => assert_vir_error_msg(e, "use of moved value")
+            => Err(e) => assert_rust_error_msg(e, "use of moved value")
         }
     };
 }

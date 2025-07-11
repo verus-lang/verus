@@ -1014,7 +1014,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file! {
@@ -1038,7 +1038,7 @@ test_verify_one_file! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file! {
@@ -1191,6 +1191,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pattern_ranges_bad_range_closure verus_code! {
+        spec fn m_range6(x: u64) -> spec_fn() -> bool {
+            || match x {
+                5u64..=3u64 => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+}
+
+test_verify_one_file! {
     #[test] pattern_ranges_const_mode_error verus_code! {
         spec const A: u64 = 3u64;
         spec const B: u64 = 17u64;
@@ -1325,4 +1336,54 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] non_exhaustive_spec_ranges verus_code! {
+        spec fn check_range2(x: u64) -> bool {
+            match x {
+                3u64..=5u64 => true,
+                7u64..=9u64 => true,
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "non-exhaustive patterns")
+}
+
+test_verify_one_file! {
+    #[test] non_exhaustive_spec_ranges_nested verus_code! {
+        enum Option<A> { Some(A), None }
+        spec fn check_range_nested(x: u64, t: Option<u64>) -> bool {
+            match x {
+                3u64..=5u64 => true,
+                7u64..=9u64 => {
+                    match t {
+                        Option::None => { true }
+                    }
+                }
+            }
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "non-exhaustive patterns",
+        "non-exhaustive patterns",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] non_exhaustive_in_closure verus_code! {
+        spec fn check_match_in_closure2(x: u64) -> spec_fn() -> bool {
+            || match x {
+                3u64..=5u64 => true,
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "non-exhaustive patterns")
+}
+
+test_verify_one_file! {
+    #[test] refut_let verus_code! {
+        enum Option<A> { Some(A), None }
+        spec fn check_refut_let(x: Option<u64>) -> bool {
+            let Option::None = x;
+            true
+        }
+    } => Err(err) => assert_rust_error_msg(err, "refutable pattern in local binding")
 }

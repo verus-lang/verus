@@ -1,14 +1,37 @@
 // tidy-alphabetical-start
+#![allow(unused_imports)]
+#![allow(dead_code)]
 #![allow(rustc::diagnostic_outside_of_impl)]
 #![allow(rustc::untranslatable_diagnostic)]
-#![cfg_attr(bootstrap, feature(let_chains))]
 #![feature(array_windows)]
 #![feature(box_patterns)]
 #![feature(if_let_guard)]
 #![feature(iter_intersperse)]
 #![feature(never_type)]
 #![feature(try_blocks)]
+#![feature(rustc_private)]
 // tidy-alphabetical-end
+
+extern crate rustc_abi;
+extern crate rustc_ast;
+extern crate rustc_attr_parsing;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_fluent_macro;
+extern crate rustc_hir;
+extern crate rustc_hir_analysis;
+extern crate rustc_hir_pretty;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_lint;
+extern crate rustc_macros;
+extern crate rustc_middle;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_trait_selection;
+extern crate smallvec;
+
 
 mod _match;
 mod autoderef;
@@ -37,7 +60,7 @@ mod pat;
 mod place_op;
 mod rvalue_scopes;
 mod typeck_root_ctxt;
-mod upvar;
+pub mod upvar;
 mod writeback;
 
 pub use coercion::can_coerce;
@@ -214,7 +237,7 @@ fn typeck_with_inspect<'tcx>(
 
     // Closure and coroutine analysis may run after fallback
     // because they don't constrain other type variables.
-    fcx.closure_analyze(body);
+    //fcx.closure_analyze(body);
     assert!(fcx.deferred_call_resolutions.borrow().is_empty());
     // Before the coroutine analysis, temporary scopes shall be marked to provide more
     // precise information on types to be captured.

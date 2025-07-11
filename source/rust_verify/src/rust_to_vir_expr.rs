@@ -12,12 +12,11 @@ use crate::rust_to_vir_base::{
     typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
-use crate::rust_to_vir_func::find_body;
 use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
-    UnaryOpItem, VerusItem, VstdItem,
+    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenInvariantBlockItem,
+    SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -36,6 +35,7 @@ use rustc_middle::ty::adjustment::{
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
 };
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -2269,9 +2269,20 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
+
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            if bctx.ctxt.cmd_line_args.new_lifetime {
+                let resolved_call = ResolvedCall::BracesCtor(
+                    path.clone(),
+                    variant_name.clone(),
+                    Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
+                    update.is_some(),
+                );
+                erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            } else {
+                let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
+                erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            }
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
@@ -2292,13 +2303,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 true,
             )
         }
-        ExprKind::Closure(Closure { fn_decl: _, body: body_id, .. }) => {
-            if expr_vattrs.internal_const_header_wrapper {
-                let closure_body = find_body(&bctx.ctxt, body_id);
-                expr_to_vir(bctx, closure_body.value, modifier)
-            } else {
-                closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
-            }
+        ExprKind::Closure(Closure { fn_decl: _, .. }) => {
+            closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
@@ -2863,6 +2869,10 @@ pub(crate) fn stmt_to_vir<'tcx>(
 
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
+            if is_ignorable_dummy_capture_operation(bctx, expr) {
+                return Ok(vec![]);
+            }
+
             let vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
@@ -2907,6 +2917,12 @@ pub(crate) fn stmt_to_vir<'tcx>(
             }
         }
         StmtKind::Let(LetStmt { pat, ty: _, init, els, .. }) => {
+            if let Some(init) = init {
+                if is_ignorable_dummy_capture_operation(bctx, init) {
+                    return Ok(vec![]);
+                }
+            }
+
             let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
     }
@@ -2931,6 +2947,30 @@ pub(crate) fn stmts_to_vir<'tcx>(
     }
 }
 
+pub(crate) fn is_ignorable_dummy_capture_operation<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> bool {
+    match &expr.kind {
+        ExprKind::Call(fun, _) => match &fun.kind {
+            ExprKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: Res::Def(_, fun_id), .. },
+            )) => {
+                let verus_item = bctx.ctxt.get_verus_item(*fun_id);
+                matches!(
+                    verus_item,
+                    Some(VerusItem::DummyCapture(
+                        DummyCaptureItem::New | DummyCaptureItem::Consume
+                    ))
+                )
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 pub(crate) fn closure_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     closure_expr: &Expr<'tcx>,
@@ -2939,7 +2979,7 @@ pub(crate) fn closure_to_vir<'tcx>(
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if let ExprKind::Closure(Closure { fn_decl, body: body_id, .. }) = &closure_expr.kind {
+    if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
         unsupported_err_unless!(!fn_decl.c_variadic, closure_expr.span, "c_variadic");
         unsupported_err_unless!(
             matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
@@ -2975,6 +3015,8 @@ pub(crate) fn closure_to_vir<'tcx>(
         assert!(ensure.1.len() == 0);
 
         let exprx = if is_spec_fn {
+            bctx.ctxt.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });
+
             if require.len() > 0 || ensure.0.len() > 0 {
                 return err_span(
                     closure_expr.span,
@@ -2983,6 +3025,17 @@ pub(crate) fn closure_to_vir<'tcx>(
             }
             ExprX::Closure(Arc::new(params), body)
         } else {
+            bctx.ctxt.push_body_erasure(
+                *def_id,
+                BodyErasure {
+                    erase_body: false,
+                    ret_spec: match proof_fn_modes {
+                        None => false,
+                        Some((_, ret_mode)) => ret_mode == Mode::Spec,
+                    },
+                },
+            );
+
             let ret_typ = closure_ret_typ(bctx, closure_expr)?;
 
             let id = match ensure_id_typ {
