@@ -1706,7 +1706,8 @@ impl Visitor {
                     let mut i = 0;
                     while i < path.attrs.len() {
                         if path.attrs[i].path().get_ident().map(|i| i.to_string())
-                                == Some("cfg".to_string()) {
+                            == Some("cfg".to_string())
+                        {
                             let elt = path.attrs.remove(i);
                             attrs.push(elt);
                         } else {
