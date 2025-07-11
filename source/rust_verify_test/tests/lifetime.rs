@@ -1064,3 +1064,92 @@ test_verify_one_file! {
         pub struct Container<T: Borrowable>(T);
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] two_phase verus_code! {
+        use vstd::seq::*;
+
+        struct X {
+            u: u64,
+        }
+
+        impl X {
+            uninterp spec fn seq(&self) -> Seq<u64>;
+
+            #[verifier::external_body]
+            fn len(&self) -> (l: u64)
+                ensures l == self.seq().len()
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn push(&mut self, elem: u64)
+                ensures
+                    self.seq() == old(self).seq().push(elem)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x.push(x.len());
+            assert(x.seq() == x1.push(x1.len() as u64));
+        }
+
+        fn test_fail(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x.push(x.len());
+            assert(x.seq() == x1.push(x1.len() as u64));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] two_phase_with_overloaded_compound_assignment_operator verus_code! {
+        use vstd::seq::*;
+
+        struct X {
+            u: u64,
+        }
+
+        impl X {
+            uninterp spec fn seq(&self) -> Seq<u64>;
+
+            #[verifier::external_body]
+            fn len(&self) -> (l: u64)
+                ensures l == self.seq().len()
+            {
+                unimplemented!();
+            }
+        }
+
+        impl std::ops::AddAssign<u64> for X {
+            #[verifier::external_body]
+            fn add_assign(&mut self, rhs: u64)
+                ensures self.seq() == old(self).seq().push(rhs)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x += x.len();
+            assert(x.seq() == x1.push(x1.len() as u64));
+        }
+
+        fn test_fail(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x += x.len();
+            assert(x.seq() == x1.push(x1.len() as u64));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: &mut dereference in this position (note: &mut dereference is implicit here)")
+}
