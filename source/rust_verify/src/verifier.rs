@@ -3062,7 +3062,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 return rustc_driver::Compilation::Stop;
             }
             self.lifetime_start_time = Some(Instant::now());
-            let status = if self.verifier.args.no_lifetime || self.verifier.args.new_lifetime {
+            let status = if self.verifier.args.no_lifetime {
                 Ok(vec![])
             } else {
                 let log_lifetime =
@@ -3081,6 +3081,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
+                // TODO the "lifetime" subsystem is misnamed now, as its only role is
+                // trait conflict checking
                 crate::lifetime::check_tracked_lifetimes(
                     self.verifier.args.clone(),
                     tcx,

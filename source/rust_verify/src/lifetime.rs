@@ -325,14 +325,18 @@ fn emit_check_tracked_lifetimes<'tcx>(
     item_to_module_map: &CrateItems,
     vir_crate: &vir::ast::Krate,
 ) -> State {
-    let mut gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
-        cmd_line_args,
-        tcx,
-        verus_items,
-        krate,
-        erasure_hints,
-        item_to_module_map,
-    );
+    let mut gen_state = if cmd_line_args.new_lifetime {
+        crate::lifetime_generate::State::new()
+    } else {
+        crate::lifetime_generate::gen_check_tracked_lifetimes(
+            cmd_line_args,
+            tcx,
+            verus_items,
+            krate,
+            erasure_hints,
+            item_to_module_map,
+        )
+    };
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
     let prelude = PRELUDE
