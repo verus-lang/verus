@@ -643,7 +643,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
+    #[test] #[ignore = "needs input from Travis"] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
@@ -662,7 +662,7 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 
         #[verifier::external]
-        #[path="../../../../verus_builtin/src/lib.rs"]
+        #[path="../../../../builtin/src/lib.rs"]
         mod verus_builtin;
 
         #[path="../../../../vstd/vstd.rs"]

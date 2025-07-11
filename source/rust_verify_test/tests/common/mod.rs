@@ -263,6 +263,10 @@ pub fn run_verus(
         .join(profile);
 
     let verus_target_path_str = verus_target_path.to_str().unwrap();
+
+    let lib_vstd_path = verus_target_path.join("libvstd.rlib");
+    assert!(lib_vstd_path.exists());
+    let lib_vstd_path = lib_vstd_path.to_str().unwrap();
     let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
@@ -342,6 +346,8 @@ pub fn run_verus(
     verus_args.extend(
         vec![
             "--extern".to_string(),
+            format!("vstd={lib_vstd_path}"),
+            "--extern".to_string(),
             format!("verus_builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
@@ -420,6 +426,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
+    use vstd::prelude::*;
     use verus_builtin::*;
     use verus_builtin_macros::*;
 };

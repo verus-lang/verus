@@ -3569,6 +3569,9 @@ macro_rules! assert_seqs_equal_internal {
     (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
     (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
