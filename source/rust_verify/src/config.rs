@@ -113,6 +113,7 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
+    pub new_mut_ref: bool,
 }
 
 impl ArgsX {
@@ -159,6 +160,7 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
+            new_mut_ref: Default::default(),
         }
     }
 }
@@ -394,6 +396,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
+    const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -421,6 +424,7 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
+        (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -803,7 +807,18 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
+        new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
     };
 
+    if args.new_mut_ref {
+        NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
     (Arc::new(args), unmatched)
+}
+
+static NEW_MUT_REF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn new_mut_ref() -> bool {
+    NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)
 }

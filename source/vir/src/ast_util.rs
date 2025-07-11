@@ -3,8 +3,8 @@ use crate::ast::{
     ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
     ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
+    SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
+    UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
     Visibility,
 };
 use crate::messages::Span;
@@ -185,6 +185,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
         (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
+        (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -202,6 +203,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
         (TypX::PointeeMetadata(..), _) => false,
+        (TypX::MutRef(..), _) => false,
     }
 }
 
@@ -616,6 +618,23 @@ pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
 }
 
+pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
+    let typ = match &expr {
+        Some(e) => e.typ.clone(),
+        None => unit_typ(),
+    };
+    SpannedTyped::new(span, &typ, ExprX::Block(Arc::new(stmts), expr))
+}
+
+pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
+    let t = match &*expr.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefFuture;
+    SpannedTyped::new(span, &t, ExprX::Unary(op, expr.clone()))
+}
+
 pub fn if_then_else(span: &Span, cond: &Expr, thn: &Expr, els: &Expr) -> Expr {
     SpannedTyped::new(span, &thn.typ, ExprX::If(cond.clone(), thn.clone(), Some(els.clone())))
 }
@@ -927,6 +946,10 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::PointeeMetadata(t) => {
             let t = typ_to_diagnostic_str(t);
             format!("<{} as Pointee>::Metadata", t)
+        }
+        TypX::MutRef(t) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("&mut {}", t)
         }
     }
 }

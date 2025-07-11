@@ -97,6 +97,10 @@ const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 const DUMMY_PARAM: &str = "no%param";
 
+pub const MUT_REF_UPDATE_CURRENT: &str = "mut_ref_update_current%";
+pub const MUT_REF_CURRENT: &str = "mut_ref_current%";
+pub const MUT_REF_FUTURE: &str = "mut_ref_future%";
+
 pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
@@ -177,6 +181,7 @@ pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
+pub const TYPE_ID_MUT_REF: &str = "MUTREF";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -187,6 +192,7 @@ pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
 pub const HEIGHT_LT: &str = "height_lt";
 pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
+pub const HAS_RESOLVED: &str = "has_resolved";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const DEFAULT_ENS: &str = "default_ens";

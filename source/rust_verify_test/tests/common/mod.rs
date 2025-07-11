@@ -316,6 +316,9 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
+        } else if *option == "new-mut-ref" {
+            verus_args.push("-V".to_string());
+            verus_args.push("new-mut-ref".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }

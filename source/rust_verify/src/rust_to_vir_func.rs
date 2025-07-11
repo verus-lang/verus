@@ -1081,7 +1081,8 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
-        let is_ref_mut = is_mut_ty(ctxt, *input);
+        let is_ref_mut =
+            if ctxt.cmd_line_args.new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }

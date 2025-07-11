@@ -1604,6 +1604,57 @@ fn verus_item_to_vir<'tcx, 'a>(
                 format!("this builtin item should not appear in user code",),
             );
         }
+        VerusItem::Resolve | VerusItem::HasResolved => {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                unsupported_err!(expr.span, "resolved/resolved without '-V new-mut-ref'", &args);
+            }
+            if matches!(verus_item, VerusItem::Resolve) {
+                record_compilable_operator(bctx, expr, CompilableOperator::Resolve);
+            } else {
+                record_spec_fn_no_proof_args(bctx, expr);
+            }
+            if !bctx.in_ghost {
+                if matches!(verus_item, VerusItem::Resolve) {
+                    return err_span(expr.span, "resolve must be in a 'proof' block");
+                } else {
+                    return err_span(expr.span, "resolved must be in a 'proof' block");
+                }
+            }
+            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
+            let t = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                expr.span,
+                &arg_typ,
+                false,
+            )?;
+            if matches!(verus_item, VerusItem::Resolve) {
+                mk_expr(ExprX::AssumeResolved(exp, t))
+            } else {
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
+            }
+        }
+        VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            record_spec_fn_no_proof_args(bctx, expr);
+            if !bctx.in_ghost {
+                return err_span(
+                    expr.span,
+                    "mut_ref_current/mut_ref_future must be in a 'proof' block",
+                );
+            }
+            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let op = match verus_item {
+                VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
+                VerusItem::MutRefFuture => UnaryOp::MutRefFuture,
+                _ => unreachable!(),
+            };
+            mk_expr(ExprX::Unary(op, exp))
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
@@ -2051,10 +2102,11 @@ fn mk_vir_args<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
+            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+                && match raw_param.kind() {
+                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+                    _ => false,
+                };
             if is_mut_ref_param {
                 let expr =
                     expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;

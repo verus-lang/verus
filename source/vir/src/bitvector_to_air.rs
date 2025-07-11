@@ -356,6 +356,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                panic!("mut-ref operation not allowed in bitvector query")
+            }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
             bv_exp_to_expr(ctx, state, exp)

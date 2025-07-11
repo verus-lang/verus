@@ -399,6 +399,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
@@ -421,6 +422,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
             let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+        }
+        ExpX::UnaryOpr(UnaryOpr::HasResolved(_), e1) => {
+            let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
+            (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),

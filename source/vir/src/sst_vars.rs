@@ -1,4 +1,4 @@
-use crate::ast::{Typ, UnaryOpr, VarIdent};
+use crate::ast::{Typ, UnaryOp, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
@@ -22,6 +22,7 @@ pub type AssignMap = IndexMap<*const Spanned<StmX>, IndexSet<VarIdent>>;
 pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     match &exp.x {
         ExpX::Loc(x) => get_loc_var(x),
+        ExpX::Unary(UnaryOp::MutRefCurrent, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var(x),
         ExpX::VarLoc(x) => x.clone(),
