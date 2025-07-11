@@ -532,7 +532,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     for OpaqueDef { id, verif } in crate_items.opaque_tys.iter() {
         match verif {
             VerifOrExternal::VerusAware { .. } => {
-                let opaque_ty = ctxt.tcx.hir().expect_opaque_ty(*id);
+                let opaque_ty = ctxt.tcx.hir_expect_opaque_ty(*id);
                 crate::rust_to_vir_base::opaque_def_to_vir(ctxt, &mut vir, opaque_ty)?;
             }
             VerifOrExternal::External { .. } => {}
