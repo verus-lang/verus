@@ -417,6 +417,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
+    #![feature(ptr_metadata)]
 };
 
 #[allow(dead_code)]
