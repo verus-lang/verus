@@ -33,23 +33,16 @@ pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Ra
         (*range, r) == spec_range_next(*old(range)),
 ;
 
-pub assume_specification<Idx: PartialOrd<Idx>, U>[Range::<Idx>::contains](range: &Range<Idx>, i: &U) -> (r: bool) where
-    Idx: PartialOrd<U>,
-    U: ?Sized + PartialOrd<Idx>,
-
+pub assume_specification<Idx: PartialOrd<Idx>, U>[ Range::<Idx>::contains ](
+    r: &Range<Idx>,
+    i: &U,
+) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
     ensures
-        call_ensures(<U as PartialOrd<Idx>>::lt, (i, &range.end), true) && call_ensures(
-            <Idx as PartialOrd<U>>::le,
-            (&range.start, i),
-            true,
-        ) <==> r,
-        call_ensures(<U as PartialOrd<Idx>>::lt, (i, &range.end), false) && call_ensures(
-            <Idx as PartialOrd<U>>::le,
-            (&range.start, i),
-            false,
-        ) <==> !r
+        (call_ensures(U::lt, (i, &r.end), true) && call_ensures(Idx::le, (&r.start, i), true))
+            <==> ret,
+        (call_ensures(U::lt, (i, &r.end), false) || call_ensures(Idx::le, (&r.start, i), false))
+            <==> !ret,
 ;
-
 
 pub struct RangeGhostIterator<A> {
     pub start: A,
