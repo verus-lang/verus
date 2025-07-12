@@ -41,7 +41,7 @@ use syn::{Expr, Item, parse2, spanned::Spanned};
 use crate::{
     EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
-    syntax::{self, mk_verus_attr_syn},
+    syntax::{self, mk_verifier_attr_syn, mk_verus_attr_syn},
     syntax_trait,
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
@@ -49,26 +49,6 @@ use crate::{
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
-
-fn mk_verifier_attr_syn(span: proc_macro2::Span, tokens: &str) -> syn::Attribute {
-    let mut path_segments = syn::punctuated::Punctuated::new();
-    path_segments.push(syn::PathSegment {
-        ident: syn::Ident::new("verifier", span),
-        arguments: syn::PathArguments::None,
-    });
-    path_segments.push(syn::PathSegment {
-        ident: syn::Ident::new(tokens, span),
-        arguments: syn::PathArguments::None,
-    });
-    let path = syn::Path { leading_colon: None, segments: path_segments };
-    let meta = syn::Meta::Path(path);
-    syn::Attribute {
-        pound_token: syn::token::Pound { spans: [span] },
-        style: syn::AttrStyle::Outer,
-        bracket_token: syn::token::Bracket::default(),
-        meta,
-    }
-}
 
 enum VerusIOTarget {
     Local(syn::Local),

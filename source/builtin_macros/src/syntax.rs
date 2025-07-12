@@ -5024,7 +5024,7 @@ macro_rules! declare_mk_rust_attr {
 declare_mk_rust_attr!(mk_rust_attr, syn_verus);
 declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
-/// Constructs #[verus::internal(tokens)]
+/// Constructs #[verus::internal(tokens)] and #[verifier::tokens]
 macro_rules! declare_mk_verus_attr {
     ($name:ident, $name2:ident, $s:ident) => {
         pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
@@ -5064,18 +5064,9 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("verifier", span),
                 arguments: $s::PathArguments::None,
             });
+            path_segments.push($s::parse_quote_spanned!(span => #tokens));
             let path = $s::Path { leading_colon: None, segments: path_segments };
-            let meta = if tokens.is_empty() {
-                $s::Meta::Path(path)
-            } else {
-                $s::Meta::List($s::MetaList {
-                    path,
-                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
-                        span: into_spans(span),
-                    }),
-                    tokens: quote! { #tokens },
-                })
-            };
+            let meta = $s::Meta::Path(path);
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
