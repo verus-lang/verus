@@ -80,7 +80,7 @@ impl syn::parse::Parse for VerusSpecTarget {
     }
 }
 
-pub fn rewrite_verus_attribute(
+pub(crate) fn rewrite_verus_attribute(
     erase: &EraseGhost,
     attr_args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
@@ -267,17 +267,17 @@ fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
 // TODO: when tracked/ghost is supported, we need to clear verus-related
 // attributes for expression so that unverfied `cargo build` does not need to
 // enable unstable feature for macro.
-pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
+pub(crate) fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
     let mut replacer = ExecReplacer { erase };
     replacer.visit_block_mut(fblock);
 }
 
-pub fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
+pub(crate) fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
     let mut replacer = ExecReplacer { erase };
     replacer.visit_expr_mut(expr);
 }
 
-pub fn rewrite_verus_spec(
+pub(crate) fn rewrite_verus_spec(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
@@ -348,7 +348,7 @@ fn closure_to_fn_sig(closure: &syn::ExprClosure) -> syn::Signature {
     }
 }
 
-pub fn rewrite_verus_spec_on_fun_or_loop(
+pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     f: AnyFnOrLoop,
@@ -458,7 +458,7 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
     }
 }
 
-pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
+pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
     if erase.keep() {
         let block: TokenStream =
             syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
