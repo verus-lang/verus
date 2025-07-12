@@ -614,7 +614,10 @@ test_verify_one_file! {
             proof!{
                 assert(true);
             }
-            x + y
+            {
+                proof!{assert(true);}
+                x + y
+            }
         }
 
         #[verus_verify(dual_spec)]
@@ -786,5 +789,26 @@ test_verify_one_file! {
             )]
             |y: u64| {  };
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_const_fn_eval_via_proxy code!{
+        use vstd::prelude::*;
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        #[allow(unused_variables)]
+        pub const fn const_fn(x: u64) -> u64 {
+            proof!{
+                assert(true);
+            }
+            {
+                proof!{assert(true);}
+            }
+            x
+        }
+
+        pub const X: u64 = const_fn(1);
     } => Ok(())
 }
