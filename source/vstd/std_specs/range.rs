@@ -1,5 +1,6 @@
 use super::super::prelude::*;
 use super::super::view::View;
+use super::cmp::PartialOrdSpec;
 use core::ops::Range;
 
 verus! {
@@ -31,6 +32,23 @@ pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Ra
     Option<A>)
     ensures
         (*range, r) == spec_range_next(*old(range)),
+;
+
+/// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
+/// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
+/// and `le` (less than or equal to) must define total orders.
+/// If using Range::contains with types that do not satisfy obeys_partial_cmp_spec, no spec is provided.
+pub assume_specification<Idx: PartialOrd<Idx>, U>[ Range::<Idx>::contains ](
+    r: &Range<Idx>,
+    i: &U,
+) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
+    ensures
+        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec()) ==> (
+        i.partial_cmp_spec(&r.end) == Some(core::cmp::Ordering::Less)
+            && matches!(r.start.partial_cmp_spec(i), Some(
+            core::cmp::Ordering::Less | core::cmp::Ordering::Equal,
+        )))
+            == ret,
 ;
 
 pub struct RangeGhostIterator<A> {
