@@ -149,7 +149,7 @@ pub fn rewrite_verus_attribute(
                 spec_f.sig.ident = ident.clone();
                 spec_f.attrs = vec![mk_verus_attr_syn(f.span(), quote! { spec })];
                 // remove proof-related macros
-                spec_f.block.as_mut().stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
+                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap());
                 spec_fun = Some(spec_f);
 
                 attributes
@@ -232,7 +232,9 @@ impl VisitMut for ExecReplacer {
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         syn::visit_mut::visit_block_mut(self, block);
 
+        // If we are in non-verification mode, we erase all proof-related statements.
         if !self.erase.keep() {
+            block.stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
             return;
         }
 
@@ -395,8 +397,10 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             if fun.sig.constness.is_some() {
                 let mut const_fun = fun.clone();
                 let span = fun.sig.constness.unwrap().span();
-                const_fun.block.as_mut().stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
-                const_fun.attrs.push(mk_verifier_attr_syn(span, "external"));
+                // It seems that we do not need to erase anything.
+                // But just do it to be safe and consistent with verus macro.
+                replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
+                const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
                 const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
                 const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
                 const_fun.to_tokens(&mut new_stream);
