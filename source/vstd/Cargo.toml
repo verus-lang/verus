@@ -7,6 +7,14 @@
 name = "vstd"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Verus Standard Library: Useful specifications and lemmas for verifying Rust code"
+documentation = "https://verus-lang.github.io/verus/verusdoc/vstd/"
+homepage = "https://github.com/verus-lang/verus"
+repository = "https://github.com/verus-lang/verus"
+readme = "../../README.md"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
 
 [lib]
 name = "vstd"
