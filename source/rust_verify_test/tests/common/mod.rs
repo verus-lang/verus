@@ -324,7 +324,6 @@ pub fn run_verus(
     if no_external_by_default {
         verus_args.push("--no-external-by-default".to_string());
     }
-    verus_args.push("--new-lifetime".to_string());
 
     verus_args.extend(
         vec![

@@ -2634,11 +2634,6 @@ impl Verifier {
             return Ok(false);
         }
 
-        if !self.args.new_lifetime {
-            tcx.par_hir_body_owners(|def_id| {
-                tcx.ensure_ok().check_match(def_id).expect("check_match")
-            });
-        }
         tcx.ensure_ok().check_private_in_public(());
         tcx.hir_for_each_module(|module| {
             tcx.ensure_ok().check_mod_privacy(module);
@@ -2947,33 +2942,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             dep_tracker.config_install(config);
         }
 
-        if !self.verifier.args.new_lifetime {
-            config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-
-                // Hooking mir_const_qualif solves constness issue in function body,
-                // but const-eval will still do check-const when evaluating const
-                // value. Thus const_header_wrapper is still needed.
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                // Prevent the borrow checker from running, as we will run our own lifetime analysis.
-                // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
-                // by const evaluation through the mir interpreter.
-                providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
-                        rustc_data_structures::fx::FxIndexMap::default(),
-                    )))
-                };
-            });
-        } else {
-            config.override_queries = Some(|_session, providers| {
-                providers.hir_crate = hir_crate;
-                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-                providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
-                providers.check_mod_deathness = |_, _| {};
-                rustc_mir_build_verus::verus_provide(providers);
-            });
-        }
+        config.override_queries = Some(|_session, providers| {
+            providers.hir_crate = hir_crate;
+            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+            providers.lint_mod = |_, _| {};
+            providers.check_liveness = |_, _| {};
+            providers.check_mod_deathness = |_, _| {};
+            rustc_mir_build_verus::verus_provide(providers);
+        });
     }
 
     fn after_expansion<'tcx>(
@@ -3084,12 +3060,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 // TODO the "lifetime" subsystem is misnamed now, as its only role is
                 // trait conflict checking
                 crate::lifetime::check_tracked_lifetimes(
-                    self.verifier.args.clone(),
-                    tcx,
-                    verus_items,
                     &spans,
-                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
-                    self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                     lifetime_log_file,
                 )
@@ -3130,7 +3101,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
-        if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
+        if !self.verifier.args.no_lifetime {
             let res = crate::erase::setup_verus_ctxt_for_thir_erasure(
                 &self.verifier.verus_items.as_ref().unwrap(),
                 self.verifier.erasure_hints.as_ref().unwrap(),

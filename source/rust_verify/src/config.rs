@@ -113,7 +113,6 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
-    pub new_lifetime: bool,
 }
 
 impl ArgsX {
@@ -160,7 +159,6 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
-            new_lifetime: Default::default(),
         }
     }
 }
@@ -299,7 +297,6 @@ pub fn parse_args_with_imports(
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
-    const OPT_NEW_LIFETIME: &str = "new-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
@@ -460,7 +457,6 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
-    opts.optflag("", OPT_NEW_LIFETIME, "New lifetime checking");
     opts.optflag(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
@@ -665,7 +661,6 @@ pub fn parse_args_with_imports(
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
-        new_lifetime: matches.opt_present(OPT_NEW_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),

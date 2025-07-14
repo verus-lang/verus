@@ -111,14 +111,11 @@ and then sending the error messages and spans to the rustc diagnostics for the o
 
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
-use crate::erase::ErasureHints;
-use crate::external::CrateItems;
 use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
-use crate::verus_items::VerusItems;
-use rustc_hir::{AssocItemKind, Crate, ItemKind, MaybeOwner, OwnerNode};
+use rustc_hir::{AssocItemKind, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
@@ -315,28 +312,11 @@ fn main() {}
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
-    cmd_line_args: crate::config::Args,
-    tcx: TyCtxt<'tcx>,
-    verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
-    krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
-    erasure_hints: &ErasureHints,
-    item_to_module_map: &CrateItems,
     vir_crate: &vir::ast::Krate,
 ) -> State {
-    let mut gen_state = if cmd_line_args.new_lifetime {
-        crate::lifetime_generate::State::new()
-    } else {
-        crate::lifetime_generate::gen_check_tracked_lifetimes(
-            cmd_line_args,
-            tcx,
-            verus_items,
-            krate,
-            erasure_hints,
-            item_to_module_map,
-        )
-    };
+    let mut gen_state = crate::lifetime_generate::State::new();
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
     let prelude = PRELUDE
@@ -358,9 +338,6 @@ fn emit_check_tracked_lifetimes<'tcx>(
     }
     for t in gen_state.trait_impls.iter() {
         emit_trait_impl(emit_state, t);
-    }
-    for f in gen_state.fun_decls.iter() {
-        emit_fun_decl(emit_state, f);
     }
     gen_state
 }
@@ -434,26 +411,14 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
-    cmd_line_args: crate::config::Args,
-    tcx: TyCtxt<'tcx>,
-    verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
-    erasure_hints: &ErasureHints,
-    item_to_module_map: &CrateItems,
     vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
-    let krate = tcx.hir_crate(());
     let mut emit_state = EmitState::new();
     let gen_state = emit_check_tracked_lifetimes(
-        cmd_line_args,
-        tcx,
-        verus_items,
         spans,
-        krate,
         &mut emit_state,
-        erasure_hints,
-        item_to_module_map,
         vir_crate,
     );
     let mut rust_code: String = String::new();

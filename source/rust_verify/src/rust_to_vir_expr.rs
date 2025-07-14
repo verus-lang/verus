@@ -2271,18 +2271,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             );
 
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            if bctx.ctxt.cmd_line_args.new_lifetime {
-                let resolved_call = ResolvedCall::BracesCtor(
-                    path.clone(),
-                    variant_name.clone(),
-                    Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
-                    update.is_some(),
-                );
-                erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
-            } else {
-                let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-                erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
-            }
+            let resolved_call = ResolvedCall::BracesCtor(
+                path.clone(),
+                variant_name.clone(),
+                Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
+                update.is_some(),
+            );
+            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
