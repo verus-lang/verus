@@ -6,16 +6,16 @@ use rustc_span::SpanData;
 use vir::ast::{AutospecUsage, Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
+use crate::internal_err;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, ExpectSpec, ExpectSpecArgs, NodeErase, VarErasure, VerusErasureCtxt,
     set_verus_erasure_ctxt,
 };
+use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
-use rustc_span::Span;
-use crate::internal_err;
 use vir::ast::VirErr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -95,7 +95,7 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
     span: Span,
-    functions: &HashMap<Fun, Option<Function>>,
+    functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
 ) -> Result<CallErasure, VirErr> {
@@ -106,23 +106,16 @@ fn resolved_call_to_call_erase(
         }
         ResolvedCall::Call(f_name, autospec_usage) => {
             if !functions.contains_key(f_name) {
-                internal_err!(span, format!("resolved_call_to_call_erase: function call to {:?} not found", f_name));
+                internal_err!(
+                    span,
+                    format!("resolved_call_to_call_erase: function call to {:?} not found", f_name)
+                );
             }
             let f = &functions[f_name];
-            let f = if let Some(f) = f {
-                f
-            } else {
-                internal_err!(span, format!("resolved_call_to_call_erase: call to external function {:?}", f_name));
-            };
 
             let f = match (autospec_usage, &f.x.attrs.autospec) {
                 (AutospecUsage::IfMarked, Some(new_f_name)) => {
                     let f = &functions[new_f_name];
-                    let f = if let Some(f) = f {
-                        f
-                    } else {
-                        internal_err!(span, format!("resolved_call_to_call_erase: call to external function {:?}", f_name));
-                    };
                     f.clone()
                 }
                 _ => f.clone(),
@@ -241,9 +234,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         }
     }
 
-    let mut functions = HashMap::<Fun, Option<Function>>::new();
+    let mut functions = HashMap::<Fun, Function>::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
+        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", &f.x.name));
     }
 
     let mut datatypes = HashMap::<Path, Datatype>::new();
@@ -256,7 +249,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     let mut calls = HashMap::<HirId, CallErasure>::new();
     for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
         let span = span_data.span();
-        calls.insert(*hir_id, resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?);
+        calls.insert(
+            *hir_id,
+            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?,
+        );
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
