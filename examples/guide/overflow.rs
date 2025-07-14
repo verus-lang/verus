@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs expect-warnings
+// rust_verify/tests/example.rs
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
