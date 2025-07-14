@@ -6,7 +6,6 @@ use rustc_span::SpanData;
 use vir::ast::{AutospecUsage, Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
-use crate::internal_err;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
@@ -94,7 +93,7 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 /// REVIEW: it might simpler to skip the ResolvedCall call entirely and have the original
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
-    span: Span,
+    _span: Span,
     functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
@@ -106,10 +105,11 @@ fn resolved_call_to_call_erase(
         }
         ResolvedCall::Call(f_name, autospec_usage) => {
             if !functions.contains_key(f_name) {
-                internal_err!(
-                    span,
-                    format!("resolved_call_to_call_erase: function call to {:?} not found", f_name)
-                );
+                // TODO FIXME: trait extension spec funs aren't in the functions map,
+                // so this works around it. But this assumes that trait extension spec funs
+                // are the *only* reason it can't be in the map, which is not a robust assumption
+                return Ok(CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes));
+                //crate::internal_err!(span, format!("resolved_call_to_call_erase: function call to {:?} not found", f_name));
             }
             let f = &functions[f_name];
 
