@@ -1,6 +1,6 @@
 use crate::lifetime_ast::*;
-use std::collections::{HashMap};
-use vir::ast::{Path};
+use std::collections::HashMap;
+use vir::ast::Path;
 
 pub(crate) struct State {
     rename_count: usize,
@@ -74,7 +74,7 @@ impl State {
         let key = (raw_id.clone(), impl_index);
         Self::id(&mut self.rename_count, &mut self.typ_param_to_name, IdKind::TypParam, &key, f)
     }
-    
+
     pub(crate) fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
         Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)

@@ -416,11 +416,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let mut emit_state = EmitState::new();
-    let gen_state = emit_check_tracked_lifetimes(
-        spans,
-        &mut emit_state,
-        vir_crate,
-    );
+    let gen_state = emit_check_tracked_lifetimes(spans, &mut emit_state, vir_crate);
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);

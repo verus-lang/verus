@@ -492,6 +492,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             });
                         debug!("make_mirror_unadjusted: (call) user_ty={:?}", user_ty);
 
+                        if let crate::verus::ExpectSpecArgs::PerArg(p) = &spec_args {
+                            if p.len() != args.len() {
+                                dbg!(&spec_args);
+                                dbg!(expr);
+                                panic!("moo");
+                            }
+                        }
+
                         let field_refs = args
                             .iter()
                             .enumerate()

@@ -137,38 +137,64 @@ fn resolved_call_to_call_erase(
         }
         ResolvedCall::Ctor(path, variant_name) => {
             let datatype = &datatypes[path];
-            let variant = datatype.x.get_variant(variant_name);
-            let args = variant
-                .fields
-                .iter()
-                .map(|field| {
-                    let (_, field_mode, _) = &field.a;
-                    match field_mode {
-                        Mode::Spec => ExpectSpec::Yes,
-                        Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
-                    }
-                })
-                .collect::<Vec<_>>();
-            CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::PerArg(Arc::new(args)))
+            match &datatype.x.mode {
+                Mode::Spec => {
+                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
+                }
+                Mode::Exec => {
+                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
+                }
+                Mode::Proof => {
+                    let variant = datatype.x.get_variant(variant_name);
+                    let args = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            let (_, field_mode, _) = &field.a;
+                            match field_mode {
+                                Mode::Spec => ExpectSpec::Yes,
+                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    CallErasure::Call(
+                        NodeErase::WhenExpectingSpec,
+                        ExpectSpecArgs::PerArg(Arc::new(args)),
+                    )
+                }
+            }
         }
         ResolvedCall::BracesCtor(path, variant_name, fields, has_tail) => {
             let datatype = &datatypes[path];
-            let variant = datatype.x.get_variant(variant_name);
-            let mut args = fields
-                .iter()
-                .map(|field_name| {
-                    let field = vir::ast_util::get_field(&variant.fields, field_name);
-                    let (_, field_mode, _) = &field.a;
-                    match field_mode {
-                        Mode::Spec => ExpectSpec::Yes,
-                        Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
+            match &datatype.x.mode {
+                Mode::Spec => {
+                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
+                }
+                Mode::Exec => {
+                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
+                }
+                Mode::Proof => {
+                    let variant = datatype.x.get_variant(variant_name);
+                    let mut args = fields
+                        .iter()
+                        .map(|field_name| {
+                            let field = vir::ast_util::get_field(&variant.fields, field_name);
+                            let (_, field_mode, _) = &field.a;
+                            match field_mode {
+                                Mode::Spec => ExpectSpec::Yes,
+                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    if *has_tail {
+                        args.push(ExpectSpec::Propagate);
                     }
-                })
-                .collect::<Vec<_>>();
-            if *has_tail {
-                args.push(ExpectSpec::Propagate);
+                    CallErasure::Call(
+                        NodeErase::WhenExpectingSpec,
+                        ExpectSpecArgs::PerArg(Arc::new(args)),
+                    )
+                }
             }
-            CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::PerArg(Arc::new(args)))
         }
         ResolvedCall::NonStaticExec => CallErasure::keep_all(),
         ResolvedCall::NonStaticProof(modes) => {
