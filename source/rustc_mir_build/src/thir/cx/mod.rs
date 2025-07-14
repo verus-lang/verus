@@ -125,7 +125,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 .hir_attrs(hir_id)
                 .iter()
                 .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(def),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
 

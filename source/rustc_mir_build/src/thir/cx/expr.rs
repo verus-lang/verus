@@ -159,7 +159,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             Adjust::Deref(None) => {
                 adjust_span(&mut expr);
                 let kind = ExprKind::Deref { arg: self.thir.exprs.push(expr) };
-                crate::verus::maybe_erased_top_node(self, hir_expr, adjustment.target, kind, spec)
+                crate::verus::maybe_erase_node(self, hir_expr, adjustment.target, kind, spec)
             }
             Adjust::Deref(Some(deref)) => {
                 // We don't need to do call adjust_span here since
@@ -193,7 +193,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     borrow_kind: m.to_borrow_kind(),
                     arg: self.thir.exprs.push(expr),
                 };
-                crate::verus::maybe_erased_top_node(self, hir_expr, adjustment.target, kind, spec)
+                crate::verus::maybe_erase_node(self, hir_expr, adjustment.target, kind, spec)
             }
             Adjust::Borrow(AutoBorrow::RawPtr(mutability)) => {
                 ExprKind::RawBorrow { mutability, arg: self.thir.exprs.push(expr) }
@@ -387,7 +387,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         };
 
                         if node_erase.should_erase(spec) {
-                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                            crate::verus::erase_node_unadjusted(self, expr, kind)
                         } else {
                             kind
                         }
@@ -532,7 +532,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 //////////////////////////////
 
                         if node_erase.should_erase(spec) {
-                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                            crate::verus::erase_node_unadjusted(self, expr, kind)
                         } else {
                             kind
                         }
@@ -551,7 +551,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     borrow_kind: mutbl.to_borrow_kind(),
                     arg: self.mirror_expr(arg, spec),
                 };
-                crate::verus::maybe_erased_top_node_unadjusted(self, expr, kind, spec)
+                crate::verus::maybe_erase_node_unadjusted(self, expr, kind, spec)
             }
 
             hir::ExprKind::AddrOf(hir::BorrowKind::Raw, mutability, arg) => {
@@ -639,7 +639,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     self.overloaded_place(expr, expr_ty, None, Box::new([arg]), expr.span)
                 } else {
                     let kind = ExprKind::Deref { arg: self.mirror_expr(arg, spec) };
-                    crate::verus::maybe_erased_top_node_unadjusted(self, expr, kind, spec)
+                    crate::verus::maybe_erase_node_unadjusted(self, expr, kind, spec)
                 }
             }
 
@@ -779,7 +779,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         };
 
                         if node_erase.should_erase(spec) {
-                            crate::verus::erased_top_node_unadjusted(self, expr, kind)
+                            crate::verus::erase_node_unadjusted(self, expr, kind)
                         } else {
                             kind
                         }
@@ -1011,11 +1011,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 });
                 ExprKind::Loop { body }
             }
-            hir::ExprKind::Field(source, ..) => ExprKind::Field {
-                lhs: self.mirror_expr(source, spec),
-                variant_index: FIRST_VARIANT,
-                name: self.typeck_results.field_index(expr.hir_id),
-            },
+            hir::ExprKind::Field(source, ..) => {
+                let kind = ExprKind::Field {
+                    lhs: self.mirror_expr(source, spec),
+                    variant_index: FIRST_VARIANT,
+                    name: self.typeck_results.field_index(expr.hir_id),
+                };
+                crate::verus::maybe_erase_node_unadjusted(self, expr, kind, spec)
+            }
             hir::ExprKind::Cast(source, cast_ty) => {
                 // Check for a user-given type annotation on this `cast`
                 let user_provided_types = self.typeck_results.user_provided_types();

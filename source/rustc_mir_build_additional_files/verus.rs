@@ -34,6 +34,16 @@ pub enum VarErasure {
     Keep,
 }
 
+/// This type explains how we propagate the 'spec' status through a given node.
+/// Yes = expect the argument to be spec
+/// No = expect the argument to be non-spec
+/// Propagate = expect the argument to be spec iff the node itself is spec.
+///
+/// ExpectSpec is for a single argument; ExpectSpecArgs is for argument lists.
+///
+/// Example: datatype constructor is propagate
+/// Example: Function may have a mix of spec and proof arguments so
+///          in general you may mix it up between Yes and No.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ExpectSpec {
     Yes,
@@ -52,6 +62,7 @@ pub enum ExpectSpecArgs {
 /// Do we erase a given node (no bearing on whether we erase its subexpressions)
 /// When we erase a node `call(x1, x2)` but not the subexpressions x1, x2, it will look like:
 /// { x1; x2; arbitrary_ghost_value() }
+/// This depends on the 'spec' status.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NodeErase {
     Erase,
@@ -67,12 +78,15 @@ pub enum CallErasure {
     Call(NodeErase, ExpectSpecArgs),
 }
 
+/// Information for a body (function or closure).
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct BodyErasure {
     pub erase_body: bool,
     pub ret_spec: bool,
 }
 
+/// Global context with all information across the krate.
+/// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
 pub struct VerusErasureCtxt {
     /// For a given var (decl or use), should we erase it?
@@ -119,6 +133,7 @@ fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
 }
 
+/// Per-body context (i.e., one for each function or closure).
 pub(crate) struct VerusThirBuildCtxt {
     ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
@@ -126,7 +141,13 @@ pub(crate) struct VerusThirBuildCtxt {
 }
 
 impl VerusThirBuildCtxt {
-    pub(crate) fn new(local_def_id: LocalDefId) -> Self {
+    pub(crate) fn new<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
+        /*if ctxt.is_none() {
+            let def_id = local_def_id.to_def_id();
+            let is_const = tcx.is_const_fn(def_id)
+                || matches!(tcx.def_kind(def_id), DefKind::Const | DefKind::AssocConst);
+        }*/
+
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
@@ -215,24 +236,14 @@ impl ExpectSpecArgs {
     }
 }
 
-fn is_for_const_eval<'tcx>(_cx: &mut ThirBuildCx<'tcx>) -> bool {
-    //match cx.tcx.def_kind(cx.body_owner) {
-    //    DefKind::
-    //}
-
-    // TODO actually check the function def id
-    VERUS_ERASURE_CTXT.read().unwrap().as_ref().is_none()
-}
-
 pub(crate) fn handle_call<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> CallErasure {
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return CallErasure::keep_all();
-    }
+    };
 
-    let erasure_ctxt = get_verus_erasure_ctxt();
     match erasure_ctxt.calls.get(&expr.hir_id) {
         None => CallErasure::keep_all(),
         Some(call_erasure) => call_erasure.clone(),
@@ -240,10 +251,9 @@ pub(crate) fn handle_call<'tcx>(
 }
 
 pub(crate) fn should_erase_var<'tcx>(cx: &mut ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return false;
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    };
     matches!(erasure_ctxt.vars.get(&var_hir_id), Some(VarErasure::Erase))
 }
 
@@ -253,10 +263,9 @@ pub(crate) fn handle_var<'tcx>(
     var_hir_id: HirId,
     spec: bool,
 ) -> Option<ExprKind<'tcx>> {
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    };
     if !spec && matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
         return None;
     }
@@ -281,6 +290,10 @@ pub(crate) fn expr_id_from_kind<'tcx>(
     };
     cx.thir.exprs.push(e)
 }
+
+/// erase_tree
+/// This erases the expression and all HIR subexpressions.
+/// (Mostly. It also keeps expressions that need pattern-exhaustiveness checking.)
 
 pub(crate) fn erase_tree<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -317,10 +330,9 @@ pub(crate) fn erase_tree_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> ExprKind<'tcx> {
-    if is_for_const_eval(cx) {
-        panic!("erased_expr_id_from_expr called for const value");
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+        panic!("erased_expr_id_from_expr called without erasure ctxt");
+    };
 
     // We have to preserve all match statements
     let pat_exprs = get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
@@ -329,43 +341,50 @@ pub(crate) fn erase_tree_kind<'tcx>(
     erased_ghost_value_kind_with_args(cx, &erasure_ctxt, expr.hir_id, expr.span, ty, pat_exprs)
 }
 
-pub(crate) fn maybe_erased_top_node_unadjusted<'tcx>(
+/// erase_node
+/// This erases a single node but not the children.
+/// We create a value `erased_ghost_value::<T>::((args...))` where `args` contains anything
+/// that needs checking from the subexpressions.
+
+/// Erase the node; use the unadjusted type of the hir_expr
+pub(crate) fn maybe_erase_node_unadjusted<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
     kind: ExprKind<'tcx>,
     erase: bool,
 ) -> ExprKind<'tcx> {
-    if erase { erased_top_node_unadjusted(cx, hir_expr, kind) } else { kind }
+    if erase { erase_node_unadjusted(cx, hir_expr, kind) } else { kind }
 }
 
-pub(crate) fn maybe_erased_top_node<'tcx>(
+/// Erase the node; use the given type (this is useful for adjusted expressions)
+pub(crate) fn maybe_erase_node<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
     ty: Ty<'tcx>,
     kind: ExprKind<'tcx>,
     erase: bool,
 ) -> ExprKind<'tcx> {
-    if erase { erased_top_node(cx, hir_expr, ty, kind) } else { kind }
+    if erase { erase_node(cx, hir_expr, ty, kind) } else { kind }
 }
 
-pub(crate) fn erased_top_node_unadjusted<'tcx>(
+pub(crate) fn erase_node_unadjusted<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
     kind: ExprKind<'tcx>,
 ) -> ExprKind<'tcx> {
     let ty = cx.typeck_results.expr_ty(hir_expr);
-    erased_top_node(cx, hir_expr, ty, kind)
+    erase_node(cx, hir_expr, ty, kind)
 }
 
-pub(crate) fn erased_top_node<'tcx>(
+pub(crate) fn erase_node<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
     ty: Ty<'tcx>,
     kind: ExprKind<'tcx>,
 ) -> ExprKind<'tcx> {
-    if is_for_const_eval(cx) {
-        panic!("erased_top_node called for const value");
-    }
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+        panic!("erase_node called for const value");
+    };
 
     let expr_ids = match kind {
         ExprKind::Call { ty: _, fun, args, from_hir_call: _, fn_span: _ } => {
@@ -396,8 +415,11 @@ pub(crate) fn erased_top_node<'tcx>(
         ExprKind::Deref { arg } => {
             vec![arg]
         }
+        ExprKind::Field { lhs, variant_index: _, name: _ } => {
+            vec![lhs]
+        }
         _ => {
-            panic!("erased_top_node got unexpected kind");
+            panic!("erase_node got unexpected kind");
         }
     };
 
@@ -426,6 +448,21 @@ pub(crate) fn erased_top_node<'tcx>(
         expr_ids,
     )
 }
+
+/// We have to be careful to not emit any `erased_ghost_value::<T>(...)` expressions where `T`
+/// is unsized. An example of where this matters is in something like `&*"abc"`.
+/// Note here that:
+///     "abc" is &str
+///     *"abc" is str
+///     &*"abc" is &str
+/// The middle one is problematic. Luckily, whenever this happens, it will always be as
+/// the intermediary in some expression like this. i.e., if *"abc" is getting erased,
+/// then &*"abc" is getting erased too (or something like it).
+/// Thus, we can resolve this issue by always erasing the type on any intermediary.
+/// So, for example, if we are creating `erased_ghost_value::<T>()` where one of the arguments is
+/// `erased_ghost_value::<S>()`, we replace the latter with `erased_ghost_value::<()>()`.
+/// The type param only matters for the return value anyway, which doesn't matter in this
+/// context.
 
 fn erased_ghost_value_remove_type_if_possible<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
@@ -479,7 +516,7 @@ fn erased_ghost_value_remove_type_if_possible<'tcx>(
     }
 }
 
-/// Produce an expression `builtin::erased_ghost_value::<T>()`
+/// Produce an expression `builtin::erased_ghost_value::<T>(())`
 /// The hir_id is used for the scope so it needs to correspond to something that will
 /// get a scope in the final THIR.
 fn erased_ghost_value<'tcx>(
@@ -503,6 +540,8 @@ fn erased_ghost_value_kind<'tcx>(
     erased_ghost_value_kind_with_args(cx, erasure_ctxt, hir_id, span, ty, vec![])
 }
 
+/// Produce an expression `builtin::erased_ghost_value::<T>((args...))`
+/// The args are packaged as a tuple.
 fn erased_ghost_value_with_args<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
@@ -548,10 +587,9 @@ fn erased_ghost_value_kind_with_args<'tcx>(
 }
 
 pub(crate) fn erase_body<'tcx>(cx: &mut ThirBuildCx<'tcx>, local_def_id: LocalDefId) -> bool {
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return false;
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    };
     matches!(erasure_ctxt.bodies.get(&local_def_id), Some(BodyErasure { erase_body: true, .. }))
 }
 
@@ -567,16 +605,16 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
 
 /// Remove all ghost-variable binders from the pattern
 pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>> {
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return pat;
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    };
 
     let mut p = pat;
     erase_pat_rec(&PatBindingEraserMode::EraseGhost(erasure_ctxt), &mut p);
     p
 }
 
+/// Remove ALL binders from the pattern
 pub(crate) fn erase_pat_all_binders<'tcx>(pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>> {
     let mut p = pat;
     erase_pat_rec(&PatBindingEraserMode::EraseAll, &mut p);
@@ -608,6 +646,9 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             };
 
             if erase_binder {
+                // To remove the binder:
+                //  - If there's a subpattern, just return the subpattern.
+                //  - If there is no subpattern, return a wildcard.
                 if subpattern.is_some() {
                     let mut subpat = None;
                     std::mem::swap(subpattern, &mut subpat);
@@ -656,6 +697,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
     }
 }
 
+/// Get all nodes that need pattern checking (match expressions and let stmts)
 fn get_all_stmts_with_pattern_checking<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
@@ -1273,10 +1315,9 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
     // Check if this block has the form
     // { let _verus_internal_dummy_capture = ::builtin::dummy_capture_new(); || { ... } }
 
-    if is_for_const_eval(cx) {
+    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
-    }
-    let erasure_ctxt = get_verus_erasure_ctxt();
+    };
 
     if !(block.stmts.len() == 1 && block.expr.is_some()) {
         return None;

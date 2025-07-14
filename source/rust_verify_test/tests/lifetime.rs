@@ -1240,3 +1240,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] dst_fields verus_code! {
+        use vstd::prelude::*;
+
+        struct Dst {
+            x: u64,
+            y: [u64],
+        }
+
+        fn test(dst: &Dst) {
+            let ghost r = dst.x;
+        }
+
+        fn test2(slice: &[u64]) {
+            let ghost r = slice[20];
+        }
+    } => Ok(())
+}
