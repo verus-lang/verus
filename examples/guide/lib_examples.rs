@@ -17,6 +17,12 @@ proof fn test_set1() {
     assert(s.contains(20));
     assert(s.contains(30));
     assert(!s.contains(60));
+
+    let s: ISet<int> = iset![0, 10, 20, 30, 40];
+    assert(s.finite());
+    assert(s.contains(20));
+    assert(s.contains(30));
+    assert(!s.contains(60));
 }
 
 proof fn test_map1() {
@@ -52,6 +58,11 @@ proof fn test_seq2() {
 }
 
 proof fn test_set2() {
+    let s_finite: Set<int> = Set::int_range(0, 41).filter(|i: int| i % 10 == 0);
+    assert(s.contains(20));
+    assert(s.contains(30));
+    assert(!s.contains(60));
+
     let s: ISet<int> = ISet::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
     assert(s.contains(20));
     assert(s.contains(30));
