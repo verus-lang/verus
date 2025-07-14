@@ -14,6 +14,9 @@ use rustc_mir_build_verus::verus::{
 };
 use std::collections::HashMap;
 use std::sync::Arc;
+use rustc_span::Span;
+use crate::internal_err;
+use vir::ast::VirErr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
@@ -91,24 +94,25 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 /// REVIEW: it might simpler to skip the ResolvedCall call entirely and have the original
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
+    span: Span,
     functions: &HashMap<Fun, Option<Function>>,
     datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
-) -> CallErasure {
-    match resolved_call {
+) -> Result<CallErasure, VirErr> {
+    Ok(match resolved_call {
         ResolvedCall::Spec => CallErasure::EraseTree,
         ResolvedCall::SpecAllowProofArgs => {
             CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
         }
         ResolvedCall::Call(f_name, autospec_usage) => {
             if !functions.contains_key(f_name) {
-                panic!("internal error: function call to {:?} not found", f_name);
+                internal_err!(span, format!("resolved_call_to_call_erase: function call to {:?} not found", f_name));
             }
             let f = &functions[f_name];
             let f = if let Some(f) = f {
                 f
             } else {
-                panic!("internal error: call to external function {:?}", f_name);
+                internal_err!(span, format!("resolved_call_to_call_erase: call to external function {:?}", f_name));
             };
 
             let f = match (autospec_usage, &f.x.attrs.autospec) {
@@ -117,7 +121,7 @@ fn resolved_call_to_call_erase(
                     let f = if let Some(f) = f {
                         f
                     } else {
-                        panic!("internal error: call to external function {:?}", f_name,);
+                        internal_err!(span, format!("resolved_call_to_call_erase: call to external function {:?}", f_name));
                     };
                     f.clone()
                 }
@@ -208,13 +212,13 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedBorrowMut
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
-    }
+    })
 }
 
 pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     verus_items: &VerusItems,
     erasure_hints: &ErasureHints,
-) {
+) -> Result<(), VirErr> {
     let mut id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
     for (hir_id, vir_id) in &erasure_hints.hir_vir_ids {
         if !id_to_hir.contains_key(vir_id) {
@@ -250,8 +254,9 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     }
 
     let mut calls = HashMap::<HirId, CallErasure>::new();
-    for (hir_id, _, resolved_call) in &erasure_hints.resolved_calls {
-        calls.insert(*hir_id, resolved_call_to_call_erase(&functions, &datatypes, resolved_call));
+    for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
+        let span = span_data.span();
+        calls.insert(*hir_id, resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?);
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
@@ -297,4 +302,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
             .unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
+
+    Ok(())
 }

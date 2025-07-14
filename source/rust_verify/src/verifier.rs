@@ -3131,10 +3131,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
-            crate::erase::setup_verus_ctxt_for_thir_erasure(
+            let res = crate::erase::setup_verus_ctxt_for_thir_erasure(
                 &self.verifier.verus_items.as_ref().unwrap(),
                 self.verifier.erasure_hints.as_ref().unwrap(),
             );
+            if let Err(err) = res {
+                let reporter = Reporter::new(&spans, compiler);
+                reporter.report_as(&err.to_any(), MessageLevel::Error);
+                return rustc_driver::Compilation::Stop;
+            }
 
             self.spans = Some(spans);
             return rustc_driver::Compilation::Continue;
