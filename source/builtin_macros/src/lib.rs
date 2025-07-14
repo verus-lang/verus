@@ -17,6 +17,7 @@ mod atomic_ghost;
 mod attr_block_trait;
 mod attr_rewrite;
 mod calc_macro;
+mod contrib;
 mod enum_synthesize;
 mod fndecl;
 mod is_variant;
@@ -314,3 +315,28 @@ pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /*** End of verus small macro definition for executable items ***/
+
+/*** Start of contrib proc macros
+(unfortunately, proc macros must reside at the root of the crate)
+***/
+
+/// This copies the body of an exec function into a "returns" clause,
+/// so that the exec function will be also usable as a spec function.
+/// For example,
+///   `#[vstd::contrib::auto_spec] fn f(u: u8) -> u8 { u / 2 }`
+/// becomes:
+///   `#[verifier::allow_in_spec] fn f(u: u8) -> u8 returns (u / 2) { u / 2 }`
+/// The macro performs some limited fixups, such as removing proof blocks
+/// and turning +, -, and * into add, sub, mul.
+/// However, only a few such fixups are currently implemented and not all exec bodies
+/// will be usable as return clauses, so this macro will not work on all exec functions.
+#[proc_macro_attribute]
+pub fn auto_spec(
+    _args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    // All the work is done in the preprocesssing; this just double-checks name resolution
+    input
+}
+
+/*** End of contrib macros ***/
