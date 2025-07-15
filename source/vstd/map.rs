@@ -572,8 +572,6 @@ pub broadcast proof fn axiom_map_insert_domain<K, V, FINITE: Finiteness>(
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
-    //     m.axiom_dom_ensures();
-    //     m.insert(key, value).axiom_dom_ensures();
 
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
@@ -614,8 +612,6 @@ pub broadcast proof fn axiom_map_remove_domain<K, V, FINITE: Finiteness>(
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
-    //     m.axiom_dom_ensures();
-    //     m.remove(key).axiom_dom_ensures();
 
     assert(m.remove(key).dom() =~= m.dom().remove(key));
 }
@@ -646,8 +642,6 @@ pub broadcast proof fn axiom_map_ext_equal<K, V, FINITE: Finiteness>(
         },
 {
     broadcast use axiom_dom_ensures;
-    //     m1.axiom_dom_ensures();
-    //     m2.axiom_dom_ensures();
     broadcast use super::set::group_set_lemmas;
 
     if m1 =~= m2 {
@@ -728,9 +722,9 @@ macro_rules! map {
     };
 }
 
-/// Create an IMap using syntax like `map![key1 => val1, key2 => val, ...]`.
+/// Create an IMap using syntax like `imap![key1 => val1, key2 => val, ...]`.
 ///
-/// This is equivalent to `Map::empty().insert(key1, val1).insert(key2, val2)...`.
+/// This is equivalent to `IMap::empty().insert(key1, val1).insert(key2, val2)...`.
 ///
 /// Note that this does _not_ require all keys to be distinct. In the case that two
 /// or more keys are equal, the resulting map uses the value of the rightmost entry.
