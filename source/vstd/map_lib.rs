@@ -588,7 +588,7 @@ pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: s
     assert(IMap::new(fk, fv).dom() =~= ISet::<K>::new(|k: K| fk(k)));
 }
 
-// finite variant of same
+/// The domain of a map constructed with `Map::new(key_set, fv)` is equivalent to `key_set`.
 pub broadcast proof fn lemma_map_new_domain<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
     ensures
         #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
