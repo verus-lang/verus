@@ -59,9 +59,9 @@ proof fn test_seq2() {
 
 proof fn test_set2() {
     let s_finite: Set<int> = Set::int_range(0, 41).filter(|i: int| i % 10 == 0);
-    assert(s.contains(20));
-    assert(s.contains(30));
-    assert(!s.contains(60));
+    assert(s_finite.contains(20));
+    assert(s_finite.contains(30));
+    assert(!s_finite.contains(60));
 
     let s: ISet<int> = ISet::new(|i: int| 0 <= i <= 40 && i % 10 == 0);
     assert(s.contains(20));
