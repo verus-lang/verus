@@ -81,10 +81,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // GSet constructors to do so soundly (see "Important soundness note" above).
     /// Returns the set that contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, FINITE> {
-        GSet {
-            set: |a: B| exists|x: A| self.contains(x) && a == f(x),
-            _phantom: PhantomData,
-        }
+        GSet { set: |a: B| exists|x: A| self.contains(x) && a == f(x), _phantom: PhantomData }
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
@@ -99,10 +96,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         B,
         FINITE,
     >) {
-        GSet {
-            set: |b| exists|a| self.contains(a) && f(a).contains(b),
-            _phantom: PhantomData,
-        }
+        GSet { set: |b| exists|a| self.contains(a) && f(a).contains(b), _phantom: PhantomData }
     }
 
     // This spec and its axioms encode the idea that an SMT .finite() ISet can be cast to a finite
@@ -119,20 +113,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     axiom fn cast_to_infinite(self)
         ensures
-            self.cast_finiteness::<Infinite>() == (ISet {
-                set: self.set,
-                _phantom: PhantomData,
-            }),
+            self.cast_finiteness::<Infinite>() == (ISet { set: self.set, _phantom: PhantomData }),
     ;
 
     axiom fn cast_to_finite(self)
         requires
             self.finite(),
         ensures
-            self.cast_finiteness::<Finite>() == (Set {
-                set: self.set,
-                _phantom: PhantomData,
-            }),
+            self.cast_finiteness::<Finite>() == (Set { set: self.set, _phantom: PhantomData }),
     ;
 
     #[verifier::inline]
