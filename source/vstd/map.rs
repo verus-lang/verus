@@ -458,14 +458,12 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     }
 }
 
-broadcast proof fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
+// This property relies on this module only allowing the construction of
+// finite mappings inside GMaps with FINITE=true.
+broadcast axiom fn axiom_dom_ensures<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
     ensures
         (#[trigger] m.dom()).congruent(ISet::new(|k| (m.mapping)(k) is Some)),
-{
-    // This property relies on this module only allowing the construction of
-    // finite mappings inside GMaps with FINITE=true.
-    admit();
-}
+;
 
 impl<K, V> Map<K, V> {
     #[verifier::inline]
@@ -551,7 +549,7 @@ pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, ke
 ;
 
 /// The domain of the empty map is the empty set
-pub broadcast proof fn axiom_map_empty<K, V, FINITE: Finiteness>()
+pub broadcast proof fn lemma_map_empty<K, V, FINITE: Finiteness>()
     ensures
         #[trigger] GMap::<K, V, FINITE>::empty().dom() == GSet::<K, FINITE>::empty(),
 {
@@ -562,7 +560,7 @@ pub broadcast proof fn axiom_map_empty<K, V, FINITE: Finiteness>()
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_insert_domain<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_insert_domain<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
     value: V,
@@ -577,7 +575,7 @@ pub broadcast proof fn axiom_map_insert_domain<K, V, FINITE: Finiteness>(
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-pub broadcast proof fn axiom_map_insert_same<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_insert_same<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
     value: V,
@@ -588,7 +586,7 @@ pub broadcast proof fn axiom_map_insert_same<K, V, FINITE: Finiteness>(
 }
 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn axiom_map_insert_different<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_insert_different<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key1: K,
     key2: K,
@@ -603,7 +601,7 @@ pub broadcast proof fn axiom_map_insert_different<K, V, FINITE: Finiteness>(
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_remove_domain<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_remove_domain<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key: K,
 )
@@ -618,7 +616,7 @@ pub broadcast proof fn axiom_map_remove_domain<K, V, FINITE: Finiteness>(
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-pub broadcast proof fn axiom_map_remove_different<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_remove_different<K, V, FINITE: Finiteness>(
     m: GMap<K, V, FINITE>,
     key1: K,
     key2: K,
@@ -631,7 +629,7 @@ pub broadcast proof fn axiom_map_remove_different<K, V, FINITE: Finiteness>(
 }
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-pub broadcast proof fn axiom_map_ext_equal<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_ext_equal<K, V, FINITE: Finiteness>(
     m1: GMap<K, V, FINITE>,
     m2: GMap<K, V, FINITE>,
 )
@@ -664,7 +662,7 @@ pub broadcast proof fn axiom_map_ext_equal<K, V, FINITE: Finiteness>(
     }
 }
 
-pub broadcast proof fn axiom_map_ext_equal_deep<K, V, FINITE: Finiteness>(
+pub broadcast proof fn lemma_map_ext_equal_deep<K, V, FINITE: Finiteness>(
     m1: GMap<K, V, FINITE>,
     m2: GMap<K, V, FINITE>,
 )
@@ -674,7 +672,7 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V, FINITE: Finiteness>(
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] =~~= m2[k]
         },
 {
-    axiom_map_ext_equal(m1, m2);
+    lemma_map_ext_equal(m1, m2);
 }
 
 pub broadcast group group_map_axioms {
@@ -687,14 +685,14 @@ pub broadcast group group_map_axioms {
     GMap::lemma_map_values_ensures,
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
-    axiom_map_empty,
-    axiom_map_insert_domain,
-    axiom_map_insert_same,
-    axiom_map_insert_different,
-    axiom_map_remove_domain,
-    axiom_map_remove_different,
-    axiom_map_ext_equal,
-    axiom_map_ext_equal_deep,
+    lemma_map_empty,
+    lemma_map_insert_domain,
+    lemma_map_insert_same,
+    lemma_map_insert_different,
+    lemma_map_remove_domain,
+    lemma_map_remove_different,
+    lemma_map_ext_equal,
+    lemma_map_ext_equal_deep,
     GMap::lemma_union_prefer_right,
     //     lemma_union_prefer_right_noself,
 }
