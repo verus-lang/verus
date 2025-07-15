@@ -1,7 +1,7 @@
 [package]
 name = "prettyplease_verus"
-version = "0.2.29"
-authors = ["David Tolnay <dtolnay@gmail.com>"]
+version = "0.2.29+verus"
+authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 autoexamples = false
 categories = ["development-tools"]
 description = "A minimal `syn` syntax tree pretty-printer"

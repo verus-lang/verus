@@ -18,8 +18,8 @@ proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = { git = "https://github.com/mystor/synstructure.git", rev = "1079497eb2bea252433dac53afe41291d8779641" }
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
-syn_verus = { version = "2.0.96", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-prettyplease_verus = { version = "0.2.29", path="../../dependencies/prettyplease" }
+syn_verus = { version = "2.0.96+verus", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+prettyplease_verus = { version = "0.2.29+verus", path="../../dependencies/prettyplease" }
 
 [package.metadata.verus]
 is-builtin-macros = true

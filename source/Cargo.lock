@@ -1411,7 +1411,7 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "prettyplease_verus"
-version = "0.2.29"
+version = "0.2.29+verus"
 dependencies = [
  "proc-macro2",
  "syn_verus",
@@ -1971,7 +1971,7 @@ dependencies = [
 
 [[package]]
 name = "syn_verus"
-version = "2.0.96"
+version = "2.0.96+verus"
 dependencies = [
  "proc-macro2",
  "quote",
