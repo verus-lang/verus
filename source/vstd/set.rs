@@ -4,6 +4,7 @@ use super::map::*;
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+use core::marker::PhantomData;
 
 verus! {
 
@@ -46,7 +47,7 @@ impl Finiteness for Infinite {
 #[verifier::reject_recursive_types(A)]
 pub struct GSet<A, FINITE: Finiteness> {
     set: spec_fn(A) -> bool,
-    _phantom: core::marker::PhantomData<FINITE>,
+    _phantom: PhantomData<FINITE>,
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -82,14 +83,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, FINITE> {
         GSet {
             set: |a: B| exists|x: A| self.contains(x) && a == f(x),
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
     /// Preserves finiteness of self.
     pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> (out: GSet<A, FINITE>) {
-        GSet { set: |a| self.contains(a) && f(a), _phantom: core::marker::PhantomData }
+        GSet { set: |a| self.contains(a) && f(a), _phantom: PhantomData }
     }
 
     /// Replace each element of a set with the elements of another set.
@@ -100,7 +101,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     >) {
         GSet {
             set: |b| exists|a| self.contains(a) && f(a).contains(b),
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -112,7 +113,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures
             self.cast_finiteness::<NEWFINITE>() == (GSet::<A, NEWFINITE> {
                 set: self.set,
-                _phantom: core::marker::PhantomData,
+                _phantom: PhantomData,
             }),
     ;
 
@@ -120,7 +121,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures
             self.cast_finiteness::<Infinite>() == (ISet {
                 set: self.set,
-                _phantom: core::marker::PhantomData,
+                _phantom: PhantomData,
             }),
     ;
 
@@ -130,7 +131,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures
             self.cast_finiteness::<Finite>() == (Set {
                 set: self.set,
-                _phantom: core::marker::PhantomData,
+                _phantom: PhantomData,
             }),
     ;
 
@@ -157,14 +158,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 impl<FINITE: Finiteness> GSet<int, FINITE> {
     /// Creates a finite set of integers in the range [lo, hi).
     pub closed spec fn int_range(lo: int, hi: int) -> GSet<int, FINITE> {
-        GSet { set: |i: int| lo <= i && i < hi, _phantom: core::marker::PhantomData }
+        GSet { set: |i: int| lo <= i && i < hi, _phantom: PhantomData }
     }
 }
 
 impl<FINITE: Finiteness> GSet<nat, FINITE> {
     /// Creates a finite set of nats in the range [lo, hi).
     pub closed spec fn nat_range(lo: nat, hi: nat) -> GSet<nat, FINITE> {
-        GSet { set: |i: nat| lo <= i && i < hi, _phantom: core::marker::PhantomData }
+        GSet { set: |i: nat| lo <= i && i < hi, _phantom: PhantomData }
     }
 }
 
@@ -172,15 +173,13 @@ pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
     ensures
         #[trigger] s.finite(),
 {
-    // Preserving this is the reason for the trustedness in the
-    // paragraph below. Until we replace the representation of finite
-    // sets with seqs.
+    // This lemma is the root of the soundness danger (see "Important soundness note" above).
     admit();
 }
 
 impl<A> ISet<A> {
     pub closed spec fn new(f: spec_fn(A) -> bool) -> ISet<A> {
-        ISet { set: f, _phantom: core::marker::PhantomData }
+        ISet { set: f, _phantom: PhantomData }
     }
 }
 
@@ -227,7 +226,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             self.len() == s2.len(),
         decreases self.len(),
     {
-        // TOOD(jonh): tidy up this proof
         broadcast use {
             lemma_set_empty_len,
             lemma_set_len_empty,
@@ -238,23 +236,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         };
 
         if self == GSet::<A, FINITE>::empty() {
-            assert(self.len() == 0);
-            assert(forall|x| !s2.contains(x));
             assert(s2 =~= GSet::<A, FINITE2>::empty());  // trigger extn to get lemma_set_empty_len
-            assert(s2.len() == 0);
         } else {
             let x = self.choose();
-            assert(self.finite());
-            assert(self.len() != 0);
-            assert(self.contains(x));
-            assert(self.remove(x).len() + 1 == self.len());
             assert forall|a| self.remove(x).contains(a) == s2.remove(x).contains(a) by {
                 if a != x {
                     assert(self.remove(x).contains(a) == self.contains(a));
                 }
             }
-            assert(self.remove(x).congruent(s2.remove(x)));
-            assert(self.remove(x).finite());
             self.remove(x).congruent_len(s2.remove(x));
         }
     }
@@ -364,7 +353,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// The "empty" set.
     #[rustc_diagnostic_item = "verus::vstd::set::GSet::empty"]
     pub closed spec fn empty() -> GSet<A, FINITE> {
-        Self { set: |a| false, _phantom: core::marker::PhantomData }
+        Self { set: |a| false, _phantom: PhantomData }
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
@@ -409,7 +398,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
                 } else {
                     (self.set)(a2)
                 },
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -424,7 +413,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
                 } else {
                     (self.set)(a2)
                 },
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -432,7 +421,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// Most applications should use the finite- or infinite- specializations
     /// `union`; this generic version is mostly useful for writing generic libraries.
     pub closed spec fn generic_union<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
-        GSet { set: |a| (self.set)(a) || (s2.set)(a), _phantom: core::marker::PhantomData }
+        GSet { set: |a| (self.set)(a) || (s2.set)(a), _phantom: PhantomData }
     }
 
     /// Intersection of two sets of possibly-mixed finiteness.
@@ -441,7 +430,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     pub closed spec fn generic_intersect<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<
         A,
     > {
-        GSet { set: |a| (self.set)(a) && (s2.set)(a), _phantom: core::marker::PhantomData }
+        GSet { set: |a| (self.set)(a) && (s2.set)(a), _phantom: PhantomData }
     }
 
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
@@ -450,12 +439,12 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     pub closed spec fn generic_difference<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> ISet<
         A,
     > {
-        GSet { set: |a| (self.set)(a) && !(s2.set)(a), _phantom: core::marker::PhantomData }
+        GSet { set: |a| (self.set)(a) && !(s2.set)(a), _phantom: PhantomData }
     }
 
     /// Set complement (within the space of all possible elements in `A`).
     pub closed spec fn complement(self) -> ISet<A> {
-        GSet { set: |a| !(self.set)(a), _phantom: core::marker::PhantomData }
+        GSet { set: |a| !(self.set)(a), _phantom: PhantomData }
     }
 
     /// Returns `true` if the set is finite.
@@ -499,18 +488,18 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
 impl<A> Set<A> {
     pub closed spec fn union(self, s2: Set<A>) -> Set<A> {
-        Set { set: |a| (self.set)(a) || (s2.set)(a), _phantom: core::marker::PhantomData }
+        Set { set: |a| (self.set)(a) || (s2.set)(a), _phantom: PhantomData }
     }
 
     /// If *either* set in an intersection is finite, the result is finite.
     /// To exploit that knowledge using this method, put the one you know is finite in the `self`
     /// position.
     pub closed spec fn intersect<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> Set<A> {
-        Set { set: |a| (self.set)(a) && (s2.set)(a), _phantom: core::marker::PhantomData }
+        Set { set: |a| (self.set)(a) && (s2.set)(a), _phantom: PhantomData }
     }
 
     pub closed spec fn difference<FINITE2: Finiteness>(self, s2: GSet<A, FINITE2>) -> Set<A> {
-        Set { set: |a| (self.set)(a) && !(s2.set)(a), _phantom: core::marker::PhantomData }
+        Set { set: |a| (self.set)(a) && !(s2.set)(a), _phantom: PhantomData }
     }
 
     /// `+` operator, synonymous with `union`
