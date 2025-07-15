@@ -40,7 +40,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
     /// every other element of the set.
     ///
-    /// change f to leq bc it is a relation. also these are an ordering relation
+    // change f to leq bc it is a relation. also these are an ordering relation
     pub open spec fn is_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
         self.contains(min) && forall|x: A| self.contains(x) ==> #[trigger] leq(min, x)
     }
@@ -558,6 +558,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
 // TODO: Right now, flatten and filter_map is only defined for ISets. It should work just fine on Sets,
 // too, but it doesn't translate simply into a single generic implementation. That's because
+// the finiteness of flattening is a boolean function of the finiteness of its contents.
 // TODO(jonh): try defining flatten with a single FINITE arg that agrees and preserves finiteness.
 impl<A> ISet<ISet<A>> {
     pub open spec fn flatten(self) -> ISet<A> {
@@ -751,7 +752,7 @@ impl<A> ISet<A> {
     }
 }
 
-proof fn lemma_to_seq_to_set_ix_recursive<A>(set: Set<A>, elem: A)
+proof fn lemma_to_seq_to_set_id_recursive<A>(set: Set<A>, elem: A)
     requires
         set.finite(),
     ensures
@@ -763,7 +764,7 @@ proof fn lemma_to_seq_to_set_ix_recursive<A>(set: Set<A>, elem: A)
     let c = set.choose();
     if elem != c {
         if set.contains(elem) || set.to_seq().contains(elem) {
-            lemma_to_seq_to_set_ix_recursive(set.remove(c), elem);
+            lemma_to_seq_to_set_id_recursive(set.remove(c), elem);
         }
     }
 }
@@ -792,10 +793,10 @@ impl<A> Set<A> {
             let inner = self.remove(elem).to_seq().to_set().insert(elem);
 
             assert forall|x| #![auto] outer.contains(x) implies inner.contains(x) by {
-                lemma_to_seq_to_set_ix_recursive(self.remove(elem), x);
+                lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
             }
             assert forall|x| #![auto] inner.contains(x) implies outer.contains(x) by {
-                lemma_to_seq_to_set_ix_recursive(self, x);
+                lemma_to_seq_to_set_id_recursive(self, x);
                 assert(exists|i|
                     #![auto]
                     Set::int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]

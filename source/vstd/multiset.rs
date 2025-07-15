@@ -157,9 +157,6 @@ impl<V> Multiset<V> {
     /// Returns a multiset containing the lower count of a given element
     /// between the two sets. In other words, returns a multiset with only
     /// the elements that "overlap".
-    //
-    // Possible soundness issue with non-normalized representations of zero values;
-    // see https://github.com/verus-lang/verus/issues/1664
     pub open spec fn intersection_with(self, other: Self) -> Self {
         let m = Map::<V, nat>::new(
             self.dom(),
