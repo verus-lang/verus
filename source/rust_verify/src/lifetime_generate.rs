@@ -441,6 +441,29 @@ fn collect_unreached_datatypes<'tcx>(
     }
 }
 
+/// Fetch the OpaqueDef of the opaque type reference if possible.
+/// Only call this at where the opaque type is defined.
+/// E.g., the return type of a function
+fn try_erase_opaque_def<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ {
+    if let TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) = ty.kind() {
+        if let Some(local_def_id) = al_ty.def_id.as_local() {
+            let opaque_def = ctxt.tcx.hir_expect_opaque_ty(local_def_id);
+            let instantiated_bounds =
+                ctxt.tcx.item_bounds(opaque_def.def_id).instantiate(ctxt.tcx, al_ty.args);
+            let mut generic_bounds: Vec<GenericBound> = Vec::new();
+            erase_mir_predicates(ctxt, state, instantiated_bounds.into_iter(), &mut generic_bounds);
+            for gbound in generic_bounds.iter_mut() {
+                if *gbound.typ.as_ref() == TypX::OpaqueRef {
+                    *gbound.typ.as_mut() = TypX::TraitSelf;
+                }
+            }
+            return Box::new(TypX::OpaqueDef(generic_bounds));
+        }
+    }
+
+    return erase_ty(ctxt, state, ty);
+}
+
 fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ {
     match ty.kind() {
         TyKind::Bool
@@ -456,15 +479,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 Box::new(TypX::TypParam(state.typ_param("Self", None)))
             }
         }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, ..) => {
-            // for lifetime checks, normalize all the opaque types.
-            let typing_env = TypingEnv::post_analysis(
-                ctxt.tcx,
-                state.enclosing_fun_id.expect("enclosing_fun_id"),
-            );
-            let normalized_ty = ctxt.tcx.normalize_erasing_regions(typing_env, *ty);
-            erase_ty(ctxt, state, &normalized_ty)
-        }
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, ..) => Box::new(TypX::OpaqueRef),
         TyKind::Param(p) => {
             let name = p.name.as_str();
             Box::new(TypX::TypParam(state.typ_param(name.to_string(), Some(p.index))))
@@ -1000,7 +1015,7 @@ fn erase_call<'tcx>(
             );
 
             if ctxt.tcx.trait_of_item(fn_def_id).is_some() {
-                let typing_env = TypingEnv::post_analysis(
+                let typing_env = TypingEnv::non_body_analysis(
                     ctxt.tcx,
                     state.enclosing_fun_id.expect("enclosing_fun_id"),
                 );
@@ -2081,7 +2096,7 @@ fn erase_mir_predicates<'a, 'tcx>(
                 } else {
                     let typ0 = erase_ty(ctxt, state, &pred.projection_term.args[0].expect_ty());
                     let typ_eq = if let TermKind::Ty(ty) = pred.term.unpack() {
-                        erase_ty(ctxt, state, &ty)
+                        try_erase_opaque_def(ctxt, state, &ty)
                     } else {
                         panic!("should have been disallowed by rust_verify_base.rs");
                     };
@@ -2319,12 +2334,15 @@ fn erase_fn_common<'tcx>(
                     if f_vir.x.ret.x.mode == Mode::Spec {
                         None
                     } else {
-                        Some((Some(ty.span), erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
+                        Some((
+                            Some(ty.span),
+                            try_erase_opaque_def(ctxt, state, &fn_sig.output().skip_binder()),
+                        ))
                     }
                 }
             }
         } else {
-            Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
+            Some((None, try_erase_opaque_def(ctxt, state, &fn_sig.output().skip_binder())))
         };
 
         if matches!(f_vir.x.item_kind, vir::ast::ItemKind::Static) {

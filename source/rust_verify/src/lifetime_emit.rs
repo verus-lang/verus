@@ -134,6 +134,15 @@ impl ToString for TypX {
                 };
                 format!("{}{}", p, t.to_string())
             }
+            TypX::OpaqueRef => "_".to_string(),
+            TypX::OpaqueDef(bounds) => {
+                let mut buf = "impl ".to_string();
+                for bound in bounds {
+                    buf += &emit_generic_bound(bound, true);
+                    buf += " + ";
+                }
+                buf
+            }
         }
     }
 }

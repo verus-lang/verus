@@ -180,3 +180,28 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_opaque_type_use_trait_method verus_code! {
+        use vstd::prelude::*;
+        trait DummyTrait{
+            fn foo(&self) -> (ret: bool);
+        }
+        impl DummyTrait for bool{
+            fn foo(&self) -> (ret: bool)
+                ensures
+                    ret == false,
+            {
+                false
+            }
+        }
+        fn return_opaque_variable() -> impl DummyTrait{
+            true
+        }
+        fn test(){
+            let x = return_opaque_variable();
+            let ret = x.foo();
+            assert(ret == false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -58,6 +58,9 @@ pub(crate) enum TypX {
     Closure,
     FnDef,
     RawPtr(Typ, rustc_middle::ty::Mutability),
+    OpaqueDef(Vec<GenericBound>),
+    // For each reference to opaque types, use "_", since rust does not allow "impl" in paths.
+    OpaqueRef,
 }
 
 pub(crate) type Pattern = Box<(Span, PatternX)>;
