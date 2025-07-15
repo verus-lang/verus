@@ -2,12 +2,14 @@ use super::super::prelude::*;
 
 use verus as verus_;
 
+use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
+
 verus_! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]
 pub trait ExPartialEq<Rhs: ?Sized = Self> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+    type ExternalTraitSpecificationFor: PartialEq<Rhs>;
 
     spec fn obeys_eq_spec() -> bool;
 
@@ -26,31 +28,31 @@ pub trait ExPartialEq<Rhs: ?Sized = Self> {
 
 #[verifier::external_trait_specification]
 pub trait ExEq: PartialEq {
-    type ExternalTraitSpecificationFor: core::cmp::Eq;
+    type ExternalTraitSpecificationFor: Eq;
 }
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialOrdSpec via PartialOrdSpecImpl)]
 pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+    type ExternalTraitSpecificationFor: PartialOrd<Rhs>;
 
     spec fn obeys_partial_cmp_spec() -> bool;
 
-    spec fn partial_cmp_spec(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
+    spec fn partial_cmp_spec(&self, other: &Rhs) -> Option<Ordering>;
 
-    fn partial_cmp(&self, other: &Rhs) -> (r: Option<core::cmp::Ordering>)
+    fn partial_cmp(&self, other: &Rhs) -> (r: Option<Ordering>)
         ensures
             Self::obeys_partial_cmp_spec() ==> r == self.partial_cmp_spec(other);
 
     fn lt(&self, other: &Rhs) -> (r: bool)
         ensures
             Self::obeys_partial_cmp_spec() ==>
-                (r <==> self.partial_cmp_spec(other) == Some(core::cmp::Ordering::Less)),
+                (r <==> self.partial_cmp_spec(other) == Some(Ordering::Less)),
         default_ensures
-            exists|o: Option<core::cmp::Ordering>|
+            exists|o: Option<Ordering>|
                 {
                     &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o == Some(core::cmp::Ordering::Less)
+                    &&& r <==> o == Some(Ordering::Less)
                 }
     ;
 
@@ -58,16 +60,16 @@ pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
         ensures
             Self::obeys_partial_cmp_spec() ==>
                 (r <==> self.partial_cmp_spec(other) matches Some(
-                    core::cmp::Ordering::Less
-                    | core::cmp::Ordering::Equal,
+                    Ordering::Less
+                    | Ordering::Equal,
                 )),
         default_ensures
-            exists|o: Option<core::cmp::Ordering>|
+            exists|o: Option<Ordering>|
                 {
                     &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
                     &&& r <==> o matches Some(
-                        core::cmp::Ordering::Less
-                        | core::cmp::Ordering::Equal,
+                        Ordering::Less
+                        | Ordering::Equal,
                     )
                 }
     ;
@@ -75,12 +77,12 @@ pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
     fn gt(&self, other: &Rhs) -> (r: bool)
         ensures
             Self::obeys_partial_cmp_spec() ==>
-                (r <==> self.partial_cmp_spec(other) == Some(core::cmp::Ordering::Greater)),
+                (r <==> self.partial_cmp_spec(other) == Some(Ordering::Greater)),
         default_ensures
-            exists|o: Option<core::cmp::Ordering>|
+            exists|o: Option<Ordering>|
                 {
                     &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
-                    &&& r <==> o == Some(core::cmp::Ordering::Greater)
+                    &&& r <==> o == Some(Ordering::Greater)
                 }
     ;
 
@@ -88,16 +90,16 @@ pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
         ensures
             Self::obeys_partial_cmp_spec() ==>
                 (r <==> self.partial_cmp_spec(other) matches Some(
-                    core::cmp::Ordering::Greater
-                    | core::cmp::Ordering::Equal,
+                    Ordering::Greater
+                    | Ordering::Equal,
                 )),
         default_ensures
-            exists|o: Option<core::cmp::Ordering>|
+            exists|o: Option<Ordering>|
                 {
                     &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
                     &&& r <==> o matches Some(
-                        core::cmp::Ordering::Greater
-                        | core::cmp::Ordering::Equal,
+                        Ordering::Greater
+                        | Ordering::Equal,
                     )
                 }
     ;
@@ -110,18 +112,18 @@ pub trait ExOrd: Eq + PartialOrd {
 
     spec fn obeys_cmp_spec() -> bool;
 
-    spec fn cmp_spec(&self, other: &Self) -> core::cmp::Ordering;
+    spec fn cmp_spec(&self, other: &Self) -> Ordering;
 
-    fn cmp(&self, other: &Self) -> (r: core::cmp::Ordering)
+    fn cmp(&self, other: &Self) -> (r: Ordering)
         ensures
             Self::obeys_cmp_spec() ==> r == self.cmp_spec(other);
 
     fn max(self, other: Self) -> (r: Self)
         ensures
             Self::obeys_cmp_spec() ==> match other.cmp_spec(&self) {
-                core::cmp::Ordering::Less => r == self,
-                core::cmp::Ordering::Equal => r == other,
-                core::cmp::Ordering::Greater => r == other,
+                Ordering::Less => r == self,
+                Ordering::Equal => r == other,
+                Ordering::Greater => r == other,
             }
         default_ensures
             exists|b: bool|
@@ -135,9 +137,9 @@ pub trait ExOrd: Eq + PartialOrd {
     fn min(self, other: Self) -> (r: Self)
         ensures
             Self::obeys_cmp_spec() ==> match other.cmp_spec(&self) {
-                core::cmp::Ordering::Less => r == other,
-                core::cmp::Ordering::Equal => r == self,
-                core::cmp::Ordering::Greater => r == self,
+                Ordering::Less => r == other,
+                Ordering::Equal => r == self,
+                Ordering::Greater => r == self,
             }
         default_ensures
             exists|b: bool|
@@ -153,13 +155,13 @@ pub trait ExOrd: Eq + PartialOrd {
             // There's an "assert!(min <= max)" in the provided clamp that must succeed, so:
             Self::obeys_partial_cmp_spec(),
             min.partial_cmp_spec(&max) matches Some(
-                core::cmp::Ordering::Less
-                | core::cmp::Ordering::Equal,
+                Ordering::Less
+                | Ordering::Equal,
             ),
         ensures
             Self::obeys_cmp_spec() ==> match (self.cmp_spec(&min), self.cmp_spec(&max)) {
-                (core::cmp::Ordering::Less, _) => r == min,
-                (_, core::cmp::Ordering::Greater) => r == max,
+                (Ordering::Less, _) => r == min,
+                (_, Ordering::Greater) => r == max,
                 _ => r == self,
             }
         default_ensures
@@ -175,6 +177,56 @@ pub trait ExOrd: Eq + PartialOrd {
                         }
                 }
     ;
+}
+
+pub trait PartialEqIs<Rhs: ?Sized = Self>: PartialEq<Rhs> {
+    spec fn is_eq(&self, other: &Rhs) -> bool;
+
+    spec fn is_ne(&self, other: &Rhs) -> bool;
+}
+
+pub trait PartialOrdIs<Rhs: ?Sized = Self>: PartialOrd<Rhs> {
+    spec fn is_lt(&self, other: &Rhs) -> bool;
+
+    spec fn is_le(&self, other: &Rhs) -> bool;
+
+    spec fn is_gt(&self, other: &Rhs) -> bool;
+
+    spec fn is_ge(&self, other: &Rhs) -> bool;
+}
+
+impl<A: ?Sized + PartialEq<Rhs>, Rhs: ?Sized> PartialEqIs<Rhs> for A {
+    #[verifier::inline]
+    open spec fn is_eq(&self, other: &Rhs) -> bool {
+        self.eq_spec(other)
+    }
+
+    #[verifier::inline]
+    open spec fn is_ne(&self, other: &Rhs) -> bool {
+        !self.eq_spec(other)
+    }
+}
+
+impl<A: ?Sized + PartialOrd<Rhs>, Rhs: ?Sized> PartialOrdIs<Rhs> for A {
+    #[verifier::inline]
+    open spec fn is_lt(&self, other: &Rhs) -> bool {
+        self.partial_cmp_spec(other) == Some(Ordering::Less)
+    }
+
+    #[verifier::inline]
+    open spec fn is_le(&self, other: &Rhs) -> bool {
+        matches!(self.partial_cmp_spec(other), Some(Ordering::Less | Ordering::Equal))
+    }
+
+    #[verifier::inline]
+    open spec fn is_gt(&self, other: &Rhs) -> bool {
+        self.partial_cmp_spec(other) == Some(Ordering::Greater)
+    }
+
+    #[verifier::inline]
+    open spec fn is_ge(&self, other: &Rhs) -> bool {
+        matches!(self.partial_cmp_spec(other), Some(Ordering::Greater | Ordering::Equal))
+    }
 }
 
 impl PartialEqSpecImpl for bool {
