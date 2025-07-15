@@ -496,7 +496,7 @@ impl<K, V> IMap<K, V> {
         IMap::new(|k| true, fv)
     }
 
-    /// Gives a `IMap<K, V>` whose domain is given by the boolean predicate on keys `fk`,
+    /// Gives an `IMap<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
     pub closed spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> IMap<K, V> {
         IMap {
