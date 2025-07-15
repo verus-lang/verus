@@ -567,11 +567,11 @@ pub mod fold {
     //! lemmas.
     //!
     //! The module was ported (with some modifications) from Isabelle/HOL's finite set theory in:
-    //! `HOL/FINITE_Set.thy`
+    //! `HOL/Finite_Set.thy`
     //! That file contains the following author list:
     //!
     //!
-    //! (*  Title:      HOL/FINITE_Set.thy
+    //! (*  Title:      HOL/Finite_Set.thy
     //!     Author:     Tobias Nipkow
     //!     Author:     Lawrence C Paulson
     //!     Author:     Markus Wenzel
@@ -1236,6 +1236,7 @@ pub broadcast proof fn lemma_set_empty_finite<A, FINITE: Finiteness>()
 }
 
 /// The result of inserting an element `a` into a finite set `s` is also finite.
+/// This conclusion is automatic for finite `Set`s, but still useful for SMT-`.finite()` `ISet`s.
 pub broadcast proof fn lemma_set_insert_finite<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
     requires
         s.finite(),
@@ -1247,6 +1248,8 @@ pub broadcast proof fn lemma_set_insert_finite<A, FINITE: Finiteness>(s: GSet<A,
     s.to_finite().insert(a).congruent_infiniteness(s.insert(a));
 }
 
+/// The result of removing an element `a` from a finite set `s` is also finite.
+/// This conclusion is automatic for finite `Set`s, but still useful for SMT-`.finite()` `ISet`s.
 pub broadcast proof fn lemma_set_remove_finite<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
     requires
         s.finite(),
@@ -1259,6 +1262,8 @@ pub broadcast proof fn lemma_set_remove_finite<A, FINITE: Finiteness>(s: GSet<A,
 }
 
 /// The union of two finite sets is finite.
+/// This conclusion is automatic for `.union` on finite `Set`s, but helpful for `ISet`s and
+/// `generic_union`s.
 pub broadcast proof fn lemma_set_generic_union_finite<A, FINITE1: Finiteness, FINITE2: Finiteness>(
     s1: GSet<A, FINITE1>,
     s2: GSet<A, FINITE2>,
@@ -1298,6 +1303,8 @@ pub broadcast proof fn lemma_set_union_finite<A>(s1: ISet<A>, s2: ISet<A>)
 }
 
 /// The intersection of two finite sets is finite.
+/// This conclusion is automatic for `.intersect` on finite `Set`s, but helpful for `ISet`s and
+/// `generic_intersect`s.
 pub broadcast proof fn lemma_set_generic_intersect_finite<
     A,
     FINITE1: Finiteness,
@@ -1322,6 +1329,8 @@ pub broadcast proof fn lemma_set_intersect_finite<A>(s1: ISet<A>, s2: ISet<A>)
 }
 
 /// The set difference between two finite sets is finite.
+/// This conclusion is automatic for `.difference` on finite `Set`s, but helpful for `ISet`s and
+/// `generic_difference`s.
 pub broadcast proof fn lemma_set_generic_difference_finite<
     A,
     FINITE1: Finiteness,
