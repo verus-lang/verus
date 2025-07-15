@@ -23,9 +23,9 @@ impl Finiteness for Infinite {
 
 }
 
-/// `GSet<A, true>` is a set type for specifications.
+/// `GSet<A, FINITE>` is a set type for specifications.
 ///
-/// An object `set: Set<A>` is a subset of the set of all values `a: A`.
+/// An object `set: GSet<A>` is a subset of the set of all values `a: A`.
 /// Equivalently, it can be thought of as a boolean predicate on `A`.
 ///
 /// In general, a set might be infinite.
@@ -53,7 +53,7 @@ pub struct GSet<A, FINITE: Finiteness> {
 // Important soundness note!
 //
 // In this file, one can construct GSets directly with GSet{set:...}.
-// Doing so for ISet is always sound, but when the type is Set (finite=true),
+// Doing so for ISet is always sound, but when the type is Set (FINITE=Finite),
 // we must be careful to only allow the set function to admit a finite number
 // of elements. Otherwise, one could prove that set both finite and infinite
 // and introduce false. The danger of this soundness risk is encapsulated
@@ -67,10 +67,10 @@ pub struct GSet<A, FINITE: Finiteness> {
 // that introduces the problem of multiple representations of equivalent
 // sets, which creates a different problem with extensional equality.)
 //////////////////////////////////////////////////////////////////////////////
-/// Set<A> is a synonym for GSet<A, true>, a set whose membership is finite (known at typechecking time).
+/// Set<A> is a synonym for GSet<A, Finite>, a set whose membership is finite (known at typechecking time).
 pub type Set<A> = GSet<A, Finite>;
 
-/// ISet<A> is a synonym for GSet<A, false>, a set whose membership may be infinite (but can be
+/// ISet<A> is a synonym for GSet<A, Infinite>, a set whose membership may be infinite (but can be
 /// proven finite at verification time).
 pub type ISet<A> = GSet<A, Infinite>;
 
@@ -78,7 +78,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // This map function is sound for finite sets because of `lemma_set_map_finite`,
     // but we don't need to invoke that lemma here because this file is trusting
     // GSet constructors to do so soundly (see "Important soundness note" above).
-    /// Returns the set contains an element `f(x)` for every element `x` in `self`.
+    /// Returns the set that contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, FINITE> {
         GSet {
             set: |a: B| exists|x: A| self.contains(x) && a == f(x),
@@ -103,9 +103,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             _phantom: core::marker::PhantomData,
         }
     }
-}
 
-impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // This spec and its axioms encode the idea that an SMT .finite() ISet can be cast to a finite
     // Set, and anything can be cast to an ISet.
     pub uninterp spec fn cast_finiteness<NEWFINITE: Finiteness>(self) -> GSet<A, NEWFINITE>;
@@ -136,13 +134,14 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             }),
     ;
 
-    pub proof fn cast_finiteness_ensures(self)
-        ensures
-            self.cast_finiteness::<Infinite>() == self.to_infinite(),
-    {
-        self.cast_to_infinite();
-        assert(self.set == |a| self.contains(a));  // fn extensionality
-    }
+    // TODO(jonh): delete this! nobody uses it
+//     pub proof fn cast_finiteness_ensures(self)
+//         ensures
+//             self.cast_finiteness::<Infinite>() == self.to_infinite(),
+//     {
+//         self.cast_to_infinite();
+//         assert(self.set == |a| self.contains(a));  // fn extensionality
+//     }
 
     #[verifier::inline]
     pub open spec fn to_finite(self) -> Set<A>
@@ -638,31 +637,48 @@ pub mod fold {
         forall|a1, a2, b| #[trigger] f(f(b, a2), a1) == f(f(b, a1), a2)
     }
 
-    // This predicate is intended to be used like an inductive predicate, with the corresponding
-    // introduction, elimination and induction rules proved below.
-    #[verifier(opaque)]
-    spec fn fold_graph<A, FINITE: Finiteness, B>(
+    spec fn fold_graph_inner<A, FINITE: Finiteness, B>(
         z: B,
         f: spec_fn(B, A) -> B,
         s: GSet<A, FINITE>,
         y: B,
         d: nat,
+        yr: B,
+        a: A,
     ) -> bool
-        decreases d,
+        decreases d, 0int,
+    {
+        &&& #[trigger] trigger_fold_graph(yr, a)
+        &&& d > 0
+        &&& s.remove(a).finite()
+        &&& s.contains(a)
+        &&& fold_graph(z, f, s.remove(a), yr, sub(d, 1))
+        &&& y == f(yr, a)
+    }
+
+    // This predicate is intended to be used like an inductive predicate, with the corresponding
+    // introduction, elimination and induction rules proved below.
+    #[verifier(opaque)]
+    spec fn fold_graph<A, FINITE: Finiteness, B>(
+        z: B,   // zero element
+        f: spec_fn(B, A) -> B,  // graph of nodes (B) and directed edges (A) that lead from f(b,a) ~> b
+        s: GSet<A, FINITE>, // set of edges available to follow towards z
+        y: B,   // A starting point for the fold
+        d: nat, // Number of steps left to reach zero
+    ) -> bool
+        decreases d, 1int,
     {
         if s === GSet::empty() {
+            // This configuration can fold if we're already at zero (y==z and no steps) or ...
             &&& z == y
             &&& d == 0
         } else {
-            exists|yr, a|
-                {
-                    &&& #[trigger] trigger_fold_graph(yr, a)
-                    &&& d > 0
-                    &&& s.remove(a).finite()
-                    &&& s.contains(a)
-                    &&& fold_graph(z, f, s.remove(a), yr, sub(d, 1))
-                    &&& y == f(yr, a)
-                }
+            // There is an edge (y,a) -> yr, a step closer to d, that satisfies fold_graph
+            // without revisiting edge a.
+            exists|yr, a| {
+                &&& #[trigger] trigger_fold_graph(yr, a)
+                &&& fold_graph_inner(z, f, s, y, d, yr, a)
+            }
         }
     }
 
@@ -760,33 +776,71 @@ pub mod fold {
             #![all_triggers]
             {
                 &&& trigger_fold_graph(yr, a)
-                &&& d > 0
-                &&& s.remove(aa).finite()
-                &&& s.contains(aa)
-                &&& fold_graph(z, f, s.remove(aa), yr, sub(d, 1))
-                &&& y == f(yr, aa)
+                &&& fold_graph_inner(z, f, s, y, d, yr, aa)
             };
         assert(trigger_fold_graph(yr, a));
         if s.remove(aa) === GSet::empty() {
-        } else {
-            if a == aa {
+            assert(fold_graph(z, f, s, y, d));
+            if !(s === GSet::empty()) {
+                assert( exists |yr, a| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a) );
+                let (jyr,ja): (B,A) = choose |jyr, ja| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, jyr, ja);
+                assert( s.contains(ja) );
+                assert( ja == aa );
+                assert( fold_graph(z, f, s.remove(ja), jyr, sub(d, 1)) );
+                assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
             } else {
-                assume(false);  // flaky!
-                //                 assert( is_fun_commutative(f) );
-                if !(s.remove(aa) == GSet::<A, FINITE>::empty()) {
-                    assert(exists|yr, a|
-                        trigger_fold_graph(yr, a) && (d - 1) as nat > 0 && s.remove(aa).remove(
-                            a,
-                        ).finite() && s.remove(aa).contains(a) && fold_graph(
-                            z,
-                            f,
-                            s.remove(aa).remove(a),
-                            yr,
-                            ((d - 1) as nat - 1) as nat,
-                        ) && yr == f(yr, a));
-                }
-                assert(fold_graph(z, f, s.remove(aa), yr, sub(d, 1)));
-                assert(s.remove(aa).contains(a));
+            // yr=z, so we're done; yp == yr. (but a!=aa?)
+                assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
+            }
+        } else {
+            assert(fold_graph(z, f, s, y, d));
+            assert(s != GSet::<A, FINITE>::empty());
+            assert(exists |yr,a| 
+                #[trigger] trigger_fold_graph(yr, a)
+                && fold_graph_inner(z, f, s, y, d, yr, a));
+            assert(fold_graph_inner(z, f, s, y, d, yr, aa));
+            if a == aa {
+                // Hey, the next edge from a was the one choose-fold_graph gave us!
+                let yp = yr;
+                assert( y == f(yp,a) );
+                assert( fold_graph(z, f, s.remove(a), yp, sub(d, 1)) );
+            } else {
+//                 assert( is_fun_commutative(f) );
+//                 if !(s.remove(aa) == GSet::<A, FINITE>::empty()) {
+//                     assert(exists|yr, a|
+//                         trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a));
+// //                     assert(exists|yr, a|
+// //                         trigger_fold_graph(yr, a) && (d - 1) as nat > 0 && s.remove(aa).remove(
+// //                             a,
+// //                         ).finite() && s.remove(aa).contains(a) && fold_graph(
+// //                             z,
+// //                             f,
+// //                             s.remove(aa).remove(a),
+// //                             yr,
+// //                             ((d - 1) as nat - 1) as nat,
+// //                         ) && yr == f(yr, a)) by {
+// //                             assume(false);
+//              _     _____ _____ _____    ___  _____ _____ 
+//             | |   | ____|  ___|_   _|  / _ \|  ___|  ___|
+//             | |   |  _| | |_    | |   | | | | |_  | |_   
+//             | |___| |___|  _|   | |   | |_| |  _| |  _|  
+//             |_____|_____|_|     |_|    \___/|_|   |_|    
+//                                                          
+//              __  __ ___ _   _ ___ __  __ ___ __________   ____  ____   ___   ___  _____ 
+//             |  \/  |_ _| \ | |_ _|  \/  |_ _|__  / ____| |  _ \|  _ \ / _ \ / _ \|  ___|
+//             | |\/| || ||  \| || || |\/| || |  / /|  _|   | |_) | |_) | | | | | | | |_   
+//             | |  | || || |\  || || |  | || | / /_| |___  |  __/|  _ <| |_| | |_| |  _|  
+//             |_|  |_|___|_| \_|___|_|  |_|___/____|_____| |_|   |_| \_\\___/ \___/|_|    
+//                                                                                         
+// //                         }
+//                 }
+
+//                 assert(fold_graph(z, f, s.remove(aa), yr, sub(d,1)));
+//                 assert(fold_graph_inner(z, f, s.remove(aa), yr, sub(d, 1), yr, aa));
+//                 // a != aa ==> we don't need aa to make progress from yr
+//                 assert(fold_graph_inner(z, f, s.remove(aa), yr, sub(d, 1), yr, a));
+//                 assert(fold_graph(z, f, s.remove(aa), yr, sub(d, 1)));
+//                 assert(s.remove(aa).contains(a));
                 lemma_fold_graph_insert_elim_aux(z, f, s.remove(aa), yr, sub(d, 1), a);
                 let yrp = choose|yrp|
                     yr == f(yrp, a) && #[trigger] fold_graph(
@@ -802,9 +856,9 @@ pub mod fold {
                     assert(trigger_fold_graph(yrp, aa));
                 };
             }
+            assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
         }
-        assume(false);  // flaky!
-        assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
+//         assume(false);  // flaky! TODO(jonh)
     }
 
     // Induction rule
