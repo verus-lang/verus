@@ -134,15 +134,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             }),
     ;
 
-    // TODO(jonh): delete this! nobody uses it
-//     pub proof fn cast_finiteness_ensures(self)
-//         ensures
-//             self.cast_finiteness::<Infinite>() == self.to_infinite(),
-//     {
-//         self.cast_to_infinite();
-//         assert(self.set == |a| self.contains(a));  // fn extensionality
-//     }
-
     #[verifier::inline]
     pub open spec fn to_finite(self) -> Set<A>
         recommends
@@ -660,11 +651,11 @@ pub mod fold {
     // introduction, elimination and induction rules proved below.
     #[verifier(opaque)]
     spec fn fold_graph<A, FINITE: Finiteness, B>(
-        z: B,   // zero element
+        z: B,  // zero element
         f: spec_fn(B, A) -> B,  // graph of nodes (B) and directed edges (A) that lead from f(b,a) ~> b
-        s: GSet<A, FINITE>, // set of edges available to follow towards z
-        y: B,   // A starting point for the fold
-        d: nat, // Number of steps left to reach zero
+        s: GSet<A, FINITE>,  // set of edges available to follow towards z
+        y: B,  // A starting point for the fold
+        d: nat,  // Number of steps left to reach zero
     ) -> bool
         decreases d, 1int,
     {
@@ -675,10 +666,11 @@ pub mod fold {
         } else {
             // There is an edge (y,a) -> yr, a step closer to d, that satisfies fold_graph
             // without revisiting edge a.
-            exists|yr, a| {
-                &&& #[trigger] trigger_fold_graph(yr, a)
-                &&& fold_graph_inner(z, f, s, y, d, yr, a)
-            }
+            exists|yr, a|
+                {
+                    &&& #[trigger] trigger_fold_graph(yr, a)
+                    &&& fold_graph_inner(z, f, s, y, d, yr, a)
+                }
         }
     }
 
@@ -780,18 +772,25 @@ pub mod fold {
             };
         if s.remove(aa) === GSet::empty() {
             if !(s === GSet::empty()) {
-                assert( exists |yr, a| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a) );
-                let (jyr,ja): (B,A) = choose |jyr, ja| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, jyr, ja);
-                assert( fold_graph(z, f, s.remove(ja), jyr, sub(d, 1)) );
+                assert(exists|yr, a| #[trigger]
+                    trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a));
+                let (jyr, ja): (B, A) = choose|jyr, ja| #[trigger]
+                    trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, jyr, ja);
+                assert(fold_graph(z, f, s.remove(ja), jyr, sub(d, 1)));
             }
         } else {
-            assert(exists |yr,a| 
-                #[trigger] trigger_fold_graph(yr, a)
-                && fold_graph_inner(z, f, s, y, d, yr, a));
+            assert(exists|yr, a| #[trigger]
+                trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a));
             if a != aa {
                 lemma_fold_graph_insert_elim_aux(z, f, s.remove(aa), yr, sub(d, 1), a);
-                let yrp = choose|yrp| yr == f(yrp, a) && #[trigger] fold_graph(
-                        z, f, s.remove(aa).remove(a), yrp, sub(d, 2));
+                let yrp = choose|yrp|
+                    yr == f(yrp, a) && #[trigger] fold_graph(
+                        z,
+                        f,
+                        s.remove(aa).remove(a),
+                        yrp,
+                        sub(d, 2),
+                    );
                 assert(fold_graph(z, f, s.remove(aa).insert(aa).remove(a), f(yrp, aa), sub(d, 1)))
                     by {
                     assert(s.remove(aa).remove(a) == s.remove(aa).insert(aa).remove(a).remove(aa));
