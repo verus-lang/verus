@@ -1701,14 +1701,19 @@ impl Visitor {
                 .iter()
                 .map(|path| {
                     let mut path = path.clone();
-                    let attrs = path
-                        .attrs
-                        .extract_if(0..path.attrs.len(), |attr| {
-                            // move any cfg attrs from path to the stmt
-                            attr.path().get_ident().map(|i| i.to_string())
-                                == Some("cfg".to_string())
-                        })
-                        .collect();
+                    let mut attrs = Vec::new();
+                    // move any cfg attrs from path to the stmt
+                    let mut i = 0;
+                    while i < path.attrs.len() {
+                        if path.attrs[i].path().get_ident().map(|i| i.to_string())
+                            == Some("cfg".to_string())
+                        {
+                            let elt = path.attrs.remove(i);
+                            attrs.push(elt);
+                        } else {
+                            i += 1;
+                        }
+                    }
                     let block = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => {
                         #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
                             #verus_builtin::reveal_hide_internal_path_(#path)
@@ -5024,7 +5029,7 @@ macro_rules! declare_mk_rust_attr {
 declare_mk_rust_attr!(mk_rust_attr, syn_verus);
 declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
-/// Constructs #[verus::internal(tokens)]
+/// Constructs #[verus::internal(tokens)] and #[verifier::tokens]
 macro_rules! declare_mk_verus_attr {
     ($name:ident, $name2:ident, $s:ident) => {
         pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
@@ -5064,18 +5069,9 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("verifier", span),
                 arguments: $s::PathArguments::None,
             });
+            path_segments.push($s::parse_quote_spanned!(span => #tokens));
             let path = $s::Path { leading_colon: None, segments: path_segments };
-            let meta = if tokens.is_empty() {
-                $s::Meta::Path(path)
-            } else {
-                $s::Meta::List($s::MetaList {
-                    path,
-                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
-                        span: into_spans(span),
-                    }),
-                    tokens: quote! { #tokens },
-                })
-            };
+            let meta = $s::Meta::Path(path);
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,

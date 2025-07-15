@@ -1037,3 +1037,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] regression_issue1083 verus_code! {
+        pub trait Borrowable {
+            type Borrowed<'a>;
+        }
+
+        impl Borrowable for u8 {
+            type Borrowed<'a> = &'a u8;
+        }
+
+        pub struct Container<T: Borrowable>(T);
+    } => Ok(())
+}

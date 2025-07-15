@@ -288,26 +288,6 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;
         }
 
-        #[verifier::external_trait_specification]
-        pub trait ExPartialEq<Rhs: ?Sized> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExEq: PartialEq {
-            type ExternalTraitSpecificationFor: core::cmp::Eq;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExOrd: Eq + PartialOrd {
-            type ExternalTraitSpecificationFor: Ord;
-        }
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
@@ -404,17 +384,17 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_extension_vstd verus_code! {
-        use vstd::std_specs::core::PartialEqSpec;
+        use vstd::std_specs::cmp::PartialEqSpec;
         broadcast proof fn axiom_spec_eq_u8(x: u8, y: u8)
             ensures
-                #[trigger] x.spec_eq(&y) <==> x == y,
+                #[trigger] x.eq_spec(&y) <==> x == y,
         {
             admit();
         }
         fn test(u: u8, v: u8) {
             broadcast use axiom_spec_eq_u8;
-            assert(u.spec_eq(&u));
-            assert(u.spec_eq(&v)); // FAILS
+            assert(u.eq_spec(&u));
+            assert(u.eq_spec(&v)); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }

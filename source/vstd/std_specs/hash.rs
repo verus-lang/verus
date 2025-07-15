@@ -1059,6 +1059,13 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
         },
 ;
 
+pub broadcast proof fn axiom_hashmap_index_decreases<Key, Value>(m: HashMap<Key, Value>)
+    ensures
+        #[trigger] (decreases_to!(m => m@)),
+{
+    admit();
+}
+
 // The `iter` method of a `HashSet` returns an iterator of type `hash_set::Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -1390,6 +1397,13 @@ pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<K
         },
 ;
 
+pub broadcast proof fn axiom_hashset_index_decreases<Key>(m: HashSet<Key>)
+    ensures
+        #[trigger] (decreases_to!(m => m@)),
+{
+    admit();
+}
+
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -1424,6 +1438,8 @@ pub broadcast group group_hash_axioms {
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
     axiom_spec_hash_map_iter,
+    axiom_hashmap_index_decreases,
+    axiom_hashset_index_decreases,
 }
 
 } // verus!
