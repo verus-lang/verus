@@ -778,87 +778,27 @@ pub mod fold {
                 &&& trigger_fold_graph(yr, a)
                 &&& fold_graph_inner(z, f, s, y, d, yr, aa)
             };
-        assert(trigger_fold_graph(yr, a));
         if s.remove(aa) === GSet::empty() {
-            assert(fold_graph(z, f, s, y, d));
             if !(s === GSet::empty()) {
                 assert( exists |yr, a| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a) );
                 let (jyr,ja): (B,A) = choose |jyr, ja| #[trigger] trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, jyr, ja);
-                assert( s.contains(ja) );
-                assert( ja == aa );
                 assert( fold_graph(z, f, s.remove(ja), jyr, sub(d, 1)) );
-                assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
-            } else {
-            // yr=z, so we're done; yp == yr. (but a!=aa?)
-                assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
             }
         } else {
-            assert(fold_graph(z, f, s, y, d));
-            assert(s != GSet::<A, FINITE>::empty());
             assert(exists |yr,a| 
                 #[trigger] trigger_fold_graph(yr, a)
                 && fold_graph_inner(z, f, s, y, d, yr, a));
-            assert(fold_graph_inner(z, f, s, y, d, yr, aa));
-            if a == aa {
-                // Hey, the next edge from a was the one choose-fold_graph gave us!
-                let yp = yr;
-                assert( y == f(yp,a) );
-                assert( fold_graph(z, f, s.remove(a), yp, sub(d, 1)) );
-            } else {
-//                 assert( is_fun_commutative(f) );
-//                 if !(s.remove(aa) == GSet::<A, FINITE>::empty()) {
-//                     assert(exists|yr, a|
-//                         trigger_fold_graph(yr, a) && fold_graph_inner(z, f, s, y, d, yr, a));
-// //                     assert(exists|yr, a|
-// //                         trigger_fold_graph(yr, a) && (d - 1) as nat > 0 && s.remove(aa).remove(
-// //                             a,
-// //                         ).finite() && s.remove(aa).contains(a) && fold_graph(
-// //                             z,
-// //                             f,
-// //                             s.remove(aa).remove(a),
-// //                             yr,
-// //                             ((d - 1) as nat - 1) as nat,
-// //                         ) && yr == f(yr, a)) by {
-// //                             assume(false);
-//              _     _____ _____ _____    ___  _____ _____ 
-//             | |   | ____|  ___|_   _|  / _ \|  ___|  ___|
-//             | |   |  _| | |_    | |   | | | | |_  | |_   
-//             | |___| |___|  _|   | |   | |_| |  _| |  _|  
-//             |_____|_____|_|     |_|    \___/|_|   |_|    
-//                                                          
-//              __  __ ___ _   _ ___ __  __ ___ __________   ____  ____   ___   ___  _____ 
-//             |  \/  |_ _| \ | |_ _|  \/  |_ _|__  / ____| |  _ \|  _ \ / _ \ / _ \|  ___|
-//             | |\/| || ||  \| || || |\/| || |  / /|  _|   | |_) | |_) | | | | | | | |_   
-//             | |  | || || |\  || || |  | || | / /_| |___  |  __/|  _ <| |_| | |_| |  _|  
-//             |_|  |_|___|_| \_|___|_|  |_|___/____|_____| |_|   |_| \_\\___/ \___/|_|    
-//                                                                                         
-// //                         }
-//                 }
-
-//                 assert(fold_graph(z, f, s.remove(aa), yr, sub(d,1)));
-//                 assert(fold_graph_inner(z, f, s.remove(aa), yr, sub(d, 1), yr, aa));
-//                 // a != aa ==> we don't need aa to make progress from yr
-//                 assert(fold_graph_inner(z, f, s.remove(aa), yr, sub(d, 1), yr, a));
-//                 assert(fold_graph(z, f, s.remove(aa), yr, sub(d, 1)));
-//                 assert(s.remove(aa).contains(a));
+            if a != aa {
                 lemma_fold_graph_insert_elim_aux(z, f, s.remove(aa), yr, sub(d, 1), a);
-                let yrp = choose|yrp|
-                    yr == f(yrp, a) && #[trigger] fold_graph(
-                        z,
-                        f,
-                        s.remove(aa).remove(a),
-                        yrp,
-                        sub(d, 2),
-                    );
+                let yrp = choose|yrp| yr == f(yrp, a) && #[trigger] fold_graph(
+                        z, f, s.remove(aa).remove(a), yrp, sub(d, 2));
                 assert(fold_graph(z, f, s.remove(aa).insert(aa).remove(a), f(yrp, aa), sub(d, 1)))
                     by {
                     assert(s.remove(aa).remove(a) == s.remove(aa).insert(aa).remove(a).remove(aa));
                     assert(trigger_fold_graph(yrp, aa));
                 };
             }
-            assert(exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)));
         }
-//         assume(false);  // flaky! TODO(jonh)
     }
 
     // Induction rule
