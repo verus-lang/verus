@@ -11,6 +11,7 @@ If you're a **Verus developer**, or if you're looking for a **specific commit ve
 You can select from either:
 
  * **(Recommended)** The weekly point releases. You can get the latest at  [https://github.com/verus-lang/verus/releases/latest](https://github.com/verus-lang/verus/releases/latest)
+   * If your project depends on `vstd`/`builtin`/`builtin_macros` in `Cargo.toml`, download the release from as close a commit as possible. Otherwise verus may fail to compile your project.
 
  * The rolling release, which tracks the latest commit on `main`.
    This can be found on our [release page](https://github.com/verus-lang/verus/releases), marked "pre-release".
