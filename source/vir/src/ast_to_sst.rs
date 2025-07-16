@@ -1,12 +1,14 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ, place_to_expr, place_to_expr_loc};
+use crate::ast_util::{
+    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -2517,8 +2519,8 @@ fn stmt_to_stm(
 
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
-            if let Some(init) = init {
-                match expr_must_be_call_stm(ctx, state, Some(&typ), &init)? {
+            if let Some(init) = &init {
+                match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
                     }
@@ -2564,10 +2566,10 @@ fn stmt_to_stm(
             }
 
             // Otherwise, translate the initializer to an Exp.
-            let (mut stms, exp) = match init {
+            let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
-                    let (stms, exp) = expr_to_stm_opt(ctx, state, &init)?;
+                    let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;
                     let exp = match exp.to_value() {
                         Some(exp) => exp,
                         None => {

@@ -1071,7 +1071,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustments,
                     adjustment_idx - 1,
                 )?;
-                let place = crate::places::expr_to_place_for_mut_ref(&e)?;
+                let place = crate::places::expr_to_place(&e)?;
                 let x = ExprX::BorrowMut(place);
                 let typ = Arc::new(TypX::MutRef(e.typ.clone()));
                 Ok(bctx.spanned_typed_new(expr.span, &typ, x))
@@ -1471,7 +1471,8 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         vir_arms.push(vir_arm);
     }
     unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
-    return Ok(mk_expr(ExprX::Match(expr_vir, Arc::new(vir_arms)))?);
+    let place_vir = crate::places::expr_to_place(&expr_vir)?;
+    return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms)))?);
 }
 
 pub(crate) fn expr_to_vir_innermost<'tcx>(
@@ -1875,7 +1876,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 let e = expr_to_vir(bctx, e, modifier)?;
-                let place = crate::places::expr_to_place_for_mut_ref(&e)?;
+                let place = crate::places::expr_to_place(&e)?;
                 let x = ExprX::BorrowMut(place);
                 let typ = Arc::new(TypX::MutRef(e.typ.clone()));
                 Ok(bctx.spanned_typed_new(expr.span, &typ, x))
@@ -2186,7 +2187,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
                     }
-                    mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
+                    let vir_place = crate::places::expr_to_place(&vir_expr)?;
+                    mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
                 }
                 _ => {
                     let vir_cond = expr_to_vir(bctx, cond, modifier)?;
@@ -2213,7 +2215,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
-            mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
+            let vir_place = crate::places::expr_to_place(&vir_expr)?;
+            mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let loop_isolation = loop_isolation();
@@ -2325,7 +2328,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?),
+                StructTailExpr::Base(expr) => {
+                    let e = expr_to_vir(bctx, expr, modifier)?;
+                    Some(crate::places::expr_to_place(&e)?)
+                }
                 StructTailExpr::DefaultFields(..) => {
                     unsupported_err!(
                         expr.span,
@@ -2649,7 +2655,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
 ) -> Result<vir::ast::Expr, vir::messages::Message> {
     if bctx.ctxt.cmd_line_args.new_mut_ref {
         let vir_lhs = expr_to_vir(bctx, lhs, modifier)?;
-        let vir_place = crate::places::expr_to_place_for_mut_ref(&vir_lhs)?;
+        let vir_place = crate::places::expr_to_place(&vir_lhs)?;
         let vir_rhs = expr_to_vir(bctx, rhs, modifier)?;
 
         let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
@@ -2813,7 +2819,12 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     } else {
         None
     };
-    let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
+    let init = initializer
+        .map(|e| {
+            let e = expr_to_vir(bctx, e, ExprModifier::REGULAR)?;
+            crate::places::expr_to_place(&e)
+        })
+        .transpose()?;
 
     if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
         .contains(&Attr::UnwrappedBinding)

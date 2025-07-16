@@ -1,6 +1,6 @@
 use vir::ast::*;
 
-pub fn expr_to_place_for_mut_ref(e: &Expr) -> Result<Place, VirErr> {
+pub fn expr_to_place(e: &Expr) -> Result<Place, VirErr> {
     match &e.x {
         ExprX::Var(ident) => Ok(SpannedTyped::new(&e.span, &e.typ, PlaceX::Local(ident.clone()))),
         ExprX::DerefMut(arg) => {
@@ -13,13 +13,13 @@ pub fn expr_to_place_for_mut_ref(e: &Expr) -> Result<Place, VirErr> {
                     Ok(place.clone())
                 }
                 _ => {
-                    let p = expr_to_place_for_mut_ref(arg)?;
+                    let p = expr_to_place(arg)?;
                     Ok(SpannedTyped::new(&e.span, &e.typ, PlaceX::DerefMut(p)))
                 }
             }
         }
         ExprX::UnaryOpr(UnaryOpr::Field(opr), arg) => {
-            let p = expr_to_place_for_mut_ref(arg)?;
+            let p = expr_to_place(arg)?;
             Ok(SpannedTyped::new(&e.span, &e.typ, PlaceX::Field(opr.clone(), p)))
         }
         _ => {

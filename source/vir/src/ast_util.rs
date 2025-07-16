@@ -2,10 +2,10 @@ use crate::ast::{
     ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
     ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
-    UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
-    Visibility, Place, PlaceX,
+    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Place,
+    PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
+    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
+    Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1270,7 +1270,7 @@ impl Opaqueness {
 
 impl PlaceX {
     pub fn temporary(e: Expr) -> Place {
-        SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e))
+        SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 }
 

@@ -743,9 +743,7 @@ fn check_place(
             let x_mode = typing.get(var, &place.span)?;
             Ok(x_mode)
         }
-        PlaceX::Temporary(e) => {
-            check_expr(ctxt, record, typing, outer_mode, e)
-        }
+        PlaceX::Temporary(e) => check_expr(ctxt, record, typing, outer_mode, e),
     }
 }
 

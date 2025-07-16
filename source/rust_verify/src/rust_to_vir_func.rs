@@ -1135,7 +1135,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 vir::ast::PatternX::Var { name: name.clone(), mutable: true },
             );
             let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
+                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
             if let Some(hir_id) = hir_id {
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
