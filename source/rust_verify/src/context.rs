@@ -85,3 +85,14 @@ impl<'tcx> ContextX<'tcx> {
         r.bodies.push((local_def_id, c));
     }
 }
+
+impl<'tcx> BodyCtxt<'tcx> {
+    pub(crate) fn is_copy(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+        let param_env = self.ctxt.tcx.param_env(self.fun_id);
+        let typing_env = rustc_middle::ty::TypingEnv {
+            param_env,
+            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
+        };
+        self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
+    }
+}

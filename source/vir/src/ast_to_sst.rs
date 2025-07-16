@@ -1,12 +1,14 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -2434,9 +2436,6 @@ pub(crate) fn expr_to_stm_opt(
             );
             expr_to_stm_opt(ctx, state, &expr)
         }
-        ExprX::DerefMut(_place) => {
-            panic!("DerefMut should have been removed in simplify");
-        }
         ExprX::AssumeResolved(e, typ) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
             let exp = unwrap_or_return_never!(exp, stms);
@@ -2445,6 +2444,10 @@ pub(crate) fn expr_to_stm_opt(
             let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             stms.push(assume_stm);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::ReadPlace(place, _read_type) => {
+            let expr = place_to_expr(place);
+            expr_to_stm_opt(ctx, state, &expr)
         }
     }
 }
@@ -2457,37 +2460,6 @@ fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirE
         ReturnValue::Some(e) => Ok(e),
         _ => panic!("place_to_exp expected exp"),
     }
-}
-
-fn place_to_expr(place: &Place) -> Expr {
-    place_to_expr_rec(place, false)
-}
-
-fn place_to_expr_loc(place: &Place) -> Expr {
-    let e = place_to_expr_rec(place, true);
-    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
-}
-
-fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
-    let x = match &place.x {
-        PlaceX::Local(var_ident) => {
-            if loc {
-                ExprX::VarLoc(var_ident.clone())
-            } else {
-                ExprX::Var(var_ident.clone())
-            }
-        }
-        PlaceX::DerefMut(p) => {
-            let e = place_to_expr_rec(p, loc);
-            ExprX::Unary(UnaryOp::MutRefCurrent, e)
-        }
-        PlaceX::Field(opr, p) => {
-            let e = place_to_expr_rec(p, loc);
-            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
-        }
-        PlaceX::Temporary(_) => panic!("Place Temporary should have been simplified out"),
-    };
-    SpannedTyped::new(&place.span, &place.typ, x)
 }
 
 /// In the case that this stmt is a Decl, we also return the following information:
@@ -2529,9 +2501,11 @@ fn stmt_to_stm(
                 kind: LocalDeclKind::StmtLet { mutable: *mutable },
             });
 
+            let init = init.as_ref().map(|init| place_to_expr(init));
+
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
-            if let Some(init) = init {
+            if let Some(init) = &init {
                 match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
@@ -2578,7 +2552,7 @@ fn stmt_to_stm(
             }
 
             // Otherwise, translate the initializer to an Exp.
-            let (mut stms, exp) = match init {
+            let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
                     let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;
