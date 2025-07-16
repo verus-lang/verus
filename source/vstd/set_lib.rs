@@ -38,7 +38,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 
     /// An element in an ordered set is called a least element (or a minimum), if it is less than
-    /// every other element of the set.
+    /// or equal to every other element of the set.
     ///
     // change f to leq bc it is a relation. also these are an ordering relation
     pub open spec fn is_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
@@ -52,7 +52,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 
     /// An element in an ordered set is called a greatest element (or a maximum), if it is greater than
-    ///every other element of the set.
+    /// or equal to every other element of the set.
     pub open spec fn is_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
         self.contains(max) && forall|x: A| self.contains(x) ==> #[trigger] leq(x, max)
     }
