@@ -191,7 +191,7 @@ pub type AtomicCellId = int;
 
 macro_rules! atomic_common_methods {
     ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
-        verus!{
+        verus_impl!{
 
         pub uninterp spec fn id(&self) -> int;
 
@@ -318,7 +318,7 @@ macro_rules! atomic_common_methods {
 
 macro_rules! atomic_integer_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
-        verus!{
+        verus_impl!{
 
         // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
         // for Rust's atomics (in contrast to ordinary arithmetic)
