@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs expect-warnings
+// rust_verify/tests/example.rs
 use multiset::*;
 #[allow(unused_imports)]
 use prelude::*;

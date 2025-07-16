@@ -229,8 +229,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     vir_crate: &vir::ast::Krate,
     state: &mut State,
 ) {
-    state.restart_names();
-
     for d in &vir_crate.datatypes {
         let Dt::Path(path) = &d.x.name else {
             panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");

@@ -19,6 +19,7 @@ use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
     GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
 };
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -208,7 +209,7 @@ pub(crate) fn body_id_to_types<'tcx>(
     tcx.typeck(id.hir_id.owner.def_id)
 }
 
-pub(crate) fn body_to_vir<'tcx>(
+fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     fun_id: DefId,
     id: &BodyId,
@@ -1443,6 +1444,11 @@ pub(crate) fn check_item_fn<'tcx>(
         body_with_mut_redecls.is_some(),
     )?;
 
+    ctxt.push_body_erasure(
+        id.expect_local(),
+        BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+    );
+
     let mut func = FunctionX {
         name: name.clone(),
         proxy,
@@ -2153,6 +2159,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         module_path,
         !vattrs.external_body,
     )?;
+
+    ctxt.push_body_erasure(
+        id.expect_local(),
+        BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+    );
 
     let mut functionx = FunctionX {
         name: name.clone(),
