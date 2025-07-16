@@ -5,7 +5,7 @@ use crate::ast::{
     ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
     SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
     UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
-    Visibility,
+    Visibility, Place, PlaceX,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1266,4 +1266,41 @@ impl Opaqueness {
             f
         }
     }
+}
+
+impl PlaceX {
+    pub fn temporary(e: Expr) -> Place {
+        SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e))
+    }
+}
+
+pub fn place_to_expr(place: &Place) -> Expr {
+    place_to_expr_rec(place, false)
+}
+
+pub fn place_to_expr_loc(place: &Place) -> Expr {
+    let e = place_to_expr_rec(place, true);
+    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
+}
+
+fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
+    let x = match &place.x {
+        PlaceX::Local(var_ident) => {
+            if loc {
+                ExprX::VarLoc(var_ident.clone())
+            } else {
+                ExprX::Var(var_ident.clone())
+            }
+        }
+        PlaceX::DerefMut(p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::Unary(UnaryOp::MutRefCurrent, e)
+        }
+        PlaceX::Field(opr, p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::Temporary(_) => panic!("Place Temporary should have been simplified out"),
+    };
+    SpannedTyped::new(&place.span, &place.typ, x)
 }

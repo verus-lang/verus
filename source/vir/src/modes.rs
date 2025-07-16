@@ -743,8 +743,8 @@ fn check_place(
             let x_mode = typing.get(var, &place.span)?;
             Ok(x_mode)
         }
-        PlaceX::Temporary(_e) => {
-            panic!("Temporary has not been implemented yet");
+        PlaceX::Temporary(e) => {
+            check_expr(ctxt, record, typing, outer_mode, e)
         }
     }
 }
@@ -1027,7 +1027,7 @@ fn check_expr_handle_mut_arg(
                 Dt::Tuple(_) => (None, Mode::Exec),
             };
             if let Some(update) = update {
-                mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
+                mode = mode_join(mode, check_place(ctxt, record, typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
                 let field_mode = match variant_opt {
@@ -1449,7 +1449,7 @@ fn check_expr_handle_mut_arg(
             }
         }
         ExprX::Match(e1, arms) => {
-            let mode1 = check_expr(ctxt, record, typing, outer_mode, e1)?;
+            let mode1 = check_place(ctxt, record, typing, outer_mode, e1)?;
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode1 != Mode::Exec
@@ -1772,8 +1772,8 @@ fn check_stmt(
             add_pattern(ctxt, record, typing, mode, pattern)?;
             match init.as_ref() {
                 None => {}
-                Some(expr) => {
-                    check_expr_has_mode(ctxt, record, typing, outer_mode, expr, mode)?;
+                Some(place) => {
+                    check_place_has_mode(ctxt, record, typing, outer_mode, place, mode)?;
                 }
             }
             match els.as_ref() {

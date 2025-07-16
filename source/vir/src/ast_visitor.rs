@@ -129,6 +129,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
     }
 
+    fn visit_opt_place(&mut self, place_opt: &Option<Place>) -> Result<R::Opt<Place>, Err> {
+        R::map_opt(place_opt, &mut |p| self.visit_place(p))
+    }
+
     fn visit_binders_expr(
         &mut self,
         binders: &air::ast::Binders<Expr>,
@@ -302,7 +306,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             ExprX::Ctor(dt, id, binders, opt_e) => {
                 let bs = self.visit_binders_expr(binders)?;
-                let oe = self.visit_opt_expr(opt_e)?;
+                let oe = self.visit_opt_place(opt_e)?;
                 R::ret(|| {
                     expr_new(ExprX::Ctor(dt.clone(), id.clone(), R::get_vec_a(bs), R::get_opt(oe)))
                 })
@@ -519,10 +523,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let els = self.visit_opt_expr(els)?;
                 R::ret(|| expr_new(ExprX::If(R::get(cond), R::get(thn), R::get_opt(els))))
             }
-            ExprX::Match(expr, arms) => {
-                let expr = self.visit_expr(expr)?;
+            ExprX::Match(place, arms) => {
+                let place = self.visit_place(place)?;
                 let arms = self.visit_arms(arms)?;
-                R::ret(|| expr_new(ExprX::Match(R::get(expr), R::get_vec_a(arms))))
+                R::ret(|| expr_new(ExprX::Match(R::get(place), R::get_vec_a(arms))))
             }
             ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
                 let cond = self.visit_opt_expr(cond)?;
@@ -680,7 +684,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
             StmtX::Decl { pattern, mode, init, els } => {
                 let pattern = self.visit_pattern(pattern)?;
-                let init = self.visit_opt_expr(init)?;
+                let init = self.visit_opt_place(init)?;
                 let els = self.visit_opt_expr(els)?;
                 R::ret(|| {
                     stmt_new(StmtX::Decl {
