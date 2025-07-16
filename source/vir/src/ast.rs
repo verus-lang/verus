@@ -948,8 +948,19 @@ pub enum ExprX {
     DerefMut(Expr),
     Resolve(Expr, Typ),
     HasResolved(Expr, Typ),
+    /// Indicates a move or a copy from the given place.
+    /// These over-approximate the actual set of copies/moves.
+    /// We don't know for sure if something is a "real" move or copy until mode-checking.
+    ReadPlace(Place, ReadType),
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ReadType {
+    Move,
+    Copy,
+}
+
+// TODO: add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]

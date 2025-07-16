@@ -2463,6 +2463,10 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_stm);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
+        ExprX::ReadPlace(place, _read_type) => {
+            let expr = place_to_expr(place);
+            expr_to_stm_opt(ctx, state, &expr)
+        }
     }
 }
 

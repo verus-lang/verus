@@ -1724,6 +1724,9 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
+        ExprX::ReadPlace(place, _read_type) => {
+            Ok(check_place(ctxt, record, typing, outer_mode, place)?)
+        }
     };
     Ok((mode?, None))
 }
