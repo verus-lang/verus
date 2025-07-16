@@ -2,13 +2,13 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use quote::quote;
-use syn_verus::ExprBlock;
-use syn_verus::Token;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse_macro_input;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{Block, Expr, parenthesized};
+use verus_syn::ExprBlock;
+use verus_syn::Token;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_macro_input;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{Block, Expr, parenthesized};
 
 use crate::cfg_erase;
 use crate::syntax::rewrite_expr;
@@ -48,7 +48,7 @@ struct CalcInput {
 }
 
 impl Parse for CalcInput {
-    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+    fn parse(input: ParseStream) -> verus_syn::Result<Self> {
         let reln: Relation = input.parse()?;
         let mut steps = Vec::new();
         let mut last: Expr = input.parse()?;
@@ -59,7 +59,7 @@ impl Parse for CalcInput {
             } else {
                 let op: Relation = input.parse()?;
                 if !reln.op.compatible(&op.op) {
-                    return Err(syn_verus::Error::new(
+                    return Err(verus_syn::Error::new(
                         op.span,
                         format!("inconsistent relation `{}` with `{}`", op.op, reln.op),
                     ));
@@ -80,7 +80,7 @@ impl Parse for CalcInput {
             }
         }
         if steps.is_empty() {
-            return Err(syn_verus::Error::new(last.span(), "single-step calculation"));
+            return Err(verus_syn::Error::new(last.span(), "single-step calculation"));
         }
         Ok(Self { reln, steps, last })
     }
@@ -93,7 +93,7 @@ struct Relation {
 }
 
 impl Parse for Relation {
-    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+    fn parse(input: ParseStream) -> verus_syn::Result<Self> {
         let span = input.span();
         let op = input.parse()?;
         Ok(Self { op, span })
@@ -112,7 +112,7 @@ enum RelationOp {
 }
 
 impl Parse for RelationOp {
-    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+    fn parse(input: ParseStream) -> verus_syn::Result<Self> {
         let lookahead = input.lookahead1();
         if lookahead.peek(token::Paren) {
             let content;

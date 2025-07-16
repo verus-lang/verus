@@ -2,8 +2,8 @@
 //! concurrency_tokens.rs
 
 use crate::ast::{SM, SplitKind, TransitionStmt};
-use syn_verus::parse;
-use syn_verus::parse::Error;
+use verus_syn::parse;
+use verus_syn::parse::Error;
 
 /// Check if any SpecialOp is inside a conditional, which is currently unsupported.
 /// e.g., this is disallowed:

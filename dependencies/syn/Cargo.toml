@@ -1,5 +1,5 @@
 [package]
-name = "syn_verus"
+name = "verus_syn"
 version = "2.0.96+verus" # don't forget to update html_root_url and syn.json
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 categories = ["development-tools::procedural-macro-helpers", "parser-implementations"]

@@ -5,21 +5,21 @@ use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use syn_verus::Token;
-use syn_verus::TypeInfer;
-use syn_verus::buffer::Cursor;
-use syn_verus::parse;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse_macro_input;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::token::Comma;
-use syn_verus::visit;
-use syn_verus::visit::Visit;
-use syn_verus::visit_mut;
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::{
+use verus_syn::Token;
+use verus_syn::TypeInfer;
+use verus_syn::buffer::Cursor;
+use verus_syn::parse;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_macro_input;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::token::Comma;
+use verus_syn::visit;
+use verus_syn::visit::Visit;
+use verus_syn::visit_mut;
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::{
     Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
     GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent, PatType,
     PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,

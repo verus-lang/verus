@@ -1,12 +1,12 @@
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse_macro_input;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{Error, Expr, ExprBlock, ExprPath, Ident, Path, Token, braced, parenthesized};
-use syn_verus::{PathArguments, parse};
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_macro_input;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{Error, Expr, ExprBlock, ExprPath, Ident, Path, Token, braced, parenthesized};
+use verus_syn::{PathArguments, parse};
 
 pub fn case_on(
     input: proc_macro::TokenStream,

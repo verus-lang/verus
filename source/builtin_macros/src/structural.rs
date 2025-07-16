@@ -1,4 +1,4 @@
-use syn_verus::spanned::Spanned;
+use verus_syn::spanned::Spanned;
 
 pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::TokenStream {
     let assert_receiver_is_structural_body = s

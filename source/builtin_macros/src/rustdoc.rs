@@ -30,10 +30,10 @@
 
 use proc_macro2::Span;
 use std::iter::FromIterator;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
     ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
     ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
@@ -93,7 +93,7 @@ pub fn process_trait_item_method(item: &mut TraitItemFn) {
 
 /// Process a signature to get all the information, apply the codeblock
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
-/// (as a syn_verus::Attribute object) that we can apply to the item.
+/// (as a verus_syn::Attribute object) that we can apply to the item.
 
 fn attr_for_sig(
     sig: &Signature,
@@ -281,7 +281,7 @@ fn assume_specification_link_line(e: &Expr) -> String {
         _ => {}
     }
 
-    let s = prettyplease_verus::unparse_expr(&e);
+    let s = verus_prettyplease::unparse_expr(&e);
     let s = s.replace("\n", " ");
     format!("**Specification for [`{:}`]**", s)
 }
@@ -289,13 +289,13 @@ fn assume_specification_link_line(e: &Expr) -> String {
 /// Pretty print the expression, then wrap in a code block.
 
 fn encoded_expr(kind: &str, code: &Expr) -> String {
-    let s = prettyplease_verus::unparse_expr(&code);
+    let s = verus_prettyplease::unparse_expr(&code);
     let s = format!("{s:},");
     encoded_str(kind, &s)
 }
 
 fn encoded_body(kind: &str, code: &Expr) -> String {
-    let s = prettyplease_verus::unparse_expr(&code);
+    let s = verus_prettyplease::unparse_expr(&code);
     let s = format!("{s:}");
     encoded_str(kind, &s)
 }
@@ -317,16 +317,16 @@ fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
             arguments: PathArguments::None,
         }]),
     };
-    let lit = syn_verus::Lit::Str(syn_verus::LitStr::new(doc_str, span));
-    let name_value = syn_verus::MetaNameValue {
+    let lit = verus_syn::Lit::Str(verus_syn::LitStr::new(doc_str, span));
+    let name_value = verus_syn::MetaNameValue {
         path,
         eq_token: token::Eq { spans: [span] },
-        value: Expr::Lit(syn_verus::ExprLit { attrs: vec![], lit }),
+        value: Expr::Lit(verus_syn::ExprLit { attrs: vec![], lit }),
     };
     Attribute {
         pound_token: token::Pound { spans: [span] },
         style: AttrStyle::Outer,
         bracket_token: token::Bracket { span: crate::syntax::into_spans(span) },
-        meta: syn_verus::Meta::NameValue(name_value),
+        meta: verus_syn::Meta::NameValue(name_value),
     }
 }

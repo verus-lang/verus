@@ -1,5 +1,5 @@
 [package]
-name = "prettyplease_verus"
+name = "verus_prettyplease"
 version = "0.2.29+verus"
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 autoexamples = false
@@ -15,17 +15,17 @@ repository = "https://github.com/dtolnay/prettyplease"
 rust-version = "1.62"
 
 [features]
-verbatim = ["syn_verus/parsing"]
+verbatim = ["verus_syn/parsing"]
 
 [dependencies]
 proc-macro2 = { version = "1.0.80", default-features = false }
-syn_verus = { path="../syn", default-features = false, features = ["full"] }
+verus_syn = { path="../syn", default-features = false, features = ["full"] }
 
 [dev-dependencies]
 indoc = "2"
 proc-macro2 = { version = "1.0.80", default-features = false }
 quote = { version = "1.0.35", default-features = false }
-syn_verus = { path="../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
+verus_syn = { path="../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
 
 [lib]
 doc-scrape-examples = false

@@ -19,11 +19,11 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
 use std::collections::HashMap;
 use std::mem::swap;
-use syn_verus::parse;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{
+use verus_syn::parse;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
     GenericArgument, GenericParam, Generics, Ident, ImplItemFn, Meta, MetaList, ModeProof,
     ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,

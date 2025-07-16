@@ -4,7 +4,7 @@ use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::TokenStream;
 use std::ptr;
-use syn_verus::{
+use verus_syn::{
     BoundLifetimes, CapturedParam, ConstParam, Expr, GenericParam, Generics, LifetimeParam,
     PreciseCapture, PredicateLifetime, PredicateType, TraitBound, TraitBoundModifier, TypeParam,
     TypeParamBound, WhereClause, WherePredicate,

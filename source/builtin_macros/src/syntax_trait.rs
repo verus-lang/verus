@@ -1,8 +1,8 @@
 use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_rust_attr_syn, mk_verus_attr};
 use quote::{quote, quote_spanned};
-use syn_verus::parse_quote_spanned;
-use syn_verus::spanned::Spanned;
-use syn_verus::{
+use verus_syn::parse_quote_spanned;
+use verus_syn::spanned::Spanned;
+use verus_syn::{
     Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Stmt, Token,
     TraitItem, TraitItemFn, Type, TypeParamBound, Visibility,
 };
@@ -29,7 +29,7 @@ fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> Ite
     let span = t.span();
     let mut generics = tr.generics.clone();
     for param in &mut generics.params {
-        use syn_verus::GenericParam;
+        use verus_syn::GenericParam;
         match param {
             GenericParam::Lifetime(_) => {}
             GenericParam::Type(p) => {
@@ -151,7 +151,7 @@ fn expand_extension_trait(
     let self_x = Ident::new(&format!("{VERUS_SPEC}A"), span);
     let self_ty = parse_quote_spanned!(span => #self_x);
     let tr_spec_path = if let Some(last) = t.segments.last() {
-        use syn_verus::PathArguments;
+        use verus_syn::PathArguments;
         if let PathArguments::AngleBracketed(args) = &last.arguments {
             let args = &args.args;
             parse_quote_spanned!(span => #tr_spec<#args>)
@@ -260,13 +260,13 @@ pub(crate) fn split_trait_method(
 ) {
     if !erase_ghost && fun.default.is_none() {
         // Copy into separate spec method, then remove spec from original method
-        use syn_verus::FnArgKind;
+        use verus_syn::FnArgKind;
         let recv = fun.sig.inputs.first().and_then(|a| match &a.kind {
             FnArgKind::Receiver(r) => Some(r),
             _ => None,
         });
         let pred = parse_quote_spanned!(fun.sig.ident.span() => Self: core::marker::Sized);
-        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr, recv, pred);
+        do_split_trait_method!(verus_syn, fun, spec_fun, mk_rust_attr, recv, pred);
         spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
