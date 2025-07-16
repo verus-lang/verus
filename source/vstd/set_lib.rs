@@ -561,21 +561,21 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 // the finiteness of flattening is a boolean function of the finiteness of its contents.
 // TODO(jonh): try defining flatten with a single FINITE arg that agrees and preserves finiteness.
 impl<A> ISet<ISet<A>> {
-    pub open spec fn flatten(self) -> ISet<A> {
+    pub open spec fn infinite_flatten(self) -> ISet<A> {
         ISet::new(
             |elem|
                 exists|elem_s: ISet<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
         )
     }
 
-    pub broadcast proof fn flatten_insert_union_commute(self, other: ISet<A>)
+    pub broadcast proof fn infinite_flatten_insert_union_commute(self, other: ISet<A>)
         ensures
-            self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
+            self.infinite_flatten().union(other) =~= #[trigger] self.insert(other).infinite_flatten(),
     {
         broadcast use group_set_lemmas;
 
-        let lhs = self.flatten().union(other);
-        let rhs = self.insert(other).flatten();
+        let lhs = self.infinite_flatten().union(other);
+        let rhs = self.insert(other).infinite_flatten();
 
         assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
             if exists|s: ISet<A>| self.contains(s) && s.contains(elem) {
@@ -589,6 +589,24 @@ impl<A> ISet<ISet<A>> {
     }
 }
 
+impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
+    pub open spec fn to_infinite_deep(self) -> GSet<GSet<A, Infinite>, Infinite> {
+        self.to_infinite().map(|e: GSet<A, FINITE>| e.to_infinite())
+    }
+
+    pub open spec fn flatten(self) -> GSet<A, FINITE> {
+        self.to_infinite_deep().infinite_flatten().cast_finiteness::<FINITE>()
+    }
+
+    pub broadcast proof fn flatten_finite(self)
+    requires self.finite(), forall |e| #[trigger] self.contains(e) ==> e.finite()
+    ensures 
+    (#[trigger] self.to_infinite_deep().infinite_flatten()).finite()
+    {
+        assume(false);
+    }
+}
+
 impl<A> ISet<A> {
     /// Collecting all elements `b` where `f` returns `Some(b)`
     pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> ISet<B> {
@@ -598,7 +616,7 @@ impl<A> ISet<A> {
                     Option::Some(r) => iset!{r},
                     Option::None => iset!{},
                 },
-        ).flatten()
+        ).infinite_flatten()
     }
 
     /// Inserting commutes with `filter_map`
