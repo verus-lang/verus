@@ -176,6 +176,33 @@ pub(crate) fn cfg_verify_core() -> bool {
 }
 
 #[cfg(verus_keep_ghost)]
+pub(crate) fn cfg_no_vstd() -> bool {
+    static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
+    *CFG_VERIFY_CORE.get_or_init(|| {
+        let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_no_vstd) }.into();
+        let bool_ts = match ts.expand_expr() {
+            Ok(name) => name.to_string(),
+            _ => {
+                panic!("cfg_no_vstd call failed")
+            }
+        };
+        match bool_ts.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => {
+                panic!("cfg_no_vstd call failed")
+            }
+        }
+    })
+}
+
+// Because 'expand_expr' is unstable, we need a different impl when `not(verus_keep_ghost)`.
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn cfg_no_vstd() -> bool {
+    false
+}
+
+#[cfg(verus_keep_ghost)]
 pub(crate) fn cfg_verify_vstd() -> bool {
     static CFG_VERIFY_VSTD: OnceLock<bool> = OnceLock::new();
     *CFG_VERIFY_VSTD.get_or_init(|| {

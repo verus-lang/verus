@@ -5112,9 +5112,11 @@ pub(crate) struct Builtin(pub Span);
 impl ToTokens for Builtin {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         if crate::cfg_verify_core() {
-            tokens.extend(quote_spanned! { self.0 => crate::prelude });
+            tokens.extend(quote_spanned! { self.0 => crate::verus_builtin });
         } else if crate::cfg_verify_vstd() {
             tokens.extend(quote_spanned! { self.0 => crate::prelude });
+        } else if crate::cfg_no_vstd() {
+            tokens.extend(quote_spanned! { self.0 => ::verus_builtin });
         } else {
             tokens.extend(quote_spanned! { self.0 => ::vstd::prelude });
         }

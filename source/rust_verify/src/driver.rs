@@ -125,6 +125,8 @@ pub(crate) fn run_with_erase_macro_compile(
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if vstd == Vstd::IsCore {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    } else if vstd == Vstd::NoVstd {
+        rustc_args.extend(["--cfg", "verus_no_vstd"].map(|s| s.to_string()));
     }
     let allow = &[
         "unused_imports",
