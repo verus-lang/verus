@@ -30,8 +30,8 @@ use case_macro::case_on;
 use lemmas::check_lemmas;
 use parse_token_stream::{ParseResult, parse_result_to_smir};
 use proc_macro::TokenStream;
-use verus_syn::parse_macro_input;
 use to_token_stream::output_token_stream;
+use verus_syn::parse_macro_input;
 
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {
     let pr: ParseResult = parse_macro_input!(input as ParseResult);

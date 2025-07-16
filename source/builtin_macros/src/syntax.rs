@@ -1945,13 +1945,13 @@ impl Visitor {
         //   spec_chained_cmp(spec_chained_le(spec_chained_le(spec_chained_le(spec_chained_value(e0), e1), e2), e3))
 
         let span = cur_expr.span();
-        let mut toks =
-            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_value(#cur_expr));
+        let mut toks = quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_value(#cur_expr));
         for (right, op, span) in rights.iter().rev() {
             let ident = Ident::new(op, *span);
             toks = quote_spanned_builtin!(verus_builtin, *span => #verus_builtin::#ident(#toks, #right));
         }
-        toks = quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_cmp(#toks));
+        toks =
+            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_cmp(#toks));
 
         *expr = Expr::Verbatim(toks);
 
@@ -2375,8 +2375,9 @@ impl Visitor {
             *expr = Expr::Binary(bin);
         } else if let Some(imply) = ply {
             let attrs = std::mem::take(&mut binary.attrs);
-            let func =
-                Box::new(Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => #verus_builtin::imply)));
+            let func = Box::new(Expr::Verbatim(
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::imply),
+            ));
             let paren_token = Paren { span: into_spans(span) };
             let mut args = Punctuated::new();
             if imply {
@@ -2424,12 +2425,10 @@ impl Visitor {
             let right = &binary.right;
             match binary.op {
                 BinOp::Eq(..) => {
-                    *expr =
-                        quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_eq(#left, #right));
+                    *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Ne(..) => {
-                    *expr =
-                        quote_verbatim!(verus_builtin, span, attrs => ! #verus_builtin::spec_eq(#left, #right));
+                    *expr = quote_verbatim!(verus_builtin, span, attrs => ! #verus_builtin::spec_eq(#left, #right));
                 }
                 BinOp::Le(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
@@ -2547,13 +2546,11 @@ impl Visitor {
                     }
                     InsideArith::Widen if n.starts_with("-") => {
                         // Use int inside +, -, etc., since these promote to int anyway
-                        *expr =
-                            quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
                     }
                     InsideArith::Widen => {
                         // Use int inside +, -, etc., since these promote to int anyway
-                        *expr =
-                            quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
                     }
                     InsideArith::Fixed => {
                         // We generally won't want int/nat literals for bitwise ops,
@@ -2676,8 +2673,7 @@ impl Visitor {
             if assert.requires.is_some() {
                 *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
             } else {
-                *expr =
-                    quote_verbatim!(verus_builtin, span, attrs => {#verus_builtin::assert_by(#arg, #block);});
+                *expr = quote_verbatim!(verus_builtin, span, attrs => {#verus_builtin::assert_by(#arg, #block);});
             }
         } else {
             // Normal 'assert'
@@ -3098,7 +3094,9 @@ impl Visitor {
                 let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
                 stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
             } else if exprs.exprs.len() > 0 {
-                stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])));
+                stmts.push(
+                    stmt_with_semi!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])),
+                );
             }
         }
         if let Some(Decreases { token, exprs }) = decreases {
@@ -3109,7 +3107,9 @@ impl Visitor {
                     stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
-            stmts.push(stmt_with_semi!(verus_builtin, token.span => #verus_builtin::decreases((#exprs))));
+            stmts.push(
+                stmt_with_semi!(verus_builtin, token.span => #verus_builtin::decreases((#exprs))),
+            );
         }
         self.inside_ghost -= 1;
     }
@@ -3825,7 +3825,9 @@ impl VisitMut for Visitor {
         } else if self.erase_ghost.keep() && is_spec_method {
             let span = method.sig.fn_token.span;
             stmts.push(Stmt::Expr(
-                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body())),
+                Expr::Verbatim(
+                    quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body()),
+                ),
                 None,
             ));
             let block = Block { brace_token: Brace(span), stmts };

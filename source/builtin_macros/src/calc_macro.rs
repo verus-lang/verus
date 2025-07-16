@@ -37,7 +37,8 @@ pub fn calc_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #(#output_steps);*
     };
     let top_level = input.reln.op.to_expr(&input.steps[0].0, &input.last);
-    quote_builtin!(verus_builtin => #verus_builtin::assert_by(#top_level, { #combined_block });).into()
+    quote_builtin!(verus_builtin => #verus_builtin::assert_by(#top_level, { #combined_block });)
+        .into()
 }
 
 #[derive(Debug)]

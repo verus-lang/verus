@@ -306,7 +306,9 @@ pub(crate) fn split_trait_method_syn(
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;
         let stmts = vec![Stmt::Expr(
-            Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body())),
+            Expr::Verbatim(
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::no_method_body()),
+            ),
             None,
         )];
         spec_fun.default = Some(Block { brace_token: Brace(span), stmts });

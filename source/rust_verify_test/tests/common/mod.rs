@@ -270,7 +270,8 @@ pub fn run_verus(
     let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path =
+        verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =

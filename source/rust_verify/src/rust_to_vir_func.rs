@@ -2004,7 +2004,10 @@ pub(crate) fn get_external_def_id<'tcx>(
             ),
             ResolutionResult::Builtin(b) => err_span(
                 sig.span,
-                format!("Verus assume_specification does not support this verus_builtin impl '{:?}'", b),
+                format!(
+                    "Verus assume_specification does not support this verus_builtin impl '{:?}'",
+                    b
+                ),
             ),
             ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
                 unsupported_err!(sig.span, "assume_specification for a provided trait method");

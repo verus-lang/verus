@@ -6,11 +6,11 @@ use std::{
 };
 
 use serde::Serialize;
-use verus_syn::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 use tabled::settings::{
     Alignment, Modify, Style,
     object::{Columns, Rows},
 };
+use verus_syn::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 
 struct Config {
     print_all: bool,

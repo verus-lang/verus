@@ -917,7 +917,10 @@ fn erase_call<'tcx>(
                 if expect_spec_inside {
                     erase_spec_exps(ctxt, state, expr, vec![exp])
                 } else {
-                    mk_exp(ExpX::BuiltinMethod(exp.expect("verus_builtin method"), method.to_string()))
+                    mk_exp(ExpX::BuiltinMethod(
+                        exp.expect("verus_builtin method"),
+                        method.to_string(),
+                    ))
                 }
             } else if let Some((false, func, expect_spec_inside)) = verus_builtin_method {
                 assert!(receiver.is_none());
