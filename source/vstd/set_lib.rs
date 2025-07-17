@@ -699,10 +699,19 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
 }
 
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
+    // TODO(jonh) delete
+//     pub open spec fn filter_elem<B>(f: spec_fn(A) -> Option<B>, elem: A) -> GSet<B, FINITE>
+//     {
+//         match f(elem) {
+//             Option::Some(r) => GSet::empty().insert(r),
+//             Option::None => GSet::empty(),
+//         }
+//     }
+// 
     pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> GSet<GSet<B, FINITE>, FINITE>
     {
-        self.map(
-            |elem: A|
+        self.map(|elem: A|
+//             Self::filter_elem(f, elem)
                 match f(elem) {
                     Option::Some(r) => GSet::empty().insert(r),
                     Option::None => GSet::empty(),
@@ -843,13 +852,7 @@ impl<A> ISet<A> {
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     /// Collecting all elements `b` where `f` returns `Some(b)`
     pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> GSet<B, FINITE> {
-        self.map(
-            |elem: A|
-                match f(elem) {
-                    Option::Some(r) => GSet::empty().insert(r),
-                    Option::None => GSet::empty(),
-                },
-        ).flatten()
+        self.apply_filter(f).flatten()
     }
 
     pub proof fn filter_map_congruence<B>(
@@ -862,45 +865,71 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         broadcast use GSet::lemma_self_castable;
         broadcast use GSet::lemma_to_infinite_castable;
 
+        self.apply_filter_ensures::<_, FINITE>(f);
+        self.apply_filter(f).to_infinite_deep_ensures::<FINITE>();
+        self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
+        self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<FINITE>();
+
+        self.to_infinite().apply_filter_ensures::<_, FINITE>(f);
+        self.to_infinite().apply_filter(f).to_infinite_deep_ensures::<FINITE>();
+        self.to_infinite().apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
+
         assert forall |b: B| #![auto]
             self.filter_map(f).contains(b)
             implies
             self.to_infinite().infinite_filter_map(f).contains(b)
         by {
             let thingy1 = self.apply_filter(f);
-            self.apply_filter_ensures::<_, FINITE>(f);
-//             assert( self.castable::<FINITE>() );
-            assert( thingy1.deep_castable::<FINITE>() );
-//             assert( thingy1.deep_finite() );
-            thingy1.to_infinite_deep_ensures::<FINITE>();
             let thingy2 = thingy1.to_infinite_deep();
-            thingy2.infinite_flatten_ensures::<FINITE>();
             let thingy3 = thingy2.infinite_flatten();
             let thingy4 = thingy3.cast_finiteness::<FINITE>();
-            assert( thingy4 == self.filter_map(f) );
-            assert( thingy4.contains(b) );
-            thingy3.cast_finiteness_properties::<FINITE>();
-            assert( thingy3.contains(b) );
             let a = choose |a: A| self.contains(a) && f(a) == Some(b);
             assert(self.to_infinite().contains(a)); // witness
 
-            let thingy6: GSet<GSet<B,Infinite>,Infinite> = self.to_infinite().apply_filter(f);
+            let thingy6 = self.to_infinite().apply_filter(f);
             let sb = GSet::<B, Infinite>::empty().insert(b);
             assert( thingy6.contains(sb) ); // witness
-            self.to_infinite().apply_filter_ensures::<_, FINITE>(f);
-            thingy6.to_infinite_deep_ensures::<FINITE>();
-            let thingy7: GSet<GSet<B,Infinite>,Infinite> = thingy6.to_infinite_deep();
+            let thingy7 = thingy6.to_infinite_deep();
             assert( sb == sb.to_infinite() );   // extn
-            thingy7.infinite_flatten_ensures::<FINITE>();
             let thingy8 = thingy7.infinite_flatten();
-//             assert(self.to_infinite().infinite_filter_map(f).contains(b));
         }
         assert forall |b: B| #![auto]
             self.to_infinite().infinite_filter_map(f).contains(b)
             implies
             self.filter_map(f).contains(b)
         by {
-            assume(false);
+            let thingy1 = self.to_infinite();   // an infinite set of As
+            let thingy2 = thingy1.apply_filter(f);  // an infinite set-of-sets of Bs.
+            let thingy3 = thingy2.infinite_flatten();   // an infinite set of Bs
+//             assert( thingy3 == self.to_infinite().infinite_filter_map(f) );
+//             assert(thingy3.contains(b));
+            let ss = choose |ss| thingy2.contains(ss) && ss.contains(b);    // one of the infinite sets of Bs
+//             assert( thingy2.contains(ss) && ss.contains(b) );
+            let a = choose |a: A| thingy1.contains(a) && f(a) == Some(b);
+            
+            let thingy6 = self.apply_filter(f);  // a FINITE set of FINITE sets of Bs
+            let thingy7 = thingy6.to_infinite_deep();   // an infinite set of infinite sets of Bs
+            
+//             thingy6.to_infinite_deep_ensures::<FINITE>();
+
+            let thingy8 = thingy7.infinite_flatten();   // an infinite set of Bs.
+            let thingy9 = thingy8.cast_finiteness::<FINITE>();  // a FINITE set of Bs
+            assert( thingy9 == self.filter_map(f) );
+            
+//             assert(self.contains(a));
+            let gs = GSet::empty().insert(b);
+
+//             let fs = ss.cast_finiteness::<FINITE>();
+//             assert( gs.congruent(ss) );
+            assert( ss == gs.to_infinite() );   // extn
+
+
+            // witness to map inside to_infinite_deep
+            assert( thingy6.to_infinite().contains(gs) );
+
+            assert( thingy7.contains(ss) );
+            assert( thingy8.contains(b) );
+            assert( thingy9.contains(b) );
         }
     }
 
