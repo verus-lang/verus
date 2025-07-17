@@ -47,7 +47,7 @@ use vir::ast::{
     VariantCheck, VirErr,
 };
 use vir::ast_util::{
-    ident_binder, mk_tuple_field_x, mk_tuple_typ, mk_tuple_x, str_unique_var,
+    bool_typ, ident_binder, mk_tuple_field_x, mk_tuple_typ, mk_tuple_x, str_unique_var,
     typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
@@ -1401,7 +1401,8 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         );
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((expr.hir_id, pattern.span.id));
-        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+        let guard =
+            bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
         let body = cast_to;
         let vir_arm = bctx.spanned_new(expr.span, ArmX { pattern, guard, body });
         vir_arms.push(vir_arm);
@@ -2085,7 +2086,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     /* lhs */
                     {
                         let pattern = pattern_to_vir(bctx, pat)?;
-                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+                        let guard = bctx.spanned_typed_new(
+                            expr.span,
+                            &bool_typ(),
+                            ExprX::Const(Constant::Bool(true)),
+                        );
                         let body = expr_to_vir(bctx, &lhs, modifier)?;
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
@@ -2099,7 +2104,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                             erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
                         }
-                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+                        let guard = bctx.spanned_typed_new(
+                            expr.span,
+                            &bool_typ(),
+                            ExprX::Const(Constant::Bool(true)),
+                        );
                         let body = if let Some(rhs) = rhs {
                             expr_to_vir(bctx, &rhs, modifier)?
                         } else {
@@ -2124,7 +2133,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             for arm in arms.iter() {
                 let pattern = pattern_to_vir(bctx, &arm.pat)?;
                 let guard = match &arm.guard {
-                    None => mk_expr(ExprX::Const(Constant::Bool(true)))?,
+                    None => bctx.spanned_typed_new(
+                        expr.span,
+                        &bool_typ(),
+                        ExprX::Const(Constant::Bool(true)),
+                    ),
                     Some(guard_expr) => expr_to_vir(bctx, guard_expr, modifier)?,
                 };
                 let body = expr_to_vir(bctx, &arm.body, modifier)?;
