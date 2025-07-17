@@ -103,6 +103,18 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
+/// Like verus!, but for use inside a (non-trait) impl
+#[proc_macro]
+pub fn verus_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, false)
+}
+
+/// Like verus!, but for use inside a trait impl
+#[proc_macro]
+pub fn verus_trait_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, true)
+}
+
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_expr(EraseGhost::Keep, true, input)

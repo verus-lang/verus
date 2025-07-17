@@ -1059,7 +1059,7 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
         },
 ;
 
-pub broadcast proof fn axiom_hashmap_index_decreases<Key, Value>(m: HashMap<Key, Value>)
+pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Value, S>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
 {
@@ -1397,7 +1397,7 @@ pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<K
         },
 ;
 
-pub broadcast proof fn axiom_hashset_index_decreases<Key>(m: HashSet<Key>)
+pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
 {
@@ -1438,8 +1438,8 @@ pub broadcast group group_hash_axioms {
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
     axiom_spec_hash_map_iter,
-    axiom_hashmap_index_decreases,
-    axiom_hashset_index_decreases,
+    axiom_hashmap_decreases,
+    axiom_hashset_decreases,
 }
 
 } // verus!

@@ -1,6 +1,6 @@
 use super::super::prelude::*;
 use super::super::view::View;
-use super::cmp::PartialOrdSpec;
+use super::cmp::{PartialOrdIs, PartialOrdSpec};
 use core::ops::Range;
 
 verus! {
@@ -43,12 +43,8 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ Range::<Idx>::contains ](
     i: &U,
 ) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
     ensures
-        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec()) ==> (
-        i.partial_cmp_spec(&r.end) == Some(core::cmp::Ordering::Less)
-            && matches!(r.start.partial_cmp_spec(i), Some(
-            core::cmp::Ordering::Less | core::cmp::Ordering::Equal,
-        )))
-            == ret,
+        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec())
+            ==> ret == (r.start.is_le(i) && i.is_lt(&r.end)),
 ;
 
 pub struct RangeGhostIterator<A> {
