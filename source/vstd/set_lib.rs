@@ -929,7 +929,18 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures
             #[trigger] self.generic_union(t).filter_map(f) == self.filter_map(f).generic_union(t.filter_map(f)),
     {
-        assume(false);
+        let iself = self.to_infinite();
+        let it = t.to_infinite();
+
+        self.generic_union(t).filter_map_congruence(f);
+        self.filter_map_congruence(f);
+        t.filter_map_congruence(f);
+
+        // not sure what we're triggering here, but it's needed to finish the proof
+        assert( self.filter_map(f).generic_union(t.filter_map(f))
+                .congruent(iself.infinite_filter_map(f).union(it.infinite_filter_map(f))) );
+
+        iself.lemma_infinite_filter_map_union(f, it);   // the underlying lemma we're trying to generalize
     }
 }
 
