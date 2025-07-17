@@ -4,12 +4,17 @@ fn main() { }
 
 verus! {
 
-enum Operation {
+// Use a module here, so that we can `broadcast use` in the examples further below.
+mod iters {
+
+use vstd::prelude::*;
+
+pub enum Operation {
     Next,
     NextBack,
 }
 
-trait Iter where Self: Sized {
+pub trait Iter where Self: Sized {
     type Item;
 
     // Results of calls to next made so far
@@ -44,7 +49,7 @@ trait Iter where Self: Sized {
             self.reaches(dest),
         ensures
             self.outputs().len() <= dest.outputs().len(),
-            self.outputs() =~= dest.outputs().take(self.outputs().len() as int),
+            self.outputs() == dest.outputs().take(self.outputs().len() as int),
         ;
 
     fn next(&mut self) -> (r: Option<Self::Item>) where Self: core::marker::Sized
@@ -54,12 +59,12 @@ trait Iter where Self: Sized {
             self.inv(),
             old(self).reaches(*self),
             self.outputs().len() == old(self).outputs().len() + 1,
-            self.operations() =~= old(self).operations().push(Operation::Next),
-            r =~= self.outputs().last(),
+            self.operations() == old(self).operations().push(Operation::Next),
+            r == self.outputs().last(),
         ;
 }
 
-trait DoubleEndedIter: Iter {
+pub trait DoubleEndedIter: Iter {
     spec fn outputs_back(&self) -> Seq<Option<Self::Item>>;
 
     fn next_back(&mut self) -> Option<Self::Item>
@@ -67,7 +72,7 @@ trait DoubleEndedIter: Iter {
         ;
 }
 
-trait ExactSizeIter: Iter {
+pub trait ExactSizeIter: Iter {
     spec fn spec_len(&self) -> nat;
 
     fn len(&self) -> usize
@@ -75,7 +80,7 @@ trait ExactSizeIter: Iter {
         ;
 }
 
-broadcast proof fn reaches_reflexive<I: Iter>(i: I)
+pub broadcast proof fn reaches_reflexive<I: Iter>(i: I)
     requires
         i.inv(),
     ensures
@@ -84,7 +89,7 @@ broadcast proof fn reaches_reflexive<I: Iter>(i: I)
     i.reaches_reflexive()
 }
 
-broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2: I, i3: I)
+pub broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2: I, i3: I)
     requires
         i1.inv(),
         i2.inv(),
@@ -97,13 +102,22 @@ broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2
     i1.reaches_transitive(i2, i3);
 }
 
+}
+
+
+mod examples {
+
+use vstd::prelude::*;
+use crate::iters::*;
+broadcast use {reaches_reflexive, reaches_transitive_after_next_if_requested};
+
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-struct MyVec<T>(Vec<T>);
+pub struct MyVec<T>(Vec<T>);
 
 impl<T: Copy> MyVec<T> {
-    uninterp spec fn spec_len(&self) -> int;
-    uninterp spec fn spec_index(&self, i: int) -> T;
+    pub uninterp spec fn spec_len(&self) -> int;
+    pub uninterp spec fn spec_index(&self, i: int) -> T;
 
     #[verifier::external_body]
     fn len(&self) -> (r: usize)
@@ -123,7 +137,7 @@ impl<T: Copy> MyVec<T> {
         todo!()
     }
 
-    spec fn view(&self) -> Seq<T> {
+    pub open spec fn view(&self) -> Seq<T> {
         Seq::new(self.spec_len() as nat, |i: int| self.spec_index(i))
     }
 
@@ -146,29 +160,29 @@ impl<T: Copy> MyVec<T> {
 }
 
 #[verifier::ext_equal]
-struct MyVecIter<'a, T> {
-    vec: &'a MyVec<T>,
-    pos: usize,
-    pos_back: usize,
-    next_count: Ghost<int>,
-    next_back_count: Ghost<int>,
+pub struct MyVecIter<'a, T> {
+    pub vec: &'a MyVec<T>,
+    pub pos: usize,
+    pub pos_back: usize,
+    pub next_count: Ghost<int>,
+    pub next_back_count: Ghost<int>,
 }
 
 impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     type Item = T;
 
-    spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
         Seq::new(
             self.next_count@ as nat,
             |i: int| if i < self.pos_back { Some(self.vec@[i]) } else { None },
         )
     }
 
-    spec fn operations(&self) -> Seq<Operation> {
+    open spec fn operations(&self) -> Seq<Operation> {
         Seq::new(self.outputs().len(), |_i: int| Operation::Next)
     }
 
-    spec fn inv(&self) -> bool {
+    open spec fn inv(&self) -> bool {
         // TODO: remove redundancy
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         &&& self.pos <= self.next_count@
@@ -179,7 +193,7 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
         }
     }
 
-    spec fn reaches(&self, dest: Self) -> bool {
+    open spec fn reaches(&self, dest: Self) -> bool {
         self.vec == dest.vec && self.next_count@ <= dest.next_count@
     }
 
@@ -220,28 +234,28 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     }
 }
 
-struct Take3<T> {
-    inner: T,
-    count: usize,
-    ghost_count: Ghost<int>,
-    start_pos: Ghost<int>,
+pub struct Take3<T> {
+    pub inner: T,
+    pub count: usize,
+    pub ghost_count: Ghost<int>,
+    pub start_pos: Ghost<int>,
 }
 
 impl<T: Iter> Iter for Take3<T> {
     type Item = T::Item;
 
-    spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
         Seq::new(
             self.ghost_count@ as nat,
             |i: int| if i < 3 { self.inner.outputs()[self.start_pos@ + i] } else { None },
         )
     }
 
-    spec fn operations(&self) -> Seq<Operation> {
+    open spec fn operations(&self) -> Seq<Operation> {
         Seq::new(self.outputs().len(), |_i: int| Operation::Next)
     }
 
-    spec fn inv(&self) -> bool {
+    open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
         &&& self.inner.outputs().len() == self.start_pos@ + self.count
@@ -251,7 +265,7 @@ impl<T: Iter> Iter for Take3<T> {
         }
     }
 
-    spec fn reaches(&self, dest: Self) -> bool {
+    open spec fn reaches(&self, dest: Self) -> bool {
         &&& self.inner.reaches(dest.inner)
         &&& self.start_pos == dest.start_pos
         &&& self.ghost_count@ <= dest.ghost_count@
@@ -283,10 +297,10 @@ impl<T: Iter> Iter for Take3<T> {
     }
 }
 
-struct Skip3<T> {
-    inner: T,
-    has_started: bool,
-    start_pos: Ghost<int>,
+pub struct Skip3<T> {
+    pub inner: T,
+    pub has_started: bool,
+    pub start_pos: Ghost<int>,
 }
 
 impl<T: Iter> Skip3<T> {
@@ -310,7 +324,7 @@ impl<T: Iter> Skip3<T> {
 impl<T: Iter> Iter for Skip3<T> {
     type Item = T::Item;
 
-    spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
         if self.has_started {
             self.inner.outputs().skip(3 + self.start_pos@)
         } else {
@@ -318,18 +332,18 @@ impl<T: Iter> Iter for Skip3<T> {
         }
     }
 
-    spec fn operations(&self) -> Seq<Operation> {
+    open spec fn operations(&self) -> Seq<Operation> {
         Seq::new(self.outputs().len(), |_i: int| Operation::Next)
     }
 
-    spec fn inv(&self) -> bool {
+    open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
         &&& !self.has_started ==> self.start_pos@ == self.inner.outputs().len()
         &&& self.has_started ==> self.start_pos@ + 3 <= self.inner.outputs().len()
     }
 
-    spec fn reaches(&self, dest: Self) -> bool {
+    open spec fn reaches(&self, dest: Self) -> bool {
         self.inner.reaches(dest.inner) && self.start_pos == dest.start_pos
     }
 
@@ -517,6 +531,8 @@ fn test3_iso_false(v: &MyVec<u8>)
         }
     }
     assert(s == v@.skip(6));
+}
+
 }
 
 } // verus!
