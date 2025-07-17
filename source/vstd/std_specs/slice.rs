@@ -50,6 +50,15 @@ impl<T> View for Iter<'_, T> {
     uninterp spec fn view(&self) -> (int, Seq<T>);
 }
 
+impl<T: DeepView> DeepView for Iter<'_, T> {
+    type V = (int, Seq<T::V>);
+
+    open spec fn deep_view(&self) -> Self::V {
+        let (i, v) = self@;
+        (i, Seq::new(v.len(), |i: int| v[i].deep_view()))
+    }
+}
+
 pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
     &'a T,
 >)
