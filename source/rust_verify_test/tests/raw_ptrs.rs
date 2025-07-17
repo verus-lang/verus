@@ -297,3 +297,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
 }
+
+test_verify_one_file! {
+    #[test] allocate_in_bounds verus_code! {
+        use vstd::raw_ptr::*;
+        use vstd::layout::layout_for_type_is_valid;
+        use vstd::prelude::Set;
+
+        global layout u32 is size == 4, align == 4;
+
+        fn f() {
+            layout_for_type_is_valid::<u32>();
+
+            let (block_ptr, Tracked(token), Tracked(dealloc)) = allocate(8, 4);
+
+            let b1_ptr = block_ptr as *mut u32;
+            let b2_ptr = block_ptr.with_addr(block_ptr.addr() + 4) as *mut u32;
+
+            let tracked (token1, token2) = token.split(Set::new(|x: int| block_ptr.addr() <= x < block_ptr.addr() + 4));
+            let tracked mut token1 = token1.into_typed::<u32>(b1_ptr as usize);
+            let tracked mut token2 = token2.into_typed::<u32>(b2_ptr as usize);
+
+            ptr_mut_write(b1_ptr, Tracked(&mut token1), 9);
+            ptr_mut_write(b2_ptr, Tracked(&mut token2), 14);
+        }
+    } => Ok(())
+}
