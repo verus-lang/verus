@@ -773,7 +773,7 @@ pub fn mk_tuple_x(exprs: &Exprs) -> ExprX {
     ExprX::Ctor(Dt::Tuple(arity), crate::def::prefix_tuple_variant(arity), binders, None)
 }
 
-pub fn mk_tuple_field_opr(arity: usize, idx: usize) -> ExprX {
+pub fn mk_tuple_field_opr(arity: usize, idx: usize) -> FieldOpr {
     assert!(arity > idx);
     FieldOpr {
         datatype: Dt::Tuple(arity),

@@ -2162,7 +2162,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(lhs), modifier)?;
-            let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
+            let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?.to_place();
             let lhs_ty = tc.expr_ty_adjusted(lhs);
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
@@ -2194,7 +2194,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
                 FieldOpr {
-                    datatype: Dt::Path(datatype),
+                    datatype: Dt::Path(datatype_path),
                     variant: variant_name,
                     field: field_name,
                     get_variant: false,
@@ -2215,14 +2215,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir = bctx.spanned_typed_new(
                 expr.span,
                 &field_type,
-                PlaceX::Field(
-                    UnaryOpr::Field(field_opr),
-                    vir_lhs,
-                )
+                PlaceX::Field(field_opr, vir_lhs),
             );
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
-            Ok(vir)
+            Ok(ExprOrPlace::Place(vir))
         }
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
