@@ -70,7 +70,7 @@ impl ExprOrPlace {
     pub(crate) fn expect_expr<'tcx>(&self) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
-            ExprOrPlace::Place(p) => { panic!("expect_expr failed"); }
+            ExprOrPlace::Place(_p) => { panic!("expect_expr failed"); }
         }
     }
 
@@ -1101,7 +1101,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Not)) => {
             // Similar to ExprKind::AddrOf
-            let mut new_expr = expr_to_vir_with_adjustments(
+            let new_expr = expr_to_vir_with_adjustments(
                 bctx,
                 expr,
                 ExprModifier::REGULAR,
@@ -1292,7 +1292,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
         }
         Adjust::Pointer(PointerCoercion::MutToConstPointer) => {
-            let mut new_expr = expr_to_vir_with_adjustments(
+            let new_expr = expr_to_vir_with_adjustments(
                 bctx,
                 expr,
                 ExprModifier::REGULAR,
@@ -3357,11 +3357,12 @@ fn deref_expr_to_vir<'tcx>(
         if bctx.ctxt.cmd_line_args.new_mut_ref
             && matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
         {
-            let t = match &*inner_expr.typ {
+            let place = inner_expr.to_place();
+            let t = match &*place.typ {
                 TypX::MutRef(t) => t.clone(),
                 _ => panic!("expected mut ref"),
             };
-            Ok(bctx.spanned_typed_new(expr.span, &t, ExprX::DerefMut(inner_expr)))
+            Ok(ExprOrPlace::Place(bctx.spanned_typed_new(expr.span, &t, PlaceX::DerefMut(place))))
         } else {
             // Normal dereference, just strip the inner expression.
             Ok(strip_vir_ref_decoration(inner_expr))
@@ -3382,9 +3383,10 @@ fn deref_expr_to_vir<'tcx>(
             &res_ty,
             false,
         )?;
-        crate::fn_call_to_vir::deref_to_vir(
+        let inner_expr = inner_expr.to_expr(bctx, bctx.types.expr_ty_adjusted(arg));
+        Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
             bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
-        )
+        )?))
     }
 }
 
@@ -3413,6 +3415,6 @@ fn add_vir_ref_decoration<'tcx>(mut inner_expr: ExprOrPlace) -> ExprOrPlace {
         ExprOrPlace::Expr(e) => &mut Arc::make_mut(e).typ,
         ExprOrPlace::Place(p) => &mut Arc::make_mut(p).typ,
     };
-    *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, typ.clone()));
+    *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
     inner_expr
 }
