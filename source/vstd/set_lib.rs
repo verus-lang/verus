@@ -567,10 +567,9 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
     }
 }
 
-// TODO: Right now, flatten and infinite_filter_map is only defined for ISets. It should work just fine on Sets,
-// too, but it doesn't translate simply into a single generic implementation. That's because
-// the finiteness of flattening is a boolean function of the finiteness of its contents.
-// TODO(jonh): try defining flatten with a single FINITE arg that agrees and preserves finiteness.
+// Define flatten and prove properties about it, for ISets specifically.  Later, we'll use
+// Finiteness-castability lemmas to extend these definitions and lemmas to be generic over
+// Finiteness.
 impl<A> ISet<ISet<A>> {
     pub open spec fn infinite_flatten(self) -> ISet<A> {
         ISet::new(
@@ -670,13 +669,6 @@ impl<A> ISet<ISet<A>> {
 impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
     pub open spec fn to_infinite_deep(self) -> GSet<GSet<A, Infinite>, Infinite> {
         self.to_infinite().map(|e: GSet<A, FINITE>| e.to_infinite())
-    }
-
-    // TODO(jonh): trivial, remove
-    pub proof fn to_infinite_deep_ensures<F2: Finiteness>(self)
-        requires self.deep_castable::<F2>()
-        ensures self.to_infinite_deep().deep_castable::<F2>()
-    {
     }
 
     pub open spec fn flatten(self) -> GSet<A, FINITE> {
@@ -857,12 +849,10 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f))
     {
         self.apply_filter_ensures::<_, FINITE>(f);
-        self.apply_filter(f).to_infinite_deep_ensures::<FINITE>();
         self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
         self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<FINITE>();
 
         self.to_infinite().apply_filter_ensures::<_, FINITE>(f);
-        self.to_infinite().apply_filter(f).to_infinite_deep_ensures::<FINITE>();
         self.to_infinite().apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
 
         assert forall |b: B| #![auto]
