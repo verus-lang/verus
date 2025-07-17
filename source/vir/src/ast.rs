@@ -959,7 +959,8 @@ pub enum ReadType {
     Copy,
 }
 
-// TODO: add ArrayIndex
+// TODO(mut_refs): add ArrayIndex
+// TODO(mut_refs): add Tracked coercions
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
