@@ -773,16 +773,15 @@ pub fn mk_tuple_x(exprs: &Exprs) -> ExprX {
     ExprX::Ctor(Dt::Tuple(arity), crate::def::prefix_tuple_variant(arity), binders, None)
 }
 
-pub fn mk_tuple_field_x(expr: &Expr, arity: usize, idx: usize) -> ExprX {
+pub fn mk_tuple_field_opr(arity: usize, idx: usize) -> ExprX {
     assert!(arity > idx);
-    let field_opr = UnaryOpr::Field(FieldOpr {
+    FieldOpr {
         datatype: Dt::Tuple(arity),
         variant: crate::def::prefix_tuple_variant(arity),
         field: crate::def::positional_field_ident(idx),
         get_variant: false,
         check: crate::ast::VariantCheck::None,
-    });
-    ExprX::UnaryOpr(field_opr, expr.clone())
+    }
 }
 
 /// Unpack the tuple-style ctor (i.e., a Ctor with binders "0" .. "n-1") or None

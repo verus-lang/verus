@@ -2078,7 +2078,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             "using a datatype constructor as a function value"
                         );
                     }
-                    ExprOrPlace::Expr(expr_tuple_datatype_ctor_to_vir(bctx, expr, ctor, &[], expr.span, modifier))
+                    Ok(ExprOrPlace::Expr(expr_tuple_datatype_ctor_to_vir(bctx, expr, ctor, &[], expr.span, modifier)?))
                 }
                 (Res::Def(DefKind::AssocConst, id), _) => {
                     if let Some(vir_expr) =
@@ -2090,7 +2090,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.span.data(),
                             ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
                         ));
-                        return Ok(vir_expr);
+                        return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
                         let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                         let fun = FunX { path };
@@ -2165,9 +2165,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
             let lhs_ty = tc.expr_ty_adjusted(lhs);
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
-            let (datatype, variant_name, field_name, check) = if let Some(adt_def) =
-                lhs_ty.ty_adt_def()
-            {
+            let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     current_modifier == ExprModifier::REGULAR || !adt_def.is_union(),
                     expr.span,
@@ -2195,34 +2193,32 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     str_ident(&variant.ident(tcx).as_str())
                 };
                 let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
-                (datatype_path, variant_name, field_name, check)
+                FieldOpr {
+                    datatype: Dt::Path(datatype),
+                    variant: variant_name,
+                    field: field_name,
+                    get_variant: false,
+                    check,
+                }
             } else {
                 let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, true)?;
                 let lhs_typ = undecorate_typ(&lhs_typ);
                 if let TypX::Datatype(Dt::Tuple(_), ts, _) = &*lhs_typ {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
-                    let vir = mk_expr(mk_tuple_field_x(&vir_lhs, ts.len(), field))?;
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
-                    return Ok(vir);
+                    mk_tuple_field_opr(ts.len(), field)
+                } else {
+                    unsupported_err!(expr.span, "field_of_non_adt", expr)
                 }
-                unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
             let field_type = expr_typ()?.clone();
             let vir = bctx.spanned_typed_new(
                 expr.span,
                 &field_type,
-                ExprX::UnaryOpr(
-                    UnaryOpr::Field(FieldOpr {
-                        datatype: Dt::Path(datatype),
-                        variant: variant_name,
-                        field: field_name,
-                        get_variant: false,
-                        check,
-                    }),
+                PlaceX::Field(
+                    UnaryOpr::Field(field_opr),
                     vir_lhs,
-                ),
+                )
             );
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
@@ -2725,11 +2721,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
-    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
+    mk_expr: impl Fn(ExprX) -> Result<ExprOrPlace, vir::messages::Message>,
     rhs: &Expr<'tcx>,
     modifier: ExprModifier,
     op_kind: Option<&Spanned<AssignOpKind>>,
-) -> Result<vir::ast::Expr, vir::messages::Message> {
+) -> Result<ExprOrPlace, vir::messages::Message> {
     if bctx.ctxt.cmd_line_args.new_mut_ref {
         let vir_lhs = expr_to_vir(bctx, lhs, modifier)?.to_place();
         let vir_rhs = expr_to_vir(bctx, rhs, modifier)?;
