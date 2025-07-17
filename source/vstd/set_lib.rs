@@ -674,43 +674,17 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
     pub open spec fn flatten(self) -> GSet<A, FINITE> {
         self.to_infinite_deep().infinite_flatten().cast_finiteness::<FINITE>()
     }
-
-    // TODO(jonh): delete, dead
-//     pub broadcast proof fn flatten_finite(self)
-//     requires self.finite(), forall |e| #[trigger] self.contains(e) ==> e.finite()
-//     ensures 
-//     true,
-// //     (#[trigger] self.to_infinite_deep().infinite_flatten()).finite()
-//     {
-//     }
 }
 
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
-    // TODO(jonh) delete
-//     pub open spec fn filter_elem<B>(f: spec_fn(A) -> Option<B>, elem: A) -> GSet<B, FINITE>
-//     {
-//         match f(elem) {
-//             Option::Some(r) => GSet::empty().insert(r),
-//             Option::None => GSet::empty(),
-//         }
-//     }
-// 
     pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> GSet<GSet<B, FINITE>, FINITE>
     {
         self.map(|elem: A|
-//             Self::filter_elem(f, elem)
                 match f(elem) {
                     Option::Some(r) => GSet::empty().insert(r),
                     Option::None => GSet::empty(),
                 }
         )
-    }
-
-    // TODO(jonh): delete, trivial
-    pub proof fn apply_filter_ensures<B, F2: Finiteness>(self, f: spec_fn(A) -> Option<B>)
-        requires self.castable::<F2>()
-        ensures self.apply_filter(f).deep_castable::<F2>()
-    {
     }
 }
 
@@ -848,11 +822,10 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     )
         ensures self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f))
     {
-        self.apply_filter_ensures::<_, FINITE>(f);
+        assert(self.castable::<FINITE>());  // trigger lemma_self_castable
         self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
         self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<FINITE>();
 
-        self.to_infinite().apply_filter_ensures::<_, FINITE>(f);
         self.to_infinite().apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
 
         assert forall |b: B| #![auto]
