@@ -5111,9 +5111,10 @@ pub(crate) struct Builtin(pub Span);
 
 impl ToTokens for Builtin {
     fn to_tokens(&self, tokens: &mut TokenStream) {
+        let is_vstd = std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd");
         if crate::cfg_verify_core() {
             tokens.extend(quote_spanned! { self.0 => crate::verus_builtin });
-        } else if crate::cfg_verify_vstd() {
+        } else if crate::cfg_verify_vstd() || is_vstd {
             tokens.extend(quote_spanned! { self.0 => crate::prelude });
         } else if crate::cfg_no_vstd() {
             tokens.extend(quote_spanned! { self.0 => ::verus_builtin });
