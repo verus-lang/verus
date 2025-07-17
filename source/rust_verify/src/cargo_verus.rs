@@ -56,8 +56,10 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     };
     if verus_crate {
         rustc_args.push("--check-cfg".to_owned());
-        rustc_args
-            .push("cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core, verus_no_vstd)".to_owned());
+        rustc_args.push(
+            "cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core, verus_no_vstd)"
+                .to_owned(),
+        );
     }
     if !verus_crate {
         let mut is_span_crate = false;
