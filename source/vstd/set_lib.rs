@@ -879,57 +879,26 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             implies
             self.to_infinite().infinite_filter_map(f).contains(b)
         by {
-            let thingy1 = self.apply_filter(f);
-            let thingy2 = thingy1.to_infinite_deep();
-            let thingy3 = thingy2.infinite_flatten();
-            let thingy4 = thingy3.cast_finiteness::<FINITE>();
             let a = choose |a: A| self.contains(a) && f(a) == Some(b);
             assert(self.to_infinite().contains(a)); // witness
 
-            let thingy6 = self.to_infinite().apply_filter(f);
             let sb = GSet::<B, Infinite>::empty().insert(b);
-            assert( thingy6.contains(sb) ); // witness
-            let thingy7 = thingy6.to_infinite_deep();
-            assert( sb == sb.to_infinite() );   // extn
-            let thingy8 = thingy7.infinite_flatten();
+            assert( self.to_infinite().apply_filter(f).contains(sb) ); // witness
         }
         assert forall |b: B| #![auto]
             self.to_infinite().infinite_filter_map(f).contains(b)
             implies
             self.filter_map(f).contains(b)
         by {
-            let thingy1 = self.to_infinite();   // an infinite set of As
-            let thingy2 = thingy1.apply_filter(f);  // an infinite set-of-sets of Bs.
-            let thingy3 = thingy2.infinite_flatten();   // an infinite set of Bs
-//             assert( thingy3 == self.to_infinite().infinite_filter_map(f) );
-//             assert(thingy3.contains(b));
-            let ss = choose |ss| thingy2.contains(ss) && ss.contains(b);    // one of the infinite sets of Bs
-//             assert( thingy2.contains(ss) && ss.contains(b) );
-            let a = choose |a: A| thingy1.contains(a) && f(a) == Some(b);
-            
+            let ss = choose |ss| #![auto] self.to_infinite().apply_filter(f).contains(ss) && ss.contains(b);    // one of the infinite sets of Bs
+                                                                            //
             let thingy6 = self.apply_filter(f);  // a FINITE set of FINITE sets of Bs
             let thingy7 = thingy6.to_infinite_deep();   // an infinite set of infinite sets of Bs
-            
-//             thingy6.to_infinite_deep_ensures::<FINITE>();
-
-            let thingy8 = thingy7.infinite_flatten();   // an infinite set of Bs.
-            let thingy9 = thingy8.cast_finiteness::<FINITE>();  // a FINITE set of Bs
-            assert( thingy9 == self.filter_map(f) );
-            
-//             assert(self.contains(a));
             let gs = GSet::empty().insert(b);
-
-//             let fs = ss.cast_finiteness::<FINITE>();
-//             assert( gs.congruent(ss) );
             assert( ss == gs.to_infinite() );   // extn
-
-
             // witness to map inside to_infinite_deep
             assert( thingy6.to_infinite().contains(gs) );
-
-            assert( thingy7.contains(ss) );
-            assert( thingy8.contains(b) );
-            assert( thingy9.contains(b) );
+            assert( thingy7.contains(ss) ); // trigger for infinite_flatten
         }
     }
 
