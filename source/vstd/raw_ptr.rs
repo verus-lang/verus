@@ -83,6 +83,13 @@ impl Provenance {
     pub uninterp spec fn alloc_len(&self) -> usize;
 }
 
+pub broadcast axiom fn alloc_bound(p: Provenance)
+    ensures 
+        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1
+;
+// write a broadcast axiom on any Provenance object
+
+
 /// Metadata
 ///
 /// For thin pointers (i.e., when T: Sized), the metadata is `()`.
@@ -325,7 +332,6 @@ impl<T> PointsTo<[T]> {
     pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
         requires
             start_index + len <= self.mem_contents_seq().len(),
-            self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX,
         ensures
             sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
                 PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },

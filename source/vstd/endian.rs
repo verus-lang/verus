@@ -300,6 +300,7 @@ impl<B: Base> EndianNat<B> {
     }
 
     // TODO: How many of the triggering issues that arose with the broadcast pow properties are due to having mul_recursive and pow not opaque?
+    #[verifier::spinoff_prover]
     pub proof fn nat_left_eq_nat_right_little(self)
         requires
             self.wf(),
