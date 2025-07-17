@@ -125,7 +125,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.cast_finiteness::<Finite>()
     }
 
-    // TOOD(jonh): delete; broadcast the axiom
+    // TOOD(jonh): collect into a finite-generic broadcast collection?
     /// Identity rule for casting: It's always okay to cast back to the same type we started out as.
     pub broadcast proof fn lemma_self_castable(self)
         ensures #[trigger] self.castable::<FINITE>() {
@@ -133,14 +133,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             lemma_set_finite_from_trait(self);
         }
         self.cast_finiteness_properties::<FINITE>();
-    }
-
-    // TOOD(jonh): delete; broadcast the axiom
-    pub broadcast proof fn lemma_finite_source_castable<FGOAL: Finiteness>(self)
-    requires self.finite(),
-    ensures #[trigger] self.castable::<FGOAL>(),
-    {
-        self.cast_finiteness_properties::<FGOAL>();
     }
 
     // TOOD(jonh): delete; broadcast the axiom
@@ -600,7 +592,7 @@ pub mod fold {
     use super::*;
 
     pub(in super) broadcast group group_set_lemmas_early {
-        GSet::lemma_to_finite_contains,
+        GSet::cast_finiteness_properties,
         lemma_set_finite_from_type,
         lemma_set_empty,
         lemma_set_new,
