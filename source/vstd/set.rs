@@ -13,15 +13,18 @@ pub struct Finite;
 pub struct Infinite;
 
 pub trait Finiteness {
-
+    // Let proofs learn an SMT value for the type finiteness, for example so one can
+    // write spec fns that condition on the type.
+    spec fn type_is_finite() -> bool;
 }
+// What keeps an adversary from introducing a new Finiteness to break these definitions?
 
 impl Finiteness for Finite {
-
+    open spec fn type_is_finite() -> bool { true }
 }
 
 impl Finiteness for Infinite {
-
+    open spec fn type_is_finite() -> bool { false }
 }
 
 /// `GSet<A, FINITE>` is a set type for specifications.
@@ -103,24 +106,15 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     // Set, and anything can be cast to an ISet.
     pub uninterp spec fn cast_finiteness<NEWFINITE: Finiteness>(self) -> GSet<A, NEWFINITE>;
 
-    axiom fn cast_from_finite<NEWFINITE: Finiteness>(self)
-        ensures
-            self.cast_finiteness::<NEWFINITE>() == (GSet::<A, NEWFINITE> {
-                set: self.set,
-                _phantom: PhantomData,
-            }),
-    ;
+    pub open spec fn castable<NEWFINITE: Finiteness>(self) -> bool {
+        self.finite() || !NEWFINITE::type_is_finite()
+    }
 
-    axiom fn cast_to_infinite(self)
-        ensures
-            self.cast_finiteness::<Infinite>() == (ISet { set: self.set, _phantom: PhantomData }),
-    ;
-
-    axiom fn cast_to_finite(self)
-        requires
-            self.finite(),
-        ensures
-            self.cast_finiteness::<Finite>() == (Set { set: self.set, _phantom: PhantomData }),
+    pub broadcast axiom fn cast_finiteness_properties<NEWFINITE: Finiteness>(self)
+    requires
+        self.castable::<NEWFINITE>(),
+    ensures
+        #[trigger] self.cast_finiteness::<NEWFINITE>().congruent(self)
     ;
 
     #[verifier::inline]
@@ -131,6 +125,15 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.cast_finiteness::<Finite>()
     }
 
+    // TOOD(jonh): delete; broadcast the axiom
+    pub proof fn cast_to_finite(self)
+    requires self.finite()
+    ensures self.cast_finiteness::<Finite>().congruent(self)
+    {
+        self.cast_finiteness_properties::<Finite>();
+    }
+
+    // TOOD(jonh): delete; broadcast the axiom
     pub broadcast proof fn lemma_to_finite_contains(self)
         requires
             self.finite(),
@@ -138,8 +141,43 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             #![trigger(self.to_finite())]
             forall|a|
                 self.contains(a) <==> #[trigger] self.to_finite().contains(a),
+            self.congruent(self.to_finite()),
     {
-        self.cast_to_finite();
+        self.cast_finiteness_properties::<Finite>();
+    }
+
+    // TOOD(jonh): delete; broadcast the axiom
+    /// Identity rule for casting: It's always okay to cast back to the same type we started out as.
+    pub broadcast proof fn lemma_self_castable(self)
+        ensures #[trigger] self.castable::<FINITE>() {
+        if FINITE::type_is_finite() {
+            lemma_set_finite_from_trait(self);
+        }
+        self.cast_finiteness_properties::<FINITE>();
+    }
+
+    // TOOD(jonh): delete; broadcast the axiom
+    pub broadcast proof fn lemma_finite_source_castable<FGOAL: Finiteness>(self)
+    requires self.finite(),
+    ensures #[trigger] self.castable::<FGOAL>(),
+    {
+        self.cast_finiteness_properties::<FGOAL>();
+    }
+
+    // TOOD(jonh): delete; broadcast the axiom
+    pub broadcast proof fn lemma_infinite_target_castable<FGOAL: Finiteness>(self)
+    requires !FGOAL::type_is_finite(),
+    ensures #[trigger] self.castable::<FGOAL>(),
+    {
+        self.cast_finiteness_properties::<FGOAL>();
+    }
+
+    pub broadcast proof fn lemma_to_infinite_castable(self)
+        requires self.castable::<FINITE>(),
+        ensures #[trigger] self.to_infinite().castable::<FINITE>()
+    {
+        self.cast_finiteness_properties::<FINITE>();
+        self.to_infinite().cast_finiteness_properties::<FINITE>();
     }
 }
 
@@ -157,12 +195,21 @@ impl<FINITE: Finiteness> GSet<nat, FINITE> {
     }
 }
 
-pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
+pub broadcast proof fn lemma_set_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
+    requires 
+        FINITE::type_is_finite(),
     ensures
         #[trigger] s.finite(),
 {
     // This lemma is the root of the soundness danger (see "Important soundness note" above).
     admit();
+}
+
+pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
+    ensures
+        #[trigger] s.finite(),
+{
+    lemma_set_finite_from_trait(s);
 }
 
 impl<A> ISet<A> {
@@ -1223,6 +1270,25 @@ pub broadcast proof fn lemma_set_empty_finite<A, FINITE: Finiteness>()
     let _ = trigger_finite(f, ub);
 }
 
+// Many proofs go through for free when we have equality of the representation .set field,
+// but need per-element manual triggers for .contains if we only have congruence. So we
+// use this lemma to keep them easy. However, end users don't get access to the .set field;
+// I think this failure of triggeriness is similar to why it's more painful to talk about
+// built-up Sets than function-constructed ISets.
+proof fn lemma_congruence_extensionality<A, F1: Finiteness, F2: Finiteness>(x: GSet<A, F1>, y: GSet<A, F2>)
+requires x.congruent(y)
+ensures x.set == y.set
+{
+    // Trigger our way through .contains
+    assert forall |e| #[trigger] (x.set)(e) implies (y.set)(e) by { 
+        assert(y.contains(e));
+    }
+
+    assert forall |e| #[trigger] (y.set)(e) implies (x.set)(e) by { 
+        assert(x.contains(e));
+    }
+}
+
 /// The result of inserting an element `a` into a finite set `s` is also finite.
 /// This conclusion is automatic for finite `Set`s, but still useful for SMT-`.finite()` `ISet`s.
 pub broadcast proof fn lemma_set_insert_finite<A, FINITE: Finiteness>(s: GSet<A, FINITE>, a: A)
@@ -1233,6 +1299,8 @@ pub broadcast proof fn lemma_set_insert_finite<A, FINITE: Finiteness>(s: GSet<A,
 {
     lemma_set_finite_from_type(s.to_finite().insert(a));
     s.cast_to_finite();
+
+    lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().insert(a).congruent_infiniteness(s.insert(a));
 }
 
@@ -1246,6 +1314,7 @@ pub broadcast proof fn lemma_set_remove_finite<A, FINITE: Finiteness>(s: GSet<A,
 {
     lemma_set_finite_from_type(s.to_finite().remove(a));
     s.cast_to_finite();
+    lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().remove(a).congruent_infiniteness(s.remove(a));
 }
 
@@ -1551,6 +1620,7 @@ pub broadcast proof fn lemma_set_remove_len<A, FINITE: Finiteness>(s: GSet<A, FI
 {
     lemma_set_finite_from_type(s.to_finite().remove(a));
     s.cast_to_finite();
+    lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().remove(a).congruent_infiniteness(s.remove(a));
     lemma_set_insert_len(s.remove(a), a);
     if s.contains(a) {
