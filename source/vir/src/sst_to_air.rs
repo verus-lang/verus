@@ -185,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
         },
         TypX::Projection { .. } => str_typ(POLY),
+        TypX::PointeeMetadata(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
@@ -374,6 +375,16 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let pt = ident_apply(&crate::def::projection(false, trait_path, name), &args);
             vec![pd, pt]
         }
+        TypX::PointeeMetadata(t) => {
+            let ids = typ_to_ids(ctx, t);
+            let id = ids[0].clone(); // Metadata is a function of just the decoration
+            let args = vec![id];
+
+            let pd = ident_apply(&crate::def::projection_pointee_metadata(true), &args);
+            let pt = ident_apply(&crate::def::projection_pointee_metadata(false), &args);
+
+            vec![pd, pt]
+        }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
         TypX::ConstInt(c) => {
             mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
@@ -513,6 +524,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -581,6 +593,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -613,6 +626,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
@@ -828,7 +842,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
             let skip_first_decoration = match func {
-                InternalFun::ClosureReq | InternalFun::ClosureEns => true,
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns => true,
                 _ => false,
             };
 
@@ -843,6 +857,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 match func {
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::DefaultEns => str_ident(crate::def::DEFAULT_ENS),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
@@ -1609,7 +1624,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args: typs,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
             // `call_requires(f, (args...))` and `call_ensures(f, (args...), ret)`
@@ -1804,19 +1829,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
+            let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
                     let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
-                    (true, res_fun, res_typ_args)
+                    (true, true, res_fun, res_typ_args)
                 }
                 _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
                     // Use ens predicate for the generic function
-                    (true, &func.x.name, typ_args)
+                    (true, false, &func.x.name, typ_args)
                 }
                 _ => {
                     // No ens predicate
-                    (false, &func.x.name, typ_args)
+                    (false, false, &func.x.name, typ_args)
                 }
             };
 
@@ -1841,6 +1866,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 } else {
                     crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                }
+            }
+            if let Some(is_trait_default) = is_trait_default {
+                if !resolved_ens {
+                    ens_args.insert(0, air::ast_util::mk_const_bool(*is_trait_default));
                 }
             }
             if has_ens {

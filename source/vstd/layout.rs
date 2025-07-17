@@ -84,8 +84,14 @@ pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
     no_unwind
 ;
 
-// This is marked as exec, again, in order to force `V` to be a real exec type.
-// Of course, it's still a no-op.
+/// Lemma to learn that the (size, alignment) of a type is a valid "layout".
+/// See [`valid_layout`] for the exact conditions.
+///
+/// Also exports that size is a multiple of alignment ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size)).
+///
+/// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
+/// ensure that the types are really compilable, as ghost code can reason about "virtual" types
+/// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
 #[verifier::external_body]
 #[inline(always)]
 pub exec fn layout_for_type_is_valid<V>()
@@ -93,6 +99,8 @@ pub exec fn layout_for_type_is_valid<V>()
         valid_layout(size_of::<V>() as usize, align_of::<V>() as usize),
         size_of::<V>() as usize as nat == size_of::<V>(),
         align_of::<V>() as usize as nat == align_of::<V>(),
+        align_of::<V>() != 0,
+        size_of::<V>() % align_of::<V>() == 0,
     opens_invariants none
     no_unwind
 {
@@ -166,7 +174,7 @@ pub broadcast axiom fn layout_of_unit_tuple()
         align_of::<()>() == 1,
 ;
 
-/// Pointers and references have the same layout. Mutability of the pointer or reference does not change the layout. ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro).)
+/// Pointers and references have the same layout. Mutability of the pointer or reference does not change the layout ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro)).
 pub broadcast axiom fn layout_of_references_and_pointers<T: ?Sized>()
     ensures
         #![trigger size_of::<*mut T>()]

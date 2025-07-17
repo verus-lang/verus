@@ -77,27 +77,55 @@ proof fn test_map2() {
 
 /*
 // ANCHOR: test_eq_fail
+proof fn check_eq(x: Seq<int>, y: Seq<int>)
+    requires
+        x == y,
+{
+}
+
 proof fn test_eq_fail() {
     let s1: Seq<int> = seq![0, 10, 20, 30, 40];
     let s2: Seq<int> = seq![0, 10] + seq![20] + seq![30, 40];
     let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
-    assert(s1 === s2); // FAILS, even though it's true
-    assert(s1 === s3); // FAILS, even though it's true
+    check_eq(s1, s2); // FAILS, even though s1 equals s2
+    check_eq(s1, s3); // FAILS, even though s1 equals s3
 }
 // ANCHOR_END: test_eq_fail
 */
 
 // ANCHOR: test_eq
+proof fn check_eq_extensionally(x: Seq<int>, y: Seq<int>)
+    requires
+        x =~= y,
+{
+}
+
 proof fn test_eq() {
+    let s1: Seq<int> = seq![0, 10, 20, 30, 40];
+    let s2: Seq<int> = seq![0, 10] + seq![20] + seq![30, 40];
+    let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
+    check_eq_extensionally(s1, s2); // succeeds
+    check_eq_extensionally(s1, s3); // succeeds
+}
+// ANCHOR_END: test_eq
+
+// ANCHOR: test_eq2
+proof fn check_eq(x: Seq<int>, y: Seq<int>)
+    requires
+        x == y,
+{
+}
+
+proof fn test_eq2() {
     let s1: Seq<int> = seq![0, 10, 20, 30, 40];
     let s2: Seq<int> = seq![0, 10] + seq![20] + seq![30, 40];
     let s3: Seq<int> = Seq::new(5, |i: int| 10 * i);
     assert(s1 =~= s2);
     assert(s1 =~= s3);
-    assert(s1 === s2);  // succeeds
-    assert(s1 === s3);  // succeeds
+    check_eq(s1, s2); // succeeds
+    check_eq(s1, s3); // succeeds
 }
-// ANCHOR_END: test_eq
+// ANCHOR_END: test_eq2
 
 /*
 // ANCHOR: lemma_len_intersect_fail

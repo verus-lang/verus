@@ -7,6 +7,7 @@ use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
 use syn_verus::BroadcastUse;
+use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
 use syn_verus::parse::{Parse, ParseStream};
@@ -27,14 +28,14 @@ use syn_verus::{
     FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
     InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
     ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked,
-    Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType, Returns, Signature,
-    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
-    Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
-    braced, bracketed, parenthesized, parse_macro_input,
+    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec,
+    ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType,
+    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
+    UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
-const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -67,8 +68,8 @@ enum InsideArith {
     Fixed,
 }
 
-struct Visitor {
-    erase_ghost: EraseGhost,
+pub(crate) struct Visitor {
+    pub(crate) erase_ghost: EraseGhost,
     // TODO: this should always be true
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
@@ -92,7 +93,7 @@ struct Visitor {
     assign_to: bool,
 
     // Add extra verus signature information to the docstring
-    rustdoc: bool,
+    pub(crate) rustdoc: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -165,6 +166,16 @@ macro_rules! quote_spanned_builtin {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! parse_quote_spanned_builtin {
+    ($b:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            ::syn_verus::parse_quote_spanned!{ sp => $($tt)* }
         }
     }
 }
@@ -427,6 +438,29 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
     unwrap_ghost_tracked
 }
 
+fn merge_default_ensures(
+    ensures: Option<Ensures>,
+    default_ensures: Option<DefaultEnsures>,
+) -> Option<Ensures> {
+    let Some(default_ensures) = default_ensures else {
+        return ensures;
+    };
+    let DefaultEnsures { token, mut exprs } = default_ensures;
+    for expr in exprs.exprs.iter_mut() {
+        let span = expr.span();
+        *expr = parse_quote_spanned_builtin!(builtin, span => #builtin::default_ensures(#expr));
+    }
+    if let Some(mut ensures) = ensures {
+        for expr in exprs.exprs.into_iter() {
+            ensures.exprs.exprs.push(expr);
+        }
+        Some(ensures)
+    } else {
+        let token = Token![ensures](token.span());
+        Some(Ensures { attrs: vec![], token, exprs })
+    }
+}
+
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -472,16 +506,18 @@ impl Visitor {
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
         final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
-        is_const: bool,
-        span: Span,
+        _span: Span,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
+        let default_ensures = self.take_ghost(&mut spec.default_ensures);
         let returns = self.take_ghost(&mut spec.returns);
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+
+        let ensures = merge_default_ensures(ensures, default_ensures);
 
         let mut spec_stmts = Vec::new();
         // TODO: wrap specs inside ghost blocks
@@ -699,16 +735,7 @@ impl Visitor {
             }
         }
 
-        if is_const {
-            vec![Stmt::Expr(
-                Expr::Verbatim(
-                    quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
-                ),
-                None,
-            )]
-        } else {
-            spec_stmts
-        }
+        spec_stmts
     }
 
     fn visit_fn(
@@ -785,6 +812,7 @@ impl Visitor {
             sig.mode,
             FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
         ) && !matches!(sig.publish, Publish::Default)
+            && !is_encoded_const(attrs)
         {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
@@ -902,8 +930,7 @@ impl Visitor {
         self.inside_ghost += 1; // for requires, ensures, etc.
 
         let sig_span = sig.span().clone();
-        let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig.constness.is_some(), sig_span);
+        let spec_stmts = self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -932,16 +959,12 @@ impl Visitor {
         con_expr: &mut Option<Box<Expr>>,
         con_eq_token: &mut Option<Token![=]>,
         con_semi_token: &mut Option<Token![;]>,
-        con_ty: &Type,
+        _con_ty: &Type,
         con_span: Span,
     ) {
         if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
-            if let Some(mut expr) = con_expr.take() {
+            if let Some(expr) = con_expr.take() {
                 let mut stmts = Vec::new();
-                self.inside_ghost += 1;
-                self.visit_expr_mut(&mut expr);
-                self.inside_ghost -= 1;
-                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[allow(non_snake_case)]#[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } )), None));
                 stmts.push(Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(con_span => unsafe { core::mem::zeroed() })),
                     None,
@@ -953,29 +976,6 @@ impl Visitor {
                 })));
             }
         } else {
-            let ensures = self.take_ghost(con_ensures);
-            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-                self.inside_ghost += 1;
-                let mut stmts: Vec<Stmt> = Vec::new();
-                if attrs.len() > 0 {
-                    let err = "outer attributes only allowed on function's ensures";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
-                } else if exprs.exprs.len() > 0 {
-                    for expr in exprs.exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    // Use a closure in the ensures to avoid circular const definition.
-                    // Note: we can't use con.ident as the closure pattern,
-                    // because Rust would treat this as a const path pattern.
-                    // So we use a 0-parameter closure.
-                    stmts.push(stmt_with_semi!(builtin, token.span => #[verus::internal(const_header_wrapper)] || { #builtin::ensures(|| [#exprs]); }));
-                }
-                let mut block = std::mem::take(con_block).expect("const-with-ensures block");
-                block.stmts.splice(0..0, stmts);
-                *con_block = Some(block);
-                self.inside_ghost -= 1;
-            }
             if let Some(block) = std::mem::take(con_block) {
                 let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
                 *con_expr = Some(Box::new(Expr::Block(expr_block)));
@@ -983,6 +983,7 @@ impl Visitor {
                 *con_semi_token = Some(Semi { spans: [con_span] });
             }
         }
+        *con_ensures = None;
     }
 
     fn visit_const_or_static(
@@ -1153,79 +1154,6 @@ impl VisitMut for ExecGhostPatVisitor {
     }
 }
 
-macro_rules! do_split_trait_method {
-    ($s:ident, $fun:ident, $spec_fun:ident, $mk_rust_attr:ident) => {
-        let mut $spec_fun = $fun.clone();
-        let x = &$fun.sig.ident;
-        let span = x.span();
-        $spec_fun.sig.ident = $s::Ident::new(&format!("{VERUS_SPEC}{x}"), span);
-        $spec_fun.attrs.push($mk_rust_attr(span, "doc", quote! { hidden }));
-    };
-}
-
-// In addition to prefiltering ghost code, we also split methods declarations
-// into separate spec and implementation declarations.  For example:
-//   fn f() requires x;
-// becomes
-//   fn VERUS_SPEC__f() requires x;
-//   fn f();
-// In a later pass, this becomes:
-//   fn VERUS_SPEC__f() { requires(x); ... }
-//   fn f();
-// Note: we don't do this if there's a default body,
-// because it turns out that the parameter names
-// don't exactly match between fun and fun.clone() (they have different macro contexts),
-// which would cause the body and specs to mismatch.
-// (See also split_trait_method_syn below.)
-fn split_trait_method(spec_items: &mut Vec<TraitItem>, fun: &mut TraitItemFn, erase_ghost: bool) {
-    if !erase_ghost && fun.default.is_none() {
-        // Copy into separate spec method, then remove spec from original method
-        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr);
-        spec_items.push(TraitItem::Fn(spec_fun));
-        fun.sig.erase_spec_fields();
-    } else if erase_ghost {
-        match (&mut fun.default, &fun.sig.mode) {
-            (
-                Some(default),
-                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
-            ) => {
-                // replace body with panic!()
-                let span = default.span();
-                let expr: Expr = Expr::Verbatim(quote_spanned! {
-                    span => { panic!() }
-                });
-                let stmt = Stmt::Expr(expr, None);
-                default.stmts = vec![stmt];
-            }
-            _ => {}
-        }
-    }
-}
-
-// syn version of split_trait_method (see above)
-// (Note: there are no spec fields to erase in syn; the spec attribute must be erased separately.)
-pub(crate) fn split_trait_method_syn(
-    fun: &syn::TraitItemFn,
-    erase_ghost: bool,
-) -> Option<syn::TraitItemFn> {
-    use syn::{Block, Expr, Stmt, token::Brace};
-    if !erase_ghost && fun.default.is_none() {
-        do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
-        // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
-        let span = fun.sig.fn_token.span;
-        let stmts = vec![Stmt::Expr(
-            Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
-            None,
-        )];
-        spec_fun.default = Some(Block { brace_token: Brace(span), stmts });
-        Some(spec_fun)
-    } else {
-        // Note: we only support exec functions via syn; there is no fun.sig.mode here
-        // So there's no case for spec, proof as in split_trait_method above
-        None
-    }
-}
-
 impl Visitor {
     fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
         if self.erase_ghost.erase() && (local.tracked.is_some() || local.ghost.is_some()) {
@@ -1362,6 +1290,9 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        self.visit_items_make_unerased_proxies(items);
+        crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
+
         if self.erase_ghost.erase_all() {
             // Erase ghost functions and constants
             items.retain(|item| match item {
@@ -1619,6 +1550,7 @@ impl Visitor {
             output,
             requires,
             ensures,
+            default_ensures,
             returns,
             invariants,
             unwind,
@@ -1646,6 +1578,7 @@ impl Visitor {
                 requires: requires,
                 recommends: None,
                 ensures: ensures,
+                default_ensures,
                 returns: returns,
                 decreases: None,
                 invariants: invariants,
@@ -1764,8 +1697,36 @@ impl Visitor {
                 TokenStream::new()
             }
         } else {
-            let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote_spanned_builtin!{ builtin, span =>
-                #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); }), None))
+            let stmts: Vec<Stmt> = paths
+                .iter()
+                .map(|path| {
+                    let mut path = path.clone();
+                    let mut attrs = Vec::new();
+                    // move any cfg attrs from path to the stmt
+                    let mut i = 0;
+                    while i < path.attrs.len() {
+                        if path.attrs[i].path().get_ident().map(|i| i.to_string())
+                            == Some("cfg".to_string())
+                        {
+                            let elt = path.attrs.remove(i);
+                            attrs.push(elt);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    let block = Expr::Verbatim(quote_spanned_builtin!(builtin, span => {
+                        #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
+                            #builtin::reveal_hide_internal_path_(#path)
+                        } __VERUS_REVEAL_INTERNAL__
+                    }));
+                    let one = Expr::Verbatim(quote_spanned!(span => 1));
+                    let mut expr: Expr = parse_quote_spanned_builtin!(builtin, span =>
+                        #builtin::reveal_hide_(#block, #one)
+                    );
+                    expr.replace_attrs(attrs);
+                    let stmt = Stmt::Expr(expr, Some(Token![;](span)));
+                    stmt
+                })
                 .collect();
             let block = Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
             let mut item_fn: ItemFn = parse_quote_spanned! { span =>
@@ -1797,7 +1758,13 @@ impl Visitor {
         }
     }
 
+    fn visit_impl_items_post(&mut self, _items: &mut Vec<ImplItem>) {
+        // nothing to do
+    }
+
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        self.visit_impl_items_make_unerased_proxies(items, for_trait);
+
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 ImplItem::Fn(fun) => match fun.sig.mode {
@@ -1911,7 +1878,7 @@ impl Visitor {
         for item in items.iter_mut() {
             match item {
                 TraitItem::Fn(ref mut fun) => {
-                    split_trait_method(&mut spec_items, fun, erase_ghost);
+                    crate::syntax_trait::split_trait_method(&mut spec_items, fun, erase_ghost);
                 }
                 _ => {}
             }
@@ -3163,7 +3130,9 @@ impl Visitor {
         // into:
         //  {
         //      #[allow(non_snake_case)]
-        //      let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(e) {
+        //      let VERUS_iter = e;
+        //      #[allow(non_snake_case)]
+        //      let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
         //          #[allow(non_snake_case)]
         //          mut VERUS_exec_iter => {
         //              #[allow(non_snake_case)]
@@ -3176,7 +3145,10 @@ impl Visitor {
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
         //                          builtin::infer_spec_for_loop_iter(
         //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(e)))),
+        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)),
+        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                                  &::core::iter::IntoIterator::into_iter(e)),
+        //                          )),
         //                      { let x =
         //                          ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y)
         //                          .unwrap_or(vstd::pervasive::arbitrary());
@@ -3286,7 +3258,10 @@ impl Visitor {
         //              ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
         //                  builtin::infer_spec_for_loop_iter(
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(e)))),
+        //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)),
+        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+        //                          &::core::iter::IntoIterator::into_iter(e)),
+        //                  )),
         let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
@@ -3295,6 +3270,8 @@ impl Visitor {
             #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 builtin::infer_spec_for_loop_iter(
+                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+                        &::core::iter::IntoIterator::into_iter(VERUS_iter)),
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(#expr_inv)),
                     #print_hint,
@@ -3398,7 +3375,9 @@ impl Visitor {
         };
         Expr::Verbatim(quote_spanned!(span => {
             #[allow(non_snake_case)]
-            let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(#expr) {
+            let VERUS_iter = #expr;
+            #[allow(non_snake_case)]
+            let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
                 #[allow(non_snake_case)]
                 mut #x_exec_iter => #full_loop
             };
@@ -4178,6 +4157,20 @@ impl Parse for Items {
     }
 }
 
+struct ImplItems {
+    items: Vec<ImplItem>,
+}
+
+impl Parse for ImplItems {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<ImplItems> {
+        let mut items = Vec::new();
+        while !input.is_empty() {
+            items.push(input.parse()?);
+        }
+        Ok(ImplItems { items })
+    }
+}
+
 #[derive(Debug)]
 enum MacroElement {
     Comma(Token![,]),
@@ -4456,6 +4449,40 @@ pub(crate) fn rewrite_items(
     proc_macro::TokenStream::from(new_stream)
 }
 
+pub(crate) fn rewrite_impl_items(
+    stream: proc_macro::TokenStream,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+    for_trait: bool,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let mut items: ImplItems = parse_macro_input!(stream as ImplItems);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
+    for mut item in &mut items.items {
+        visitor.visit_impl_item_mut(&mut item);
+        visitor.inside_ghost = 0;
+        visitor.inside_const = false;
+        visitor.inside_arith = InsideArith::None;
+    }
+    visitor.visit_impl_items_post(&mut items.items);
+    for item in items.items {
+        item.to_tokens(&mut new_stream);
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr(
     erase_ghost: EraseGhost,
     inside_ghost: bool,
@@ -4656,13 +4683,7 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
     let sig_span = sig.span().clone();
-    spec_stmts.extend(visitor.take_sig_specs(
-        &mut spec,
-        ret_pat,
-        final_ret_pat,
-        sig.constness.is_some(),
-        sig_span,
-    ));
+    spec_stmts.extend(visitor.take_sig_specs(&mut spec, ret_pat, final_ret_pat, sig_span));
     spec_stmts
 }
 
@@ -4755,7 +4776,7 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
-        s1.source_file() == s2.source_file() && l1.eq(&l2)
+        s1.source().file() == s2.source().file() && l1.eq(&l2)
     };
     fn mk_joint_punct(t: Option<(char, proc_macro::Spacing, Span)>) -> TokenTree {
         let (op, _, span) = t.unwrap();
@@ -4997,6 +5018,36 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
     })
 }
 
+pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
+    attrs.iter().any(|attr| match &attr.meta {
+        Meta::List(MetaList { path, delimiter: _, tokens }) => {
+            path.segments.len() == 2
+                && path.segments[0].ident.to_string() == "verus"
+                && path.segments[1].ident.to_string() == "internal"
+                && tokens.to_string() == "encoded_const"
+        }
+        _ => false,
+    })
+}
+
+pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
+    attrs.iter().any(|attr| {
+        // verifier::external
+        attr.path().segments.len() == 2
+            && attr.path().segments[0].ident.to_string() == "verifier"
+            && attr.path().segments[1].ident.to_string() == "external"
+        // verifier(external)
+        || attr.path().segments.len() == 1
+            && attr.path().segments[0].ident.to_string() == "verifier"
+            && match &attr.meta {
+                syn_verus::Meta::List(list) => {
+                    matches!(list.tokens.to_string().as_str(), "external")
+                }
+                _ => false,
+            }
+    })
+}
+
 /// Constructs #[name(tokens)]
 macro_rules! declare_mk_rust_attr {
     ($name:ident, $s:ident) => {
@@ -5030,9 +5081,9 @@ macro_rules! declare_mk_rust_attr {
 declare_mk_rust_attr!(mk_rust_attr, syn_verus);
 declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
-/// Constructs #[verus::internal(tokens)]
+/// Constructs #[verus::internal(tokens)] and #[verifier::tokens]
 macro_rules! declare_mk_verus_attr {
-    ($name:ident, $s:ident) => {
+    ($name:ident, $name2:ident, $s:ident) => {
         pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
             let mut path_segments = $s::punctuated::Punctuated::new();
             path_segments.push($s::PathSegment {
@@ -5062,10 +5113,28 @@ macro_rules! declare_mk_verus_attr {
                 meta,
             }
         }
+
+        #[allow(dead_code)]
+        pub(crate) fn $name2(span: Span, tokens: TokenStream) -> $s::Attribute {
+            let mut path_segments = $s::punctuated::Punctuated::new();
+            path_segments.push($s::PathSegment {
+                ident: $s::Ident::new("verifier", span),
+                arguments: $s::PathArguments::None,
+            });
+            path_segments.push($s::parse_quote_spanned!(span => #tokens));
+            let path = $s::Path { leading_colon: None, segments: path_segments };
+            let meta = $s::Meta::Path(path);
+            $s::Attribute {
+                pound_token: $s::token::Pound { spans: [span] },
+                style: $s::AttrStyle::Outer,
+                bracket_token: $s::token::Bracket { span: into_spans(span) },
+                meta,
+            }
+        }
     };
 }
-declare_mk_verus_attr!(mk_verus_attr, syn_verus);
-declare_mk_verus_attr!(mk_verus_attr_syn, syn);
+declare_mk_verus_attr!(mk_verus_attr, mk_verifier_attr, syn_verus);
+declare_mk_verus_attr!(mk_verus_attr_syn, mk_verifier_attr_syn, syn);
 
 fn is_ptr_type(typ: &Type) -> bool {
     match typ {

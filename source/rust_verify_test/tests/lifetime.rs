@@ -1009,3 +1009,45 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
 }
+
+test_verify_one_file! {
+    #[test] spec_fn_call_fn_arg_proof_code verus_code! {
+        struct R { }
+
+        pub proof fn consume(tracked r: R) {
+        }
+
+        pub proof fn y(tracked r: R) {
+            let z = ({
+                consume(r);
+                |y: int| y + 1
+            })(5);
+            consume(r);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::consume` with mode proof")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_multiple_anonymous_names verus_code! {
+        trait T<A> {
+            type X;
+        }
+        impl T<&u8> for &u8 {
+            type X = u8;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_issue1083 verus_code! {
+        pub trait Borrowable {
+            type Borrowed<'a>;
+        }
+
+        impl Borrowable for u8 {
+            type Borrowed<'a> = &'a u8;
+        }
+
+        pub struct Container<T: Borrowable>(T);
+    } => Ok(())
+}

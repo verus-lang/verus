@@ -1081,15 +1081,15 @@ test_verify_one_file_with_options! {
 
 // type well-formed
 
-test_verify_one_file! {
-    #[test] error_msg_use_external_type_closure_param verus_code! {
+test_verify_one_file_with_options! {
+    #[test] error_msg_use_external_type_closure_param ["vstd"] => verus_code! {
         #[verifier(external)]
         struct X { }
 
         proof fn stuff() {
             let tracked f = proof_fn|x: X| { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `test_crate::X` which is ignored")
 }
 
 // Omitting error_msg_use_external_type_closure_ret because it uses a loop
@@ -1281,17 +1281,10 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked x: &'a S) {
             p(proof_fn|| -> tracked &'a S { x });
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "borrowed data escapes outside of function")
-}
-
-test_verify_one_file_with_options! {
-    #[test] lifetime4 ["vstd"] => verus_code! {
-        struct S;
-        proof fn p<'a>(tracked f: proof_fn<'static>() -> tracked &'a S) {}
-        proof fn q<'a>(tracked x: &'a S) {
-            p(proof_fn|| -> tracked &'a S { x });
-        }
-    } => Err(err) => assert_any_vir_error_msg(err, "closure may outlive the current function, but it borrows `x`")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "borrowed data escapes outside of function",
+        "closure may outlive the current function, but it borrows `x`",
+    ])
 }
 
 test_verify_one_file_with_options! {
@@ -1774,4 +1767,19 @@ test_verify_one_file_with_options! {
             Some(proof_fn<'a>[Once](tracked E<'a>) -> ()),
         }
     } => Err(err) => assert_vir_error_msg(err, "E in a non-positive position")
+}
+
+test_verify_one_file_with_options! {
+    #[test] output_param_covariant ["vstd"] => verus_code! {
+        struct S;
+
+        proof fn test<'a>(tracked f: proof_fn<'a>() -> tracked &'a S) {
+        }
+
+        proof fn test2<'a, 'b>(tracked f: proof_fn<'a>() -> tracked &'b S)
+            where 'b: 'a
+        {
+            test(f);
+        }
+    } => Ok(())
 }

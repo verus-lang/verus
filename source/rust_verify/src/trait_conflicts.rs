@@ -152,6 +152,10 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             let name = state.typ_param(name.to_string(), None);
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
+        vir::ast::TypX::PointeeMetadata(t) => {
+            let t = gen_typ(state, t);
+            Box::new(TypX::PointeeMetadata(t))
+        }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
         vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
@@ -296,6 +300,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
 
     for i in &vir_crate.trait_impls {
         if !used_traits.contains(&i.x.trait_path) {
+            continue;
+        }
+        if i.x.external_trait_blanket {
             continue;
         }
         let span = spans.from_air_span(&i.span, None);

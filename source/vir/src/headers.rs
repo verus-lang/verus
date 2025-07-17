@@ -9,6 +9,56 @@ use crate::messages::error;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeaderAllow {
+    Require,
+    // Ensure means ensures is allowed (this does not allow default_ensures)
+    Ensure,
+}
+
+#[derive(Clone, Debug)]
+pub enum HeaderAllows {
+    All,
+    Loop,
+    Closure,
+    Some(Vec<HeaderAllow>),
+}
+
+impl HeaderAllows {
+    fn require(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => true,
+            HeaderAllows::Closure => true,
+            HeaderAllows::Some(hs) => hs.contains(&HeaderAllow::Require),
+        }
+    }
+
+    fn ensure(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => true,
+            HeaderAllows::Closure => true,
+            HeaderAllows::Some(hs) => hs.contains(&HeaderAllow::Ensure),
+        }
+    }
+
+    fn loops(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            HeaderAllows::Loop => true,
+            _ => false,
+        }
+    }
+
+    fn all(&self) -> bool {
+        match self {
+            HeaderAllows::All => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Header {
     pub no_method_body: bool,
@@ -17,7 +67,7 @@ pub struct Header {
     pub require: Exprs,
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
-    pub ensure: Exprs,
+    pub ensure: (Exprs, Exprs),
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
@@ -30,12 +80,12 @@ pub struct Header {
     pub open_visibility_qualifier: Option<Visibility>,
 }
 
-pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
+pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result<Header, VirErr> {
     let mut unwrap_parameters: Vec<UnwrapParameter> = Vec::new();
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
-    let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut ensure: Option<(Option<(VarIdent, Typ)>, (Exprs, Exprs))> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -50,6 +100,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
         let mut is_unwrap_parameter = false;
+        let mut allowed = allows.all();
         match &stmt.x {
             StmtX::Expr(expr) => match &peel(expr).x {
                 ExprX::Header(header) => match &**header {
@@ -73,6 +124,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
                             ));
                         }
+                        allowed = allows.require();
                         require = Some(es.clone());
                     }
                     HeaderExprX::Recommends(es) => {
@@ -91,6 +143,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
                             ));
                         }
+                        if es.1.len() == 0 {
+                            allowed = allows.ensure();
+                        } else if !allows.all() {
+                            return Err(error(&stmt.span, "default_ensures not allowed here"));
+                        }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
@@ -106,6 +163,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 "only one call to invariant_except_break allowed (use invariant_except_break([e1, ..., en]) for multiple expressions",
                             ));
                         }
+                        allowed = allows.loops();
                         invariant_except_break = Some(es.clone());
                     }
                     HeaderExprX::Invariant(es) => {
@@ -115,6 +173,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 "only one call to invariant allowed (use invariant([e1, ..., en]) for multiple expressions",
                             ));
                         }
+                        allowed = allows.loops();
                         invariant = Some(es.clone());
                     }
                     HeaderExprX::Decreases(es) => {
@@ -124,6 +183,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 "only one decreases expression currently supported",
                             ));
                         }
+                        allowed = allows.loops();
                         decrease = Some(es.clone());
                     }
                     HeaderExprX::DecreasesWhen(e) => {
@@ -219,6 +279,9 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
             },
             _ => break,
         }
+        if !allowed {
+            return Err(error(&stmt.span, "unexpected declaration"));
+        }
         if !is_unwrap_parameter {
             unwrap_parameter_allowed = false;
         }
@@ -228,7 +291,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let require = require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
-        None => (None, Arc::new(vec![])),
+        None => (None, (Arc::new(vec![]), Arc::new(vec![]))),
         Some((id_typ, es)) => (id_typ, es),
     };
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
@@ -255,7 +318,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     })
 }
 
-pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+pub fn read_header(body: &mut Expr, allows: &HeaderAllows) -> Result<Header, VirErr> {
     let body = peel_mut(body);
 
     #[derive(Clone, Copy)]
@@ -322,7 +385,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
                     }
                 }
             }
-            let mut header = read_header_block(&mut block)?;
+            let mut header = read_header_block(&mut block, allows)?;
             if let Some(e) = &expr {
                 if let ExprX::Header(h) = &peel(e).x {
                     if let HeaderExprX::NoMethodBody = **h {
@@ -342,7 +405,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
             *body = body.new_x(ExprX::Block(Arc::new(block), expr));
             Ok(header)
         }
-        _ => read_header_block(&mut vec![]),
+        _ => read_header_block(&mut vec![], allows),
     }
 }
 
@@ -361,7 +424,8 @@ impl Header {
             LoopInvariantKind::InvariantExceptBreak,
         );
         Self::add_invariants(&mut invs, &self.invariant, LoopInvariantKind::InvariantAndEnsures);
-        Self::add_invariants(&mut invs, &self.ensure, LoopInvariantKind::Ensures);
+        assert!(self.ensure.1.len() == 0);
+        Self::add_invariants(&mut invs, &self.ensure.0, LoopInvariantKind::Ensures);
         Arc::new(invs)
     }
 
@@ -380,8 +444,10 @@ impl Header {
                 _ => expr.clone(),
             })
         };
+        assert!(self.ensure.1.len() == 0);
         Arc::new(
             self.ensure
+                .0
                 .iter()
                 .map(|e| crate::ast_visitor::map_expr_visitor(e, &f).unwrap())
                 .collect(),
@@ -400,7 +466,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         owning_module: _,
         mode: _,
         typ_params,
-        typ_bounds,
+        mut typ_bounds,
         params,
         ret,
         ens_has_return: _,
@@ -419,6 +485,14 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         extra_dependencies,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
+    while typ_bounds.len() > methodx.typ_bounds.len() {
+        // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
+        // Remove these added Sized bounds so that we can match the remaining bounds.
+        use crate::ast::{GenericBoundX, TraitId};
+        if let GenericBoundX::Trait(TraitId::Sized, _) = &**typ_bounds.last().unwrap() {
+            Arc::make_mut(&mut typ_bounds).pop();
+        }
+    }
     if methodx.typ_params.len() != typ_params.len() {
         return Err(error(
             &spec_method.span,
@@ -467,6 +541,18 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
             "method specification has a different return from method",
         ));
     }
+
+    let has_default_ensures = ensure.1.len() > 0;
+    match &mut methodx.kind {
+        crate::ast::FunctionKind::TraitMethodDecl { trait_path: _, has_default }
+            if methodx.proxy.is_some() && has_default_ensures =>
+        {
+            // We use an external trait function default only if the spec mentions it:
+            *has_default = true;
+        }
+        _ => {}
+    };
+
     methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.ret = ret;

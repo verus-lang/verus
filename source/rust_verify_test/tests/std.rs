@@ -512,6 +512,8 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] derive_copy ["--no-external-by-default"] => verus_code! {
+        use vstd::*;
+
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // However, this test case does not use --external-by-default, so verus will
         // process the derived impls anyway.
@@ -530,6 +532,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] derive_copy_external_by_default verus_code! {
+        use vstd::*;
+
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // Since this test case uses --external-by-default, these derived impls do not
         // get processed.

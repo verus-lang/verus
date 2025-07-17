@@ -73,9 +73,9 @@
 
 # Tutorial: Verification and Rust
 
-- [Mutation, references, and borrowing](mutation-references-borrowing.md) <!--- Andrea --->
-    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md) <!--- Andrea --->
-    - [Assertions containing mutable references](assert-mut-ref.md) <!--- Andrea --->
+- [Mutation, references, and borrowing](mutation-references-borrowing.md)
+    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md)
+    - [Assertions about mutable references](assert-mut-ref.md)
 - [Traits]()
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)

@@ -308,7 +308,9 @@ impl ToDebugSNode for FunctionX {
                 {Node::Atom(":require".to_string())}
                 {self.require.to_node(opts)}
                 {Node::Atom(":ensure".to_string())}
-                {self.ensure.to_node(opts)}
+                {self.ensure.0.to_node(opts)}
+                {Node::Atom(":d".to_string())}
+                {self.ensure.1.to_node(opts)}
                 {Node::Atom(":body".to_string())}
                 {self.body.to_node(opts)}
             )
@@ -319,12 +321,8 @@ impl ToDebugSNode for FunctionX {
 }
 
 impl ToDebugSNode for crate::messages::Span {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        if opts.no_span {
-            Node::Atom("".to_string())
-        } else {
-            Node::Atom(format!("\"{}\"", self.as_string))
-        }
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(format!("\"{}\"", self.as_string))
     }
 }
 

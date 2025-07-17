@@ -243,6 +243,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,6 +263,10 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
@@ -542,7 +547,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -668,6 +674,8 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
+    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -695,6 +703,8 @@ pub enum CallTargetKind {
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
+    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
+    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -954,6 +964,7 @@ pub struct AutoExtEqual {
     pub assert: bool,
     pub assert_by: bool,
     pub ensures: bool,
+    pub invariant: bool,
 }
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
@@ -1129,7 +1140,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination
@@ -1262,6 +1274,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
+    // Some((TSpec, TSpecImpl))
+    pub external_trait_extension: Option<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
@@ -1294,6 +1309,8 @@ pub struct TraitImplX {
     pub owning_module: Option<Path>,
     // Not declared directly to Verus, but imported based on related traits and types:
     pub auto_imported: bool,
+    // Is a blanket implementation declared by external_trait_extension:
+    pub external_trait_blanket: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

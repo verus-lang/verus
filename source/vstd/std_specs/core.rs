@@ -75,26 +75,6 @@ pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
 ;
 
 #[verifier::external_trait_specification]
-pub trait ExPartialEq<Rhs: ?Sized> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExEq: PartialEq {
-    type ExternalTraitSpecificationFor: core::cmp::Eq;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
-    type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExOrd: Eq + PartialOrd {
-    type ExternalTraitSpecificationFor: Ord;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExHash {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
@@ -186,6 +166,9 @@ pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     opens_invariants none
     no_unwind
 ;
+
+#[verifier::external_type_specification]
+pub struct ExOrdering(core::cmp::Ordering);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
@@ -296,3 +279,8 @@ impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
 impl_from_spec! {u16 => [u32 u64 usize u128]}
 impl_from_spec! {u32 => [u64 u128]}
 impl_from_spec! {u64 => [u128]}
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExAssertParamIsClone<T: Clone + ?Sized>(core::clone::AssertParamIsClone<T>);

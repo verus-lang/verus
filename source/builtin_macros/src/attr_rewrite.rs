@@ -41,8 +41,9 @@ use syn::{Expr, Item, parse2, spanned::Spanned};
 use crate::{
     EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
-    syntax,
-    syntax::mk_verus_attr_syn,
+    syntax::{self, mk_verifier_attr_syn, mk_verus_attr_syn},
+    syntax_trait,
+    unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
@@ -79,7 +80,7 @@ impl syn::parse::Parse for VerusSpecTarget {
     }
 }
 
-pub fn rewrite_verus_attribute(
+pub(crate) fn rewrite_verus_attribute(
     erase: &EraseGhost,
     attr_args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
@@ -128,7 +129,7 @@ pub fn rewrite_verus_attribute(
                 spec_f.sig.ident = ident.clone();
                 spec_f.attrs = vec![mk_verus_attr_syn(f.span(), quote! { spec })];
                 // remove proof-related macros
-                spec_f.block.as_mut().stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
+                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap());
                 spec_fun = Some(spec_f);
 
                 attributes
@@ -211,7 +212,9 @@ impl VisitMut for ExecReplacer {
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         syn::visit_mut::visit_block_mut(self, block);
 
+        // If we are in non-verification mode, we erase all proof-related statements.
         if !self.erase.keep() {
+            block.stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
             return;
         }
 
@@ -266,17 +269,17 @@ fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
 // TODO: when tracked/ghost is supported, we need to clear verus-related
 // attributes for expression so that unverfied `cargo build` does not need to
 // enable unstable feature for macro.
-pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
+pub(crate) fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
     let mut replacer = ExecReplacer { erase };
     replacer.visit_block_mut(fblock);
 }
 
-pub fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
+pub(crate) fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
     let mut replacer = ExecReplacer { erase };
     replacer.visit_expr_mut(expr);
 }
 
-pub fn rewrite_verus_spec(
+pub(crate) fn rewrite_verus_spec(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
@@ -347,7 +350,7 @@ fn closure_to_fn_sig(closure: &syn::ExprClosure) -> syn::Signature {
     }
 }
 
-pub fn rewrite_verus_spec_on_fun_or_loop(
+pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     f: AnyFnOrLoop,
@@ -370,6 +373,22 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             if let Some(with) = &spec_attr.spec.with {
                 let unverified_fun = rewrite_unverified_func(&mut fun, with.with.span());
                 unverified_fun.to_tokens(&mut new_stream);
+            }
+            if fun.sig.constness.is_some() {
+                let mut const_fun = fun.clone();
+                let span = fun.sig.constness.unwrap().span();
+                // It seems that we do not need to erase anything.
+                // But just do it to be safe and consistent with verus macro.
+                replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
+                const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
+                const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
+                const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
+                const_fun.to_tokens(&mut new_stream);
+                fun.sig.ident = syn::Ident::new(
+                    &format!("{VERUS_UNERASED_PROXY}{}", fun.sig.ident),
+                    fun.sig.ident.span(),
+                );
+                fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
             }
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
@@ -424,7 +443,7 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
 
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
-            let mut spec_fun_opt = syntax::split_trait_method_syn(&method, erase.erase());
+            let mut spec_fun_opt = syntax_trait::split_trait_method_syn(&method, erase.erase());
             let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
             let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
@@ -457,7 +476,7 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
     }
 }
 
-pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
+pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
     if erase.keep() {
         let block: TokenStream =
             syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
@@ -565,7 +584,17 @@ fn rewrite_with_expr(
                 let x = &method;
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
             }
-            _ => {}
+            syn::Expr::Try(syn::ExprTry { expr, .. }) => {
+                let call_with_spec =
+                    syn_verus::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
+                return rewrite_with_expr(erase, expr, call_with_spec);
+            }
+            _ => {
+                *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
+                    compile_error!("with ghost inputs/outputs cannot be applied to a non-call expression. You may want to use proof_with!(|= var) to append a ghost var to the expr.")
+                ));
+                return vec![];
+            }
         }
     }
 

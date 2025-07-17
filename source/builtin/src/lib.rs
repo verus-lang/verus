@@ -183,6 +183,15 @@ pub fn reveal_hide_internal_path_<A>(_x: A) {
     unimplemented!();
 }
 
+/// Mark an ensures clause in a trait as applying just to the default implementation,
+/// not the trait declaration in general
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::default_ensures"]
+#[verifier::spec]
+pub fn default_ensures(_b: bool) -> bool {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::imply"]
 #[verifier::spec]
@@ -695,6 +704,10 @@ impl core::cmp::Ord for nat {
 // Structural
 //
 
+/// derive(Structural) means that exec-mode == and ghost == always yield the same result.
+/// derive(Structural) is only allowed when all the fields of a type are also Structural.
+/// derive(StructuralEq) means derive(Structural) and also implement PartialEqSpec,
+/// setting eq_spec to == and obeys_eq_spec to true.
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Structural")]
 pub unsafe trait Structural {
     #[doc(hidden)]
@@ -1413,7 +1426,7 @@ pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProof")]
 pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
     _no_sync_send: NoSyncSend,
-    _lifetime: PhantomData<&'a dyn Fn(Args) -> Output>,
+    _lifetime: PhantomData<&'a fn(Args) -> Output>,
     _options: PhantomData<Options>,
     _arg_modes: PhantomData<ArgModes>,
     _out_mode: PhantomData<OutMode>,
@@ -1759,7 +1772,7 @@ pub use decreases_to_internal;
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
+pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
     unimplemented!()
 }
 

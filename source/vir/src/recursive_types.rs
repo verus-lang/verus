@@ -3,7 +3,7 @@ use crate::ast::{
     ImplPath, Krate, Path, Trait, TraitId, Typ, TypX, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
-use crate::context::GlobalCtx;
+use crate::context::{GlobalCtx, GraphBuilder};
 use crate::messages::{Span, error};
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -110,7 +110,7 @@ fn check_well_founded_typ(
             // depends on the spec-encoding of Allocator)
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
-        TypX::Projection { .. } => {
+        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
             true
@@ -267,7 +267,7 @@ fn check_positive_uses(
                 )),
             }
         }
-        TypX::Projection { .. } => {
+        TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
             // Treat projection as AcceptRecursiveType::Reject,
             // and rely on type_graph to reject any cycles
             Ok(())
@@ -666,7 +666,7 @@ pub(crate) fn suppress_bound_in_trait_decl(
     }
 }
 
-pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
+pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trait) {
     // For
     //   trait T<...> where ...: U1(...), ..., ...: Un(...)
     // Add T --> U1, ..., T --> Un edges (see comments below for more details.)
@@ -684,13 +684,19 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
             }
         };
         let u_node = Node::Trait(u_path.clone());
+        if call_graph.replace_with.get(&t_node) == Some(&u_node) {
+            // We're merging the extension trait t_node into u_node,
+            // replacing t_node with u_node,
+            // so don't add a self edge from u_node to itself.
+            continue;
+        }
         call_graph.add_edge(t_node.clone(), u_node);
     }
 }
 
 pub(crate) fn add_trait_impl_to_graph(
     span_infos: &mut Vec<Span>,
-    call_graph: &mut Graph<Node>,
+    call_graph: &mut GraphBuilder<Node>,
     t: &crate::ast::TraitImpl,
 ) {
     // For
@@ -699,6 +705,7 @@ pub(crate) fn add_trait_impl_to_graph(
     // Add necessary impl_T_for_* --> impl_Ui_for_* edges
     // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
     let trait_impl_src_node = Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone()));
+    let origin_trait_impl_src_node = call_graph.replace(trait_impl_src_node.clone());
     let req_ens_src_node = Node::TraitReqEns(ImplPath::TraitImplPath(t.x.impl_path.clone()), false);
     let src_node = new_span_info_node(
         span_infos,
@@ -712,10 +719,11 @@ pub(crate) fn add_trait_impl_to_graph(
             so this implementation may depend on other implementations to satisfy these bounds."
             .to_string(),
     );
-    call_graph.add_edge(trait_impl_src_node, src_node.clone());
+    call_graph.add_edge(trait_impl_src_node.clone(), src_node.clone());
     for imp in t.x.trait_typ_arg_impls.x.iter() {
-        if ImplPath::TraitImplPath(t.x.impl_path.clone()) != *imp {
-            call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        let imp_node = Node::TraitImpl(imp.clone());
+        if trait_impl_src_node != imp_node && origin_trait_impl_src_node != imp_node {
+            call_graph.add_edge(src_node.clone(), imp_node);
             call_graph.add_edge(req_ens_src_node.clone(), Node::TraitReqEns(imp.clone(), true));
         }
     }

@@ -35,6 +35,12 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
+    pub fn replace_last(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments[self.segments.len() - 1] = ident;
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
     pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
         let mut segments = (*self.segments).clone();
         segments.extend(idents);
@@ -171,6 +177,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -187,6 +194,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::PointeeMetadata(..), _) => false,
     }
 }
 
@@ -634,6 +642,7 @@ impl crate::ast::CallTargetKind {
             crate::ast::CallTargetKind::DynamicResolved { resolved, typs, .. } => {
                 Some((resolved.clone(), typs.clone()))
             }
+            crate::ast::CallTargetKind::ExternalTraitDefault => None,
         }
     }
 }
@@ -909,6 +918,10 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::PointeeMetadata(t) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("<{} as Pointee>::Metadata", t)
+        }
     }
 }
 
@@ -1181,7 +1194,7 @@ impl HeaderExprX {
 
 impl Default for crate::ast::AutoExtEqual {
     fn default() -> Self {
-        crate::ast::AutoExtEqual { assert: true, assert_by: false, ensures: false }
+        crate::ast::AutoExtEqual { assert: true, assert_by: true, ensures: true, invariant: true }
     }
 }
 
