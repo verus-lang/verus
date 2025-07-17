@@ -625,10 +625,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::BorrowMutPhaseTwo(R::get(p), R::get(e))))
             }
-            ExprX::DerefMut(e) => {
-                let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::DerefMut(R::get(e))))
-            }
             ExprX::Resolve(e, t) => {
                 let e = self.visit_expr(e)?;
                 let t = self.visit_typ(t)?;

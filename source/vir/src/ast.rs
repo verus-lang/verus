@@ -945,7 +945,6 @@ pub enum ExprX {
     /// Phase 2: Update the original place to be equal to the prophecized value.
     /// The Expr argument here is the expression returned by the PhaseOne (of type &mut T)
     BorrowMutPhaseTwo(Place, Expr),
-    DerefMut(Expr),
     Resolve(Expr, Typ),
     HasResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.

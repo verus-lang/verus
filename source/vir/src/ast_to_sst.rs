@@ -2436,9 +2436,6 @@ pub(crate) fn expr_to_stm_opt(
             );
             expr_to_stm_opt(ctx, state, &expr)
         }
-        ExprX::DerefMut(_place) => {
-            panic!("DerefMut should have been removed in simplify");
-        }
         ExprX::HasResolved(e, typ) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
             let exp = unwrap_or_return_never!(exp, stms);

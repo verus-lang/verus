@@ -625,11 +625,6 @@ fn simplify_one_expr(
                 _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
         }
-        ExprX::DerefMut(e) => Ok(SpannedTyped::new(
-            &expr.span,
-            &expr.typ,
-            ExprX::Unary(UnaryOp::MutRefCurrent, e.clone()),
-        )),
         ExprX::BorrowMut(place) => {
             let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone()));
             let borrow_phase_one = SpannedTyped::new(

@@ -1696,13 +1696,6 @@ fn check_expr_handle_mut_arg(
             check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec)?;
             Ok(Mode::Exec)
         }
-        ExprX::DerefMut(e) => {
-            if outer_mode != Mode::Exec {
-                return Err(error(&expr.span, "deref can only be in exec mode"));
-            }
-            check_expr_has_mode(ctxt, record, typing, Mode::Exec, e, Mode::Exec)?;
-            Ok(Mode::Exec)
-        }
         ExprX::Resolve(e, _t) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use `resolve` in exec mode"));
