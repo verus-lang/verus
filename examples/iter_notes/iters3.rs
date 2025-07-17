@@ -1,11 +1,4 @@
-//extern crate vstd;
-//extern crate builtin;
-//extern crate builtin_macros;
-
-//#![feature(allocator_api)]
-
-#[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
-#[allow(unused_imports)]use vstd::prelude::*;
+use vstd::prelude::*;
 
 fn main() { }
 
@@ -82,8 +75,7 @@ trait ExactSizeIter: Iter {
         ;
 }
 
-#[verifier::broadcast_forall]
-proof fn reaches_reflexive<I: Iter>(i: I)
+broadcast proof fn reaches_reflexive<I: Iter>(i: I)
     requires
         i.inv(),
     ensures
@@ -92,8 +84,7 @@ proof fn reaches_reflexive<I: Iter>(i: I)
     i.reaches_reflexive()
 }
 
-#[verifier::broadcast_forall]
-proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2: I, i3: I)
+broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2: I, i3: I)
     requires
         i1.inv(),
         i2.inv(),
@@ -111,8 +102,8 @@ proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I, i2: I, i3: I
 struct MyVec<T>(Vec<T>);
 
 impl<T: Copy> MyVec<T> {
-    spec fn spec_len(&self) -> int;
-    spec fn spec_index(&self, i: int) -> T;
+    uninterp spec fn spec_len(&self) -> int;
+    uninterp spec fn spec_index(&self, i: int) -> T;
 
     #[verifier::external_body]
     fn len(&self) -> (r: usize)
@@ -356,7 +347,7 @@ impl<T: Iter> Iter for Skip3<T> {
 
     fn next(&mut self) -> (r: Option<Self::Item>) {
         if !self.has_started {
-            reveal(reaches_transitive_after_next_if_requested);
+            broadcast use reaches_transitive_after_next_if_requested;
             let _ = self.inner.next();
             let _ = self.inner.next();
             let _ = self.inner.next();
@@ -401,6 +392,7 @@ fn test_loop0(v: &MyVec<u8>) {
             iter.pos_back == iter.vec@.len(), // should be a for loop auto-invariant
         ensures
             s =~= v@,
+        decreases v@.len() - iter.outputs().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -426,6 +418,7 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
             iter.pos_back == iter.vec@.len(), // should be a for loop auto-invariant
             0 <= iter.outputs().len() <= v@.len(), // should be a for loop auto-invariant
             s =~= v@.take(iter.outputs().len() as int),
+        decreases v@.len() - iter.outputs().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -484,6 +477,7 @@ fn test3(v: &MyVec<u8>)
             i0 == Skip3::spec_new(Skip3::spec_new(v.spec_iter())), // should be a for loop auto-invariant
         ensures
             s =~= v@.skip(6),
+        decreases v@.len() - 6 - iter.outputs().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -512,6 +506,7 @@ fn test3_iso_false(v: &MyVec<u8>)
             iter.inner.inner.pos_back == iter.inner.inner.vec@.len(), // should be a for loop auto-invariant
             0 <= iter.outputs().len() <= v@.len() - 6, // should be a for loop auto-invariant
             s =~= v@.skip(6).take(iter.outputs().len() as int),
+        decreases v@.len() - 6 - iter.outputs().len(),
     {
         if let Some(r) = iter.next() {
             proof {
