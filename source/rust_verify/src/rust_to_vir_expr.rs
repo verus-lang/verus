@@ -1053,7 +1053,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     TypX::MutRef(t) => t.clone(),
                     _ => panic!("expected mut ref"),
                 };
-                Ok(bctx.spanned_typed_new(expr.span, &t, PlaceX::DerefMut(inner_place)))
+                Ok(ExprOrPlace::Place(bctx.spanned_typed_new(expr.span, &t, PlaceX::DerefMut(inner_place))))
             } else {
                 Ok(strip_vir_ref_decoration(inner_expr))
             }
