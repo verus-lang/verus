@@ -2051,8 +2051,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
                     let vir = mk_expr(mk_tuple_field_x(&vir_lhs, ts.len(), field))?;
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
                     return Ok(vir);
                 }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
@@ -2072,8 +2070,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     vir_lhs,
                 ),
             );
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
             Ok(vir)
         }
         ExprKind::If(cond, lhs, rhs) => {
