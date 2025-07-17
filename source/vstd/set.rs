@@ -114,7 +114,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     requires
         self.castable::<NEWFINITE>(),
     ensures
-        #[trigger] self.cast_finiteness::<NEWFINITE>().congruent(self)
+        (#[trigger] self.cast_finiteness::<NEWFINITE>()).congruent(self)
     ;
 
     #[verifier::inline]
@@ -123,27 +123,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             self.finite(),
     {
         self.cast_finiteness::<Finite>()
-    }
-
-    // TOOD(jonh): delete; broadcast the axiom
-    pub proof fn cast_to_finite(self)
-    requires self.finite()
-    ensures self.cast_finiteness::<Finite>().congruent(self)
-    {
-        self.cast_finiteness_properties::<Finite>();
-    }
-
-    // TOOD(jonh): delete; broadcast the axiom
-    pub broadcast proof fn lemma_to_finite_contains(self)
-        requires
-            self.finite(),
-        ensures
-            #![trigger(self.to_finite())]
-            forall|a|
-                self.contains(a) <==> #[trigger] self.to_finite().contains(a),
-            self.congruent(self.to_finite()),
-    {
-        self.cast_finiteness_properties::<Finite>();
     }
 
     // TOOD(jonh): delete; broadcast the axiom
@@ -233,6 +212,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         forall|a: A| self.contains(a) <==> s2.contains(a)
     }
 
+    // TODO delete and replace with broadcast use?
     pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
         self: GSet<A, FINITE>,
         s2: GSet<A, FINITE2>,
@@ -242,12 +222,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         ensures
             self.finite() <==> s2.finite(),
     {
-        if self.finite() {
-            self.cast_to_finite();
-        }
-        if s2.finite() {
-            s2.cast_to_finite();
-        }
+        broadcast use GSet::cast_finiteness_properties;
     }
 
     pub broadcast proof fn congruent_len<FINITE2: Finiteness>(
@@ -1297,9 +1272,8 @@ pub broadcast proof fn lemma_set_insert_finite<A, FINITE: Finiteness>(s: GSet<A,
     ensures
         #[trigger] s.insert(a).finite(),
 {
+    broadcast use GSet::cast_finiteness_properties;
     lemma_set_finite_from_type(s.to_finite().insert(a));
-    s.cast_to_finite();
-
     lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().insert(a).congruent_infiniteness(s.insert(a));
 }
@@ -1312,8 +1286,8 @@ pub broadcast proof fn lemma_set_remove_finite<A, FINITE: Finiteness>(s: GSet<A,
     ensures
         #[trigger] s.remove(a).finite(),
 {
+    broadcast use GSet::cast_finiteness_properties;
     lemma_set_finite_from_type(s.to_finite().remove(a));
-    s.cast_to_finite();
     lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().remove(a).congruent_infiniteness(s.remove(a));
 }
@@ -1618,8 +1592,8 @@ pub broadcast proof fn lemma_set_remove_len<A, FINITE: Finiteness>(s: GSet<A, FI
             0
         }),
 {
+    broadcast use GSet::cast_finiteness_properties;
     lemma_set_finite_from_type(s.to_finite().remove(a));
-    s.cast_to_finite();
     lemma_congruence_extensionality(s, s.to_finite());
     s.to_finite().remove(a).congruent_infiniteness(s.remove(a));
     lemma_set_insert_len(s.remove(a), a);
@@ -1703,7 +1677,7 @@ pub broadcast group group_set_lemmas {
     fold::group_set_lemmas_early,
     // ...should replace these lines (up to the blank), but it doesn't.
     // (verus #1616)
-    GSet::lemma_to_finite_contains,
+    GSet::cast_finiteness_properties,
     lemma_set_finite_from_type,
     lemma_set_empty,
     lemma_set_new,
