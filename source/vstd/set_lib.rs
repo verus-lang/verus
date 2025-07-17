@@ -559,7 +559,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
     pub open spec fn deep_finite(self) -> bool {
         &&& self.finite()
-        &&& forall |se| #![auto] self.contains(se) ==> se.finite()
+        &&& forall|se| #![auto] self.contains(se) ==> se.finite()
     }
 
     pub open spec fn deep_castable<F2: Finiteness>(self) -> bool {
@@ -579,27 +579,32 @@ impl<A> ISet<ISet<A>> {
     }
 
     pub proof fn infinite_flatten_preserves_finite_singleton(self)
-    requires self.deep_finite(), self.len() == 1
-    ensures self.infinite_flatten().finite()
+        requires
+            self.deep_finite(),
+            self.len() == 1,
+        ensures
+            self.infinite_flatten().finite(),
     {
         let se = self.choose();
-        assert forall |e| #![auto] self.infinite_flatten().contains(e) implies se.contains(e) by {
-            let ce = choose |ce| self.contains(ce) && ce.contains(e);
+        assert forall|e| #![auto] self.infinite_flatten().contains(e) implies se.contains(e) by {
+            let ce = choose|ce| self.contains(ce) && ce.contains(e);
             if ce != se {
                 lemma_len_subset(iset![ce, se], self);
-                assert( false );
+                assert(false);
             }
         }
-        assert forall |e| #![auto] se.contains(e) implies self.infinite_flatten().contains(e) by {
-            assert( self.contains(se) && se.contains(e) );  // witness to infinite_flatten.contains
+        assert forall|e| #![auto] se.contains(e) implies self.infinite_flatten().contains(e) by {
+            assert(self.contains(se) && se.contains(e));  // witness to infinite_flatten.contains
         }
         self.infinite_flatten().congruent_infiniteness(se);
     }
 
     pub proof fn infinite_flatten_preserves_finite(self)
-    requires self.deep_finite()
-    ensures self.infinite_flatten().finite()
-    decreases self.len()
+        requires
+            self.deep_finite(),
+        ensures
+            self.infinite_flatten().finite(),
+        decreases self.len(),
     {
         if self != Self::empty() {
             let se = self.choose();
@@ -610,30 +615,36 @@ impl<A> ISet<ISet<A>> {
 
             // Dig up the existential witnesses for infinite_flatten(). (SMT found three of four
             // cases by itself.)
-            assert(self.infinite_flatten() == rself.infinite_flatten().generic_union(singleton.infinite_flatten())) by {
-                assert forall |e| #![auto]
-                    self.infinite_flatten().contains(e)
-                    implies
-                    rself.infinite_flatten().generic_union(singleton.infinite_flatten()).contains(e)
-                by {
+            assert(self.infinite_flatten() == rself.infinite_flatten().generic_union(
+                singleton.infinite_flatten(),
+            )) by {
+                assert forall|e|
+                    #![auto]
+                    self.infinite_flatten().contains(
+                        e,
+                    ) implies rself.infinite_flatten().generic_union(
+                    singleton.infinite_flatten(),
+                ).contains(e) by {
                     let w = choose|w: ISet<A>| self.contains(w) && w.contains(e);
-                    if w==se {
-                        assert( singleton.contains(w) );    // witness
+                    if w == se {
+                        assert(singleton.contains(w));  // witness
                     }
                 }
             }
 
             lemma_set_generic_union_finite(rself.infinite_flatten(), singleton.infinite_flatten());
-            assert( self.infinite_flatten().finite());
+            assert(self.infinite_flatten().finite());
         } else {
             // the outer set is empty, so the flattened set is empty
-            assert( self.infinite_flatten() == GSet::<A, Infinite>::empty() ); // trigger lemma_set_empty_finite
+            assert(self.infinite_flatten() == GSet::<A, Infinite>::empty());  // trigger lemma_set_empty_finite
         }
     }
 
     pub proof fn infinite_flatten_ensures<FINITE: Finiteness>(self)
-        requires self.deep_castable::<FINITE>()
-        ensures self.infinite_flatten().castable::<FINITE>()
+        requires
+            self.deep_castable::<FINITE>(),
+        ensures
+            self.infinite_flatten().castable::<FINITE>(),
     {
         // castable isn't strong enough. self can be a finite set of infinite sets;
         // that's castable (to a (finite) Set of ISet), but infinite_flatten won't
@@ -647,7 +658,9 @@ impl<A> ISet<ISet<A>> {
 
     pub broadcast proof fn infinite_flatten_insert_union_commute(self, other: ISet<A>)
         ensures
-            self.infinite_flatten().union(other) =~= #[trigger] self.insert(other).infinite_flatten(),
+            self.infinite_flatten().union(other) =~= #[trigger] self.insert(
+                other,
+            ).infinite_flatten(),
     {
         broadcast use group_set_lemmas;
 
@@ -677,20 +690,22 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
 }
 
 impl<A, FINITE: Finiteness> GSet<A, FINITE> {
-    pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> GSet<GSet<B, FINITE>, FINITE>
-    {
-        self.map(|elem: A|
+    pub open spec fn apply_filter<B>(self, f: spec_fn(A) -> Option<B>) -> GSet<
+        GSet<B, FINITE>,
+        FINITE,
+    > {
+        self.map(
+            |elem: A|
                 match f(elem) {
                     Option::Some(r) => GSet::empty().insert(r),
                     Option::None => GSet::empty(),
-                }
+                },
         )
     }
 }
 
 // Prove it first in the infinite case
 impl<A> ISet<A> {
-
     /// Collecting all elements `b` where `f` returns `Some(b)`
     pub open spec fn infinite_filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> ISet<B> {
         self.apply_filter(f).infinite_flatten()
@@ -743,9 +758,15 @@ impl<A> ISet<A> {
     }
 
     /// `infinite_filter_map` and `union` commute.
-    pub broadcast proof fn lemma_infinite_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: ISet<A>)
+    pub broadcast proof fn lemma_infinite_filter_map_union<B>(
+        self,
+        f: spec_fn(A) -> Option<B>,
+        t: ISet<A>,
+    )
         ensures
-            #[trigger] self.union(t).infinite_filter_map(f) == self.infinite_filter_map(f).union(t.infinite_filter_map(f)),
+            #[trigger] self.union(t).infinite_filter_map(f) == self.infinite_filter_map(f).union(
+                t.infinite_filter_map(f),
+            ),
     {
         broadcast use group_set_lemmas;
 
@@ -816,72 +837,75 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.apply_filter(f).flatten()
     }
 
-    pub proof fn filter_map_congruence<B>(
-        self,
-        f: spec_fn(A) -> Option<B>,
-    )
-        ensures self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f))
+    pub proof fn filter_map_congruence<B>(self, f: spec_fn(A) -> Option<B>)
+        ensures
+            self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f)),
     {
         assert(self.castable::<FINITE>());  // trigger lemma_self_castable
         self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
-        self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<FINITE>();
+        self.apply_filter(f).to_infinite_deep().infinite_flatten().cast_finiteness_properties::<
+            FINITE,
+        >();
 
         self.to_infinite().apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();
 
-        assert forall |b: B| #![auto]
-            self.filter_map(f).contains(b)
-            implies
-            self.to_infinite().infinite_filter_map(f).contains(b)
-        by {
-            let a = choose |a: A| self.contains(a) && f(a) == Some(b);
-            assert(self.to_infinite().contains(a)); // witness
+        assert forall|b: B|
+            #![auto]
+            self.filter_map(f).contains(b) implies self.to_infinite().infinite_filter_map(
+            f,
+        ).contains(b) by {
+            let a = choose|a: A| self.contains(a) && f(a) == Some(b);
+            assert(self.to_infinite().contains(a));  // witness
 
             let sb = GSet::<B, Infinite>::empty().insert(b);
-            assert( self.to_infinite().apply_filter(f).contains(sb) ); // witness
+            assert(self.to_infinite().apply_filter(f).contains(sb));  // witness
         }
-        assert forall |b: B| #![auto]
-            self.to_infinite().infinite_filter_map(f).contains(b)
-            implies
-            self.filter_map(f).contains(b)
-        by {
-            let ss = choose |ss| #![auto] self.to_infinite().apply_filter(f).contains(ss) && ss.contains(b);    // one of the infinite sets of Bs
-                                                                            //
+        assert forall|b: B|
+            #![auto]
+            self.to_infinite().infinite_filter_map(f).contains(b) implies self.filter_map(
+            f,
+        ).contains(b) by {
+            let ss = choose|ss|
+                #![auto]
+                self.to_infinite().apply_filter(f).contains(ss) && ss.contains(b);  // one of the infinite sets of Bs
+            //
             let thingy6 = self.apply_filter(f);  // a FINITE set of FINITE sets of Bs
-            let thingy7 = thingy6.to_infinite_deep();   // an infinite set of infinite sets of Bs
+            let thingy7 = thingy6.to_infinite_deep();  // an infinite set of infinite sets of Bs
             let gs = GSet::empty().insert(b);
-            assert( ss == gs.to_infinite() );   // extn
+            assert(ss == gs.to_infinite());  // extn
             // witness to map inside to_infinite_deep
-            assert( thingy6.to_infinite().contains(gs) );
-            assert( thingy7.contains(ss) ); // trigger for infinite_flatten
+            assert(thingy6.to_infinite().contains(gs));
+            assert(thingy7.contains(ss));  // trigger for infinite_flatten
         }
     }
 
     // Can't broadcast because there's no trigger that covers variable FINITE. :v/
-    pub /*broadcast*/ proof fn lemma_filter_map_insert<B>(
-        s: Self,
-        f: spec_fn(A) -> Option<B>,
-        elem: A,
-    )
+    pub  /*broadcast*/
+     proof fn lemma_filter_map_insert<B>(s: Self, f: spec_fn(A) -> Option<B>, elem: A)
         ensures
             #[trigger] s.insert(elem).filter_map(f) == (match f(elem) {
                 Some(res) => s.filter_map(f).insert(res),
                 None => s.filter_map(f),
             }),
     {
-//         broadcast use GSet::flatten_finite;
+        //         broadcast use GSet::flatten_finite;
         assert(s.congruent(s.to_infinite()));
         GSet::lemma_infinite_filter_map_insert(s.to_infinite(), f, elem);
         assert(s.insert(elem).congruent(s.to_infinite().insert(elem)));
         s.filter_map_congruence(f);
         s.insert(elem).filter_map_congruence(f);
-        assert(s.insert(elem).filter_map(f).congruent(s.to_infinite().insert(elem).infinite_filter_map(f)));
+        assert(s.insert(elem).filter_map(f).congruent(
+            s.to_infinite().insert(elem).infinite_filter_map(f),
+        ));
         assert(s.filter_map(f).congruent(s.to_infinite().infinite_filter_map(f)));
 
     }
 
     pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
         ensures
-            #[trigger] self.generic_union(t).filter_map(f) == self.filter_map(f).generic_union(t.filter_map(f)),
+            #[trigger] self.generic_union(t).filter_map(f) == self.filter_map(f).generic_union(
+                t.filter_map(f),
+            ),
     {
         let iself = self.to_infinite();
         let it = t.to_infinite();
@@ -891,10 +915,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         t.filter_map_congruence(f);
 
         // not sure what we're triggering here, but it's needed to finish the proof
-        assert( self.filter_map(f).generic_union(t.filter_map(f))
-                .congruent(iself.infinite_filter_map(f).union(it.infinite_filter_map(f))) );
+        assert(self.filter_map(f).generic_union(t.filter_map(f)).congruent(
+            iself.infinite_filter_map(f).union(it.infinite_filter_map(f)),
+        ));
 
-        iself.lemma_infinite_filter_map_union(f, it);   // the underlying lemma we're trying to generalize
+        iself.lemma_infinite_filter_map_union(f, it);  // the underlying lemma we're trying to generalize
     }
 }
 
@@ -933,6 +958,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             #[trigger] self.all(p),
     {
         broadcast use group_set_lemmas;
+
     }
 }
 
