@@ -643,11 +643,6 @@ impl<A> ISet<ISet<A>> {
         // If self is deep_finite, then infinite_flatten will be finite.
         if self.deep_finite() {
             self.infinite_flatten_preserves_finite();
-            // we're casting from .finite(), so we're good now.
-//             self.infinite_flatten().lemma_finite_source_castable::<FINITE>();
-        } else {
-            // we're casting to FINITE=Infinite, so no worries.
-            self.infinite_flatten().lemma_infinite_target_castable::<FINITE>();
         }
     }
 
@@ -861,9 +856,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     )
         ensures self.filter_map(f).congruent(self.to_infinite().infinite_filter_map(f))
     {
-        broadcast use GSet::lemma_self_castable;
-        broadcast use GSet::lemma_to_infinite_castable;
-
         self.apply_filter_ensures::<_, FINITE>(f);
         self.apply_filter(f).to_infinite_deep_ensures::<FINITE>();
         self.apply_filter(f).to_infinite_deep().infinite_flatten_ensures::<FINITE>();

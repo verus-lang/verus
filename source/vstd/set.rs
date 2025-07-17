@@ -125,8 +125,8 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.cast_finiteness::<Finite>()
     }
 
-    // TOOD(jonh): collect into a finite-generic broadcast collection?
     /// Identity rule for casting: It's always okay to cast back to the same type we started out as.
+    /// (Only relevant for code that's generic over Finiteness.)
     pub broadcast proof fn lemma_self_castable(self)
         ensures #[trigger] self.castable::<FINITE>() {
         if FINITE::type_is_finite() {
@@ -135,14 +135,8 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.cast_finiteness_properties::<FINITE>();
     }
 
-    // TOOD(jonh): delete; broadcast the axiom
-    pub broadcast proof fn lemma_infinite_target_castable<FGOAL: Finiteness>(self)
-    requires !FGOAL::type_is_finite(),
-    ensures #[trigger] self.castable::<FGOAL>(),
-    {
-        self.cast_finiteness_properties::<FGOAL>();
-    }
-
+    /// to_infinite "remembers" that it can be cast back to its original Finiteness.
+    /// (Only relevant for code that's generic over Finiteness.)
     pub broadcast proof fn lemma_to_infinite_castable(self)
         requires self.castable::<FINITE>(),
         ensures #[trigger] self.to_infinite().castable::<FINITE>()
@@ -204,7 +198,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         forall|a: A| self.contains(a) <==> s2.contains(a)
     }
 
-    // TODO delete and replace with broadcast use?
     pub broadcast proof fn congruent_infiniteness<FINITE2: Finiteness>(
         self: GSet<A, FINITE>,
         s2: GSet<A, FINITE2>,
@@ -691,7 +684,7 @@ pub mod fold {
         ensures
             fold_graph(z, f, s.insert(a), f(y, a), d + 1),
     {
-        broadcast use {group_set_lemmas_early, GSet::congruent_infiniteness};
+        broadcast use {group_set_lemmas_early, GSet::cast_finiteness_properties};
 
         reveal(fold_graph);
         let _ = trigger_fold_graph(y, a);
@@ -858,7 +851,7 @@ pub mod fold {
         ensures
             s.finite(),
     {
-        broadcast use {group_set_lemmas_early, GSet::congruent_infiniteness};
+        broadcast use {group_set_lemmas_early, GSet::cast_finiteness_properties};
 
         let pred = |s: GSet<A, FINITE>, y, d| s.finite();
         lemma_fold_graph_induct::<A, FINITE, B>(z, f, s, y, d, pred);
@@ -1670,6 +1663,8 @@ pub broadcast group group_set_lemmas {
     // ...should replace these lines (up to the blank), but it doesn't.
     // (verus #1616)
     GSet::cast_finiteness_properties,
+    GSet::lemma_self_castable,
+    GSet::lemma_to_infinite_castable,
     lemma_set_finite_from_type,
     lemma_set_empty,
     lemma_set_new,
