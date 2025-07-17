@@ -8,8 +8,8 @@ use crate::precedence::Precedence;
 use crate::stmt;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::{
+use verus_syn::punctuated::Punctuated;
+use verus_syn::{
     token, Arm, Attribute, BinOp, Block, Expr, ExprArray, ExprAssign, ExprAsync, ExprAwait,
     ExprBinary, ExprBlock, ExprBreak, ExprCall, ExprCast, ExprClosure, ExprConst, ExprContinue,
     ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprInfer, ExprLet, ExprLit, ExprLoop,
@@ -99,7 +99,7 @@ impl Printer {
         }
     }
 
-    pub fn expr_view(&mut self, expr: &syn_verus::View) {
+    pub fn expr_view(&mut self, expr: &verus_syn::View) {
         // Similar to expr_tyr
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.expr, FixupContext::NONE);
@@ -116,50 +116,50 @@ impl Printer {
         }
     }
 
-    pub fn expr_is(&mut self, expr: &syn_verus::ExprIs) {
+    pub fn expr_is(&mut self, expr: &verus_syn::ExprIs) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word(" is ");
         self.ident(&expr.variant_ident);
     }
 
-    pub fn expr_isnot(&mut self, expr: &syn_verus::ExprIsNot) {
+    pub fn expr_isnot(&mut self, expr: &verus_syn::ExprIsNot) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word(" !is ");
         self.ident(&expr.variant_ident);
     }
 
-    pub fn expr_has(&mut self, expr: &syn_verus::ExprHas) {
+    pub fn expr_has(&mut self, expr: &verus_syn::ExprHas) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" has ");
         self.expr(&expr.rhs, FixupContext::NONE);
     }
 
-    pub fn expr_hasnot(&mut self, expr: &syn_verus::ExprHasNot) {
+    pub fn expr_hasnot(&mut self, expr: &verus_syn::ExprHasNot) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" !has ");
         self.expr(&expr.rhs, FixupContext::NONE);
     }
 
-    pub fn expr_matches(&mut self, expr: &syn_verus::ExprMatches) {
+    pub fn expr_matches(&mut self, expr: &verus_syn::ExprMatches) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" matches ");
         self.pat(&expr.pat);
         match &expr.op_expr {
             None => {}
-            Some(syn_verus::MatchesOpExpr { op_token, rhs }) => {
+            Some(verus_syn::MatchesOpExpr { op_token, rhs }) => {
                 match op_token {
-                    syn_verus::MatchesOpToken::Implies(..) => {
+                    verus_syn::MatchesOpToken::Implies(..) => {
                         self.word(" ==> ");
                     }
-                    syn_verus::MatchesOpToken::AndAnd(..) => {
+                    verus_syn::MatchesOpToken::AndAnd(..) => {
                         self.word(" && ");
                     }
-                    syn_verus::MatchesOpToken::BigAnd => {
+                    verus_syn::MatchesOpToken::BigAnd => {
                         self.word(" &&& ");
                     }
                 }
@@ -168,7 +168,7 @@ impl Printer {
         }
     }
 
-    pub fn expr_get_field(&mut self, expr: &syn_verus::ExprGetField) {
+    pub fn expr_get_field(&mut self, expr: &verus_syn::ExprGetField) {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word("->");

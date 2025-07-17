@@ -6,11 +6,11 @@ use std::{
 };
 
 use serde::Serialize;
-use syn_verus::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 use tabled::settings::{
     Alignment, Modify, Style,
     object::{Columns, Rows},
 };
+use verus_syn::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 
 struct Config {
     print_all: bool,
@@ -111,24 +111,24 @@ trait ToCodeKind {
     fn to_code_kind(&self) -> CodeKind;
 }
 
-impl ToCodeKind for syn_verus::DataMode {
+impl ToCodeKind for verus_syn::DataMode {
     fn to_code_kind(&self) -> CodeKind {
         match self {
-            syn_verus::DataMode::Ghost(_) => CodeKind::Spec,
-            syn_verus::DataMode::Tracked(_) => CodeKind::Proof,
-            syn_verus::DataMode::Exec(_) => CodeKind::Exec,
-            syn_verus::DataMode::Default => CodeKind::Exec,
+            verus_syn::DataMode::Ghost(_) => CodeKind::Spec,
+            verus_syn::DataMode::Tracked(_) => CodeKind::Proof,
+            verus_syn::DataMode::Exec(_) => CodeKind::Exec,
+            verus_syn::DataMode::Default => CodeKind::Exec,
         }
     }
 }
 
-impl ToCodeKind for syn_verus::FnMode {
+impl ToCodeKind for verus_syn::FnMode {
     fn to_code_kind(&self) -> CodeKind {
         match self {
-            syn_verus::FnMode::Spec(_) | syn_verus::FnMode::SpecChecked(_) => CodeKind::Spec,
+            verus_syn::FnMode::Spec(_) | verus_syn::FnMode::SpecChecked(_) => CodeKind::Spec,
             // REVIEW: ProofAxiom may need to be treatead as trusted, with an explicit LineContent entry
-            syn_verus::FnMode::Proof(_) | syn_verus::FnMode::ProofAxiom(_) => CodeKind::Proof,
-            syn_verus::FnMode::Exec(_) | syn_verus::FnMode::Default => CodeKind::Exec,
+            verus_syn::FnMode::Proof(_) | verus_syn::FnMode::ProofAxiom(_) => CodeKind::Proof,
+            verus_syn::FnMode::Exec(_) | verus_syn::FnMode::Default => CodeKind::Exec,
         }
     }
 }
@@ -285,45 +285,45 @@ impl<'f> Visitor<'f> {
     }
 }
 
-impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
-    fn visit_assert(&mut self, i: &'ast syn_verus::Assert) {
+impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
+    fn visit_assert(&mut self, i: &'ast verus_syn::Assert) {
         self.in_proof_directive += 1;
         self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
-        syn_verus::visit::visit_assert(self, i);
+        verus_syn::visit::visit_assert(self, i);
         self.in_proof_directive -= 1;
     }
 
-    fn visit_assert_forall(&mut self, i: &'ast syn_verus::AssertForall) {
+    fn visit_assert_forall(&mut self, i: &'ast verus_syn::AssertForall) {
         self.in_proof_directive += 1;
         self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
-        syn_verus::visit::visit_assert_forall(self, i);
+        verus_syn::visit::visit_assert_forall(self, i);
         self.in_proof_directive -= 1;
     }
 
-    fn visit_assume(&mut self, i: &'ast syn_verus::Assume) {
+    fn visit_assume(&mut self, i: &'ast verus_syn::Assume) {
         self.in_proof_directive += 1;
         self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
-        syn_verus::visit::visit_assume(self, i);
+        verus_syn::visit::visit_assume(self, i);
         self.in_proof_directive -= 1;
     }
 
     #[allow(unreachable_code)]
-    fn visit_data(&mut self, _i: &'ast syn_verus::Data) {
+    fn visit_data(&mut self, _i: &'ast verus_syn::Data) {
         panic!("data unsupported");
-        syn_verus::visit::visit_data(self, _i);
+        verus_syn::visit::visit_data(self, _i);
     }
 
-    fn visit_decreases(&mut self, i: &'ast syn_verus::Decreases) {
+    fn visit_decreases(&mut self, i: &'ast verus_syn::Decreases) {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
-        syn_verus::visit::visit_decreases(self, i);
+        verus_syn::visit::visit_decreases(self, i);
     }
 
-    fn visit_ensures(&mut self, i: &'ast syn_verus::Ensures) {
+    fn visit_ensures(&mut self, i: &'ast verus_syn::Ensures) {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
-        syn_verus::visit::visit_ensures(self, i);
+        verus_syn::visit::visit_ensures(self, i);
     }
 
-    fn visit_block(&mut self, i: &'ast syn_verus::Block) {
+    fn visit_block(&mut self, i: &'ast verus_syn::Block) {
         if let Some(content_code_kind) = self.in_body {
             if self.in_proof_directive == 0 {
                 self.mark(
@@ -333,10 +333,10 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 )
             }
         }
-        syn_verus::visit::visit_block(self, i);
+        verus_syn::visit::visit_block(self, i);
     }
 
-    fn visit_expr(&mut self, i: &'ast syn_verus::Expr) {
+    fn visit_expr(&mut self, i: &'ast verus_syn::Expr) {
         if let Some(content_code_kind) = self.in_body {
             if self.in_proof_directive == 0 {
                 self.mark(
@@ -347,8 +347,8 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             }
         }
         let entered_proof_directive = match i {
-            syn_verus::Expr::Unary(syn_verus::ExprUnary {
-                op: syn_verus::UnOp::Proof(..),
+            verus_syn::Expr::Unary(verus_syn::ExprUnary {
+                op: verus_syn::UnOp::Proof(..),
                 attrs: _,
                 expr,
             }) => {
@@ -358,19 +358,19 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             }
             _ => false,
         };
-        syn_verus::visit::visit_expr(self, i);
+        verus_syn::visit::visit_expr(self, i);
         if entered_proof_directive {
             self.in_proof_directive -= 1;
         }
     }
 
-    fn visit_expr_block(&mut self, i: &'ast syn_verus::ExprBlock) {
-        syn_verus::visit::visit_expr_block(self, i);
+    fn visit_expr_block(&mut self, i: &'ast verus_syn::ExprBlock) {
+        verus_syn::visit::visit_expr_block(self, i);
     }
 
-    fn visit_expr_call(&mut self, i: &'ast syn_verus::ExprCall) {
+    fn visit_expr_call(&mut self, i: &'ast verus_syn::ExprCall) {
         // Ghost / Tracked ?
-        if let syn_verus::Expr::Path(path) = &*i.func {
+        if let verus_syn::Expr::Path(path) = &*i.func {
             if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                 .then(|| path.path.segments[0].ident.to_string())
                 .and_then(|c| match c.as_str() {
@@ -393,15 +393,15 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 return;
             }
         }
-        syn_verus::visit::visit_expr_call(self, i);
+        verus_syn::visit::visit_expr_call(self, i);
     }
 
-    fn visit_expr_closure(&mut self, i: &'ast syn_verus::ExprClosure) {
+    fn visit_expr_closure(&mut self, i: &'ast verus_syn::ExprClosure) {
         // TODO
-        syn_verus::visit::visit_expr_closure(self, i);
+        verus_syn::visit::visit_expr_closure(self, i);
     }
 
-    fn visit_expr_loop(&mut self, i: &'ast syn_verus::ExprLoop) {
+    fn visit_expr_loop(&mut self, i: &'ast verus_syn::ExprLoop) {
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -436,7 +436,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         self.visit_block(&i.body);
     }
 
-    fn visit_expr_while(&mut self, i: &'ast syn_verus::ExprWhile) {
+    fn visit_expr_while(&mut self, i: &'ast verus_syn::ExprWhile) {
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -472,7 +472,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         self.visit_block(&i.body);
     }
 
-    fn visit_impl_item_fn(&mut self, i: &'ast syn_verus::ImplItemFn) {
+    fn visit_impl_item_fn(&mut self, i: &'ast verus_syn::ImplItemFn) {
         let content_code_kind = i.sig.mode.to_code_kind();
         let exit = self.item_attr_enter(&i.attrs);
         let code_kind = self.mode_or_trusted(content_code_kind);
@@ -485,41 +485,41 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         exit.exit(self);
     }
 
-    fn visit_item(&mut self, i: &'ast syn_verus::Item) {
+    fn visit_item(&mut self, i: &'ast verus_syn::Item) {
         match i {
-            syn_verus::Item::Impl(_) => {
+            verus_syn::Item::Impl(_) => {
                 self.mark_content(i, LineContent::Impl);
             }
             _ => (),
         }
-        syn_verus::visit::visit_item(self, i);
+        verus_syn::visit::visit_item(self, i);
     }
 
-    fn visit_item_const(&mut self, i: &'ast syn_verus::ItemConst) {
+    fn visit_item_const(&mut self, i: &'ast verus_syn::ItemConst) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark(
             i,
             self.mode_or_trusted(i.mode.to_code_kind()),
             LineContent::Const(i.mode.to_code_kind()),
         );
-        syn_verus::visit::visit_item_const(self, i);
+        verus_syn::visit::visit_item_const(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_enum(&mut self, i: &'ast syn_verus::ItemEnum) {
+    fn visit_item_enum(&mut self, i: &'ast verus_syn::ItemEnum) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark(&i, self.mode_or_trusted(i.mode.to_code_kind()), LineContent::DatatypeDecl);
-        syn_verus::visit::visit_item_enum(self, i);
+        verus_syn::visit::visit_item_enum(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_extern_crate(&mut self, i: &'ast syn_verus::ItemExternCrate) {
+    fn visit_item_extern_crate(&mut self, i: &'ast verus_syn::ItemExternCrate) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_extern_crate(self, i);
+        verus_syn::visit::visit_item_extern_crate(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_fn(&mut self, i: &'ast syn_verus::ItemFn) {
+    fn visit_item_fn(&mut self, i: &'ast verus_syn::ItemFn) {
         let exit = self.item_attr_enter(&i.attrs);
         let content_code_kind = self.fn_code_kind(i.sig.mode.to_code_kind());
         let code_kind = self.mode_or_trusted(content_code_kind);
@@ -532,56 +532,56 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         exit.exit(self);
     }
 
-    fn visit_item_foreign_mod(&mut self, i: &'ast syn_verus::ItemForeignMod) {
+    fn visit_item_foreign_mod(&mut self, i: &'ast verus_syn::ItemForeignMod) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_foreign_mod(self, i);
+        verus_syn::visit::visit_item_foreign_mod(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_impl(&mut self, i: &'ast syn_verus::ItemImpl) {
+    fn visit_item_impl(&mut self, i: &'ast verus_syn::ItemImpl) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_impl(self, i);
+        verus_syn::visit::visit_item_impl(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_macro(&mut self, i: &'ast syn_verus::ItemMacro) {
-        syn_verus::visit::visit_item_macro(self, i);
+    fn visit_item_macro(&mut self, i: &'ast verus_syn::ItemMacro) {
+        verus_syn::visit::visit_item_macro(self, i);
     }
 
-    fn visit_item_mod(&mut self, i: &'ast syn_verus::ItemMod) {
+    fn visit_item_mod(&mut self, i: &'ast verus_syn::ItemMod) {
         let exit = self.item_attr_enter(&i.attrs);
         if i.content.is_none() {
             self.mark(&i, CodeKind::Directives, LineContent::Directive);
         }
-        syn_verus::visit::visit_item_mod(self, i);
+        verus_syn::visit::visit_item_mod(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_static(&mut self, i: &'ast syn_verus::ItemStatic) {
+    fn visit_item_static(&mut self, i: &'ast verus_syn::ItemStatic) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_static(self, i);
+        verus_syn::visit::visit_item_static(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_struct(&mut self, i: &'ast syn_verus::ItemStruct) {
+    fn visit_item_struct(&mut self, i: &'ast verus_syn::ItemStruct) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark(&i, self.mode_or_trusted(i.mode.to_code_kind()), LineContent::DatatypeDecl);
-        syn_verus::visit::visit_item_struct(self, i);
+        verus_syn::visit::visit_item_struct(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_trait(&mut self, i: &'ast syn_verus::ItemTrait) {
+    fn visit_item_trait(&mut self, i: &'ast verus_syn::ItemTrait) {
         let exit = self.item_attr_enter(&i.attrs);
         self.mark_content(&i, LineContent::Trait);
         if self.trusted > 0 {
             self.mark_kind(&i, CodeKind::Trusted);
         }
-        syn_verus::visit::visit_item_trait(self, i);
+        verus_syn::visit::visit_item_trait(self, i);
         exit.exit(self);
     }
 
-    fn visit_field(&mut self, i: &'ast syn_verus::Field) {
-        if let syn_verus::Type::Path(path) = &i.ty {
+    fn visit_field(&mut self, i: &'ast verus_syn::Field) {
+        if let verus_syn::Type::Path(path) = &i.ty {
             if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                 .then(|| path.path.segments[0].ident.to_string())
                 .and_then(|c| match c.as_str() {
@@ -600,75 +600,75 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 return;
             }
         }
-        syn_verus::visit::visit_field(self, i);
+        verus_syn::visit::visit_field(self, i);
     }
 
-    fn visit_item_trait_alias(&mut self, i: &'ast syn_verus::ItemTraitAlias) {
+    fn visit_item_trait_alias(&mut self, i: &'ast verus_syn::ItemTraitAlias) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_trait_alias(self, i);
+        verus_syn::visit::visit_item_trait_alias(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_type(&mut self, i: &'ast syn_verus::ItemType) {
+    fn visit_item_type(&mut self, i: &'ast verus_syn::ItemType) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_type(self, i);
+        verus_syn::visit::visit_item_type(self, i);
         exit.exit(self);
     }
 
-    fn visit_item_use(&mut self, i: &'ast syn_verus::ItemUse) {
+    fn visit_item_use(&mut self, i: &'ast verus_syn::ItemUse) {
         let exit = self.item_attr_enter(&i.attrs);
-        syn_verus::visit::visit_item_use(self, i);
+        verus_syn::visit::visit_item_use(self, i);
         exit.exit(self);
     }
 
-    fn visit_label(&mut self, i: &'ast syn_verus::Label) {
-        syn_verus::visit::visit_label(self, i);
+    fn visit_label(&mut self, i: &'ast verus_syn::Label) {
+        verus_syn::visit::visit_label(self, i);
     }
 
-    fn visit_lifetime(&mut self, i: &'ast syn_verus::Lifetime) {
-        syn_verus::visit::visit_lifetime(self, i);
+    fn visit_lifetime(&mut self, i: &'ast verus_syn::Lifetime) {
+        verus_syn::visit::visit_lifetime(self, i);
     }
 
-    fn visit_lit(&mut self, i: &'ast syn_verus::Lit) {
-        syn_verus::visit::visit_lit(self, i);
+    fn visit_lit(&mut self, i: &'ast verus_syn::Lit) {
+        verus_syn::visit::visit_lit(self, i);
     }
 
-    fn visit_lit_bool(&mut self, i: &'ast syn_verus::LitBool) {
-        syn_verus::visit::visit_lit_bool(self, i);
+    fn visit_lit_bool(&mut self, i: &'ast verus_syn::LitBool) {
+        verus_syn::visit::visit_lit_bool(self, i);
     }
 
-    fn visit_lit_byte(&mut self, i: &'ast syn_verus::LitByte) {
-        syn_verus::visit::visit_lit_byte(self, i);
+    fn visit_lit_byte(&mut self, i: &'ast verus_syn::LitByte) {
+        verus_syn::visit::visit_lit_byte(self, i);
     }
 
-    fn visit_lit_byte_str(&mut self, i: &'ast syn_verus::LitByteStr) {
-        syn_verus::visit::visit_lit_byte_str(self, i);
+    fn visit_lit_byte_str(&mut self, i: &'ast verus_syn::LitByteStr) {
+        verus_syn::visit::visit_lit_byte_str(self, i);
     }
 
-    fn visit_lit_char(&mut self, i: &'ast syn_verus::LitChar) {
-        syn_verus::visit::visit_lit_char(self, i);
+    fn visit_lit_char(&mut self, i: &'ast verus_syn::LitChar) {
+        verus_syn::visit::visit_lit_char(self, i);
     }
 
-    fn visit_lit_float(&mut self, i: &'ast syn_verus::LitFloat) {
-        syn_verus::visit::visit_lit_float(self, i);
+    fn visit_lit_float(&mut self, i: &'ast verus_syn::LitFloat) {
+        verus_syn::visit::visit_lit_float(self, i);
     }
 
-    fn visit_lit_int(&mut self, i: &'ast syn_verus::LitInt) {
-        syn_verus::visit::visit_lit_int(self, i);
+    fn visit_lit_int(&mut self, i: &'ast verus_syn::LitInt) {
+        verus_syn::visit::visit_lit_int(self, i);
     }
 
-    fn visit_lit_str(&mut self, i: &'ast syn_verus::LitStr) {
-        syn_verus::visit::visit_lit_str(self, i);
+    fn visit_lit_str(&mut self, i: &'ast verus_syn::LitStr) {
+        verus_syn::visit::visit_lit_str(self, i);
     }
 
-    fn visit_local(&mut self, i: &'ast syn_verus::Local) {
+    fn visit_local(&mut self, i: &'ast verus_syn::Local) {
         if i.ghost.is_some() || i.tracked.is_some() {
             self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofBinding);
         }
-        syn_verus::visit::visit_local(self, i);
+        verus_syn::visit::visit_local(self, i);
     }
 
-    fn visit_macro(&mut self, i: &'ast syn_verus::Macro) {
+    fn visit_macro(&mut self, i: &'ast verus_syn::Macro) {
         let mut entered_state_machine_macro = false;
         let mut entered_struct_with_invariants = false;
         let outer_last_segment = i.path.segments.last().map(|s| s.ident.to_string());
@@ -676,7 +676,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             self.mark(i, self.mode_or_trusted(CodeKind::Definitions), LineContent::MacroDefinition);
         } else if outer_last_segment == Some("verus".into()) {
             let source_toks = &i.tokens;
-            let macro_content: File = syn_verus::parse2(source_toks.clone())
+            let macro_content: File = verus_syn::parse2(source_toks.clone())
                 .map_err(|e| {
                     dbg!(&e.span().start(), &e.span().end());
                     format!("failed to parse file macro contents: {} {:?}", e, e.span())
@@ -720,13 +720,13 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                             continue;
                         }
                         // let mut next_t = g_stream.next();
-                        let content_as_file: Option<syn_verus::File> =
-                            syn_verus::parse2(proc_macro2::TokenStream::from_iter(g_stream)).ok();
+                        let content_as_file: Option<verus_syn::File> =
+                            verus_syn::parse2(proc_macro2::TokenStream::from_iter(g_stream)).ok();
                         if let Some(content_as_file) = content_as_file {
                             // self.visit_file(&content_as_file);
                             for item in content_as_file.items {
                                 match item {
-                                    syn_verus::Item::Macro(m) => {
+                                    verus_syn::Item::Macro(m) => {
                                         let last_segment =
                                             m.mac.path.segments.last().map(|s| s.ident.to_string());
                                         if last_segment == Some("transition".into())
@@ -783,7 +783,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 }
                 !found_braced_group
             }));
-            let content_as_file: Option<syn_verus::File> = syn_verus::parse2(s).ok();
+            let content_as_file: Option<verus_syn::File> = verus_syn::parse2(s).ok();
             if let Some(content_as_file) = content_as_file {
                 for item in content_as_file.items {
                     self.visit_item(&item);
@@ -828,8 +828,8 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 match tok.clone() {
                     proc_macro2::TokenTree::Group(g) => {
                         if g.delimiter() == proc_macro2::Delimiter::Brace {
-                            let content_as_block: Option<syn_verus::Block> =
-                                syn_verus::parse2(tok.into()).ok();
+                            let content_as_block: Option<verus_syn::Block> =
+                                verus_syn::parse2(tok.into()).ok();
                             if let Some(content_as_block) = content_as_block {
                                 self.visit_block(&content_as_block);
                             }
@@ -839,7 +839,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                 }
             }
         }
-        syn_verus::visit::visit_macro(self, i);
+        verus_syn::visit::visit_macro(self, i);
         if entered_state_machine_macro {
             self.in_state_machine_macro -= 1;
             self.inside_verus_macro_or_verify_or_consider -= 1;
@@ -849,182 +849,182 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         }
     }
 
-    fn visit_macro_delimiter(&mut self, i: &'ast syn_verus::MacroDelimiter) {
-        syn_verus::visit::visit_macro_delimiter(self, i);
+    fn visit_macro_delimiter(&mut self, i: &'ast verus_syn::MacroDelimiter) {
+        verus_syn::visit::visit_macro_delimiter(self, i);
     }
 
-    fn visit_member(&mut self, i: &'ast syn_verus::Member) {
-        syn_verus::visit::visit_member(self, i);
+    fn visit_member(&mut self, i: &'ast verus_syn::Member) {
+        verus_syn::visit::visit_member(self, i);
     }
 
-    fn visit_meta(&mut self, i: &'ast syn_verus::Meta) {
-        syn_verus::visit::visit_meta(self, i);
+    fn visit_meta(&mut self, i: &'ast verus_syn::Meta) {
+        verus_syn::visit::visit_meta(self, i);
     }
 
-    fn visit_meta_list(&mut self, i: &'ast syn_verus::MetaList) {
-        syn_verus::visit::visit_meta_list(self, i);
+    fn visit_meta_list(&mut self, i: &'ast verus_syn::MetaList) {
+        verus_syn::visit::visit_meta_list(self, i);
     }
 
-    fn visit_meta_name_value(&mut self, i: &'ast syn_verus::MetaNameValue) {
-        syn_verus::visit::visit_meta_name_value(self, i);
+    fn visit_meta_name_value(&mut self, i: &'ast verus_syn::MetaNameValue) {
+        verus_syn::visit::visit_meta_name_value(self, i);
     }
 
-    fn visit_mode(&mut self, i: &'ast syn_verus::Mode) {
-        syn_verus::visit::visit_mode(self, i);
+    fn visit_mode(&mut self, i: &'ast verus_syn::Mode) {
+        verus_syn::visit::visit_mode(self, i);
     }
 
-    fn visit_mode_exec(&mut self, i: &'ast syn_verus::ModeExec) {
-        syn_verus::visit::visit_mode_exec(self, i);
+    fn visit_mode_exec(&mut self, i: &'ast verus_syn::ModeExec) {
+        verus_syn::visit::visit_mode_exec(self, i);
     }
 
-    fn visit_mode_ghost(&mut self, i: &'ast syn_verus::ModeGhost) {
-        syn_verus::visit::visit_mode_ghost(self, i);
+    fn visit_mode_ghost(&mut self, i: &'ast verus_syn::ModeGhost) {
+        verus_syn::visit::visit_mode_ghost(self, i);
     }
 
-    fn visit_mode_proof(&mut self, i: &'ast syn_verus::ModeProof) {
-        syn_verus::visit::visit_mode_proof(self, i);
+    fn visit_mode_proof(&mut self, i: &'ast verus_syn::ModeProof) {
+        verus_syn::visit::visit_mode_proof(self, i);
     }
 
-    fn visit_mode_spec(&mut self, i: &'ast syn_verus::ModeSpec) {
-        syn_verus::visit::visit_mode_spec(self, i);
+    fn visit_mode_spec(&mut self, i: &'ast verus_syn::ModeSpec) {
+        verus_syn::visit::visit_mode_spec(self, i);
     }
 
-    fn visit_mode_spec_checked(&mut self, i: &'ast syn_verus::ModeSpecChecked) {
-        syn_verus::visit::visit_mode_spec_checked(self, i);
+    fn visit_mode_spec_checked(&mut self, i: &'ast verus_syn::ModeSpecChecked) {
+        verus_syn::visit::visit_mode_spec_checked(self, i);
     }
 
-    fn visit_mode_tracked(&mut self, i: &'ast syn_verus::ModeTracked) {
-        syn_verus::visit::visit_mode_tracked(self, i);
+    fn visit_mode_tracked(&mut self, i: &'ast verus_syn::ModeTracked) {
+        verus_syn::visit::visit_mode_tracked(self, i);
     }
 
-    fn visit_open(&mut self, i: &'ast syn_verus::Open) {
-        syn_verus::visit::visit_open(self, i);
+    fn visit_open(&mut self, i: &'ast verus_syn::Open) {
+        verus_syn::visit::visit_open(self, i);
     }
 
-    fn visit_open_restricted(&mut self, i: &'ast syn_verus::OpenRestricted) {
-        syn_verus::visit::visit_open_restricted(self, i);
+    fn visit_open_restricted(&mut self, i: &'ast verus_syn::OpenRestricted) {
+        verus_syn::visit::visit_open_restricted(self, i);
     }
 
     fn visit_parenthesized_generic_arguments(
         &mut self,
-        i: &'ast syn_verus::ParenthesizedGenericArguments,
+        i: &'ast verus_syn::ParenthesizedGenericArguments,
     ) {
-        syn_verus::visit::visit_parenthesized_generic_arguments(self, i);
+        verus_syn::visit::visit_parenthesized_generic_arguments(self, i);
     }
 
-    fn visit_pat(&mut self, i: &'ast syn_verus::Pat) {
-        syn_verus::visit::visit_pat(self, i);
+    fn visit_pat(&mut self, i: &'ast verus_syn::Pat) {
+        verus_syn::visit::visit_pat(self, i);
     }
 
-    fn visit_pat_ident(&mut self, i: &'ast syn_verus::PatIdent) {
-        syn_verus::visit::visit_pat_ident(self, i);
+    fn visit_pat_ident(&mut self, i: &'ast verus_syn::PatIdent) {
+        verus_syn::visit::visit_pat_ident(self, i);
     }
 
-    fn visit_pat_or(&mut self, i: &'ast syn_verus::PatOr) {
-        syn_verus::visit::visit_pat_or(self, i);
+    fn visit_pat_or(&mut self, i: &'ast verus_syn::PatOr) {
+        verus_syn::visit::visit_pat_or(self, i);
     }
 
-    fn visit_pat_slice(&mut self, i: &'ast syn_verus::PatSlice) {
-        syn_verus::visit::visit_pat_slice(self, i);
+    fn visit_pat_slice(&mut self, i: &'ast verus_syn::PatSlice) {
+        verus_syn::visit::visit_pat_slice(self, i);
     }
 
-    fn visit_pat_struct(&mut self, i: &'ast syn_verus::PatStruct) {
-        syn_verus::visit::visit_pat_struct(self, i);
+    fn visit_pat_struct(&mut self, i: &'ast verus_syn::PatStruct) {
+        verus_syn::visit::visit_pat_struct(self, i);
     }
 
-    fn visit_pat_tuple(&mut self, i: &'ast syn_verus::PatTuple) {
-        syn_verus::visit::visit_pat_tuple(self, i);
+    fn visit_pat_tuple(&mut self, i: &'ast verus_syn::PatTuple) {
+        verus_syn::visit::visit_pat_tuple(self, i);
     }
 
-    fn visit_pat_tuple_struct(&mut self, i: &'ast syn_verus::PatTupleStruct) {
-        syn_verus::visit::visit_pat_tuple_struct(self, i);
+    fn visit_pat_tuple_struct(&mut self, i: &'ast verus_syn::PatTupleStruct) {
+        verus_syn::visit::visit_pat_tuple_struct(self, i);
     }
 
-    fn visit_pat_type(&mut self, i: &'ast syn_verus::PatType) {
-        syn_verus::visit::visit_pat_type(self, i);
+    fn visit_pat_type(&mut self, i: &'ast verus_syn::PatType) {
+        verus_syn::visit::visit_pat_type(self, i);
     }
 
-    fn visit_pat_wild(&mut self, i: &'ast syn_verus::PatWild) {
-        syn_verus::visit::visit_pat_wild(self, i);
+    fn visit_pat_wild(&mut self, i: &'ast verus_syn::PatWild) {
+        verus_syn::visit::visit_pat_wild(self, i);
     }
 
-    fn visit_path(&mut self, i: &'ast syn_verus::Path) {
-        syn_verus::visit::visit_path(self, i);
+    fn visit_path(&mut self, i: &'ast verus_syn::Path) {
+        verus_syn::visit::visit_path(self, i);
     }
 
-    fn visit_path_arguments(&mut self, i: &'ast syn_verus::PathArguments) {
-        syn_verus::visit::visit_path_arguments(self, i);
+    fn visit_path_arguments(&mut self, i: &'ast verus_syn::PathArguments) {
+        verus_syn::visit::visit_path_arguments(self, i);
     }
 
-    fn visit_path_segment(&mut self, i: &'ast syn_verus::PathSegment) {
-        syn_verus::visit::visit_path_segment(self, i);
+    fn visit_path_segment(&mut self, i: &'ast verus_syn::PathSegment) {
+        verus_syn::visit::visit_path_segment(self, i);
     }
 
-    fn visit_predicate_lifetime(&mut self, i: &'ast syn_verus::PredicateLifetime) {
-        syn_verus::visit::visit_predicate_lifetime(self, i);
+    fn visit_predicate_lifetime(&mut self, i: &'ast verus_syn::PredicateLifetime) {
+        verus_syn::visit::visit_predicate_lifetime(self, i);
     }
 
-    fn visit_predicate_type(&mut self, i: &'ast syn_verus::PredicateType) {
-        syn_verus::visit::visit_predicate_type(self, i);
+    fn visit_predicate_type(&mut self, i: &'ast verus_syn::PredicateType) {
+        verus_syn::visit::visit_predicate_type(self, i);
     }
 
-    fn visit_publish(&mut self, i: &'ast syn_verus::Publish) {
-        syn_verus::visit::visit_publish(self, i);
+    fn visit_publish(&mut self, i: &'ast verus_syn::Publish) {
+        verus_syn::visit::visit_publish(self, i);
     }
 
-    fn visit_qself(&mut self, i: &'ast syn_verus::QSelf) {
-        syn_verus::visit::visit_qself(self, i);
+    fn visit_qself(&mut self, i: &'ast verus_syn::QSelf) {
+        verus_syn::visit::visit_qself(self, i);
     }
 
-    fn visit_range_limits(&mut self, i: &'ast syn_verus::RangeLimits) {
-        syn_verus::visit::visit_range_limits(self, i);
+    fn visit_range_limits(&mut self, i: &'ast verus_syn::RangeLimits) {
+        verus_syn::visit::visit_range_limits(self, i);
     }
 
-    fn visit_receiver(&mut self, i: &'ast syn_verus::Receiver) {
-        syn_verus::visit::visit_receiver(self, i);
+    fn visit_receiver(&mut self, i: &'ast verus_syn::Receiver) {
+        verus_syn::visit::visit_receiver(self, i);
     }
 
-    fn visit_recommends(&mut self, i: &'ast syn_verus::Recommends) {
+    fn visit_recommends(&mut self, i: &'ast verus_syn::Recommends) {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
-        syn_verus::visit::visit_recommends(self, i);
+        verus_syn::visit::visit_recommends(self, i);
     }
 
-    fn visit_requires(&mut self, i: &'ast syn_verus::Requires) {
+    fn visit_requires(&mut self, i: &'ast verus_syn::Requires) {
         // self.mark(i, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
-        syn_verus::visit::visit_requires(self, i);
+        verus_syn::visit::visit_requires(self, i);
     }
 
-    fn visit_return_type(&mut self, i: &'ast syn_verus::ReturnType) {
-        syn_verus::visit::visit_return_type(self, i);
+    fn visit_return_type(&mut self, i: &'ast verus_syn::ReturnType) {
+        verus_syn::visit::visit_return_type(self, i);
     }
 
-    fn visit_reveal_hide(&mut self, i: &'ast syn_verus::RevealHide) {
-        syn_verus::visit::visit_reveal_hide(self, i);
+    fn visit_reveal_hide(&mut self, i: &'ast verus_syn::RevealHide) {
+        verus_syn::visit::visit_reveal_hide(self, i);
     }
 
-    fn visit_signature(&mut self, i: &'ast syn_verus::Signature) {
-        syn_verus::visit::visit_signature(self, i);
+    fn visit_signature(&mut self, i: &'ast verus_syn::Signature) {
+        verus_syn::visit::visit_signature(self, i);
     }
 
-    fn visit_signature_decreases(&mut self, i: &'ast syn_verus::SignatureDecreases) {
-        syn_verus::visit::visit_signature_decreases(self, i);
+    fn visit_signature_decreases(&mut self, i: &'ast verus_syn::SignatureDecreases) {
+        verus_syn::visit::visit_signature_decreases(self, i);
     }
 
-    fn visit_signature_invariants(&mut self, i: &'ast syn_verus::SignatureInvariants) {
-        syn_verus::visit::visit_signature_invariants(self, i);
+    fn visit_signature_invariants(&mut self, i: &'ast verus_syn::SignatureInvariants) {
+        verus_syn::visit::visit_signature_invariants(self, i);
     }
 
     fn visit_span(&mut self, i: &proc_macro2::Span) {
-        syn_verus::visit::visit_span(self, i);
+        verus_syn::visit::visit_span(self, i);
     }
 
-    fn visit_specification(&mut self, i: &'ast syn_verus::Specification) {
-        syn_verus::visit::visit_specification(self, i);
+    fn visit_specification(&mut self, i: &'ast verus_syn::Specification) {
+        verus_syn::visit::visit_specification(self, i);
     }
 
-    fn visit_stmt(&mut self, i: &'ast syn_verus::Stmt) {
+    fn visit_stmt(&mut self, i: &'ast verus_syn::Stmt) {
         match i {
-            syn_verus::Stmt::Local(syn_verus::Local {
+            verus_syn::Stmt::Local(verus_syn::Local {
                 attrs: _,
                 let_token: _,
                 tracked,
@@ -1052,10 +1052,10 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                         warn("else branch in let currently not supported");
                     }
                     match &*right.expr {
-                        syn_verus::Expr::Call(call_expr) => {
-                            let syn_verus::ExprCall { attrs: _, func, paren_token: _, args: _ } =
+                        verus_syn::Expr::Call(call_expr) => {
+                            let verus_syn::ExprCall { attrs: _, func, paren_token: _, args: _ } =
                                 &*call_expr;
-                            if let syn_verus::Expr::Path(path) = &**func {
+                            if let verus_syn::Expr::Path(path) = &**func {
                                 if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                                     .then(|| path.path.segments[0].ident.to_string())
                                     .and_then(|c| match c.as_str() {
@@ -1085,30 +1085,30 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
             }
             _ => (),
         }
-        syn_verus::visit::visit_stmt(self, i);
+        verus_syn::visit::visit_stmt(self, i);
     }
 
-    fn visit_trait_bound(&mut self, i: &'ast syn_verus::TraitBound) {
-        syn_verus::visit::visit_trait_bound(self, i);
+    fn visit_trait_bound(&mut self, i: &'ast verus_syn::TraitBound) {
+        verus_syn::visit::visit_trait_bound(self, i);
     }
 
-    fn visit_trait_bound_modifier(&mut self, i: &'ast syn_verus::TraitBoundModifier) {
-        syn_verus::visit::visit_trait_bound_modifier(self, i);
+    fn visit_trait_bound_modifier(&mut self, i: &'ast verus_syn::TraitBoundModifier) {
+        verus_syn::visit::visit_trait_bound_modifier(self, i);
     }
 
-    fn visit_trait_item(&mut self, i: &'ast syn_verus::TraitItem) {
-        syn_verus::visit::visit_trait_item(self, i);
+    fn visit_trait_item(&mut self, i: &'ast verus_syn::TraitItem) {
+        verus_syn::visit::visit_trait_item(self, i);
     }
 
-    fn visit_trait_item_const(&mut self, i: &'ast syn_verus::TraitItemConst) {
-        syn_verus::visit::visit_trait_item_const(self, i);
+    fn visit_trait_item_const(&mut self, i: &'ast verus_syn::TraitItemConst) {
+        verus_syn::visit::visit_trait_item_const(self, i);
     }
 
-    fn visit_trait_item_macro(&mut self, i: &'ast syn_verus::TraitItemMacro) {
-        syn_verus::visit::visit_trait_item_macro(self, i);
+    fn visit_trait_item_macro(&mut self, i: &'ast verus_syn::TraitItemMacro) {
+        verus_syn::visit::visit_trait_item_macro(self, i);
     }
 
-    fn visit_trait_item_fn(&mut self, i: &'ast syn_verus::TraitItemFn) {
+    fn visit_trait_item_fn(&mut self, i: &'ast verus_syn::TraitItemFn) {
         let exit = self.item_attr_enter(&i.attrs);
         let content_code_kind = i.sig.mode.to_code_kind();
         let code_kind = self.mode_or_trusted(content_code_kind);
@@ -1120,36 +1120,36 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         if let Some(default) = &i.default {
             self.visit_block(default);
         }
-        syn_verus::visit::visit_trait_item_fn(self, i);
+        verus_syn::visit::visit_trait_item_fn(self, i);
         self.in_body = None;
         exit.exit(self);
     }
 
-    fn visit_trait_item_type(&mut self, i: &'ast syn_verus::TraitItemType) {
+    fn visit_trait_item_type(&mut self, i: &'ast verus_syn::TraitItemType) {
         self.mark(&i, CodeKind::Definitions, LineContent::TypeDefinition);
-        syn_verus::visit::visit_trait_item_type(self, i);
+        verus_syn::visit::visit_trait_item_type(self, i);
     }
 
-    fn visit_type(&mut self, i: &'ast syn_verus::Type) {
+    fn visit_type(&mut self, i: &'ast verus_syn::Type) {
         // self.mark(&i, CodeKind::Definitions, LineContent::TypeDefinition);
-        syn_verus::visit::visit_type(self, i);
+        verus_syn::visit::visit_type(self, i);
     }
 
-    fn visit_use_tree(&mut self, i: &'ast syn_verus::UseTree) {
+    fn visit_use_tree(&mut self, i: &'ast verus_syn::UseTree) {
         self.mark(i, CodeKind::Directives, LineContent::Directive);
-        syn_verus::visit::visit_use_tree(self, i);
+        verus_syn::visit::visit_use_tree(self, i);
     }
 
-    fn visit_view(&mut self, i: &'ast syn_verus::View) {
-        syn_verus::visit::visit_view(self, i);
+    fn visit_view(&mut self, i: &'ast verus_syn::View) {
+        verus_syn::visit::visit_view(self, i);
     }
 
-    fn visit_where_clause(&mut self, i: &'ast syn_verus::WhereClause) {
-        syn_verus::visit::visit_where_clause(self, i);
+    fn visit_where_clause(&mut self, i: &'ast verus_syn::WhereClause) {
+        verus_syn::visit::visit_where_clause(self, i);
     }
 
-    fn visit_where_predicate(&mut self, i: &'ast syn_verus::WherePredicate) {
-        syn_verus::visit::visit_where_predicate(self, i);
+    fn visit_where_predicate(&mut self, i: &'ast verus_syn::WherePredicate) {
+        verus_syn::visit::visit_where_predicate(self, i);
     }
 }
 
@@ -1309,9 +1309,9 @@ impl<'f> Visitor<'f> {
         }
         for p in &sig.inputs {
             match &p.kind {
-                syn_verus::FnArgKind::Receiver(_) => (),
-                syn_verus::FnArgKind::Typed(pt) => {
-                    if let syn_verus::Type::Path(path) = &*pt.ty {
+                verus_syn::FnArgKind::Receiver(_) => (),
+                verus_syn::FnArgKind::Typed(pt) => {
+                    if let verus_syn::Type::Path(path) = &*pt.ty {
                         if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                             .then(|| path.path.segments[0].ident.to_string())
                             .and_then(|c| match c.as_str() {
@@ -1435,7 +1435,7 @@ fn hash_set_to_sorted_vec<V: Clone + Ord>(h: &HashSet<V>) -> Vec<V> {
 fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<FileStats, String> {
     let file_content = std::fs::read_to_string(input_path)
         .map_err(|e| format!("cannot read {} ({})", input_path.display(), e))?;
-    let file = syn_verus::parse_file(&file_content).map_err(|e| {
+    let file = verus_syn::parse_file(&file_content).map_err(|e| {
         dbg!(&e.span().start(), &e.span().end());
         format!("failed to parse file {}: {}", input_path.display(), e)
     })?;
@@ -1479,7 +1479,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next()) {
                     (Some(first), None) if first.ident == "cfg_attr" => {
-                        let nested = attr.parse_args_with(syn_verus::punctuated::Punctuated::<Meta, syn_verus::Token![,]>::parse_terminated)
+                        let nested = attr.parse_args_with(verus_syn::punctuated::Punctuated::<Meta, verus_syn::Token![,]>::parse_terminated)
                             .map_err(|e| {
                                 dbg!(&e.span().start(), &e.span().end());
                                 format!("failed to parse attribute: {} {:?}", e, e.span())
@@ -1516,7 +1516,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
     }
     for item in file.items.into_iter() {
         match item {
-            syn_verus::Item::Macro(ref m) => {
+            verus_syn::Item::Macro(ref m) => {
                 if m.mac
                     .path
                     .segments
@@ -1526,7 +1526,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                 {
                     let source_toks = &m.mac.tokens;
                     let macro_content: File =
-                        syn_verus::parse2(source_toks.clone()).map_err(|e| {
+                        verus_syn::parse2(source_toks.clone()).map_err(|e| {
                             dbg!(&e.span().start(), &e.span().end());
                             format!(
                                 "failed to parse file {}: {} {:?}",

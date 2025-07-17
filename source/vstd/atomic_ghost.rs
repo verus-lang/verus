@@ -327,7 +327,7 @@ macro_rules! atomic_with_ghost {
     ($($tokens:tt)*) => {
         // The helper is used to parse things using Verus syntax
         // The helper then calls atomic_with_ghost_inner, below:
-        ::builtin_macros::atomic_with_ghost_helper!(
+        ::verus_builtin_macros::atomic_with_ghost_helper!(
             $crate::vstd::atomic_ghost::atomic_with_ghost_inner,
             $($tokens)*)
     }
@@ -455,7 +455,7 @@ pub use atomic_with_ghost_inner;
 #[macro_export]
 macro_rules! atomic_with_ghost_store {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res:pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let atomic = &($e);
             $crate::vstd::invariant::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
@@ -478,7 +478,7 @@ pub use atomic_with_ghost_store;
 #[macro_export]
 macro_rules! atomic_with_ghost_load {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let result;
             let atomic = &($e);
             $crate::vstd::invariant::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
@@ -504,7 +504,7 @@ pub use atomic_with_ghost_load;
 #[macro_export]
 macro_rules! atomic_with_ghost_no_op {
     ($e:expr, $prev:pat, $next: pat, $res: pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let atomic = &($e);
             $crate::vstd::invariant::open_atomic_invariant!(atomic.atomic_inv.borrow() => pair => {
                 #[allow(unused_mut)]
@@ -528,7 +528,7 @@ pub use atomic_with_ghost_no_op;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_with_1_operand {
     ($name:ident, $e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let result;
             let atomic = &($e);
             let operand = $operand;
@@ -555,7 +555,7 @@ pub use atomic_with_ghost_update_with_1_operand;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_with_2_operand {
     ($name:ident, $e:expr, $operand1:expr, $operand2:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let result;
             let atomic = &($e);
             let operand1 = $operand1;
@@ -583,7 +583,7 @@ pub use atomic_with_ghost_update_with_2_operand;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_fetch_add {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        (::builtin_macros::verus_exec_expr!( {
+        (::verus_builtin_macros::verus_exec_expr!( {
             let result;
             let atomic = &($e);
             let operand = $operand;
@@ -614,7 +614,7 @@ pub use atomic_with_ghost_update_fetch_add;
 #[macro_export]
 macro_rules! atomic_with_ghost_update_fetch_sub {
     ($e:expr, $operand:expr, $prev:pat, $next:pat, $res: pat, $g:ident, $b:block) => {
-        ::builtin_macros::verus_exec_expr! { {
+        ::verus_builtin_macros::verus_exec_expr! { {
             let result;
             let atomic = &($e);
             let operand = $operand;

@@ -2,8 +2,8 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 
 #[allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::{prelude::*, seq_lib::*};
 
 macro_rules! get_bit64_macro {

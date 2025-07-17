@@ -8,7 +8,7 @@ const COMMON: &str = code_str! {
     fn require_sync<T: Sync>(t: T) { }
     fn require_send<T: Send>(t: T) { }
 
-    ::builtin_macros::verus!{
+    ::verus_builtin_macros::verus!{
         struct Pred<A, B> { a: A, b: B }
         impl<A, B> vstd::invariant::InvariantPredicate<A, B> for Pred<A, B> {
             open spec fn inv(k: A, v: B) -> bool { true }
@@ -38,7 +38,7 @@ macro_rules! check_not_copy {
 
         test_verify_one_file! {
             #[test] $name2 COMMON.to_string() + &"
-                ::builtin_macros::verus!{
+                ::verus_builtin_macros::verus!{
                 proof fn test1<X>(tracked x: X) { }
                 proof fn test2$tparams(tracked t: $t) {
                     test1(t);

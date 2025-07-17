@@ -894,7 +894,7 @@ fn erase_call<'tcx>(
         }
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
-            let builtin_method = match op {
+            let verus_builtin_method = match op {
                 SmartPtrClone { is_method } => Some((*is_method, "clone", false)),
                 TrackedGet => Some((true, "get", false)),
                 TrackedBorrow => Some((true, "borrow", false)),
@@ -909,7 +909,7 @@ fn erase_call<'tcx>(
                 UseTypeInvariant => Some((false, "use_type_invariant", false)),
                 ClosureToFnProof(_) => Some((false, "closure_to_fn_proof", false)),
             };
-            if let Some((true, method, expect_spec_inside)) = builtin_method {
+            if let Some((true, method, expect_spec_inside)) = verus_builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
@@ -917,9 +917,12 @@ fn erase_call<'tcx>(
                 if expect_spec_inside {
                     erase_spec_exps(ctxt, state, expr, vec![exp])
                 } else {
-                    mk_exp(ExpX::BuiltinMethod(exp.expect("builtin method"), method.to_string()))
+                    mk_exp(ExpX::BuiltinMethod(
+                        exp.expect("verus_builtin method"),
+                        method.to_string(),
+                    ))
                 }
-            } else if let Some((false, func, expect_spec_inside)) = builtin_method {
+            } else if let Some((false, func, expect_spec_inside)) = verus_builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
                 let exp = if let ClosureToFnProof(mode) = op {
@@ -933,7 +936,7 @@ fn erase_call<'tcx>(
                     let target =
                         mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
                     let typ_args = mk_typ_args(ctxt, state, node_substs);
-                    mk_exp(ExpX::Call(target, typ_args, vec![exp.expect("builtin method")]))
+                    mk_exp(ExpX::Call(target, typ_args, vec![exp.expect("verus_builtin method")]))
                 }
             } else if let GhostExec = op {
                 Some(erase_spec_exps_force(ctxt, state, expr, vec![]))

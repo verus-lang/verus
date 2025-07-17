@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 #[cfg(verus_keep_ghost)]
-use syn_verus::parse_macro_input;
+use verus_syn::parse_macro_input;
 
-use syn_verus::{Ident, Item, ItemEnum, spanned::Spanned};
+use verus_syn::{Ident, Item, ItemEnum, spanned::Spanned};
 
 use crate::EraseGhost;
 
@@ -49,10 +49,10 @@ pub(crate) fn visit_item_enum_synthesize(
     let mut allow_inconsistent_fields = false;
 
     enum_.attrs.retain(|attr| {
-        if let syn_verus::AttrStyle::Outer = attr.style {
+        if let verus_syn::AttrStyle::Outer = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "allow" => match &attr.meta {
-                    syn_verus::Meta::List(list)
+                    verus_syn::Meta::List(list)
                         if list.tokens.to_string() == "inconsistent_fields" =>
                     {
                         allow_inconsistent_fields = true;
@@ -72,18 +72,18 @@ pub(crate) fn visit_item_enum_synthesize(
 
     #[derive(PartialEq, Eq, Hash, Debug, Clone)]
     enum FieldName {
-        Named(syn_verus::Ident),
+        Named(verus_syn::Ident),
         Unnamed(usize),
     }
 
     #[derive(PartialEq, Eq, Debug, Clone)]
     struct FieldInfo {
-        ty: syn_verus::Type,
-        vis: syn_verus::Visibility,
+        ty: verus_syn::Type,
+        vis: verus_syn::Visibility,
     }
 
     impl FieldInfo {
-        fn from(field: &syn_verus::Field) -> FieldInfo {
+        fn from(field: &verus_syn::Field) -> FieldInfo {
             FieldInfo { ty: field.ty.clone(), vis: field.vis.clone() }
         }
     }
@@ -93,7 +93,7 @@ pub(crate) fn visit_item_enum_synthesize(
     let mut invalid_fields: Vec<Ident> = Vec::new();
     for variant in &enum_.variants {
         match &variant.fields {
-            syn_verus::Fields::Named(named) => {
+            verus_syn::Fields::Named(named) => {
                 for field in &named.named {
                     let ident = field.ident.as_ref().expect("named field").clone();
                     let name = FieldName::Named(ident.clone());
@@ -115,7 +115,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     all_fields.push((variant.ident.clone(), name.clone(), info));
                 }
             }
-            syn_verus::Fields::Unnamed(unnamed) => {
+            verus_syn::Fields::Unnamed(unnamed) => {
                 for (i, field) in unnamed.unnamed.iter().enumerate() {
                     let name = FieldName::Unnamed(i);
                     let info = FieldInfo::from(field);
@@ -135,7 +135,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     all_fields.push((variant.ident.clone(), name.clone(), info));
                 }
             }
-            syn_verus::Fields::Unit => {}
+            verus_syn::Fields::Unit => {}
         }
     }
 
@@ -148,7 +148,7 @@ pub(crate) fn visit_item_enum_synthesize(
         }
     }
 
-    let enum_vis_pub = !matches!(enum_.vis, syn_verus::Visibility::Inherited);
+    let enum_vis_pub = !matches!(enum_.vis, verus_syn::Visibility::Inherited);
     if direct_fields.len() != 0 || all_fields.len() != 0 {
         let enum_ident = &enum_.ident;
         let methods_direct = direct_fields
@@ -178,7 +178,7 @@ pub(crate) fn visit_item_enum_synthesize(
                 assert!(!variants.is_empty());
                 if variants.len() == 1 {
                     let variant_ident = variants[0].to_string();
-                    quote_spanned_builtin! { builtin, enum_.span() =>
+                    quote_spanned_builtin! { verus_builtin, enum_.span() =>
                         #[cfg(verus_keep_ghost)]
                         #[allow(non_snake_case)]
                         #[verus::internal(verus_macro)]
@@ -186,7 +186,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::inline]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
-                            #builtin::get_variant_field(self, #variant_ident, #field_str)
+                            #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                         }
                     }
                 } else {
@@ -233,7 +233,7 @@ pub(crate) fn visit_item_enum_synthesize(
                 };
 
                 let variant_ident = variant.to_string();
-                quote_spanned_builtin! { builtin, enum_.span() =>
+                quote_spanned_builtin! { verus_builtin, enum_.span() =>
                     #[cfg(verus_keep_ghost)]
                     #[allow(non_snake_case)]
                     #[verus::internal(verus_macro)]
@@ -241,7 +241,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verifier::inline]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
-                        #builtin::get_variant_field(self, #variant_ident, #field_str)
+                        #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                     }
                 }
             })

@@ -552,22 +552,22 @@ pub broadcast proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multis
 #[macro_export]
 macro_rules! assert_multisets_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
+        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 macro_rules! assert_multisets_equal_internal {
-    (::builtin::spec_eq($m1:expr, $m2:expr)) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
     };
-    (::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+    (::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
-    (crate::builtin::spec_eq($m1:expr, $m2:expr)) => {
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr)) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2)
     };
-    (crate::builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
+    (crate::verus_builtin::spec_eq($m1:expr, $m2:expr), $k:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::multiset::assert_multisets_equal_internal!($m1, $m2, $k $( : $t )? => $bblock)
     };
     ($m1:expr, $m2:expr $(,)?) => {

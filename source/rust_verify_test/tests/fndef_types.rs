@@ -963,7 +963,7 @@ test_verify_one_file! {
 
             proof fn fns_correct(a: &Self, b: &Self)
                 ensures
-                    // call_ensures is a verus builtin that means
+                    // call_ensures is a verus verus_builtin that means
                     // "this is a valid input-output pair for the function Self::eq"
                     call_ensures(Self::eq, (a, b), true) ==> a.rel(b),
                     call_ensures(Self::eq, (a, b), false) ==> !a.rel(b),

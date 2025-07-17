@@ -68,11 +68,11 @@ const fn x(t: u64): u64 = {
 use crate::EraseGhost;
 use crate::syntax::{into_spans, is_external, mk_verifier_attr, mk_verus_attr};
 use quote::{quote, quote_spanned};
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token::{Brace, Paren};
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::*;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token::{Brace, Paren};
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::*;
 
 pub(crate) const VERUS_UNERASED_PROXY: &str = "VERUS_UNERASED_PROXY__";
 
@@ -132,7 +132,7 @@ impl crate::syntax::Visitor {
                         Publish::Default,
                         FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
                         _,
-                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
+                    ) => Publish::Open(verus_syn::Open { token: token::Open { span } }),
                     (publish, _, _) => publish,
                 };
 
@@ -221,7 +221,7 @@ impl crate::syntax::Visitor {
                         Publish::Default,
                         FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
                         _,
-                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
+                    ) => Publish::Open(verus_syn::Open { token: token::Open { span } }),
                     (publish, _, _) => publish,
                 };
 
@@ -312,7 +312,7 @@ impl crate::syntax::Visitor {
                         Publish::Default,
                         FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
                         _,
-                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
+                    ) => Publish::Open(verus_syn::Open { token: token::Open { span } }),
                     (publish, _, _) => publish,
                 };
 

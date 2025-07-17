@@ -60,7 +60,7 @@ test_verify_one_file_with_options! {
         mod M1 {
             pub trait T1 {
                 fn f(&self) {
-                    builtin::no_method_body()
+                    verus_builtin::no_method_body()
                 }
             }
         }
@@ -68,7 +68,7 @@ test_verify_one_file_with_options! {
             struct S {}
             impl crate::M1::T1 for S {
                 fn f(&self) {
-                    builtin::no_method_body() // can't appear in implementation
+                    verus_builtin::no_method_body() // can't appear in implementation
                 }
             }
         }
@@ -325,7 +325,7 @@ test_verify_one_file_with_options! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    builtin::decreases(n);
+                    verus_builtin::decreases(n);
                     if n > 0 {
                         self.f(x, n - 1);
                         x.f(self, n - 1);
@@ -350,7 +350,7 @@ test_verify_one_file! {
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64)
                 {
-                    builtin::decreases(0);
+                    verus_builtin::decreases(0);
                     self.f(x, n - 1); // FAILS
                 }
             }
@@ -373,7 +373,7 @@ test_verify_one_file! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    builtin::decreases(n);
+                    verus_builtin::decreases(n);
                     self.f(x, n - 1); // FAILS
                 }
             }
@@ -397,7 +397,7 @@ test_verify_one_file_with_options! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    builtin::decreases(n);
+                    verus_builtin::decreases(n);
                     g(self, x, n - 1); // FAILS
                 }
             }
@@ -425,7 +425,7 @@ test_verify_one_file! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    builtin::decreases(0);
+                    verus_builtin::decreases(0);
                     x.f(self, n - 1); // FAILS
                 }
             }
@@ -448,7 +448,7 @@ test_verify_one_file! {
             struct S {}
             impl crate::M1::T for S {
                 fn f(&self, x: &Self, n: u64) {
-                    builtin::decreases(n);
+                    verus_builtin::decreases(n);
                     x.f(self, n - 1); // FAILS
                 }
             }
@@ -647,7 +647,7 @@ test_verify_one_file! {
         }
 
         mod M5 {
-            use builtin::*;
+            use verus_builtin::*;
             impl crate::M1::T<u64> for crate::M3::I {
                 closed spec fn req(&self, a: u64) -> bool {
                     self.x < a && a < 100
@@ -684,14 +684,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_multiple verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub trait T1 {
                 fn f1(&self, u: u64)
                     requires u > 10;
             }
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub trait T2 {
                 fn f2(&self, u: u64)
                     requires u > 20;
@@ -734,7 +734,7 @@ test_verify_one_file! {
         }
 
         mod M3 {
-            use builtin::*;
+            use verus_builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
                 closed spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
@@ -769,7 +769,7 @@ test_verify_one_file! {
         }
 
         mod M3 {
-            use builtin::*;
+            use verus_builtin::*;
             impl<C> crate::M1::T<(C, u16)> for crate::M2::S<bool, C> {
                 open spec fn apple(&self, b: (C, u16)) -> bool {
                     b.1 > 10
@@ -800,7 +800,7 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub struct S<A: Sized, B: Sized>(pub A, pub B);
 
             impl<C: Sized> crate::M1::T<(C, u16)> for S<bool, C> {
@@ -834,7 +834,7 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub struct S<A, B>(pub A, pub B);
 
             impl<C> crate::M1::T<(C, u16)> for S<bool, C> {
@@ -871,7 +871,7 @@ test_verify_one_file! {
         }
 
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub struct S<A, B>(pub A, pub B);
 
             impl crate::M1::T<u8> for S<u16, u32> {

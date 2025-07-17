@@ -190,7 +190,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_enum_adt_mod verus_code! {
         mod A {
-            use builtin::*;
+            use verus_builtin::*;
             pub enum E {
                 A { a: u64 },
                 B(u64)
@@ -320,7 +320,7 @@ test_verify_one_file! {
         proof fn foo(a: Maybe<nat>)
             requires a.is_None()
         {
-            assert(builtin::is_variant(a, "Null"));
+            assert(verus_builtin::is_variant(a, "Null"));
         }
     } => Err(err) => assert_vir_error_msg(err, "no variant `Null` for this datatype")
 }
@@ -330,7 +330,7 @@ test_verify_one_file! {
         proof fn foo(a: Maybe<nat>)
             requires a == Maybe::Some(10nat),
         {
-            assert(builtin::get_variant_field::<_, u64>(a, "Some", "0") == 10);
+            assert(verus_builtin::get_variant_field::<_, u64>(a, "Some", "0") == 10);
         }
     } => Err(err) => assert_vir_error_msg(err, "field has the wrong type")
 }
@@ -340,7 +340,7 @@ test_verify_one_file! {
         proof fn foo(a: Maybe<nat>)
             requires a == Maybe::Some(10nat),
         {
-            assert(builtin::get_variant_field::<_, nat>(a, "Some", "1") == 10);
+            assert(verus_builtin::get_variant_field::<_, nat>(a, "Some", "1") == 10);
         }
     } => Err(err) => assert_vir_error_msg(err, "no field `1` for this variant")
 }
@@ -1586,7 +1586,7 @@ test_verify_one_file! {
 
 fn matches_syntax_context(expr: &str) -> String {
     r#"
-    builtin_macros::verus! {
+    verus_builtin_macros::verus! {
         enum E { A, B }
         proof fn test1() {
             assert("#

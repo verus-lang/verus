@@ -1,4 +1,4 @@
-use syn_verus::{
+use verus_syn::{
     AttrStyle, Attribute, BinOp, Expr, ExprArray, ExprAsync, ExprAwait, ExprBlock, ExprBreak,
     ExprCall, ExprConst, ExprContinue, ExprField, ExprForLoop, ExprIf, ExprIndex, ExprInfer,
     ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRepeat,

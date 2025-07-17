@@ -200,7 +200,7 @@ fn find_in_binary_tree(tree: &Tree, needle: i64) -> (ret: bool)
                     //                        } else if idx==left@.len() {
                     //                          assert(tree@.index(idx) != needle);
                     //                        } else {
-                    //                          assert(tree@.index(idx) == right@.index(idx + left@.len() + 1));    // TODO(utaal): surprising complaint "expected struct `builtin::int`, found struct `builtin::nat`"
+                    //                          assert(tree@.index(idx) == right@.index(idx + left@.len() + 1));    // TODO(utaal): surprising complaint "expected struct `verus_builtin::int`, found struct `verus_builtin::nat`"
                     //                          #[verifier::spec] let right_idx: int = idx - (left@.len() as int + 1);
                     //                          assert(tree@.index(idx) == right@.index(right_idx));
                     // assert(sequences_ordered_at_interface(seq![*value as int], right@)); // TODO(utal): How about *value as int is just value@? And then maybe even auto_view that? How cool would that be?

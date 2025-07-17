@@ -3,7 +3,7 @@ use crate::path::PathKind;
 use crate::token::Token;
 use crate::INDENT;
 use proc_macro2::{Delimiter, Spacing, TokenStream};
-use syn_verus::{Ident, Macro, MacroDelimiter};
+use verus_syn::{Ident, Macro, MacroDelimiter};
 
 impl Printer {
     pub fn mac(&mut self, mac: &Macro, ident: Option<&Ident>, semicolon: bool) {

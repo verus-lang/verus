@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
-use syn_verus::parse;
-use syn_verus::parse2;
-use syn_verus::{Error, Expr, Pat, PatIdent, PatTuple};
+use verus_syn::parse;
+use verus_syn::parse2;
+use verus_syn::{Error, Expr, Pat, PatIdent, PatTuple};
 
 // If there is at least one error, combine them all into one
 // Else, return Ok(())
@@ -43,7 +43,7 @@ pub fn expr_from_tokens(t: TokenStream) -> Expr {
 }
 
 pub fn pat_from_tokens(t: TokenStream) -> Pat {
-    use syn_verus::parse::Parser;
+    use verus_syn::parse::Parser;
     match Pat::parse_single.parse2(t) {
         Err(_) => panic!("pat_from_tokens should not be called with user input"),
         Ok(p) => p,

@@ -3,14 +3,14 @@ use crate::struct_decl_inv::keyword;
 use crate::struct_decl_inv::peek_keyword;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn_verus::Token;
-use syn_verus::parse;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse_macro_input;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::{Block, Error, Expr, ExprBlock, Ident, Path, parenthesized};
+use verus_syn::Token;
+use verus_syn::parse;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_macro_input;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::{Block, Error, Expr, ExprBlock, Ident, Path, parenthesized};
 
 pub fn atomic_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ag: AG = parse_macro_input!(input as AG);

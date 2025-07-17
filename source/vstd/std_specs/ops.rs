@@ -19,7 +19,7 @@ use super::super::prelude::*;
 
 macro_rules! def_un_ops_spec {
     ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             #[verifier::external_trait_specification]
             #[verifier::external_trait_extension($spec_trait via $impl_trait)]
             pub trait $extrait {
@@ -47,7 +47,7 @@ macro_rules! def_un_ops_spec {
 
 macro_rules! def_bin_ops_spec {
     ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             #[verifier::external_trait_specification]
             #[verifier::external_trait_extension($spec_trait via $impl_trait)]
             pub trait $extrait<Rhs = Self> {
@@ -207,7 +207,7 @@ def_bin_ops_spec!(
 
 macro_rules! def_uop_impls {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             $(
                 impl $impl_trait for $typ {
                     open spec fn $obeys() -> bool {
@@ -231,7 +231,7 @@ macro_rules! def_uop_impls {
 
 macro_rules! def_bop_impls {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             $(
                 impl $impl_trait for $typ {
                     open spec fn $obeys() -> bool {
@@ -255,7 +255,7 @@ macro_rules! def_bop_impls {
 
 macro_rules! def_uop_impls_no_check {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
                 $(
                     (
@@ -271,7 +271,7 @@ macro_rules! def_uop_impls_no_check {
 
 macro_rules! def_uop_impls_check_overflow {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
                 $(
                     (
@@ -287,7 +287,7 @@ macro_rules! def_uop_impls_check_overflow {
 
 macro_rules! def_bop_impls_no_check {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -303,7 +303,7 @@ macro_rules! def_bop_impls_no_check {
 
 macro_rules! def_bop_impls_check_overflow {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -319,7 +319,7 @@ macro_rules! def_bop_impls_check_overflow {
 
 macro_rules! def_bop_impls_unsigned_div_rem {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -338,7 +338,7 @@ macro_rules! def_bop_impls_unsigned_div_rem {
 // - express truncating div, rem in terms of euclidean /, %
 macro_rules! def_bop_impls_signed_div_rem {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -360,7 +360,7 @@ macro_rules! def_bop_impls_signed_div_rem {
 // such as (Self = u8, Rhs = u64)
 macro_rules! def_bop_impls_shift {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        crate::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (

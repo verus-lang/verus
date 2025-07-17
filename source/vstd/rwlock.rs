@@ -10,7 +10,7 @@ use super::multiset::*;
 use super::prelude::*;
 use super::set::*;
 use core::marker::PhantomData;
-use state_machines_macros::tokenized_state_machine_vstd;
+use verus_state_machines_macros::tokenized_state_machine_vstd;
 
 tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {

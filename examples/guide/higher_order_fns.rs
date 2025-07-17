@@ -3,8 +3,8 @@
 
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::map::*;
 use vstd::modes::*;
 use vstd::prelude::*;

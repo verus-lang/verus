@@ -2,9 +2,9 @@
 // https://github.com/dafny-lang/libraries/blob/master/src/NonlinearArithmetic/Power2.dfy
 // https://github.com/dafny-lang/libraries/blob/master/src/NonlinearArithmetic/Power.dfy
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 
 verus! {
 
@@ -17,7 +17,7 @@ proof fn left_shift_by_one(bv: u32, e: u32)
         bv << e == (bv << sub(e, 1)) << 1u32,
     decreases e,
 {
-    // REVIEW:                 ^^^^^^^^^^ expected `u32`, found struct `builtin::int`
+    // REVIEW:                 ^^^^^^^^^^ expected `u32`, found struct `verus_builtin::int`
     // get this error when updated to new syntax. Type casting (i.e. `(e - 1u32) as u32`) does not make this error disappear
 }
 

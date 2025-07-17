@@ -1,8 +1,8 @@
 // rust_verify/tests/example.rs ignore --- currently times out
 
 // lemma originally from @hayley-leblanc
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::*;
 
 verus! {

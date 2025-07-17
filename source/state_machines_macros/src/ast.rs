@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn_verus::token;
-use syn_verus::{
+use verus_syn::token;
+use verus_syn::{
     Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemFn, Item, Pat, Type,
 };
 

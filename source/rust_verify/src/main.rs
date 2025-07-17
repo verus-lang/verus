@@ -27,7 +27,7 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 pub fn main() {
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
-    // For now, builtin, vstd, etc. must be rebuilt for each via_cargo crate:
+    // For now, verus_builtin, vstd, etc. must be rebuilt for each via_cargo crate:
     let via_cargo_rebuild_verus_libs = via_cargo;
 
     let mut internal_args = std::env::args();
