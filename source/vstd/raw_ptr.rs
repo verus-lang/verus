@@ -340,7 +340,7 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
 
-    // TODO: Add invariant that self.ptr()@.metadata == Metadata::Length(self.mem_contents_seq().len())?
+    // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
@@ -349,7 +349,7 @@ impl<T> PointsTo<[T]> {
             start_index + len <= self.mem_contents_seq().len(),
         ensures
             sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
-                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },
+                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: len as usize },
             ),
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(start_index as int, start_index as int + len as int),
     ;
@@ -367,7 +367,7 @@ impl<T> PointsTo<[T]> {
             self.value().len() * size_of::<T>() == size_of::<V>(),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: Metadata::Thin },
+                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
             ),
             points_to.is_init(),
             points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
