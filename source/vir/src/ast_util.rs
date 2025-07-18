@@ -1299,7 +1299,13 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
             let e = place_to_expr_rec(p, loc);
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
         }
-        PlaceX::Temporary(_) => panic!("Place Temporary should have been simplified out"),
+        PlaceX::Temporary(e) => {
+            if loc {
+                panic!("Place Temporary should have been simplified out")
+            } else {
+                return e.clone();
+            }
+        }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
 }

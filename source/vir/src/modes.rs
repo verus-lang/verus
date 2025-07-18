@@ -136,6 +136,7 @@ struct Record {
     type_inv_info: TypeInvInfo,
 }
 
+#[derive(Debug)]
 enum VarMode {
     Infer(Span),
     Mode(Mode),
@@ -710,7 +711,7 @@ fn check_place_has_mode(
 ) -> Result<(), VirErr> {
     let mode = check_place(ctxt, record, typing, outer_mode, place)?;
     if !mode_le(mode, expected) {
-        Err(error(&place.span, format!("place has mode {}, expected mode {}", mode, expected)))
+        Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
     } else {
         Ok(())
     }
@@ -740,8 +741,10 @@ fn check_place(
         }
         PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p),
         PlaceX::Local(var) => {
-            let x_mode = typing.get(var, &place.span)?;
-            Ok(x_mode)
+            let mode = typing.get(var, &place.span)?;
+            let mode = typing.block_ghostness.join_mode(mode);
+            record.erasure_modes.var_modes.push((place.span.clone(), mode));
+            Ok(mode)
         }
         PlaceX::Temporary(e) => check_expr(ctxt, record, typing, outer_mode, e),
     }
@@ -1333,13 +1336,15 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "assignment is not allowed inside spec"));
             }
-            if let (ExprX::VarLoc(xl), ExprX::Var(xr)) = (&lhs.x, &rhs.x) {
-                // Special case mode inference just for our encoding of "let tracked pat = ..."
-                // in Rust as "let xl; ... { let pat ... xl = xr; }".
-                if let Some(span) = typing.to_be_inferred(xl) {
-                    let mode = typing.get(xr, &rhs.span)?;
-                    typing.infer_as(xl, mode);
-                    record.erasure_modes.var_modes.push((span, mode));
+            if let (ExprX::VarLoc(xl), ExprX::ReadPlace(pr, _)) = (&lhs.x, &rhs.x) {
+                if let PlaceX::Local(xr) = &pr.x {
+                    // Special case mode inference just for our encoding of "let tracked pat = ..."
+                    // in Rust as "let xl; ... { let pat ... xl = xr; }".
+                    if let Some(span) = typing.to_be_inferred(xl) {
+                        let mode = typing.get(xr, &rhs.span)?;
+                        typing.infer_as(xl, mode);
+                        record.erasure_modes.var_modes.push((span, mode));
+                    }
                 }
             }
             let x_mode =

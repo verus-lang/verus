@@ -2,7 +2,7 @@ use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
     Pattern, PatternX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
-    Visibility,
+    Visibility, Place, PlaceX,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -306,12 +306,12 @@ fn check_one_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
-    place: Place,
+    area: Area,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
-            if let Place::PreState(clause_name) = place {
+            if let Area::PreState(clause_name) = area {
                 for param in function.x.params.iter().filter(|p| p.x.is_mut) {
                     if *x == param.x.name {
                         return Err(error(
@@ -554,8 +554,8 @@ fn check_one_expr(
             // but they are not ready yet since ast_to_sst doesn't generate,
             // for example, assertions for "assert" for recommends.
             // (see https://github.com/verus-lang/verus/issues/692 )
-            match (place, function.x.mode, function.x.decrease.len()) {
-                (Place::Body, Mode::Spec, dec) if dec > 0 => {}
+            match (area, function.x.mode, function.x.decrease.len()) {
+                (Area::Body, Mode::Spec, dec) if dec > 0 => {}
                 _ => {
                     return Err(error(
                         &expr.span,
@@ -574,6 +574,34 @@ fn check_one_expr(
             ));
         }
         _ => {}
+    }
+    Ok(())
+}
+
+fn check_one_place(
+    ctxt: &Ctxt,
+    function: &Function,
+    place: &Place,
+    disallow_private_access: Option<(&Visibility, &str)>,
+) -> Result<(), VirErr> {
+    match &place.x {
+        PlaceX::Field(FieldOpr {
+            datatype: Dt::Path(path),
+            variant: _,
+            field: _,
+            get_variant: _,
+            check: _,
+        }, _) => {
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &place.span,
+                "field expression",
+            )?;
+        }
+        _ => { }
     }
     Ok(())
 }
@@ -601,7 +629,7 @@ fn check_one_pattern(
 }
 
 #[derive(Clone, Copy)]
-enum Place {
+enum Area {
     PreState(&'static str),
     PostState,
     Body,
@@ -612,19 +640,20 @@ fn check_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
-    place: Place,
+    area: Area,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::ast_visitor_check(
         expr,
         &mut |_scope_map, expr| {
-            check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
+            check_one_expr(ctxt, function, expr, disallow_private_access, area, diags)
         },
         &mut |_scope_map, _stmt| Ok(()),
         &mut |_scope_map, pattern| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access)
         },
         &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
+        &mut |_scope_map, place| check_one_place(ctxt, function, place, disallow_private_access),
     )
 }
 
@@ -1004,14 +1033,14 @@ fn check_function(
             function,
             req,
             disallow_private_access,
-            Place::PreState("requires"),
+            Area::PreState("requires"),
             diags,
         )?;
     }
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -1031,7 +1060,7 @@ fn check_function(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
+        check_expr(ctxt, function, r, disallow_private_access, Area::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -1044,7 +1073,7 @@ fn check_function(
                     function,
                     expr,
                     disallow_private_access,
-                    Place::PreState("opens_invariants clause"),
+                    Area::PreState("opens_invariants clause"),
                     diags,
                 )?;
             }
@@ -1057,7 +1086,7 @@ fn check_function(
                 function,
                 expr,
                 disallow_private_access,
-                Place::PreState("opens_invariants clause"),
+                Area::PreState("opens_invariants clause"),
                 diags,
             )?
         }
@@ -1072,7 +1101,7 @@ fn check_function(
                 function,
                 expr,
                 disallow_private_access,
-                Place::PreState("opens_invariants clause"),
+                Area::PreState("opens_invariants clause"),
                 diags,
             )?;
         }
@@ -1085,7 +1114,7 @@ fn check_function(
             function,
             expr,
             disallow_private_access,
-            Place::PreState("decreases clause"),
+            Area::PreState("decreases clause"),
             diags,
         )?;
     }
@@ -1109,7 +1138,7 @@ fn check_function(
             function,
             expr,
             disallow_private_access,
-            Place::PreState("when clause"),
+            Area::PreState("when clause"),
             diags,
         )?;
     }
@@ -1135,7 +1164,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::Body, diags)?;
+        check_expr(ctxt, function, body, disallow_private_access, Area::Body, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {

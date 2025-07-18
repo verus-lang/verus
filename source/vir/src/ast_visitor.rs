@@ -951,18 +951,20 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
 
-pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT>(
+pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
+    fpl: &mut FPL,
 ) -> Result<(), E>
 where
     FE: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
     FS: FnMut(&VisitorScopeMap, &Stmt) -> Result<(), E>,
     FP: FnMut(&VisitorScopeMap, &Pattern) -> Result<(), E>,
     FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
+    FPL: FnMut(&VisitorScopeMap, &Place) -> Result<(), E>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
     match ast_visitor_dfs(
@@ -984,6 +986,10 @@ where
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
+        &mut |scope_map, x| match fpl(scope_map, x) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
     ) {
         VisitorControlFlow::Recurse => Ok(()),
         VisitorControlFlow::Return => unreachable!(),
@@ -991,23 +997,25 @@ where
     }
 }
 
-struct WalkAstVisitor<'a, FE, FS, FP, FT> {
+struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL> {
     fe: &'a mut FE,
     fs: &'a mut FS,
     fp: &'a mut FP,
     ft: &'a mut FT,
+    fpl: &'a mut FPL,
     map: &'a mut VisitorScopeMap,
     // Since types don't have spans, keep track of the best span as we descend
     most_specific_span: Span,
 }
 
-impl<'a, FE, FS, FP, FT, T> AstVisitor<Walk, T, VisitorScopeMap>
-    for WalkAstVisitor<'a, FE, FS, FP, FT>
+impl<'a, FE, FS, FP, FT, FPL, T> AstVisitor<Walk, T, VisitorScopeMap>
+    for WalkAstVisitor<'a, FE, FS, FP, FT, FPL>
 where
     FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
     FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
     FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
     FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
         match (self.ft)(self.map, typ, &self.most_specific_span) {
@@ -1037,7 +1045,11 @@ where
 
     fn visit_place(&mut self, place: &Place) -> Result<(), T> {
         self.most_specific_span = place.span.clone();
-        self.visit_place_rec(place)
+        match (self.fpl)(self.map, place) {
+            VisitorControlFlow::Recurse => self.visit_place_rec(place),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Stop(err) => Err(err),
+        }
     }
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
@@ -1054,21 +1066,23 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT>(
+pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
+    fpl: &mut FPL,
 ) -> VisitorControlFlow<T>
 where
     FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
     FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
     FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
     FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
-    let mut vis = WalkAstVisitor { fe, fs, fp, ft, map, most_specific_span: expr.span.clone() };
+    let mut vis = WalkAstVisitor { fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
     match vis.visit_expr(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(t) => VisitorControlFlow::Stop(t),
@@ -1269,20 +1283,22 @@ where
     }
 }
 
-struct MapExprStmtTypVisitor<'a, E, FE, FS, FT> {
+struct MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL> {
     env: &'a mut E,
     fe: &'a FE,
     fs: &'a FS,
     ft: &'a FT,
+    fpl: &'a FPL,
     map: &'a mut VisitorScopeMap,
 }
 
-impl<'a, E, FE, FS, FT> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
-    for MapExprStmtTypVisitor<'a, E, FE, FS, FT>
+impl<'a, E, FE, FS, FT, FPL> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
+    for MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+    FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
         let typ = self.visit_typ_rec(typ)?;
@@ -1304,6 +1320,7 @@ where
 
     fn visit_place(&mut self, place: &Place) -> Result<Place, VirErr> {
         let place = self.visit_place_rec(place)?;
+        let place = (self.fpl)(self.env, self.map, &place)?;
         Ok(place)
     }
 
@@ -1317,20 +1334,22 @@ where
     }
 }
 
-pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
+pub(crate) fn map_expr_visitor_env<E, FE, FS, FT, FPL>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     env: &mut E,
     fe: &FE,
     fs: &FS,
     ft: &FT,
+    fpl: &FPL,
 ) -> Result<Expr, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+    FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
-    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, map };
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
     vis.visit_expr(expr)
 }
 
@@ -1345,6 +1364,7 @@ where
         &|_state, _, expr| fe(expr),
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
         &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
     )
 }
 
@@ -1411,18 +1431,20 @@ where
     Ok(Arc::new(vec_map_result(&**bounds, |b| map_generic_bound_visitor(b, env, ft))?))
 }
 
-pub(crate) fn map_function_visitor_env<E, FE, FS, FT>(
+pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
     function: &Function,
     map: &mut VisitorScopeMap,
     env: &mut E,
     fe: &FE,
     fs: &FS,
     ft: &FT,
+    fpl: &FPL,
 ) -> Result<Function, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+    FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
     let FunctionX {
         name,
@@ -1494,7 +1516,7 @@ where
     }
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
-        Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+        Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
 
     map.push_scope(true);
     if function.x.ens_has_return {
@@ -1502,21 +1524,21 @@ where
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure0 =
-        Arc::new(vec_map_result(ensure0, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+        Arc::new(vec_map_result(ensure0, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
     let ensure1 =
-        Arc::new(vec_map_result(ensure1, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+        Arc::new(vec_map_result(ensure1, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
     map.pop_scope();
 
     let returns = match returns {
-        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?),
         None => None,
     };
 
     let decrease =
-        Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+        Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
     let decrease_when = decrease_when
         .as_ref()
-        .map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft))
+        .map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))
         .transpose()?;
     let decrease_by = decrease_by.clone();
 
@@ -1524,14 +1546,14 @@ where
         None => None,
         Some(MaskSpec::InvariantOpens(span, es)) => Some(MaskSpec::InvariantOpens(
             span.clone(),
-            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?),
         )),
         Some(MaskSpec::InvariantOpensExcept(span, es)) => Some(MaskSpec::InvariantOpensExcept(
             span.clone(),
-            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?),
         )),
         Some(MaskSpec::InvariantOpensSet(e)) => {
-            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
+            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?))
         }
     };
     let unwind_spec = match unwind_spec {
@@ -1539,19 +1561,19 @@ where
         Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
         Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
         Some(UnwindSpec::NoUnwindWhen(e)) => {
-            Some(UnwindSpec::NoUnwindWhen(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
+            Some(UnwindSpec::NoUnwindWhen(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?))
         }
     };
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
-    let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
+    let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)).transpose()?;
     map.pop_scope();
 
     let fndef_axioms = if let Some(es) = fndef_axioms {
         let mut es2 = vec![];
         for e in es.iter() {
-            let e2 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            let e2 = map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?;
             es2.push(e2);
         }
         Some(Arc::new(es2))

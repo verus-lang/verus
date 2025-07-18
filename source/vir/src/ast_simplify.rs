@@ -12,6 +12,7 @@ use crate::ast::{
     Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
     KrateX, Mode, MultiOp, Path, Pattern, PatternX, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
     Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    Place,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -299,10 +300,6 @@ fn pattern_has_or(pattern: &Pattern) -> bool {
     }
 }
 
-// note that this gets called *bottom up*
-// that is, if node A is the parent of children B and C,
-// then simplify_one_expr is called first on B and C, and then on A
-
 fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarIdent {
     if let Some(rename) = state.rename_vars.get(x) {
         if scope_map[x].is_outer_param_or_ret {
@@ -311,6 +308,22 @@ fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarId
     }
     x.clone()
 }
+
+fn simplify_one_place(
+    _ctx: &GlobalCtx,
+    state: &mut State,
+    scope_map: &VisitorScopeMap,
+    place: &Place,
+) -> Result<Place, VirErr> {
+    match &place.x {
+        PlaceX::Local(x) => Ok(place.new_x(PlaceX::Local(rename_var(state, scope_map, x)))),
+        _ => Ok(place.clone()),
+    }
+}
+
+// note that this gets called *bottom up*
+// that is, if node A is the parent of children B and C,
+// then simplify_one_expr is called first on B and C, and then on A
 
 fn simplify_one_expr(
     ctx: &GlobalCtx,
@@ -1148,6 +1161,7 @@ fn simplify_function(
         &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
+        &|state, map, place| simplify_one_place(ctx, state, map, place),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());

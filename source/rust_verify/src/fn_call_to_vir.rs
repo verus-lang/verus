@@ -1232,7 +1232,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
             match chained_item {
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
@@ -1419,10 +1419,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             }
 
-            // REVIEW: mk_vir_args handles mutable ref arguments, so you can do, e.g.,
-            // `x == y` where x has type `&mut T` and y has type `T`.
-            // Is this intentional?
-            let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+            let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
             let lhs = vir_args[0].clone();
             let rhs = vir_args[1].clone();
 
@@ -2037,7 +2034,6 @@ fn mk_vir_args<'tcx>(
     f: DefId,
     args: &Vec<&'tcx Expr<'tcx>>,
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
-    // TODO(main_new) is calling `subst` still correct with the new API?
     let tcx = bctx.ctxt.tcx;
     let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
     assert!(raw_inputs.len() == args.len());
@@ -2051,7 +2047,8 @@ fn mk_vir_args<'tcx>(
                 };
             if is_mut_ref_param {
                 let expr =
-                    expr_to_vir_as_expr(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
+                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
+                let expr = crate::rust_to_vir_expr::place_to_loc(&expr.to_place())?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir_as_expr(
@@ -2060,6 +2057,37 @@ fn mk_vir_args<'tcx>(
                     is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
                 )
             }
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn mk_vir_args_auto_skip_mut_refs<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    f: DefId,
+    args: &Vec<&'tcx Expr<'tcx>>,
+) -> Result<Vec<vir::ast::Expr>, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
+    assert!(raw_inputs.len() == args.len());
+    args.iter()
+        .zip(raw_inputs)
+        .map(|(arg, raw_param)| {
+            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+                && match raw_param.kind() {
+                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+                    _ => false,
+                };
+            let modifier = if is_mut_ref_param {
+                ExprModifier { deref_mut: true, addr_of_mut: false }
+            } else {
+                ExprModifier::REGULAR
+            };
+            expr_to_vir_as_expr(
+                bctx,
+                arg,
+                is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?,
+            )
         })
         .collect::<Result<Vec<_>, _>>()
 }

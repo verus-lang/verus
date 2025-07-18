@@ -1144,7 +1144,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustments,
                     adjustment_idx - 1,
                 )?.to_place();
-                let x = ExprX::BorrowMut(place);
+                let x = ExprX::BorrowMut(place.clone());
                 let typ = Arc::new(TypX::MutRef(place.typ.clone()));
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &typ, x)))
             } else if current_modifier.deref_mut {
@@ -1299,7 +1299,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let new_expr = new_expr.to_expr(bctx, get_inner_ty());
+            let mut new_expr = new_expr.to_expr(bctx, get_inner_ty());
             let typ = Arc::new(TypX::Decorate(
                 vir::ast::TypDecoration::ConstPtr,
                 None,
@@ -1958,7 +1958,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 let place = expr_to_vir(bctx, e, modifier)?.to_place();
-                let x = ExprX::BorrowMut(place);
+                let x = ExprX::BorrowMut(place.clone());
                 let typ = Arc::new(TypX::MutRef(place.typ.clone()));
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &typ, x)))
             } else if current_modifier.deref_mut {
@@ -2064,11 +2064,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let ctor_opt = resolve_ctor(bctx.ctxt.tcx, res);
             match (res, ctor_opt) {
                 (Res::Local(id), _) => match tcx.hir_node(id) {
-                    Node::Pat(pat) => mk_expr(if modifier.addr_of_mut {
-                        ExprX::VarLoc(pat_to_var(pat)?)
-                    } else {
-                        ExprX::Var(pat_to_var(pat)?)
-                    }),
+                    Node::Pat(pat) => {
+                        Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                            expr.span,
+                            &expr_typ()?,
+                            PlaceX::Local(pat_to_var(pat)?)
+                        )))
+                    }
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
                 },
                 (_, Some((ctor, ctor_kind))) => {
@@ -2806,7 +2808,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         }
         let tgt_modifier =
             is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&tgt_expr), ExprModifier::ADDR_OF_MUT)?;
-        let tgt_vir = expr_to_vir_as_expr(bctx, tgt_expr, tgt_modifier)?;
+        let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?.to_place();
         let idx_vir = expr_to_vir_as_expr(bctx, idx_expr, ExprModifier::REGULAR)?;
 
         let mut rhs_vir = expr_to_vir_as_expr(bctx, rhs, modifier)?;
@@ -2816,6 +2818,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
             idx_vir.typ.clone(),
             rhs_vir.typ.clone(),
         ]));
+        let tgt_vir = place_to_loc(&tgt_vir)?;
         let tgt_vir =
             bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
         let call_target = CallTarget::Fun(
@@ -2857,9 +2860,11 @@ fn expr_assign_to_vir_innermost<'tcx>(
         return Ok(ExprOrPlace::Expr(index_set));
     }
     let init_not_mut = init_not_mut(bctx, lhs)?;
+
+    let lhs = expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF_MUT)?.to_place();
     mk_expr(ExprX::Assign {
         init_not_mut,
-        lhs: expr_to_vir_as_expr(bctx, lhs, ExprModifier::ADDR_OF_MUT)?,
+        lhs: place_to_loc(&lhs)?,
         rhs: expr_to_vir_as_expr(bctx, rhs, modifier)?,
         op: op,
     })
@@ -3417,4 +3422,23 @@ fn add_vir_ref_decoration<'tcx>(mut inner_expr: ExprOrPlace) -> ExprOrPlace {
     };
     *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
     inner_expr
+}
+
+pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
+    let x = match &place.x {
+        PlaceX::Local(var_ident) => {
+            ExprX::VarLoc(var_ident.clone())
+        }
+        PlaceX::DerefMut(p) => {
+            return place_to_loc(p);
+        }
+        PlaceX::Field(opr, p) => {
+            let e = place_to_loc(p)?;
+            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::Temporary(_) => {
+            return Err(vir::messages::error(&place.span, "complex arguments to &mut parameters are currently unsupported"));
+        }
+    };
+    Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }

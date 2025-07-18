@@ -2,6 +2,7 @@ use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped,
     Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
+    Place,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -226,6 +227,7 @@ pub fn demote_external_traits(
             },
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
+            &|_state, _, place| Ok(place.clone()),
         )?;
     }
 
@@ -320,6 +322,7 @@ pub fn rewrite_external_function(
         &|_, _, e| Ok(rewrite_one_external_expr(from_path, to_path, to_spec_path, e)),
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
+        &|_, _, p: &Place| Ok(p.clone()),
     )
     .expect("rewrite_external_function")
 }
