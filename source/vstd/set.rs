@@ -1572,7 +1572,7 @@ macro_rules! range_impls {
                         } else {
                             let hi1 = (hi - 1) as $t;
                             Self::properties(lo, hi1);
-                            assert(Self::range_iset(lo, hi) =~= Self::range_iset(lo, hi1).insert(hi1));
+                            assert(Self::range_iset(lo, hi) == Self::range_iset(lo, hi1).insert(hi1));
                             lemma_set_insert_finite(Self::range_iset(lo, hi1), hi1);
                         }
                     }
