@@ -1009,7 +1009,7 @@ impl<A> Set<A> {
                 lemma_to_seq_to_set_id_recursive(self, x);
                 assert(exists|i|
                     #![auto]
-                    Set::int_range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]
+                    Set::range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]
                         == x);  // witness
             }
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
@@ -1230,24 +1230,6 @@ pub proof fn lemma_len_difference<A>(s1: ISet<A>, s2: ISet<A>)
         let a = s1.choose();
         assert(s1.generic_difference(s2).remove(a) =~= s1.remove(a).generic_difference(s2));
         lemma_len_difference::<A>(s1.remove(a), s2);
-    }
-}
-
-/// If a set solely contains integers in the range [a, b), then its size is
-/// bounded by b - a.
-pub proof fn lemma_int_range(lo: int, hi: int)
-    requires
-        lo <= hi,
-    ensures
-        Set::int_range(lo, hi).finite(),
-        Set::int_range(lo, hi).len() == hi - lo,
-    decreases hi - lo,
-{
-    if lo == hi {
-        assert(Set::int_range(lo, hi) =~= Set::empty());
-    } else {
-        lemma_int_range(lo, hi - 1);
-        assert(Set::int_range(lo, hi - 1).insert(hi - 1) =~= Set::int_range(lo, hi));
     }
 }
 
