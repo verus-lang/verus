@@ -1368,6 +1368,22 @@ where
     )
 }
 
+pub fn map_expr_place_visitor<FE, FPL>(expr: &Expr, fe: &FE, fpl: &FPL) -> Result<Expr, VirErr>
+where
+    FE: Fn(&Expr) -> Result<Expr, VirErr>,
+    FPL: Fn(&Place) -> Result<Place, VirErr>,
+{
+    map_expr_visitor_env(
+        expr,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| fe(expr),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| fpl(place),
+    )
+}
+
 pub(crate) fn map_param_visitor<E, FT>(param: &Param, env: &mut E, ft: &FT) -> Result<Param, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,

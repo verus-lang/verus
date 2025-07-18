@@ -3,7 +3,7 @@ use crate::verus_items::RustItem;
 use rustc_hir::HirId;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs, PlaceX};
+use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs, PlaceX, Place};
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -162,11 +162,18 @@ fn clone_add_post_condition<'tcx>(
 
 // TODO better place for this
 fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr: &Expr) -> Expr {
-    vir::ast_visitor::map_expr_visitor(expr, &|e: &Expr| {
+    vir::ast_visitor::map_expr_place_visitor(expr, &|e: &Expr| {
         let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((hir_id, e.span.id));
         Ok(e)
-    })
+    },
+    &|p: &Place| {
+        let p = ctxt.spans.spanned_typed_new(span, &p.typ, p.x.clone());
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((hir_id, p.span.id));
+        Ok(p)
+    }
+    )
     .unwrap()
 }
