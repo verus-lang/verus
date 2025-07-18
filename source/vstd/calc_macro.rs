@@ -49,7 +49,7 @@ verus! {
 #[macro_export]
 macro_rules! calc {
     ($($tt:tt)*) => {
-        $crate::prelude::calc_proc_macro!($($tt)*)
+        $crate::vstd::prelude::calc_proc_macro!($($tt)*)
     };
 }
 
