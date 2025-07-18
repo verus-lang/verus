@@ -1153,13 +1153,23 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
             } else {
                 let mut es = vec![];
                 for e in ensure.iter() {
-                    let e1 = crate::ast_visitor::map_expr_visitor(e, &|expr| match &expr.x {
+                    let e1 = crate::ast_visitor::map_expr_place_visitor(e,
+                    &|expr| match &expr.x {
                         ExprX::Var(ident) if ident == &ret.x.name => {
                             assert!(is_unit(&undecorate_typ(&expr.typ)));
                             Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
                         }
                         _ => Ok(expr.clone()),
-                    })
+                    },
+                    &|place| match &place.x {
+                        PlaceX::Local(ident) if ident == &ret.x.name => {
+                            assert!(is_unit(&undecorate_typ(&place.typ)));
+                            let e = mk_tuple(&place.span, &Arc::new(vec![]));
+                            Ok(PlaceX::temporary(e))
+                        }
+                        _ => Ok(place.clone()),
+                    },
+                    )
                     .unwrap();
                     es.push(e1);
                 }
