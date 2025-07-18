@@ -1482,14 +1482,12 @@ pub broadcast proof fn lemma_set_len_empty<A, FINITE: Finiteness>(s: GSet<A, FIN
 
 //////////////////////////////////////////////////////////////////////////////
 // Machinery to support range_set
-
 pub broadcast proof fn lemma_to_finite_len<A>(s: ISet<A>)
     requires
         s.finite(),
     ensures
         #[trigger] s.to_finite().len() == s.len(),
-    decreases
-        s.len(),
+    decreases s.len(),
 {
     broadcast use lemma_set_empty_len;
     broadcast use lemma_set_remove_len;
@@ -1508,11 +1506,11 @@ pub broadcast proof fn lemma_to_finite_len<A>(s: ISet<A>)
         // step.
         let fr = s.to_finite().remove(x);
         let rf = s.remove(x).to_finite();
-        assert( fr.congruent(rf) ) by {
-            assert forall |e| fr.contains(e) implies rf.contains(e) by { 
+        assert(fr.congruent(rf)) by {
+            assert forall|e| fr.contains(e) implies rf.contains(e) by {
                 assert(s.contains(e));
             }
-            assert forall |e| rf.contains(e) implies fr.contains(e) by { 
+            assert forall|e| rf.contains(e) implies fr.contains(e) by {
                 assert(s.contains(e));
             }
         }
@@ -1522,11 +1520,14 @@ pub broadcast proof fn lemma_to_finite_len<A>(s: ISet<A>)
 
 pub trait FiniteRange: Sized {
     spec fn range_iset(lo: Self, hi: Self) -> ISet<Self>;
+
     spec fn range_len(lo: Self, hi: Self) -> nat;
+
     proof fn properties(lo: Self, hi: Self)
         ensures
             Self::range_iset(lo, hi).finite(),
-            Self::range_iset(lo, hi).len() == Self::range_len(lo, hi);
+            Self::range_iset(lo, hi).len() == Self::range_len(lo, hi),
+    ;
 }
 
 pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
@@ -1589,7 +1590,6 @@ range_impls!([
 ]);
 
 //////////////////////////////////////////////////////////////////////////////
-
 #[deprecated = "Use `Set::range` instead"]
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::<int>::range(lo, hi)

@@ -1009,8 +1009,7 @@ impl<A> Set<A> {
                 lemma_to_seq_to_set_id_recursive(self, x);
                 assert(exists|i|
                     #![auto]
-                    Set::range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i]
-                        == x);  // witness
+                    Set::range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i] == x);  // witness
             }
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
         }
