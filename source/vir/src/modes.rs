@@ -708,8 +708,9 @@ fn check_place_has_mode(
     outer_mode: Mode,
     place: &Place,
     expected: Mode,
+    mutating: bool,
 ) -> Result<(), VirErr> {
-    let mode = check_place(ctxt, record, typing, outer_mode, place)?;
+    let mode = check_place(ctxt, record, typing, outer_mode, place, mutating)?;
     if !mode_le(mode, expected) {
         Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
     } else {
@@ -723,10 +724,11 @@ fn check_place(
     typing: &mut Typing,
     outer_mode: Mode,
     place: &Place,
+    mutating: bool,
 ) -> Result<Mode, VirErr> {
     match &place.x {
         PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }, p) => {
-            let mode = check_place(ctxt, record, typing, outer_mode, p)?;
+            let mode = check_place(ctxt, record, typing, outer_mode, p, mutating)?;
 
             let field_mode = match datatype {
                 Dt::Path(path) => {
@@ -739,13 +741,23 @@ fn check_place(
 
             Ok(mode_join(mode, field_mode))
         }
-        PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p),
+        PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p, mutating),
         PlaceX::Local(var) => {
             if typing.in_forall_stmt || typing.in_proof_in_spec {
                 return Ok(Mode::Spec);
             }
-            let mode = typing.get(var, &place.span)?;
-            let mode = typing.block_ghostness.join_mode(mode);
+            let x_mode = typing.get(var, &place.span)?;
+            let context_mode = typing.block_ghostness.join_mode(outer_mode);
+
+            let mode = mode_join(x_mode, context_mode);
+
+            if mutating && mode != x_mode {
+                return Err(error(
+                    &place.span,
+                    &format!("cannot mutate {x_mode} variable in {context_mode}-code"),
+                ));
+            }
+
             record.erasure_modes.var_modes.push((place.span.clone(), mode));
             Ok(mode)
         }
@@ -1031,7 +1043,7 @@ fn check_expr_handle_mut_arg(
                 Dt::Tuple(_) => (None, Mode::Exec),
             };
             if let Some(update) = update {
-                mode = mode_join(mode, check_place(ctxt, record, typing, outer_mode, update)?);
+                mode = mode_join(mode, check_place(ctxt, record, typing, outer_mode, update, false)?);
             }
             for arg in binders.iter() {
                 let field_mode = match variant_opt {
@@ -1325,7 +1337,7 @@ fn check_expr_handle_mut_arg(
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
-            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec)?;
+            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             check_expr_has_mode(ctxt, record, typing, Mode::Exec, rhs, Mode::Exec)?;
             Ok(Mode::Exec)
         }
@@ -1455,7 +1467,7 @@ fn check_expr_handle_mut_arg(
             }
         }
         ExprX::Match(e1, arms) => {
-            let mode1 = check_place(ctxt, record, typing, outer_mode, e1)?;
+            let mode1 = check_place(ctxt, record, typing, outer_mode, e1, false)?;
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode1 != Mode::Exec
@@ -1701,7 +1713,7 @@ fn check_expr_handle_mut_arg(
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
-            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec)?;
+            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             Ok(Mode::Exec)
         }
         ExprX::Resolve(e, _t) => {
@@ -1726,7 +1738,7 @@ fn check_expr_handle_mut_arg(
             Ok(outer_mode)
         }
         ExprX::ReadPlace(place, _read_type) => {
-            Ok(check_place(ctxt, record, typing, outer_mode, place)?)
+            Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
         }
     };
     Ok((mode?, None))
@@ -1775,7 +1787,7 @@ fn check_stmt(
             match init.as_ref() {
                 None => {}
                 Some(place) => {
-                    check_place_has_mode(ctxt, record, typing, outer_mode, place, mode)?;
+                    check_place_has_mode(ctxt, record, typing, outer_mode, place, mode, false)?;
                 }
             }
             match els.as_ref() {
