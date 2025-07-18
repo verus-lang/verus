@@ -1626,7 +1626,7 @@ impl Visitor {
             false,
         );
 
-        if self.rustdoc && crate::cfg_verify_vstd() {
+        if self.rustdoc && matches!(vstd_kind(), VstdKind::IsVstd) {
             let mut block = (*item_fn.block).clone();
             block.stmts.push(Stmt::Expr(Expr::Verbatim(quote! { ::core::unimplemented!() }), None));
             let impl_item_fn = verus_syn::ImplItem::Fn(verus_syn::ImplItemFn {
