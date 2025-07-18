@@ -234,8 +234,6 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         }
     }
 
-    // DONE(jonh): expose as broadcast lemmas
-    // okay, good, actually the problem was a missing trigger
     pub broadcast proof fn lemma_union_prefer_right(self, m2: Self)
         ensures
             #![trigger (self.union_prefer_right(m2))]
