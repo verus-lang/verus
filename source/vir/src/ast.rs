@@ -957,6 +957,7 @@ pub enum ExprX {
 pub enum ReadType {
     Move,
     Copy,
+    ImmutBor,
 }
 
 // TODO(mut_refs): add ArrayIndex

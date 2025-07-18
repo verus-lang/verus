@@ -88,6 +88,19 @@ impl ExprOrPlace {
         }
     }
 
+    pub(crate) fn immut_bor(&self) -> vir::ast::Expr {
+        match self {
+            ExprOrPlace::Expr(e) => {
+                add_vir_ref_decoration(e.clone())
+            }
+            ExprOrPlace::Place(p) => {
+                let rt = vir::ast::ReadType::ImmutBor;
+                let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
+                SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rt))
+            }
+        }
+    }
+
     pub(crate) fn to_spec_expr<'tcx>(&self) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
@@ -1107,9 +1120,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 ExprModifier::REGULAR,
                 adjustments,
                 adjustment_idx - 1,
-            )?;
-            let new_expr = add_vir_ref_decoration(new_expr);
-            Ok(new_expr)
+            )?.immut_bor();
+            Ok(ExprOrPlace::Expr(new_expr))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
@@ -1951,9 +1963,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?;
-            let new_expr = add_vir_ref_decoration(new_expr);
-            Ok(new_expr)
+            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?.immut_bor();
+            Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
@@ -3415,11 +3426,8 @@ fn strip_vir_ref_decoration<'tcx>(mut inner_expr: ExprOrPlace) -> ExprOrPlace {
     inner_expr
 }
 
-fn add_vir_ref_decoration<'tcx>(mut inner_expr: ExprOrPlace) -> ExprOrPlace {
-    let typ = match &mut inner_expr {
-        ExprOrPlace::Expr(e) => &mut Arc::make_mut(e).typ,
-        ExprOrPlace::Place(p) => &mut Arc::make_mut(p).typ,
-    };
+fn add_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Expr {
+    let typ = &mut Arc::make_mut(&mut inner_expr).typ;
     *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
     inner_expr
 }
@@ -3445,7 +3453,7 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
 
 pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
     let x = match &expr.x {
-        ExprX::ReadPlace(p, _) => {
+        ExprX::ReadPlace(p, vir::ast::ReadType::Move | vir::ast::ReadType::Copy) => {
             return place_to_loc(p);
         }
         ExprX::Unary(cm @ UnaryOp::CoerceMode {
