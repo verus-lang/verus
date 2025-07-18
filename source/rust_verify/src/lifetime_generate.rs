@@ -3060,9 +3060,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             dbg!(span, span.id);
             panic!("missing id_to_hir");
         }
+        dbg!((span, mode));
         for hir_id in &id_to_hir[&span.id] {
+            dbg!(hir_id);
             if ctxt.var_modes.contains_key(hir_id) {
                 if &ctxt.var_modes[hir_id] != mode {
+                    dbg!(&ctxt.var_modes);
                     panic!("inconsistent var_modes: {:?}", span);
                 }
             } else {

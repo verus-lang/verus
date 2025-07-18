@@ -3,7 +3,7 @@ use crate::verus_items::RustItem;
 use rustc_hir::HirId;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs};
+use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs, PlaceX};
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -105,9 +105,17 @@ fn clone_add_post_condition<'tcx>(
 
     match &body.x {
         ExprX::Block(_stmts, Some(last_expr)) => match &last_expr.x {
-            ExprX::Var(id) if &*id.0 == "self" => {
-                uses_copy = true;
-                self_var = Some(last_expr.clone());
+            ExprX::ReadPlace(pl, _) => {
+                match &pl.x {
+                    PlaceX::Local(id) if &*id.0 == "self" => {
+                        uses_copy = true;
+                        self_var = Some(last_expr.clone());
+                    }
+                    _ => {
+                        warn_unexpected();
+                        return Ok(());
+                    }
+                }
             }
             ExprX::Ctor { .. } => {
                 uses_copy = false;

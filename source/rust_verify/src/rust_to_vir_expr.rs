@@ -3436,9 +3436,27 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
             let e = place_to_loc(p)?;
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
         }
-        PlaceX::Temporary(_) => {
-            return Err(vir::messages::error(&place.span, "complex arguments to &mut parameters are currently unsupported"));
+        PlaceX::Temporary(expr) => {
+            return expr_to_loc_coerce_modes(expr);
         }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
+}
+
+pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
+    let x = match &expr.x {
+        ExprX::ReadPlace(p, _) => {
+            return place_to_loc(p);
+        }
+        ExprX::Unary(cm @ UnaryOp::CoerceMode {
+            op_mode: _, from_mode: _, to_mode: _, kind: vir::ast::ModeCoercion::BorrowMut
+        }, e) => {
+            let e = expr_to_loc_coerce_modes(e)?;
+            ExprX::Unary(*cm, e)
+        }
+        _ => {
+            return Err(vir::messages::error(&expr.span, "complex arguments to &mut parameters are currently unsupported"));
+        }
+    };
+    Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }

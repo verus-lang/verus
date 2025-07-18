@@ -741,6 +741,9 @@ fn check_place(
         }
         PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p),
         PlaceX::Local(var) => {
+            if typing.in_forall_stmt || typing.in_proof_in_spec {
+                return Ok(Mode::Spec);
+            }
             let mode = typing.get(var, &place.span)?;
             let mode = typing.block_ghostness.join_mode(mode);
             record.erasure_modes.var_modes.push((place.span.clone(), mode));
