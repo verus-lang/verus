@@ -314,7 +314,7 @@ test_verify_one_file! {
             let b1_ptr = block_ptr as *mut u32;
             let b2_ptr = block_ptr.with_addr(block_ptr.addr() + 4) as *mut u32;
 
-            let tracked (token1, token2) = token.split(Set::new(|x: int| block_ptr.addr() <= x < block_ptr.addr() + 4));
+            let tracked (token1, token2) = token.split(Set::int_range(block_ptr.addr() as int, (block_ptr.addr() + 4) as int));
             let tracked mut token1 = token1.into_typed::<u32>(b1_ptr as usize);
             let tracked mut token2 = token2.into_typed::<u32>(b2_ptr as usize);
 
