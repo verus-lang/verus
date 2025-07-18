@@ -186,7 +186,7 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
         // TODO: remove redundancy
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         &&& self.pos <= self.next_count@
-//        &&& self.pos_back == self.vec@.len()
+        &&& self.pos_back == self.vec@.len()    // Without this, reaches_monotonic fails (b/c outputs is defined in terms of pos_back)
         &&& {
             ||| self.next_count@ == self.pos && 0 <= self.pos < self.pos_back
             ||| self.next_count@ >= self.pos && self.pos == self.pos_back
@@ -234,7 +234,6 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     }
 }
 
-/*
 pub struct Take3<T> {
     pub inner: T,
     pub count: usize,
@@ -362,7 +361,6 @@ impl<T: Iter> Iter for Skip3<T> {
 
     fn next(&mut self) -> (r: Option<Self::Item>) {
         if !self.has_started {
-            broadcast use reaches_transitive_after_next_if_requested;
             let _ = self.inner.next();
             let _ = self.inner.next();
             let _ = self.inner.next();
@@ -534,7 +532,6 @@ fn test3_iso_false(v: &MyVec<u8>)
     assert(s == v@.skip(6));
 }
 
-*/
 
 } // mod examples
 
