@@ -1234,7 +1234,7 @@ pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
 #[macro_export]
 macro_rules! assert_sets_equal {
     [$($tail:tt)*] => {
-        $crate::prelude::verus_proof_macro_exprs!($crate::vstd::set_lib::assert_sets_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set_lib::assert_sets_equal_internal!($($tail)*))
     };
 }
 
@@ -1251,6 +1251,12 @@ macro_rules! assert_sets_equal_internal {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
     };
     (crate::prelude::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $elem:ident $( : $t:ty )? => $bblock:block) => {
         $crate::vstd::set_lib::assert_sets_equal_internal!($s1, $s2, $elem $( : $t )? => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
