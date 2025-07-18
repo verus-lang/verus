@@ -1,5 +1,6 @@
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
+use crate::{VstdKind, vstd_kind};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -4164,7 +4165,7 @@ struct ImplItems {
 }
 
 impl Parse for ImplItems {
-    fn parse(input: ParseStream) -> syn_verus::parse::Result<ImplItems> {
+    fn parse(input: ParseStream) -> verus_syn::parse::Result<ImplItems> {
         let mut items = Vec::new();
         while !input.is_empty() {
             items.push(input.parse()?);
@@ -5163,16 +5164,13 @@ pub(crate) struct Builtin(pub Span);
 
 impl ToTokens for Builtin {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let is_vstd = std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd");
-        if crate::cfg_verify_core() {
-            tokens.extend(quote_spanned! { self.0 => crate::verus_builtin });
-        } else if crate::cfg_verify_vstd() || is_vstd {
-            tokens.extend(quote_spanned! { self.0 => crate::prelude });
-        } else if crate::cfg_no_vstd() {
-            tokens.extend(quote_spanned! { self.0 => ::verus_builtin });
-        } else {
-            tokens.extend(quote_spanned! { self.0 => ::vstd::prelude });
-        }
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
+        };
+        tokens.extend(toks);
     }
 }
 
@@ -5180,13 +5178,15 @@ pub(crate) struct Vstd(pub Span);
 
 impl ToTokens for Vstd {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        if crate::cfg_verify_core() {
-            tokens.extend(quote_spanned! { self.0 => crate::vstd });
-        } else if crate::cfg_verify_vstd() {
-            tokens.extend(quote_spanned! { self.0 => crate });
-        } else {
-            tokens.extend(quote_spanned! { self.0 => ::vstd });
-        }
+        // If this is called for NoVstd, it is of course an error, but we just emit the
+        // vstd identifier and let Rust complain about it later.
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::vstd },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd },
+            VstdKind::IsCore => quote_spanned! { self.0 => crate::vstd },
+        };
+        tokens.extend(toks);
     }
 }
 

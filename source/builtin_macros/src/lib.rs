@@ -160,6 +160,58 @@ pub(crate) fn cfg_erase() -> EraseGhost {
     EraseGhost::EraseAll
 }
 
+#[derive(Clone, Copy)]
+enum VstdKind {
+    /// The current crate is vstd.
+    IsVstd,
+    /// There is no vstd (only verus_builtin). Really only used for testing.
+    NoVstd,
+    /// Imports the vstd crate like usual.
+    Imported,
+    /// Embed vstd and verus_builtin as modules, necessary for verifying the `core` library.
+    IsCore,
+}
+
+fn vstd_kind() -> VstdKind {
+    static VSTD_KIND: OnceLock<VstdKind> = OnceLock::new();
+    *VSTD_KIND.get_or_init(|| {
+        match std::env::var("VSTD_KIND") {
+            Ok(s) => {
+                if &s == "IsVstd" {
+                    return VstdKind::IsVstd;
+                } else if &s == "NoVstd" {
+                    return VstdKind::NoVstd;
+                } else if &s == "Imported" {
+                    return VstdKind::Imported;
+                } else if &s == "IsCore" {
+                    return VstdKind::IsCore;
+                } else {
+                    panic!("The environment variable VSTD_KIND was set but its value is invalid. Allowed values are 'IsVstd', 'NoVstd', 'Imported', and 'IsCore'");
+                }
+            }
+            _ => { }
+        }
+
+        // When building vstd normally through cargo, we won't get a VSTD_KIND env var,
+        // but we can use CARGO_PGK_NAME instead.
+        let is_vstd = std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd");
+        if is_vstd {
+            return VstdKind::IsVstd;
+        }
+
+        // TODO: consider using the environment variable for these instead
+        if cfg_verify_core() {
+            return VstdKind::IsCore;
+        }
+        if cfg_no_vstd() {
+            return VstdKind::NoVstd;
+        }
+
+        // If none of the above, we assume a normal build
+        return VstdKind::Imported;
+    })
+}
+
 #[cfg(verus_keep_ghost)]
 pub(crate) fn cfg_verify_core() -> bool {
     static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
@@ -229,17 +281,6 @@ pub(crate) fn cfg_verify_vstd() -> bool {
     })
 }
 
-// For not(verus_keep_ghost), we can't use the ideal implementation (above). The following works
-// as long as IS_VSTD is set whenever it's necessary. If we fail to set it, then
-// the CI should fail to build Verus.
-
-static IS_VSTD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-#[cfg(not(verus_keep_ghost))]
-pub(crate) fn cfg_verify_vstd() -> bool {
-    IS_VSTD.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
 /// then returns f!(exprs'),
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
@@ -280,12 +321,6 @@ pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_
 
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    struct_decl_inv::struct_decl_inv(input)
-}
-
-#[proc_macro]
-pub fn struct_with_invariants_vstd(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    IS_VSTD.store(true, std::sync::atomic::Ordering::Relaxed);
     struct_decl_inv::struct_decl_inv(input)
 }
 
