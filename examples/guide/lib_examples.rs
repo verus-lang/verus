@@ -58,7 +58,7 @@ proof fn test_seq2() {
 }
 
 proof fn test_set2() {
-    let s_finite: Set<int> = Set::int_range(0, 41).filter(|i: int| i % 10 == 0);
+    let s_finite: Set<int> = Set::range(0, 41).filter(|i: int| i % 10 == 0);
     assert(s_finite.contains(20));
     assert(s_finite.contains(30));
     assert(!s_finite.contains(60));
