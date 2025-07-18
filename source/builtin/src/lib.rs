@@ -1790,3 +1790,31 @@ pub fn inline_air_stmt(_s: &str) {
 pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::resolve"]
+#[verifier::spec]
+pub fn resolve<T>(_t: T) {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::has_resolved"]
+#[verifier::spec]
+pub fn has_resolved<T>(_t: T) -> bool {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::mut_ref_current"]
+#[verifier::spec]
+pub fn mut_ref_current<T>(_mut_ref: &mut T) -> T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::mut_ref_future"]
+#[verifier::spec]
+pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
+    unimplemented!()
+}
