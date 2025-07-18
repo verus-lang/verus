@@ -7,7 +7,6 @@
     feature(proc_macro_diagnostic)
 )]
 
-#[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
 
