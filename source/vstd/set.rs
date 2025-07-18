@@ -154,20 +154,6 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 
-impl<FINITE: Finiteness> GSet<int, FINITE> {
-    /// Creates a finite set of integers in the range [lo, hi).
-    pub closed spec fn int_range(lo: int, hi: int) -> GSet<int, FINITE> {
-        GSet { set: |i: int| lo <= i && i < hi, _phantom: PhantomData }
-    }
-}
-
-impl<FINITE: Finiteness> GSet<nat, FINITE> {
-    /// Creates a finite set of nats in the range [lo, hi).
-    pub closed spec fn nat_range(lo: nat, hi: nat) -> GSet<nat, FINITE> {
-        GSet { set: |i: nat| lo <= i && i < hi, _phantom: PhantomData }
-    }
-}
-
 pub broadcast proof fn lemma_set_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
     requires
         FINITE::type_is_finite(),
@@ -1494,72 +1480,119 @@ pub broadcast proof fn lemma_set_len_empty<A, FINITE: Finiteness>(s: GSet<A, FIN
     }
 }
 
-pub broadcast proof fn lemma_set_int_range_ensures<FINITE: Finiteness>(lo: int, hi: int)
+//////////////////////////////////////////////////////////////////////////////
+// Machinery to support range_set
+
+pub broadcast proof fn lemma_to_finite_len<A>(s: ISet<A>)
+    requires
+        s.finite(),
     ensures
-        #![trigger(GSet::<int, FINITE>::int_range(lo, hi))]
-        forall|i: int| #[trigger]
-            GSet::<int, FINITE>::int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
-        (lo <= hi) ==> GSet::<int, FINITE>::int_range(lo, hi).len() == hi - lo,
-        GSet::<int, FINITE>::int_range(lo, hi).finite(),
-    decreases hi - lo,
+        #[trigger] s.to_finite().len() == s.len(),
+    decreases
+        s.len(),
 {
-    if lo < hi {
-        lemma_set_int_range_ensures::<FINITE>(lo, hi - 1);
-        assert(GSet::<int, FINITE>::int_range(lo, hi) =~= GSet::<int, FINITE>::int_range(
-            lo,
-            hi - 1,
-        ).insert(hi - 1));
-        lemma_set_insert_finite(GSet::<int, FINITE>::int_range(lo, hi - 1), hi - 1);
-        fold::lemma_fold_insert::<int, FINITE, nat>(
-            GSet::<int, FINITE>::int_range(lo, hi - 1),
-            0,
-            |b: nat, a: int| b + 1,
-            hi - 1,
-        );
+    broadcast use lemma_set_empty_len;
+    broadcast use lemma_set_remove_len;
+    broadcast use lemma_set_len_empty;
+    broadcast use GSet::cast_finiteness_properties;
+    broadcast use lemma_set_remove_finite;
+    broadcast use lemma_set_choose_len;
+
+    if s.len() == 0 {
+        lemma_congruence_extensionality(s.to_finite(), GSet::<A, Finite>::empty());
     } else {
-        broadcast use lemma_set_empty_len;
-
-        assert(GSet::<int, FINITE>::int_range(lo, hi) =~= GSet::<int, FINITE>::empty());  // extn
-        broadcast use lemma_set_empty_finite;
-
+        let x = s.choose();
+        lemma_to_finite_len(s.remove(x));
+        // Not sure why this required so much more proof than Chris' draft. His draft got to enjoy
+        // group_set_lemmas, but I can't figure out which one was doing the work that avoided this
+        // step.
+        let fr = s.to_finite().remove(x);
+        let rf = s.remove(x).to_finite();
+        assert( fr.congruent(rf) ) by {
+            assert forall |e| fr.contains(e) implies rf.contains(e) by { 
+                assert(s.contains(e));
+            }
+            assert forall |e| rf.contains(e) implies fr.contains(e) by { 
+                assert(s.contains(e));
+            }
+        }
+        lemma_congruence_extensionality(s.to_finite().remove(x), s.remove(x).to_finite());
     }
 }
 
-pub broadcast proof fn lemma_set_nat_range_ensures<FINITE: Finiteness>(lo: nat, hi: nat)
+pub trait FiniteRange: Sized {
+    spec fn range_iset(lo: Self, hi: Self) -> ISet<Self>;
+    spec fn range_len(lo: Self, hi: Self) -> nat;
+    proof fn properties(lo: Self, hi: Self)
+        ensures
+            Self::range_iset(lo, hi).finite(),
+            Self::range_iset(lo, hi).len() == Self::range_len(lo, hi);
+}
+
+pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
     ensures
-        #![trigger(GSet::<nat, FINITE>::nat_range(lo, hi))]
-        forall|i: nat| #[trigger]
-            GSet::<nat, FINITE>::nat_range(lo, hi).contains(i) <==> lo <= i && i < hi,
-        (lo <= hi) ==> GSet::<nat, FINITE>::nat_range(lo, hi).len() == hi - lo,
-        GSet::<nat, FINITE>::nat_range(lo, hi).finite(),
-    decreases hi - lo,
+        (#[trigger] A::range_iset(lo, hi)).finite(),
+        A::range_iset(lo, hi).len() == A::range_len(lo, hi),
 {
-    if lo < hi {
-        let dechi = (hi - 1) as nat;
-        lemma_set_nat_range_ensures::<FINITE>(lo, dechi);
-        assert(GSet::<nat, FINITE>::nat_range(lo, hi) =~= GSet::<nat, FINITE>::nat_range(
-            lo,
-            dechi,
-        ).insert(dechi));
-        lemma_set_insert_finite(GSet::<nat, FINITE>::nat_range(lo, dechi), dechi);
-        fold::lemma_fold_insert::<nat, FINITE, nat>(
-            GSet::<nat, FINITE>::nat_range(lo, dechi),
-            0,
-            |b: nat, a: nat| b + 1,
-            dechi,
-        );
-    } else {
-        broadcast use lemma_set_empty_len;
+    A::properties(lo, hi);
+}
 
-        assert(GSet::<nat, FINITE>::nat_range(lo, hi) =~= GSet::<nat, FINITE>::empty());  // extn
-        broadcast use lemma_set_empty_finite;
-
+impl<A: FiniteRange> Set<A> {
+    #[verifier::inline]
+    /// This is a recommended constructor for building finite sets containing a contiguous range of a
+    /// numeric type.
+    pub open spec fn range(lo: A, hi: A) -> Set<A> {
+        A::range_iset(lo, hi).to_finite()
     }
 }
 
-#[deprecated = "Use `Set::int_range` instead"]
+// Macro to implement the trait for every numeric type. We need a macro here
+// because 'as nat' can't be written as a type generic.
+macro_rules! range_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteRange for $t {
+                    open spec fn range_iset(lo: Self, hi: Self) -> ISet<Self> {
+                        ISet::new(|i: Self| lo <= i < hi)
+                    }
+                    open spec fn range_len(lo: Self, hi: Self) -> nat {
+                        if lo <= hi { (hi - lo) as nat } else { 0 }
+                    }
+                    proof fn properties(lo: Self, hi: Self)
+                        decreases hi - lo
+                    {
+                        broadcast use lemma_set_empty_finite;
+                        broadcast use lemma_set_empty_len;
+                        broadcast use lemma_set_insert_len;
+
+                        if hi <= lo {
+                            assert(Self::range_iset(lo, hi).is_empty());
+                        } else {
+                            let hi1 = (hi - 1) as $t;
+                            Self::properties(lo, hi1);
+                            assert(Self::range_iset(lo, hi) =~= Self::range_iset(lo, hi1).insert(hi1));
+                            lemma_set_insert_finite(Self::range_iset(lo, hi1), hi1);
+                        }
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+// Make Set::range available for all of the Verus numeric types
+range_impls!([
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+//////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "Use `Set::range` instead"]
 pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
-    Set::<int>::int_range(lo, hi)
+    Set::<int>::range(lo, hi)
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
@@ -1709,8 +1742,6 @@ pub broadcast group group_set_lemmas {
     GSet::to_infinite_ensures,
     lemma_set_map_len,
     lemma_set_map_insert,
-    lemma_set_int_range_ensures,
-    lemma_set_nat_range_ensures,
     lemma_set_generic_union_finite,
     lemma_set_union_finite,
     lemma_set_generic_intersect_finite,
@@ -1727,6 +1758,8 @@ pub broadcast group group_set_lemmas {
     lemma_set_filter_is_intersect,
     GSet::lemma_set_product_contains,
     GSet::lemma_set_product_contains_2,
+    range_set_properties,
+    lemma_to_finite_len,
 }
 
 // Macros
