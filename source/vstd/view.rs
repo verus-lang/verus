@@ -134,6 +134,25 @@ impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
     }
 }
 
+impl<T> View for Option<T> {
+    type V = Option<T>;
+
+    open spec fn view(&self) -> Option<T> {
+        *self
+    }
+}
+
+impl<T: DeepView> DeepView for Option<T> {
+    type V = Option<T::V>;
+
+    open spec fn deep_view(&self) -> Option<T::V> {
+        match self {
+            Some(t) => Some(t.deep_view()),
+            None => None,
+        }
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]
