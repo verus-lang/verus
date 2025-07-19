@@ -116,7 +116,6 @@ impl Clone for crate::AssumeSpecification {
             bracket_token: self.bracket_token.clone(),
             qself: self.qself.clone(),
             path: self.path.clone(),
-            paren_token: self.paren_token.clone(),
             inputs: self.inputs.clone(),
             output: self.output.clone(),
             requires: self.requires.clone(),
