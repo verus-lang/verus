@@ -745,6 +745,44 @@ impl<A> Seq<A> {
         }
     }
 
+    /// [`Self::fold_left`] on the reversed sequence is equivalent to
+    /// [`Self::fold_right`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_left<B>(self, v: B, f: spec_fn(B, A) -> B)
+        ensures
+            self.reverse().fold_left(v, f) == self.fold_right(|a: A, b: B| f(b, a), v),
+    {
+        assert(self.reverse().reverse() =~= self);
+        let g = |a: A, b: B| f(b, a);
+        assert(f =~= |b: B, a: A| g(a, b));
+        self.reverse().lemma_reverse_fold_right(v, |a: A, b: B| f(b, a))
+    }
+
+    /// For any invariant `inv`, if the initial value `v` satisfies `inv`
+    /// and the fold_left operator preseves `inv`,
+    /// then the folding result preserves this invariant.
+    pub proof fn lemma_fold_left_preserves_inv<B>(
+        self,
+        f: spec_fn(B, A) -> B,
+        v: B,
+        inv: spec_fn(B) -> bool,
+        inv_e: spec_fn(A) -> bool,
+    )
+        requires
+            inv(v),
+            forall|e: A, v: B| (inv_e(e) && inv(v)) ==> #[trigger] inv(f(v, e)),
+            forall|e: A| self.contains(e) ==> #[trigger] inv_e(e),
+        ensures
+            inv(self.fold_left(v, f)),
+        decreases self.len(),
+    {
+        if self.len() > 0 {
+            let l0 = self.drop_last();
+            assert(forall|e: A| #[trigger] l0.contains(e) ==> self.contains(e));
+            assert(inv_e(self.last())) by { assert(self.contains(self.last())) };
+            l0.lemma_fold_left_preserves_inv(f, v, inv, inv_e);
+        }
+    }
+
     /// Folds the sequence to the right, applying `f` to perform the fold.
     ///
     /// Equivalent to `DoubleEndedIterator::rfold` in Rust.
@@ -820,6 +858,39 @@ impl<A> Seq<A> {
         }
     }
 
+    // Lemma similar to [`Seq::lemma_fold_right_commute_one`] but with weaker precondition.
+    pub proof fn lemma_fold_right_commute_one_with_inv<B>(
+        self,
+        a: A,
+        f: spec_fn(A, B) -> B,
+        v: B,
+        inv: spec_fn(B) -> bool,
+        inv_e: spec_fn(A) -> bool,
+    )
+        requires
+            forall|v: B, x: A, y: A|
+                inv(v) && inv_e(x) && inv_e(y) ==> #[trigger] f(x, f(y, v)) == f(y, f(x, v)),
+            forall|x: A| #[trigger] self.contains(x) ==> inv_e(x),
+            forall|v: B, x: A| inv_e(x) && inv(v) ==> #[trigger] inv(f(x, v)),
+            inv(v),
+            inv_e(a),
+        ensures
+            self.fold_right(f, f(a, v)) == f(a, self.fold_right(f, v)),
+        decreases self.len(),
+    {
+        if self.len() > 0 {
+            assert(forall|x: A| #[trigger] self.drop_last().contains(x) ==> self.contains(x));
+            assert(inv_e(self.last())) by { assert(self.contains(self.last())) };
+            self.drop_last().lemma_fold_right_commute_one_with_inv(
+                a,
+                f,
+                f(self.last(), v),
+                inv,
+                inv_e,
+            );
+        }
+    }
+
     /// [`Self::fold_right`] and [`Self::fold_right_alt`] are equivalent.
     pub proof fn lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B)
         ensures
@@ -833,6 +904,61 @@ impl<A> Seq<A> {
         } else {
             self.subrange(1, self.len() as int).lemma_fold_right_alt(f, b);
             self.lemma_fold_right_split(f, b, 1);
+        }
+    }
+
+    /// For any invariant `inv`, if the initial value `v` satisfies `inv`
+    /// and the fold_right operator preseves `inv`,
+    /// then the folding result preserves this invariant.
+    pub proof fn lemma_fold_right_preserves_inv<B>(
+        self,
+        f: spec_fn(A, B) -> B,
+        v: B,
+        inv: spec_fn(B) -> bool,
+        inv_e: spec_fn(A) -> bool,
+    )
+        requires
+            inv(v),
+            forall|e: A, v: B| (inv_e(e) && inv(v)) ==> #[trigger] inv(f(e, v)),
+            forall|e: A| self.contains(e) ==> #[trigger] inv_e(e),
+        ensures
+            inv(self.fold_right(f, v)),
+        decreases self.len(),
+    {
+        if self.len() > 0 {
+            let l0 = self.drop_last();
+            assert(forall|e: A| #[trigger] l0.contains(e) ==> self.contains(e));
+            assert(inv_e(self.last())) by { assert(self.contains(self.last())) };
+            l0.lemma_fold_right_preserves_inv(f, f(self.last(), v), inv, inv_e);
+        }
+    }
+
+    /// [`Self::fold_right`] on the reversed sequence is equivalent to
+    /// [`Self::fold_left`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_right<B>(self, v: B, f: spec_fn(A, B) -> B)
+        ensures
+            self.reverse().fold_right(f, v) == self.fold_left(v, |b: B, a: A| f(a, b)),
+        decreases self.len(),
+    {
+        let g = |b: B, a: A| f(a, b);
+        if self.len() > 0 {
+            let last = self.last();
+            let s0 = self.drop_last();
+            assert(self.reverse() =~= seq![last] + s0.reverse());
+            let res1 = self.reverse().fold_right(f, v);
+            let res2 = self.fold_left(v, g);
+            assert(res1 == self.reverse().fold_right_alt(f, v)) by {
+                self.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            assert(self.reverse().first() == last);
+            assert(self.reverse().subrange(1, self.reverse().len() as int) =~= s0.reverse());
+            assert(res1 == f(last, s0.reverse().fold_right_alt(f, v)));
+            assert(res1 == f(last, s0.reverse().fold_right(f, v))) by {
+                s0.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            s0.lemma_reverse_fold_right(v, f);
         }
     }
 
@@ -892,6 +1018,28 @@ impl<A> Seq<A> {
                 lemma_multiset_commutative(s0, s1);
                 assert(self.to_multiset().count(self[a]) >= 2);
             }
+        }
+    }
+
+    /// Conversion of a sequence to multiset is equivalent to conversion of its reversion to multiset
+    proof fn lemma_reverse_to_multiset(self)
+        ensures
+            self.reverse().to_multiset() =~= self.to_multiset(),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use super::multiset::group_multiset_axioms;
+
+        if self.len() > 0 {
+            let s2 = self.drop_first();
+            let e = self.first();
+            assert(self =~= seq![e] + s2);
+            assert(self.to_multiset() =~= seq![e].to_multiset().add(s2.to_multiset())) by {
+                lemma_multiset_commutative(seq![e], s2)
+            }
+            assert(self.reverse() =~= s2.reverse().push(e));
+            assert(self.reverse().to_multiset() =~= s2.reverse().to_multiset().insert(e));
+            s2.lemma_reverse_to_multiset();
         }
     }
 
@@ -3209,12 +3357,41 @@ pub open spec fn commutative_foldr<A, B>(f: spec_fn(A, B) -> B) -> bool {
     forall|x: A, y: A, v: B| #[trigger] f(x, f(y, v)) == f(y, f(x, v))
 }
 
+// Definition of a commutative fold_left operator.
+pub open spec fn commutative_foldl<A, B>(f: spec_fn(B, A) -> B) -> bool {
+    forall|x: A, y: A, v: B| #[trigger] f(f(v, x), y) == f(f(v, y), x)
+}
+
 // For a commutative fold_right operator, any folding order
 // (i.e., any permutation) produces the same result.
 pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(A, B) -> B, v: B)
     requires
         commutative_foldr(f),
         l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_right(f, v) == l2.fold_right(f, v),
+{
+    lemma_fold_right_permutation_with_inv(l1, l2, f, v, |v: B| true, |x: A| true)
+}
+
+// A more general version of `lemma_fold_right_permutation`.
+// For a limited commutative fold_right operator which preserves the invariant,
+// any folding order produces the same result.
+pub proof fn lemma_fold_right_permutation_with_inv<A, B>(
+    l1: Seq<A>,
+    l2: Seq<A>,
+    f: spec_fn(A, B) -> B,
+    v: B,
+    inv: spec_fn(B) -> bool,
+    inv_e: spec_fn(A) -> bool,
+)
+    requires
+        forall|v: B, x: A, y: A|
+            inv(v) && inv_e(x) && inv_e(y) ==> #[trigger] f(x, f(y, v)) == f(y, f(x, v)),
+        l1.to_multiset() == l2.to_multiset(),
+        forall|x: A| #[trigger] l1.contains(x) ==> inv_e(x),
+        forall|v: B, x: A| inv_e(x) && inv(v) ==> #[trigger] inv(f(x, v)),
+        inv(v),
     ensures
         l1.fold_right(f, v) == l2.fold_right(f, v),
     decreases l1.len(),
@@ -3225,27 +3402,88 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
         let a = l1.last();
         let i = l2.index_of(a);
         let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
-
         assert(l1.to_multiset().count(a) > 0);
-        l1.drop_last().lemma_fold_right_commute_one(a, f, v);
-        l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
-
+        assert(forall|x: A| #[trigger] l2.contains(x) ==> l2.to_multiset().contains(x));
+        assert(forall|x: A| #[trigger] l2.contains(x) ==> l1.contains(x));
+        assert(inv_e(a)) by { assert(l1.contains(a)) };
+        assert forall|x: A| #[trigger] l1.drop_last().contains(x) implies inv_e(x) by {
+            assert(l1.contains(x))
+        }
+        assert forall|x: A| #[trigger] l2.subrange(0, i).contains(x) implies inv_e(x) by {
+            assert(l2.contains(x));
+        }
+        assert forall|x: A| #[trigger]
+            l2.subrange(i + 1, l2.len() as int).contains(x) implies inv_e(x) by {
+            assert(l2.contains(x));
+        }
+        assert(inv(l2r)) by {
+            l2.subrange(i + 1, l2.len() as int).lemma_fold_right_preserves_inv(f, v, inv, inv_e)
+        };
+        l1.drop_last().lemma_fold_right_commute_one_with_inv(a, f, v, inv, inv_e);
+        l2.subrange(0, i).lemma_fold_right_commute_one_with_inv(a, f, l2r, inv, inv_e);
         l2.lemma_fold_right_split(f, v, i + 1);
         l2.remove(i).lemma_fold_right_split(f, v, i);
-
         assert(l2.subrange(0, i + 1).drop_last() == l2.subrange(0, i));
         assert(l1.drop_last() == l1.remove(l1.len() - 1));
-
         assert(l2.remove(i).subrange(0, i) == l2.subrange(0, i));
         assert(l2.remove(i).subrange(i, l2.remove(i).len() as int) == l2.subrange(
             i + 1,
             l2.len() as int,
         ));
-
-        lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
+        lemma_fold_right_permutation_with_inv(l1.drop_last(), l2.remove(i), f, v, inv, inv_e);
     } else {
         assert(l2.to_multiset().len() == 0);
     }
+}
+
+// For a commutative fold_left operator, any folding order
+// (i.e., any permutation) produces the same result.
+pub proof fn lemma_fold_left_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(B, A) -> B, v: B)
+    requires
+        commutative_foldl(f),
+        l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_left(v, f) == l2.fold_left(v, f),
+{
+    lemma_fold_left_permutation_with_inv(l1, l2, f, v, |v: B| true, |x: A| true)
+}
+
+// A more general version of `lemma_fold_left_permutation`.
+// For a limited commutative fold_left operator which preserves the invariant,
+// any folding order produces the same result.
+pub proof fn lemma_fold_left_permutation_with_inv<A, B>(
+    l1: Seq<A>,
+    l2: Seq<A>,
+    f: spec_fn(B, A) -> B,
+    v: B,
+    inv: spec_fn(B) -> bool,
+    inv_e: spec_fn(A) -> bool,
+)
+    requires
+        forall|v: B, x: A, y: A|
+            inv(v) && inv_e(x) && inv_e(y) ==> #[trigger] f(f(v, x), y) == f(f(v, y), x),
+        l1.to_multiset() == l2.to_multiset(),
+        forall|x: A| #[trigger] l1.contains(x) ==> inv_e(x),
+        forall|v: B, x: A| inv_e(x) && inv(v) ==> #[trigger] inv(f(v, x)),
+        inv(v),
+    ensures
+        l1.fold_left(v, f) == l2.fold_left(v, f),
+{
+    let g = |a: A, b: B| f(b, a);
+    assert(f =~= |b: B, a: A| g(a, b));
+    assert(l1.fold_left(v, f) == l1.reverse().fold_right(g, v)) by {
+        l1.lemma_reverse_fold_right(v, g)
+    };
+    assert(l2.fold_left(v, f) == l2.reverse().fold_right(g, v)) by {
+        l2.lemma_reverse_fold_right(v, g)
+    };
+    assert(l1.reverse().to_multiset() =~= l2.reverse().to_multiset()) by {
+        l1.lemma_reverse_to_multiset();
+        l2.lemma_reverse_to_multiset();
+    }
+    assert(forall|x: A| #[trigger] l1.reverse().contains(x) ==> l1.contains(x));
+    assert(forall|x: A| #[trigger] l2.reverse().contains(x) ==> l2.contains(x));
+    lemma_fold_right_permutation_with_inv(l1.reverse(), l2.reverse(), g, v, inv, inv_e);
 }
 
 /************************** Lemmas about Take/Skip ***************************/
