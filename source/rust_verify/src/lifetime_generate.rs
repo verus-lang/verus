@@ -3179,20 +3179,25 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                 );
                             } else {
                                 let body = ctxt.tcx.hir_body(*body_id);
-                                let (def_id, _) = crate::rust_to_vir_func::get_external_def_id(
-                                    ctxt.tcx,
-                                    &ctxt.verus_items,
-                                    id,
-                                    body_id,
-                                    body,
-                                    sig,
-                                )
-                                .unwrap();
+                                let (def_id, _, is_const) =
+                                    crate::rust_to_vir_func::get_external_def_id(
+                                        ctxt.tcx,
+                                        &ctxt.verus_items,
+                                        id,
+                                        body_id,
+                                        body,
+                                        sig,
+                                    )
+                                    .unwrap();
 
                                 // Case where the external function is local - it doesn't
                                 // end up in the 'imported_fun_worklist' in this case
                                 if def_id.as_local().is_some() {
-                                    import_fn(&mut ctxt, &mut state, def_id);
+                                    if is_const {
+                                        import_const_static(&mut ctxt, &mut state, def_id, false);
+                                    } else {
+                                        import_fn(&mut ctxt, &mut state, def_id);
+                                    }
                                 }
                             }
                         }

@@ -1545,7 +1545,6 @@ impl Visitor {
             bracket_token: _,
             qself,
             path,
-            paren_token,
             inputs,
             output,
             requires,
@@ -1558,6 +1557,11 @@ impl Visitor {
         } = assume_specification.clone();
         let ex_ident = get_ex_ident_mangle_path(&qself, &path);
 
+        let (is_const, paren_token, inputs) = match inputs {
+            None => (true, token::Paren { span: into_spans(span) }, Punctuated::new()),
+            Some((paren_token, inputs)) => (false, paren_token, inputs),
+        };
+
         let sig = Signature {
             publish: Publish::Default,
             constness: None,
@@ -1569,7 +1573,7 @@ impl Visitor {
             fn_token: token::Fn { span },
             ident: ex_ident,
             generics: generics,
-            paren_token: paren_token,
+            paren_token,
             inputs: inputs,
             variadic: None,
             output: output,
@@ -1663,9 +1667,13 @@ impl Visitor {
             syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
         // We wrap the function call in an 'unsafe' block, since the user might be applying
         // a specification to an unsafe function.
-        let e = Expr::Verbatim(quote! {
-            unsafe { #callee(#(#args),*) }
-        });
+        let e = if is_const {
+            Expr::Verbatim(quote!(unsafe { #callee }))
+        } else {
+            Expr::Verbatim(quote! {
+                unsafe { #callee(#(#args),*) }
+            })
+        };
         stmts.push(Stmt::Expr(e, None));
 
         item_fn.block.stmts = stmts;

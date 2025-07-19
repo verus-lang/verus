@@ -123,7 +123,6 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("bracket_token", &self.bracket_token);
         formatter.field("qself", &self.qself);
         formatter.field("path", &self.path);
-        formatter.field("paren_token", &self.paren_token);
         formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
         formatter.field("requires", &self.requires);
