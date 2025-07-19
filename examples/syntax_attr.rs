@@ -5,7 +5,6 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
 
-#[verifier::external]
 fn main() {}
 
 /// functions may be declared exec (default), proof, or spec, which contain
