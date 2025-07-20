@@ -1,8 +1,8 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
-    Visibility, Place, PlaceX, VarIdent,
+    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
+    VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -453,22 +453,20 @@ fn check_one_expr(
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
                         ))
                     }
-                    _ => Ok(())
+                    _ => Ok(()),
                 },
                 &mut |_, _| Ok(()),
                 &mut |_, _| Ok(()),
                 &mut |_, _, _| Ok(()),
                 &mut |scope_map, p| match &p.x {
-                    PlaceX::Local(x)
-                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
-                    {
+                    PlaceX::Local(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &p.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
                         ))
                     }
-                    _ => Ok(())
-                }
+                    _ => Ok(()),
+                },
             )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
@@ -584,13 +582,10 @@ fn check_one_place(
         PlaceX::Local(x) => {
             check_var(function, &place.span, area, x)?;
         }
-        PlaceX::Field(FieldOpr {
-            datatype: Dt::Path(path),
-            variant: _,
-            field: _,
-            get_variant: _,
-            check: _,
-        }, _) => {
+        PlaceX::Field(
+            FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
+            _,
+        ) => {
             check_datatype_access(
                 ctxt,
                 path,
@@ -600,17 +595,12 @@ fn check_one_place(
                 "field expression",
             )?;
         }
-        _ => { }
+        _ => {}
     }
     Ok(())
 }
 
-fn check_var(
-    function: &Function,
-    span: &Span,
-    area: Area,
-    x: &VarIdent,
-) -> Result<(), VirErr> {
+fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Result<(), VirErr> {
     if let Area::PreState(clause_name) = area {
         for param in function.x.params.iter().filter(|p| p.x.is_mut) {
             if *x == param.x.name {
@@ -675,7 +665,9 @@ fn check_expr(
             check_one_pattern(ctxt, function, pattern, disallow_private_access)
         },
         &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
-        &mut |_scope_map, place| check_one_place(ctxt, function, place, disallow_private_access, area),
+        &mut |_scope_map, place| {
+            check_one_place(ctxt, function, place, disallow_private_access, area)
+        },
     )
 }
 

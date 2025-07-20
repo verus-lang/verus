@@ -10,9 +10,8 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
     Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
     Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
-    KrateX, Mode, MultiOp, Path, Pattern, PatternX, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
-    Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
-    Place,
+    KrateX, Mode, MultiOp, Path, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;

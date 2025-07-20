@@ -1101,7 +1101,8 @@ where
     FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
     FPL: FnMut(&mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
-    let mut vis = WalkAstVisitor { fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
+    let mut vis =
+        WalkAstVisitor { fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
     match vis.visit_expr(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(t) => VisitorControlFlow::Stop(t),
@@ -1602,7 +1603,8 @@ where
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
-    let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)).transpose()?;
+    let body =
+        body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)).transpose()?;
     map.pop_scope();
 
     let fndef_axioms = if let Some(es) = fndef_axioms {

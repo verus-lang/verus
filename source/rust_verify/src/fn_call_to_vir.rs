@@ -8,8 +8,9 @@ use crate::rust_to_vir_base::{
     is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, expr_to_vir_consume, extract_array,
-    extract_tuple, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
+    expr_to_vir_consume, extract_array, extract_tuple, get_fn_path, is_expr_typ_mut_ref,
+    mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -401,8 +402,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let subargs = extract_array(args[0]);
 
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                })?;
 
                 if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
                     return err_span(
@@ -494,8 +496,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
                 let subargs = extract_tuple(args[0]);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                })?;
                 let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
                 mk_expr(ExprX::Header(header))
             }
@@ -509,8 +512,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let vir_args =
-                    vec_map_result(&subargs, |arg| expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR))?;
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                })?;
                 let header = match spec_item {
                     SpecItem::InvariantExceptBreak => {
                         Arc::new(HeaderExprX::InvariantExceptBreak(Arc::new(vir_args)))
@@ -1203,7 +1207,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
-                        bctx, args[0], source_vir0.to_place(), mk_expr,
+                        bctx,
+                        args[0],
+                        source_vir0.to_place(),
+                        mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;

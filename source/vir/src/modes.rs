@@ -1046,7 +1046,8 @@ fn check_expr_handle_mut_arg(
                 Dt::Tuple(_) => (None, Mode::Exec),
             };
             if let Some(update) = update {
-                mode = mode_join(mode, check_place(ctxt, record, typing, outer_mode, update, false)?);
+                mode =
+                    mode_join(mode, check_place(ctxt, record, typing, outer_mode, update, false)?);
             }
             for arg in binders.iter() {
                 let field_mode = match variant_opt {
