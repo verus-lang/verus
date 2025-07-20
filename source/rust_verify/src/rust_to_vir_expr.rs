@@ -1076,11 +1076,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 && matches!(inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
             {
                 let inner_place = inner_expr.to_place();
-                let t = match &*inner_place.typ {
-                    TypX::MutRef(t) => t.clone(),
-                    _ => panic!("expected mut ref"),
-                };
-                Ok(ExprOrPlace::Place(bctx.spanned_typed_new(expr.span, &t, PlaceX::DerefMut(inner_place))))
+                let place = deref_mut(bctx, expr.span, &inner_place);
+                Ok(ExprOrPlace::Place(place))
             } else {
                 Ok(strip_vir_ref_decoration(inner_expr))
             }
@@ -3374,11 +3371,8 @@ fn deref_expr_to_vir<'tcx>(
             && matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
         {
             let place = inner_expr.to_place();
-            let t = match &*place.typ {
-                TypX::MutRef(t) => t.clone(),
-                _ => panic!("expected mut ref"),
-            };
-            Ok(ExprOrPlace::Place(bctx.spanned_typed_new(expr.span, &t, PlaceX::DerefMut(place))))
+            let place = deref_mut(bctx, expr.span, &place);
+            Ok(ExprOrPlace::Place(place))
         } else {
             // Normal dereference, just strip the inner expression.
             Ok(strip_vir_ref_decoration(inner_expr))
@@ -3467,4 +3461,29 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
         }
     };
     Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
+}
+
+fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
+    // `* &mut x` cancels out and we can just use x
+    // This shows up a lot (in part due to adjustments) so we make the simplification
+    // to avoid cluttering the encoding.
+    //
+    // Note that `&mut *x` does NOT cancel itself out in the same way
+    // (this is a reborrow which has nontrivial semantics)
+
+    match &place.x {
+        PlaceX::Temporary(e) => {
+            match &e.x {
+                ExprX::BorrowMut(place) => { return place.clone(); }
+                _ => { }
+            }
+        }
+        _ => { }
+    }
+
+    let t = match &*place.typ {
+        TypX::MutRef(t) => t.clone(),
+        _ => panic!("expected mut ref"),
+    };
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
 }

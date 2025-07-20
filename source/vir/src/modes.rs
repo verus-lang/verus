@@ -711,6 +711,9 @@ fn check_place_has_mode(
     mutating: bool,
 ) -> Result<(), VirErr> {
     let mode = check_place(ctxt, record, typing, outer_mode, place, mutating)?;
+    if is_unit(&place.typ) {
+        return Ok(());
+    }
     if !mode_le(mode, expected) {
         Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
     } else {
