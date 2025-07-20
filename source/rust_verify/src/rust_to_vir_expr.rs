@@ -78,12 +78,12 @@ impl ExprOrPlace {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
             ExprOrPlace::Place(p) => {
-                let rt = if bctx.is_copy(ty) {
-                    vir::ast::ReadType::Copy
+                let rk = if bctx.is_copy(ty) {
+                    vir::ast::ReadKind::Copy
                 } else {
-                    vir::ast::ReadType::Move
+                    vir::ast::ReadKind::Move
                 };
-                SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rt))
+                SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
@@ -94,9 +94,9 @@ impl ExprOrPlace {
                 add_vir_ref_decoration(e.clone())
             }
             ExprOrPlace::Place(p) => {
-                let rt = vir::ast::ReadType::ImmutBor;
+                let rk = vir::ast::ReadKind::ImmutBor;
                 let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
-                SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rt))
+                SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
@@ -3453,7 +3453,7 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
 
 pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
     let x = match &expr.x {
-        ExprX::ReadPlace(p, vir::ast::ReadType::Move | vir::ast::ReadType::Copy) => {
+        ExprX::ReadPlace(p, vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy) => {
             return place_to_loc(p);
         }
         ExprX::Unary(cm @ UnaryOp::CoerceMode {

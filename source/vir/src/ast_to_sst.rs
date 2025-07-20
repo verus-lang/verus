@@ -2468,6 +2468,7 @@ pub(crate) fn expr_to_stm_opt(
 }
 
 fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
+    dbg!(&place);
     let expr = place_to_expr(place);
     let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
     assert!(stms.len() == 0);

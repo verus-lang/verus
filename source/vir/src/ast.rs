@@ -950,11 +950,11 @@ pub enum ExprX {
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
-    ReadPlace(Place, ReadType),
+    ReadPlace(Place, ReadKind),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
-pub enum ReadType {
+pub enum ReadKind {
     Move,
     Copy,
     ImmutBor,

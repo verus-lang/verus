@@ -2,7 +2,7 @@ use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
     Pattern, PatternX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
-    Visibility, Place, PlaceX,
+    Visibility, Place, PlaceX, VarIdent,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -311,20 +311,7 @@ fn check_one_expr(
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
-            if let Area::PreState(clause_name) = area {
-                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-                    if *x == param.x.name {
-                        return Err(error(
-                            &expr.span,
-                            format!(
-                                "in {}, use `old({})` to refer to the pre-state of an &mut variable",
-                                clause_name,
-                                crate::def::user_local_name(&param.x.name)
-                            ),
-                        ));
-                    }
-                }
-            }
+            check_var(function, &expr.span, area, x)?;
         }
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
@@ -583,8 +570,12 @@ fn check_one_place(
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
+    area: Area,
 ) -> Result<(), VirErr> {
     match &place.x {
+        PlaceX::Local(x) => {
+            check_var(function, &place.span, area, x)?;
+        }
         PlaceX::Field(FieldOpr {
             datatype: Dt::Path(path),
             variant: _,
@@ -602,6 +593,29 @@ fn check_one_place(
             )?;
         }
         _ => { }
+    }
+    Ok(())
+}
+
+fn check_var(
+    function: &Function,
+    span: &Span,
+    area: Area,
+    x: &VarIdent,
+) -> Result<(), VirErr> {
+    if let Area::PreState(clause_name) = area {
+        for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+            if *x == param.x.name {
+                return Err(error(
+                    span,
+                    format!(
+                        "in {}, use `old({})` to refer to the pre-state of an &mut variable",
+                        clause_name,
+                        crate::def::user_local_name(&param.x.name)
+                    ),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -653,7 +667,7 @@ fn check_expr(
             check_one_pattern(ctxt, function, pattern, disallow_private_access)
         },
         &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
-        &mut |_scope_map, place| check_one_place(ctxt, function, place, disallow_private_access),
+        &mut |_scope_map, place| check_one_place(ctxt, function, place, disallow_private_access, area),
     )
 }
 
