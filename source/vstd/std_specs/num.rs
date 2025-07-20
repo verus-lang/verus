@@ -108,6 +108,10 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::wrapping_mul](x: $uN, y: $uN) -> $uN
+                returns ((x as nat * y as nat) % $range as nat) as $uN;
+
+            #[verifier::allow_in_spec]
             pub assume_specification[<$uN>::checked_add](x: $uN, y: $uN) -> Option<$uN>
                 returns (
                     if x + y > <$uN>::MAX {
