@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_as_expr, pat_to_mut_var};
+use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
@@ -226,7 +226,7 @@ pub(crate) fn body_to_vir<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
     };
-    let e = expr_to_vir_as_expr(&bctx, &body.value, ExprModifier::REGULAR)?;
+    let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
     if external_body {
         match &e.x {

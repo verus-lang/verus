@@ -74,7 +74,7 @@ impl ExprOrPlace {
         }
     }
 
-    pub(crate) fn to_expr<'tcx>(&self, bctx: &BodyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> vir::ast::Expr {
+    pub(crate) fn consume<'tcx>(&self, bctx: &BodyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
             ExprOrPlace::Place(p) => {
@@ -105,7 +105,8 @@ impl ExprOrPlace {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
             ExprOrPlace::Place(p) => {
-                vir::ast_util::place_to_expr(p)
+                let rk = vir::ast::ReadKind::Spec;
+                SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
@@ -299,13 +300,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())
 }
 
-pub(crate) fn expr_to_vir_as_expr<'tcx>(
+pub(crate) fn expr_to_vir_consume<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     modifier: ExprModifier
 ) -> Result<vir::ast::Expr, VirErr>
 {
-    Ok(expr_to_vir(bctx, expr, modifier)?.to_expr(bctx, bctx.types.expr_ty_adjusted(expr)))
+    Ok(expr_to_vir(bctx, expr, modifier)?.consume(bctx, bctx.types.expr_ty_adjusted(expr)))
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
@@ -422,7 +423,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             .iter()
             .enumerate()
             .map(|(i, e)| -> Result<_, VirErr> {
-                let vir = expr_to_vir_as_expr(bctx, e, modifier)?;
+                let vir = expr_to_vir_consume(bctx, e, modifier)?;
                 Ok(ident_binder(&positional_field_ident(i), &vir))
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -653,7 +654,7 @@ pub(crate) fn block_to_vir<'tcx>(
     if block.stmts.len() != 0 {
         modifier = ExprModifier { deref_mut: false, ..modifier };
     }
-    let vir_expr = block.expr.map(|expr| expr_to_vir_as_expr(bctx, &expr, modifier)).transpose()?;
+    let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?;
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -913,7 +914,7 @@ fn invariant_block_to_vir<'tcx>(
                     .flatten()
                     .collect(),
             );
-            let vir_expr = body.expr.map(|expr| expr_to_vir_as_expr(bctx, &expr, modifier)).transpose()?;
+            let vir_expr = body.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?;
             let ty = typ_of_node(bctx, e.span, &e.hir_id, false)?;
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
@@ -926,7 +927,7 @@ fn invariant_block_to_vir<'tcx>(
         }
     };
 
-    let vir_arg = expr_to_vir_as_expr(bctx, &inv_arg, modifier)?;
+    let vir_arg = expr_to_vir_consume(bctx, &inv_arg, modifier)?;
 
     let name = pat_to_var(inner_pat)?;
     let inner_ty = typ_of_node(bctx, inner_pat.span, &inner_hir, false)?;
@@ -1057,7 +1058,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 current_modifier,
                 adjustments,
                 adjustment_idx - 1,
-            )?.to_expr(bctx, get_inner_ty());
+            )?.consume(bctx, get_inner_ty());
             let x = ExprX::NeverToAny(e);
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ()?, x)))
         }
@@ -1097,7 +1098,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
                 Ok(inner)
             } else {
-                let inner = inner.to_expr(bctx, get_inner_ty());
+                let inner = inner.consume(bctx, get_inner_ty());
                 Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
                     bctx,
                     expr,
@@ -1281,7 +1282,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     Arc::new(vec![]),
                     autospec_usage,
                 );
-                let arg = arg.to_expr(bctx, get_inner_ty());
+                let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
                 let x = ExprX::Call(call_target, args);
                 let expr_typ = mid_ty_to_vir(
@@ -1308,7 +1309,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let mut new_expr = new_expr.to_expr(bctx, get_inner_ty());
+            let mut new_expr = new_expr.consume(bctx, get_inner_ty());
             let typ = Arc::new(TypX::Decorate(
                 vir::ast::TypDecoration::ConstPtr,
                 None,
@@ -1716,10 +1717,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
                     let fun_modifier =
                         if is_mut { ExprModifier::DEREF_MUT } else { ExprModifier::REGULAR };
-                    let vir_fun = expr_to_vir_as_expr(bctx, fun, fun_modifier)?;
+                    let vir_fun = expr_to_vir_consume(bctx, fun, fun_modifier)?;
 
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
-                    let vir_args = vec_map_result(&args, |arg| expr_to_vir_as_expr(bctx, arg, modifier))?;
+                    let vir_args = vec_map_result(&args, |arg| expr_to_vir_consume(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
                     let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
@@ -1858,7 +1859,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Tup(exprs) => {
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_as_expr(bctx, e, modifier)).collect();
+                exprs.iter().map(|e| expr_to_vir_consume(bctx, e, modifier)).collect();
             mk_expr(mk_tuple_x(&Arc::new(args?)))
         }
         ExprKind::Array(exprs) => {
@@ -1866,7 +1867,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 return err_span(expr.span, "Array literals are not supported with --no-vstd");
             }
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
-                exprs.iter().map(|e| expr_to_vir_as_expr(bctx, e, modifier)).collect();
+                exprs.iter().map(|e| expr_to_vir_consume(bctx, e, modifier)).collect();
             mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
         }
         ExprKind::Repeat(e, _array_len) => {
@@ -1877,7 +1878,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let is_copy =
                 tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
-                let arg_vir = expr_to_vir_as_expr(bctx, e, modifier)?;
+                let arg_vir = expr_to_vir_consume(bctx, e, modifier)?;
                 let fun = vir::fun!("vstd" => "array", "array_fill_for_copy_types");
                 let array_vir_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
@@ -1923,7 +1924,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let source_vir = expr_to_vir(bctx, source, modifier)?;
 
             let source_ty = bctx.types.expr_ty_adjusted(source);
-            let source_vir_expr = source_vir.to_expr(bctx, source_ty);
+            let source_vir_expr = source_vir.consume(bctx, source_ty);
 
             if let Some(expr) = maybe_do_ptr_cast(bctx, expr, source, &source_vir_expr)? {
                 return Ok(ExprOrPlace::Expr(expr));
@@ -2012,7 +2013,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         )
                     }
                 };
-                let varg = expr_to_vir_as_expr(bctx, arg, modifier)?;
+                let varg = expr_to_vir_consume(bctx, arg, modifier)?;
                 mk_expr(ExprX::Unary(not_op, varg))
             }
             UnOp::Neg => {
@@ -2025,7 +2026,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
-                let varg = varg.to_expr(bctx, bctx.types.expr_ty_adjusted(arg));
+                let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
                 let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
                 mk_expr(ExprX::Binary(
                     BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
@@ -2036,8 +2037,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             UnOp::Deref => deref_expr_to_vir(bctx, expr, arg, modifier),
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            let vlhs = expr_to_vir_as_expr(bctx, lhs, modifier)?;
-            let vrhs = expr_to_vir_as_expr(bctx, rhs, modifier)?;
+            let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let ret = operator_overload_to_vir(bctx, expr, modifier)?;
             if ret.is_some() {
                 return Ok(ExprOrPlace::Expr(ret.unwrap()));
@@ -2244,7 +2245,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             &bool_typ(),
                             ExprX::Const(Constant::Bool(true)),
                         );
-                        let body = expr_to_vir_as_expr(bctx, &lhs, modifier)?;
+                        let body = expr_to_vir_consume(bctx, &lhs, modifier)?;
                         let vir_arm = ArmX { pattern, guard, body };
                         vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
                     }
@@ -2263,7 +2264,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             ExprX::Const(Constant::Bool(true)),
                         );
                         let body = if let Some(rhs) = rhs {
-                            expr_to_vir_as_expr(bctx, &rhs, modifier)?
+                            expr_to_vir_consume(bctx, &rhs, modifier)?
                         } else {
                             mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?.expect_expr()
                         };
@@ -2273,9 +2274,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
                 }
                 _ => {
-                    let vir_cond = expr_to_vir_as_expr(bctx, cond, modifier)?;
-                    let vir_lhs = expr_to_vir_as_expr(bctx, lhs, modifier)?;
-                    let vir_rhs = rhs.map(|e| expr_to_vir_as_expr(bctx, e, modifier)).transpose()?;
+                    let vir_cond = expr_to_vir_consume(bctx, cond, modifier)?;
+                    let vir_lhs = expr_to_vir_consume(bctx, lhs, modifier)?;
+                    let vir_rhs = rhs.map(|e| expr_to_vir_consume(bctx, e, modifier)).transpose()?;
                     mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs))
                 }
             }
@@ -2291,9 +2292,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &bool_typ(),
                         ExprX::Const(Constant::Bool(true)),
                     ),
-                    Some(guard_expr) => expr_to_vir_as_expr(bctx, guard_expr, modifier)?,
+                    Some(guard_expr) => expr_to_vir_consume(bctx, guard_expr, modifier)?,
                 };
-                let body = expr_to_vir_as_expr(bctx, &arm.body, modifier)?;
+                let body = expr_to_vir_consume(bctx, &arm.body, modifier)?;
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
@@ -2373,8 +2374,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "loop else");
             }
             assert!(modifier == ExprModifier::REGULAR);
-            let cond = Some(expr_to_vir_as_expr(bctx, cond, ExprModifier::REGULAR)?);
-            let mut body = expr_to_vir_as_expr(bctx, body, ExprModifier::REGULAR)?;
+            let cond = Some(expr_to_vir_consume(bctx, cond, ExprModifier::REGULAR)?);
+            let mut body = expr_to_vir_consume(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
@@ -2394,7 +2395,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Ret(expr) => {
             let expr = match expr {
                 None => None,
-                Some(expr) => Some(expr_to_vir_as_expr(bctx, expr, modifier)?),
+                Some(expr) => Some(expr_to_vir_consume(bctx, expr, modifier)?),
             };
             mk_expr(ExprX::Return(expr))
         }
@@ -2429,7 +2430,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
-                        let vir = expr_to_vir_as_expr(bctx, f.expr, modifier)?;
+                        let vir = expr_to_vir_consume(bctx, f.expr, modifier)?;
                         let ident = field_ident_from_rust(f.ident.as_str());
                         Ok(ident_binder(&ident, &vir))
                     })
@@ -2484,8 +2485,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 unsupported_err!(expr.span, "index for &mut not supported")
             }
 
-            let tgt_vir = expr_to_vir_as_expr(bctx, tgt_expr, modifier)?;
-            let idx_vir = expr_to_vir_as_expr(bctx, idx_expr, ExprModifier::REGULAR)?;
+            let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
+            let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
 
             // We only support for the special case of (Vec, usize) arguments
             let t1 = &tgt_vir.typ;
@@ -2733,7 +2734,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
 ) -> Result<ExprOrPlace, vir::messages::Message> {
     if bctx.ctxt.cmd_line_args.new_mut_ref {
         let vir_lhs = expr_to_vir(bctx, lhs, modifier)?.to_place();
-        let vir_rhs = expr_to_vir_as_expr(bctx, rhs, modifier)?;
+        let vir_rhs = expr_to_vir_consume(bctx, rhs, modifier)?;
 
         let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
         let op = match op_kind {
@@ -2817,9 +2818,9 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let tgt_modifier =
             is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&tgt_expr), ExprModifier::ADDR_OF_MUT)?;
         let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?.to_place();
-        let idx_vir = expr_to_vir_as_expr(bctx, idx_expr, ExprModifier::REGULAR)?;
+        let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
 
-        let mut rhs_vir = expr_to_vir_as_expr(bctx, rhs, modifier)?;
+        let mut rhs_vir = expr_to_vir_consume(bctx, rhs, modifier)?;
         let fun = vir::fun!["vstd" => "std_specs", "core", "index_set"];
         let typ_args = Some(Arc::new(vec![
             undecorate_typ(&tgt_vir.typ),
@@ -2850,7 +2851,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 "assign op to index_mut for non smt arithmetic types",
                 lhs
             );
-            let lhs_vir = expr_to_vir_as_expr(bctx, lhs, ExprModifier::REGULAR)?;
+            let lhs_vir = expr_to_vir_consume(bctx, lhs, ExprModifier::REGULAR)?;
             let rhs_ty = &rhs_vir.typ.clone();
             rhs_vir =
                 bctx.spanned_typed_new(rhs.span, &rhs_ty, ExprX::Binary(op, lhs_vir, rhs_vir));
@@ -2873,7 +2874,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
     mk_expr(ExprX::Assign {
         init_not_mut,
         lhs: place_to_loc(&lhs)?,
-        rhs: expr_to_vir_as_expr(bctx, rhs, modifier)?,
+        rhs: expr_to_vir_consume(bctx, rhs, modifier)?,
         op: op,
     })
 }
@@ -3051,7 +3052,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
             // Just writing `x;` does in fact count as a move of a `x`
-            let vir_expr = expr_to_vir_as_expr(bctx, expr, ExprModifier::REGULAR)?;
+            let vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Item(item_id) => {
@@ -3156,7 +3157,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let mut body = expr_to_vir_as_expr(bctx, &body.value, modifier)?;
+        let mut body = expr_to_vir_consume(bctx, &body.value, modifier)?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
         let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
@@ -3393,7 +3394,7 @@ fn deref_expr_to_vir<'tcx>(
             &res_ty,
             false,
         )?;
-        let inner_expr = inner_expr.to_expr(bctx, bctx.types.expr_ty_adjusted(arg));
+        let inner_expr = inner_expr.consume(bctx, bctx.types.expr_ty_adjusted(arg));
         Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
             bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
         )?))

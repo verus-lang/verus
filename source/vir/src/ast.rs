@@ -949,6 +949,7 @@ pub enum ExprX {
     HasResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
+    /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
     ReadPlace(Place, ReadKind),
 }
@@ -958,6 +959,7 @@ pub enum ReadKind {
     Move,
     Copy,
     ImmutBor,
+    Spec,
 }
 
 // TODO(mut_refs): add ArrayIndex
