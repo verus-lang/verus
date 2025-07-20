@@ -733,21 +733,33 @@ impl DatatypeX {
 }
 
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
-    let mut vars: HashSet<VarIdent> = HashSet::new();
-    crate::ast_visitor::expr_visitor_dfs::<(), _>(
+    let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
+    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
         &mut |_, e| {
             match &e.x {
                 ExprX::Var(x) | ExprX::VarLoc(x) => {
-                    vars.insert(x.clone());
+                    vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
             }
-            crate::sst_visitor::VisitorControlFlow::Recurse
+            Ok(())
         },
-    );
-    vars
+        &mut |_, _| Ok(()),
+        &mut |_, _| Ok(()),
+        &mut |_, _, _| Ok(()),
+        &mut |_, p| {
+            match &p.x {
+                PlaceX::Local(x) => {
+                    vars.borrow_mut().insert(x.clone());
+                }
+                _ => (),
+            }
+            Ok(())
+        },
+    ).expect("referenced_vars_expr");
+    vars.into_inner()
 }
 
 pub fn mk_tuple_typ(typs: &Typs) -> Typ {

@@ -951,8 +951,9 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
 
-pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT, FPL>(
+pub(crate) fn ast_visitor_check_with_scope_map<E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
+    scope_map: &mut VisitorScopeMap,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
@@ -966,10 +967,9 @@ where
     FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
     FPL: FnMut(&VisitorScopeMap, &Place) -> Result<(), E>,
 {
-    let mut scope_map: VisitorScopeMap = ScopeMap::new();
     match ast_visitor_dfs(
         expr,
-        &mut scope_map,
+        scope_map,
         &mut |scope_map, x| match fe(scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
@@ -995,6 +995,25 @@ where
         VisitorControlFlow::Return => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
+}
+
+pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT, FPL>(
+    expr: &Expr,
+    fe: &mut FE,
+    fs: &mut FS,
+    fp: &mut FP,
+    ft: &mut FT,
+    fpl: &mut FPL,
+) -> Result<(), E>
+where
+    FE: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
+    FS: FnMut(&VisitorScopeMap, &Stmt) -> Result<(), E>,
+    FP: FnMut(&VisitorScopeMap, &Pattern) -> Result<(), E>,
+    FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
+    FPL: FnMut(&VisitorScopeMap, &Place) -> Result<(), E>,
+{
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
+    ast_visitor_check_with_scope_map(expr, &mut scope_map, fe, fs, fp, ft, fpl)
 }
 
 struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL> {

@@ -441,27 +441,35 @@ fn check_one_expr(
                 referenced.extend(referenced_vars_expr(r).into_iter());
             }
 
-            use crate::visitor::VisitorControlFlow;
-
-            match crate::ast_visitor::expr_visitor_dfs(
+            crate::ast_visitor::ast_visitor_check_with_scope_map(
                 proof,
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
                 &mut |scope_map, e| match &e.x {
                     ExprX::Var(x) | ExprX::VarLoc(x)
                         if !scope_map.contains_key(&x) && !referenced.contains(x) =>
                     {
-                        VisitorControlFlow::Stop(error(
+                        Err(error(
                             &e.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
                         ))
                     }
-                    _ => VisitorControlFlow::Recurse,
+                    _ => Ok(())
                 },
-            ) {
-                VisitorControlFlow::Recurse => Ok(()),
-                VisitorControlFlow::Return => unreachable!(),
-                VisitorControlFlow::Stop(e) => Err(e),
-            }?;
+                &mut |_, _| Ok(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |scope_map, p| match &p.x {
+                    PlaceX::Local(x)
+                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
+                    {
+                        Err(error(
+                            &p.span,
+                            format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                        ))
+                    }
+                    _ => Ok(())
+                }
+            )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
             if ctxt.no_cheating && *is_assume {
