@@ -2,8 +2,8 @@
 
 In Verus, `const` declarations are treated internally as 0-argument function calls. 
 Thus just like functions, `const` declarations can be marked `spec`, `proof`, `exec`, 
-or left without a mode. 
-By default, a `const` without a mode has a dual `spec/exec` mode. 
+or left without an explicit mode. 
+By default, a `const` without an explicit mode is assigned a dual `spec/exec` mode. 
 We'll go through what each of these modes mean.
 
 ## `spec` consts
@@ -11,59 +11,32 @@ A `spec const` is like a `spec` function with no arguments.
 It is always ghost and cannot be used as an `exec` value. 
 
 ```rust
-spec const SPEC_ONE: int = 1;
-
-spec fn spec_add_one(x: int) -> int {
-    x + SPEC_ONE
-}
+{{#include ../../../../examples/guide/const.rs:spec_const}}
 ```
 
 ## `proof` and `exec` consts
-<!-- `proof` and `spec` consts are like `proof` and `exec` functions with no arguments.  -->
-Just as `proof` and `exec` functions can have `ensures` clauses specifying a post-condition, 
-`proof` and `exec` consts have `ensures` clauses to tie the declaration to a `spec` expression. 
+Just as `proof` and `exec` functions can have `ensures` clauses specifying a postcondition, 
+`proof` and `exec` consts can have `ensures` clauses to tie the declaration to a `spec` expression. 
 The syntax follows the syntax of a function definition: we define the type, 
 followed by the ensures clause, followed by the declaration in curly brackets. 
 
 ```rust
-exec const C: u64 
-    ensures C == 7 
-{
-    7 
-}
+{{#include ../../../../examples/guide/const.rs:exec_const_syntax}}
 ```
 
-Idiomatically, the ensures clause is typically on the same line as the type, 
-and if the definition is short enough, 
-the entire declaration will be on one line. 
-Note here that we can also use `assert` when defining the const. 
+Note here that we can also use `assert` when defining the const, 
+and that we can define it using a call to another `const` function. 
 
 ```rust
-spec fn f() -> int { 1 }
-const fn e() -> (u: u64) ensures u == f() { 1 }
-exec const E: u64 ensures E == 2 {
-    assert(f() == 1);
-    1 + e()
-}
-
-exec const C: int ensures C == 7 { 7 }
+{{#include ../../../../examples/guide/const.rs:exec_const_complicated}}
 ```
 
 ## `spec/exec` consts
-A `const` without a mode is dual-use:
+A `const` without an explicit mode is dual-use:
 it is usable as both an `exec` value and a `spec` value. 
 
 ```rust
-const ONE: u8 = 1;
-
-fn add_one(x: u8) -> (ret: u8)
-    requires
-        x < 0xff,
-    ensures
-        ret == x + ONE,  // use "ONE" in spec code
-{
-    x + ONE  // use "ONE" in exec code
-}
+{{#include ../../../../examples/guide/const.rs:spec_exec_const}}
 ```
 
 Therefore, the `const` definition is restricted to obey the rules
@@ -76,36 +49,36 @@ const fn foo() -> u64 { 1 }
 const C: u64 = foo();  // FAILS with error "cannot call function `foo` with mode exec"
 ```
 
-## Using `when_used_as_spec`
+## Using an `exec const` in a `spec` or `proof` context
 Similar to functions, if you want to use an `exec const` in a `spec` or `proof` context, 
-you can annotate the declaration with `[verifier::when_used_as_const(SPEC_DEF)]`. 
-In this example, without the annotation, Verus will give the error 
-"cannot read const with mode exec."
+you can annotate the declaration with `[verifier::when_used_as_spec(SPEC_DEF)]`, 
+where `SPEC_DEF` is the name of a `spec const` or a `spec` function with no arguments. 
 
 ```rust
-spec const EIGHT_SPEC: u8 = 8;
-
-#[verifier::when_used_as_spec(EIGHT_SPEC)]
-exec const EIGHT: u8 ensures EIGHT == EIGHT_SPEC { 8 }
-
-fn test(){
-    assert(EIGHT == EIGHT_SPEC);
-}
+{{#include ../../../../examples/guide/const.rs:when_used_as_spec}}
 ```
+In this example, without the annotation, Verus will give the error 
+"cannot read const with mode exec." 
+
+Moreover, attempting to use the annotation 
+`#[verifier::when_used_as_spec(layout::size_of::<usize>)]`,
+without defining `SPEC_USIZE_BYTES` separately,
+will also result in an error: 
+`when_used_as_spec` can only handle the case when two functions or consts have the same signature. 
+It doesn't handle using something like `::<usize>` to coerce a function to a different signature.
 
 ## Trouble-shooting overflow errors
 Verus may have difficulty proving that a `const` declaration does not overflow; 
 using `[verifier::when_used_as_const(SPEC_DEF)]` 
-or with `[verifier::non_linear]` may help. 
+or `[verifier::non_linear]` may help. 
 
 For example, here `[verifier::non_linear]` is added to prevent the error 
 "possible arithmetic underflow/overflow." 
-This tells Verus to perform const propagation. 
+This allows Verus to reason about the (seemingly) 
+non-linear expression `BAR_PLUS_ONE * BAR`, 
+instead of giving up immediately. 
+See the [chapter on non-linear reasoning](nonlinear.md) for more details.
 
 ```rust
-pub const FOO: u8 = 4;
-pub const BAR: u8 = FOO; //4
-pub const BAR_PLUS_ONE: u8 = BAR + 1; 
-#[verifier::nonlinear]
-pub const C: u8 = BAR_PLUS_ONE * BAR; 
+{{#include ../../../../examples/guide/const.rs:nonlinear}}
 ```

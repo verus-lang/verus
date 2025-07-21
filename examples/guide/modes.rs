@@ -363,25 +363,6 @@ fn test(s: S) {
 // ANCHOR_END: ghost_abilities2
 */
 
-// ANCHOR: const1
-spec const SPEC_ONE: int = 1;
-
-spec fn spec_add_one(x: int) -> int {
-    x + SPEC_ONE
-}
-
-const ONE: u8 = 1;
-
-fn add_one(x: u8) -> (ret: u8)
-    requires
-        x < 0xff,
-    ensures
-        ret == x + ONE,  // use "ONE" in spec code
-{
-    x + ONE  // use "ONE" in exec code
-}
-// ANCHOR_END: const1
-
 fn main() {
 }
 
