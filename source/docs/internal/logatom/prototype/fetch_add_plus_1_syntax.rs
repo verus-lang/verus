@@ -16,7 +16,7 @@ verus! {
 //     /* will be syntax */ ::builtin::atomic_requires([
 //     /* will be syntax */    ::builtin::spec_eq(perm.view().patomic, p.id())
 //     /* will be syntax */ ]);
-// 
+//
 // }
 
 fn fetch_add_plus_1(
@@ -36,7 +36,7 @@ fn fetch_add_plus_1(
     //         new_perm.view().value == wrapping_add_u64(
     //             perm.view().value,
     //             wrapping_add_u64(v, 1))
-    // }   
+    // }
 {
     #[cfg(verus_keep_ghost_body)]
     /* will be syntax */ ::builtin::atomic_requires([

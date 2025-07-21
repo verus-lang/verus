@@ -16,7 +16,7 @@ impl InvariantPredicate<AtomicCellId, PermissionU64> for ModPredicate {
 // AtomicUpdate
 // open_atomic_update!
 // 'atomically' syntax
-// 'atomic' specs in preconditions and postconditions
+// 'atomic' specs in pre-conditions and post-conditions
 
 // Atomic invariant
 // +----------------+
@@ -29,38 +29,41 @@ fn atomic_caller(
 )
     requires inv.constant() == patomic.id(),
 {
-    
     // assert PRIVATE PRE of fetch_add_plus_1
     let old_v = patomic.fetch_add_plus_1(3) atomically {
-        // tranforming an atomic invariant into an atomic update
-        open_atomic_invariant!(inv => permu64 => { 
+        // transforming an atomic invariant into an atomic update
+        open_atomic_invariant!(inv => permu64 => {
             /* open atomic update start */
+
             // assume inv's property
             assert(inv.inv(patomic.id(), permu64));
             assert(
               &&& permu64.id() == patomic.id()
               &&& permu64.value() as int % 2 == 0
             )
-            // ✅ assert ATOMIC PRE of fetch_add_plus_1
+
+            // assert ATOMIC PRE of fetch_add_plus_1
             let ghost old_permu64 = permu64.value(); // 38
             assert(old_permu64 as int % 2 == 0);
+
             /* open atomic update end */
-            /* --> */ now(&mut permu64) // the atomic operation
+            now(&mut permu64) // the atomic operation
             /* close atomic update start */
+
             // assume ATOMIC POST of fetch_add_plus_1
             assert(
               &&& permu64.id() == patomic.id()
-              // &&& permu64.value() == wrapping_add_u64(old_permu64, wrapping_add_u64(3, 1))
               &&& permu64.value() == wrapping_add_u64(old_permu64, 4) // 42
             )
+
             assert(permu64.value() as int % 2 == 0);
             // assert inv's property
             /* close atomic update end */
         });
     };
+
     // assume PRIVATE POST of fetch_add_plus_1 at POST
     assert(old_v as int % 2 == 0);
-
 }
 
 fn non_atomic_caller() {
@@ -75,14 +78,14 @@ fn non_atomic_caller() {
     assert(perm.value() == 4);
 }
 
-// at the linarization point:
+// at the linearisation point:
 //   (reading the current value of the Atomic),
 //   adding (v + 1) to the value of the Atomic and wrapping if we overflow
 
 
 fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
     // Tracked(AU): Tracked<AtomicUpdate<PermissionU64, PermissionU64>>
-    atomic_update: atomic_spec { // AU indicates the linearization point
+    atomic_update: atomic_spec { // AU indicates the linearisation point
         (tracked p: PermissionU64) -> (tracked out_p: PermissionU64)
         requires // ATOMIC PRE
             p.view().patomic == patomic.id(),
@@ -94,7 +97,7 @@ fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
     }
     requires true, // PRIVATE PRE
     ensures r == p.view().value, // PRIVATE POST
-{   
+{
     let w = wrapping_add_u64(v, 1);
 
     // assert PRIVATE PRE of fetch_add_wrapping
@@ -112,7 +115,7 @@ fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
         });
     };
     // assume PRIVATE POST of fetch_add_plus_1
-    
+
     old_v
 }
 }

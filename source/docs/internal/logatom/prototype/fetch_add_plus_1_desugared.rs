@@ -23,23 +23,23 @@ fn atomic_caller(
 
     // assert PRIVATE PRE of fetch_add_plus_1
     // let old_v = fetch_add_plus_1(3) atomically {
-    //     open_atomic_invariant!(inv => permu64 => { 
+    //     open_atomic_invariant!(inv => permu64 => {
     //         // assert ATOMIC PRE of fetch_add_plus_1
     //         now(&mut permu64)
     //         // assume ATOMIC POST of fetch_add_plus_1
     //     });
     // };
     // assume PRIVATE POST of fetch_add_plus_1 at POST
-    // 
+    //
     // assert(old_v as int % 2 == 0);
 
 }
 
 // fn non_atomic_caller() {
 //     let (p, Tracked(perm)) = AtomicU64::new(0);
-// 
+//
 //     let old_v = fetch_add_plus_1(3) with (&mut perm);
-// 
+//
 //     assert(perm.value() == 4);
 // }
 
@@ -50,7 +50,7 @@ fn fetch_add_plus_1(
     /* (internal) */ Tracked(atomic_update): Tracked<AtomicUpdate<APermissionU64, APermissionU64>>,
     /* (internal) */ Tracked(input_perm): Tracked<APermissionU64>,
     ) -> (r: u64)
-    
+
 
     // atomic_update: atomic_spec {
     //     (tracked p: APermissionU64) -> (tracked r: APermissionU64)
@@ -61,9 +61,9 @@ fn fetch_add_plus_1(
     //         r.value() == wrapping_add(
     //             p.value,
     //             wrapping_add(v, 1))
-    // }   
+    // }
     // ensures r == p.view().value
-{   
+{
     let tracked mut atomic_update = atomic_update;
     /* (internal) */ assume({
     /* (internal) */     &&& forall |input: APermissionU64| #![all_triggers] atomic_update.req(input) <==>
@@ -93,14 +93,14 @@ fn fetch_add_plus_1(
     /* (internal) */ assume(atomic_update.req(permu64));
     assert(permu64.view().patomic == patomic.id());
     let ghost old_permu64 = permu64;
-           
+
     //     // assert ATOMIC PRE of fetch_add_wrapping
     assert(equal(patomic.id(), permu64.view().patomic));
     //     let (v, Tracked(permu64)) = update(permu64); // atomic update of fetch_add_wrapping
     /* (internal) */ let tracked call_atomic_update: AtomicUpdate<APermissionU64, APermissionU64> =
         AtomicUpdate::<APermissionU64, APermissionU64>::assume_new();
     let (v2, Tracked(permu64)) = patomic.fetch_add_wrapping(w,
-    
+
     /* (internal) */ Tracked(call_atomic_update),
     /* (internal) */ Tracked(permu64));
     //     // assume ATOMIC POST of fetch_add_wrapping

@@ -12,8 +12,8 @@ fn main() {
         let (patomic, Tracked(perm)) = APAtomicU64::new(4);
         assert(perm.view().value == 4);
         assert(perm.view().patomic == patomic.id());
-        
-        // some operation 
+
+        // some operation
         let (v, Tracked(perm)) = patomic.fetch_add_wrapping_original(Tracked(perm), 2);
         assert(v == 4);
 
@@ -26,28 +26,28 @@ fn main() {
         assert(perm.view().value == 9);
         assert(perm.view().patomic == patomic.id());
     }
-    
+
     {
         let (patomic, Tracked(perm)) = APAtomicU64::new(4);
-        
+
         // let (v, perm) = patomic.fetch_add_wrapping(2) atomically { update =>
         //   let (v, perm) = update(perm);
         //   (v, perm)
         // };
 
             /* (internal) */ let tracked input_perm = perm;
-            
+
             /* before atomic */ /* check PRIVATE PRE */
             /* before atomic */ assert(true);
         let (v, Tracked(output_perm)) = patomic.fetch_add_wrapping(2, /* ) */
 
             /* (internal) */ Tracked(AtomicUpdate::<APermissionU64, APermissionU64>::assume_new()),
             /* (internal) */ Tracked(input_perm));
-    
+
             /* atomic */ {
             /* atomic */ /* check ATOMIC PRE */
             /* atomic */ /* (internal) */ assert(patomic.id() == input_perm.view().patomic);
-            /* atomic */ 
+            /* atomic */
             /* atomic */ // atomic action happens
 
             /* atomic */ /* obtain ATOMIC POST */
@@ -58,8 +58,8 @@ fn main() {
             /* after atomic */ /* obtain PRIVATE POST */
             /* after atomic */ /* (internal) */ assume(v == input_perm.view().value);
             /* after atomic */ let tracked perm = output_perm;
-        // ------------------------------------------------------------------------------------     
-        
+        // ------------------------------------------------------------------------------------
+
         assert(v == 4);
 
         assert(perm.view().value == 6);
