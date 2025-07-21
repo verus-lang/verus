@@ -43,13 +43,6 @@ exec const E: u64
     1 + e()
 }
 
-exec const C: int
-    ensures
-        C == 7,
-{
-    7
-}
-
 // ANCHOR_END: exec_const_complicated
 // ANCHOR: spec_exec_const
 const ONE: u8 = 1;
@@ -85,11 +78,11 @@ exec const USIZE_BYTES: usize
 pub const FOO: u8 = 4;
 
 pub const BAR: u8 = FOO;
-  //4
+
 pub const BAR_PLUS_ONE: u8 = BAR + 1;
 
 #[verifier::nonlinear]
-pub const C: u8 = BAR_PLUS_ONE * BAR;
+pub const G: u8 = BAR_PLUS_ONE * BAR;
 
 // ANCHOR_END: nonlinear
 fn main() {
