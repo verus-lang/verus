@@ -13,6 +13,11 @@ impl InvariantPredicate<AtomicCellId, PermissionU64> for ModPredicate {
     }
 }
 
+// AtomicUpdate
+// open_atomic_update!
+// 'atomically' syntax
+// 'atomic' specs in preconditions and postconditions
+
 // Atomic invariant
 // +----------------+
 // | PermissionU64  |
@@ -78,7 +83,7 @@ fn non_atomic_caller() {
 fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
     // Tracked(AU): Tracked<AtomicUpdate<PermissionU64, PermissionU64>>
     atomic_update: atomic_spec { // AU indicates the linearization point
-        (tracked p: PermissionU64) -> (out_p: tracked PermissionU64)
+        (tracked p: PermissionU64) -> (tracked out_p: PermissionU64)
         requires // ATOMIC PRE
             p.view().patomic == patomic.id(),
         ensures // ATOMIC POST
@@ -90,17 +95,19 @@ fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
     requires true, // PRIVATE PRE
     ensures r == p.view().value, // PRIVATE POST
 {   
-    
-
     let w = wrapping_add_u64(v, 1);
 
+    // assert PRIVATE PRE of fetch_add_wrapping
     let old_v = patomic.fetch_add_wrapping(w) atomically { update =>
-        open_atomic_update!(atomic_update => permu64 => {
+        open_atomic_update!(atomic_update => (p: PermissionU64) => {
             // assume ATOMIC PRE of fetch_add_plus_1
+            let ghost old_permu64 = p.view().value;
+
             // assert ATOMIC PRE of fetch_add_wrapping
-            let ghost old_permu64 = permu64.view().value;
-            let (v, Tracked(permu64)) = update(permu64);
+            let (v, Tracked(out_p)) = update(p);
             // assume ATOMIC POST of fetch_add_wrapping
+
+            return out_p; // -> (out_p: tracked PermissionU64)
             // assert ATOMIC POST of fetch_add_plus_1
         });
     };
