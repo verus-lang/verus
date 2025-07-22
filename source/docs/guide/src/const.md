@@ -17,8 +17,7 @@ It is always ghost and cannot be used as an `exec` value.
 ## `proof` and `exec` consts
 Just as `proof` and `exec` functions can have `ensures` clauses specifying a postcondition, 
 `proof` and `exec` consts can have `ensures` clauses to tie the declaration to a `spec` expression. 
-The syntax follows the syntax of a function definition: we define the type, 
-followed by the ensures clause, followed by the declaration in curly brackets. 
+The syntax follows the syntax of a function definition. 
 
 ```rust
 {{#include ../../../../examples/guide/const.rs:exec_const_syntax}}
