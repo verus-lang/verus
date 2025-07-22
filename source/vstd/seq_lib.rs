@@ -1303,9 +1303,11 @@ impl<A> Seq<A> {
             ),
         decreases self.len(),
     {
-        #[allow(deprecated)]
-        lemma_seq_properties::<A>();  // new broadcast group not working here
-        broadcast use Seq::lemma_remove_duplicates_properties;
+        broadcast use {
+            group_seq_properties,
+            lemma_seq_skip_of_skip,
+            Seq::lemma_remove_duplicates_properties,
+        };
 
         if i == 0 {
         } else if i == self.len() {
