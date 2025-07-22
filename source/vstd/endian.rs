@@ -226,18 +226,13 @@ impl<B: Base> EndianNat<B> {
     pub proof fn to_nat_upper_bound(self)
         requires
             self.wf(),
-            self.len() > 0,
         ensures
             self.to_nat() < pow(B::base() as int, self.len())
         decreases self.len(),
     {
-        // TODO: Fix proofs
-        assume(false);
         reveal(EndianNat::to_nat);
         reveal(pow);
-        if self.len() == 1 {
-            broadcast use lemma_pow1;
-            assert(pow(B::base() as int, self.len()) as nat == B::base());
+        if self.len() == 0 {
         } else {
             self.drop_least().to_nat_upper_bound();
 
