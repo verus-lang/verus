@@ -1444,7 +1444,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-/*
 test_verify_one_file_with_options! {
     #[test] test_no_unsupported_trait_imports ["no-auto-import-builtin"] => code! {
         // https://github.com/verus-lang/verus/issues/1582
@@ -1459,7 +1458,6 @@ test_verify_one_file_with_options! {
         impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
     } => Ok(())
 }
-*/
 
 test_verify_one_file! {
     #[test] subst_in_traits verus_code! {

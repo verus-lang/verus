@@ -61,7 +61,6 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
 }
 
-/*
 test_verify_one_file! {
     #[test] test1_fails_const_fn verus_code! {
         fn x() {
@@ -71,7 +70,6 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot call non-const function `x` in constant functions")
 }
-*/
 
 test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
