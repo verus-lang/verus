@@ -3442,7 +3442,6 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-// TODO: seems like this warning doesn't come up?
 #[deprecated = "Use `broadcast use group_seq_properties` instead"]
 pub proof fn lemma_seq_properties<A>()
     ensures
@@ -3497,13 +3496,6 @@ pub proof fn lemma_seq_properties<A>()
                 > 0,  //from to_multiset_ensures
 {
     broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-    // TODO: for some reason this still needs to be explicitly stated
-
-    assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
-        v,
-    ).contains(x) by {
-        lemma_seq_contains_after_push(s, v, x);
-    }
 }
 
 #[doc(hidden)]
