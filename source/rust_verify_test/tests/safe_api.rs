@@ -192,7 +192,6 @@ test_verify_one_file_with_options! {
 // Right now, Verus doesn't support the relevant features; these tests
 // will catch these cases in the future.
 
-/*
 test_verify_one_file_with_options! {
     #[test] opaque_closure_type_returned ["-V check-api-safety"] => verus_code! {
         pub fn test() -> impl Fn(u32) {
@@ -202,7 +201,6 @@ test_verify_one_file_with_options! {
     //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: opaque type")
 }
-*/
 
 test_verify_one_file_with_options! {
     #[test] opaque_fndef_type_returned ["-V check-api-safety"] => verus_code! {
