@@ -137,6 +137,7 @@ fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
 pub(crate) struct VerusThirBuildCtxt {
     ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
+    pub(crate) expr_is_spec: HashMap<HirId, bool>,
     local_def_id: LocalDefId,
 }
 
@@ -151,6 +152,7 @@ impl VerusThirBuildCtxt {
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
+            expr_is_spec: HashMap::new(),
             local_def_id,
         }
     }
@@ -214,6 +216,13 @@ impl CallErasure {
     pub fn keep_all() -> Self {
         CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::AllNo)
     }
+
+    pub(crate) fn should_erase(&self, spec: bool) -> bool {
+        match self {
+            CallErasure::EraseTree => panic!("EraseTree should be handled by mirror_expr_opt"),
+            CallErasure::Call(node_erase, _spec_args) => node_erase.should_erase(spec),
+        }
+    }
 }
 
 impl ExpectSpecArgs {
@@ -237,10 +246,10 @@ impl ExpectSpecArgs {
 }
 
 pub(crate) fn handle_call<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
+    verus_ctxt: &VerusThirBuildCtxt,
     expr: &'tcx hir::Expr<'tcx>,
 ) -> CallErasure {
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+    let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
         return CallErasure::keep_all();
     };
 
@@ -250,8 +259,8 @@ pub(crate) fn handle_call<'tcx>(
     }
 }
 
-pub(crate) fn should_erase_var<'tcx>(cx: &mut ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+pub(crate) fn should_erase_var(verus_ctxt: &VerusThirBuildCtxt, var_hir_id: HirId) -> bool {
+    let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
         return false;
     };
     matches!(erasure_ctxt.vars.get(&var_hir_id), Some(VarErasure::Erase))
@@ -1435,7 +1444,8 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
         def_id,
         (forged_upvars.into_boxed_slice(), verus_fake_reads_final),
     );
-    let expr = cx.mirror_expr(block.expr.unwrap(), false);
+    cx.verus_ctxt.prep_expr(block.expr.unwrap(), false);
+    let expr = cx.mirror_expr(block.expr.unwrap());
 
     let block = Block {
         targeted_by_break: false,

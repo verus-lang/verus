@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::thir::cx::ThirBuildCx;
 
 impl<'tcx> ThirBuildCx<'tcx> {
-    pub(crate) fn mirror_block(&mut self, block: &'tcx hir::Block<'tcx>, spec: bool) -> BlockId {
+    pub(crate) fn mirror_block(&mut self, block: &'tcx hir::Block<'tcx>) -> BlockId {
         if let Some(b) = crate::verus::possibly_handle_complex_closure_block(self, block) {
             return b;
         }
@@ -25,7 +25,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             },
             span: block.span,
             stmts,
-            expr: block.expr.map(|expr| self.mirror_expr(expr, spec)),
+            expr: block.expr.map(|expr| self.mirror_expr(expr)),
             safety_mode: match block.rules {
                 hir::BlockCheckMode::DefaultBlock => BlockSafety::Safe,
                 hir::BlockCheckMode::UnsafeBlock(hir::UnsafeSource::CompilerGenerated) => {
@@ -58,7 +58,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                     local_id: hir_id.local_id,
                                     data: region::ScopeData::Node,
                                 },
-                                expr: self.mirror_expr(expr, true),
+                                expr: self.mirror_expr(expr),
                             },
                         };
                         Some(self.thir.stmts.push(stmt))
@@ -75,7 +75,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             )),
                         };
 
-                        let else_block = local.els.map(|els| self.mirror_block(els, false));
+                        let else_block = local.els.map(|els| self.mirror_block(els));
 
                         let mut pattern = self.pattern_from_hir(local.pat);
                         debug!(?pattern);
@@ -116,11 +116,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                     data: region::ScopeData::Node,
                                 },
                                 pattern,
-                                initializer: local.init.map(|init| {
-                                    let erase =
-                                        crate::verus::should_erase_var(self, local.pat.hir_id);
-                                    self.mirror_expr(init, erase)
-                                }),
+                                initializer: local.init.map(|init| self.mirror_expr(init)),
                                 else_block,
                                 lint_level: LintLevel::Explicit(local.hir_id),
                                 span,
