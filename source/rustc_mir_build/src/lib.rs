@@ -42,6 +42,9 @@ pub mod thir;
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]
 pub mod verus;
 
+#[path = "../../rustc_mir_build_additional_files/verus_expr.rs"]
+pub mod verus_expr;
+
 #[path = "../../rustc_hir_typeck/src/expr_use_visitor.rs"]
 pub mod expr_use_visitor;
 

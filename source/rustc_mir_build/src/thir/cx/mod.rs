@@ -30,7 +30,8 @@ pub(crate) fn thir_body(
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
         crate::verus::erase_tree(&mut cx, body.value)
     } else {
-        cx.mirror_expr(body.value, false)
+        cx.verus_ctxt.prep_expr(body.value, false);
+        cx.mirror_expr(body.value)
     };
 
     //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());

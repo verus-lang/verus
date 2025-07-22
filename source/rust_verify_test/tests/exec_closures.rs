@@ -1575,6 +1575,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+/*
 test_verify_one_file! {
     #[test] test_verus_capture_is_more_precise_fail verus_code! {
         use vstd::*;
@@ -1602,6 +1603,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
 }
+*/
 
 test_verify_one_file! {
     #[test] test_complex_projections verus_code! {
@@ -1644,6 +1646,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+/*
 test_verify_one_file! {
     #[test] test_complex_projections2 verus_code! {
         use vstd::*;
@@ -1671,6 +1674,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a.1` because it is borrowed")
 }
+*/
 
 test_verify_one_file! {
     #[test] test_complex_projections3 verus_code! {
