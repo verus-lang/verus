@@ -3496,6 +3496,7 @@ pub proof fn lemma_seq_properties<A>()
                 > 0,  //from to_multiset_ensures
 {
     broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
+
 }
 
 #[doc(hidden)]
