@@ -19,7 +19,7 @@ pub fn increment_good(var: &AtomicU32) {
     }
 }
 ```
-Both function satisfy the same naive specification:
+Both functions satisfy the same naive specification:
 $$
 \{ v \mapsto n \}\;\;{\tt increment}(v)\;\;\{ v \mapsto n + 1 \}
 $$
@@ -36,9 +36,7 @@ Some of the constructs needed for this project already exist in verus/vstd:
     - [`PAtomicU32`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PAtomicU32.html)
     - [`PermissionU32`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PermissionU32.html)
 
-## Syntax
-
-### Atomic pre- and post-conditions
+## Atomic pre- and post-conditions
 
 To define a function with an atomic pre- and post-condition, we use the following syntax:
 
@@ -62,10 +60,12 @@ The atomic pre- and post-condition, specified in the `atomic_spec` block, desuga
 pub struct AtomicUpdate<X, Y, Pred> { ... }
 ```
 
+Since opening an `AtomicUpdate` requires ownership and consumes the update, the type is `Send` and `Sync`, and there is no masking system like there is for invariants.
+
 Here, the `Pred` type must implement the `UpdatePredicate` trait, which is defined as follows:
 
 ```rs
-pub trait InvariantPredicate {
+pub trait UpdatePredicate<X, Y> {
     spec fn req(x: X) -> bool;
     spec fn ens(x: X, y: Y) -> bool;
 }
@@ -73,11 +73,13 @@ pub trait InvariantPredicate {
 
 The values `x: X` and `y: Y` are the permissions immediately before and after the atomic update respectively, `req` and `ens` correspond to the predicates in the atomic `requires` and `ensures` clauses.
 
-**[?]** Should we use `perm` and `old(perm)` instead of `old_perm_binding` and `new_perm_binding`?
+### Design Questions
 
-**[?]** Should we rename `atomic_spec` to `atomically` to reduce the number of new keywords?
+- Should we use `perm` and `old(perm)` instead of `old_perm_binding` and `new_perm_binding`?
 
-### Open atomic update
+- Should we rename `atomic_spec` to `atomically` to reduce the number of new keywords?
+
+## Open atomic update
 
 To call a function with an atomic pre- and post-condition, we use the following syntax:
 
@@ -104,20 +106,65 @@ Since the function is uninterpreted, it is up to the post-condition the uniquely
 
 The `open_atomic_update` macro takes an atomic update `atomic_update` as an argument and binds `old_perm` as a new variable.
 
-### Open atomic invariant
+### Design Questions
+
+- Is an `atomically` block "just" the constructor for the `AtomicUpdate` type?
+
+    ```rs
+    let tracked au: AtomicUpdate<X, Y, Pred> = atomically |update| { ... };
+    tunction(args, au);
+    ```
+
+    In this case, we could use `atomically` and `open_atomic_update` to "map" one `AtomicUpdate` into another:
+
+    ```rs
+    impl <X, Y, P: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, P> {
+        pub fn map<A, B, Q: UpdatePredicate<X, Y>>(
+            self,
+            lem1: impl ProofFn(A) -> X,
+            lem2: impl ProofFn(Y) -> B,
+        ) -> AtomicUpdate<A, B, Q> {
+            atomically |update| {
+                open_atomic_update!(self => perm => {
+                    let perm = lem1(perm);
+                    let perm = update(perm);
+                    let perm = lem2(perm);
+                    return perm;
+                });
+            }
+        }
+    }
+    ```
+
+## Open atomic invariant
+
 ```rs
 function(args) atomically |update| {
     open_atomic_invariant!(inv => perm => {
         // ...
-        update(&mut perm);
+        now(&mut perm);       // original syntax
+        perm = update(perm);  // proposed syntax
         // ...
     });
 }
 ```
 
-### Provide full permissions
+The `open_atomic_invariant` macro is already implemented in vstd, and the `atomically` block has precisely the same syntax and semantics as in the previous section, so this example is boring (which is great).
+
+## Provide full permissions
+
 ```rs
-function(args) with (&mut perm);
+function(args) with (&mut perm);        // original syntax
+function(args) atomically (&mut perm);  // proposed syntax
 ```
 
-**[?]** Does this desugar to anything?
+This is a shorthand for the special case that we have full permission for the atomic we want to access.
+It is equivalent to the following:
+
+```rs
+function(args) atomically |update| { perm = update(perm); };
+```
+
+### Design Question:
+- Do we really need this?
+- Should we allow the user to construct an `AtomicUpdate` object directly from a premission?
