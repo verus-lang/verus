@@ -1,7 +1,9 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
@@ -16,6 +18,7 @@ pub struct ErasureInfo {
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -75,5 +78,10 @@ impl<'tcx> ContextX<'tcx> {
         attrs: &[Attribute],
     ) -> Result<crate::attributes::ExternalAttrs, vir::ast::VirErr> {
         crate::attributes::get_external_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
+    }
+
+    pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
+        let mut r = self.erasure_info.borrow_mut();
+        r.bodies.push((local_def_id, c));
     }
 }
