@@ -1034,6 +1034,10 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
+    /// Whether this functions is a generated wrapper function for an Async function
+    pub async_wrapper: bool,
+    /// Whether this functions is a generated function for verifying the body of an Async function
+    pub async_body: bool,
 }
 
 /// Function specification of its invariant mask

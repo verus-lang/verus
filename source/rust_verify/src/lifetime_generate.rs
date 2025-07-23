@@ -6,7 +6,9 @@ use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, def_id_to_vir_path, mid_ty_const_to_vir,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
-use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
+use crate::verus_items::{
+    BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems, VstdItem,
+};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
@@ -27,7 +29,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path, PathX};
 use vir::ast_util::get_field;
 use vir::def::{VERUS_SPEC, field_ident_from_rust};
 use vir::messages::AstId;
@@ -242,6 +244,12 @@ impl State {
 
     pub(crate) fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
+        if let Some(krate_name) = &path.krate {
+            if **krate_name == "core" && f() == "Future" {
+                return Id { kind: IdKind::Builtin, rename_count: 0, raw_id: "Future".to_string() };
+            }
+        }
+
         Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)
     }
 
@@ -1095,11 +1103,34 @@ fn erase_call<'tcx>(
             }
             if expect_spec && !is_some {
                 None
+            } else if let Some(VerusItem::Vstd(VstdItem::VerusAwait, _)) =
+                ctxt.verus_items.id_to_name.get(&fn_def_id)
+            {
+                mk_exp(ExpX::Await(exps[0].clone()))
             } else {
                 let name = state.fun_name(&f_name);
                 let target = Box::new((fn_span, ExpX::Var(name)));
                 mk_exp(ExpX::Call(target, typ_args, exps))
             }
+            // else
+            // {
+            //     let name = state.fun_name(&f_name);
+            //     if name.raw_id == "verus_await_future"{
+
+            //         println!("ctxt.verus_items.id_to_name.get(&fn_def_id) {:#?}", ctxt.verus_items.id_to_name.get(&fn_def_id));
+            //         println!("ctxt.verus_items.id_to_name{:#?}", ctxt.verus_items.id_to_name);
+            //         // if ctxt.verus_items.id_to_name.get(&fn_def_id) == Some(&VerusItem::Vstd(verus_items::VstdItem::VerusAwait, None)){
+            //         //         println!("found await {:#?}", fn_def_id);
+            //         //     }
+
+            //         println!("f_name {:#?}", f_name);
+            //         mk_exp(ExpX::Await(exps[0].clone()))
+            //     }else{
+            //         let target = Box::new((fn_span, ExpX::Var(name)));
+            //         mk_exp(ExpX::Call(target, typ_args, exps))
+            //     }
+
+            // }
         }
         ResolvedCall::Ctor(path, variant_name) => {
             assert!(receiver.is_none());
@@ -1895,6 +1926,11 @@ fn erase_const_or_static<'tcx>(
     // Otherwise, both should be Some.
     assert!(krate.is_none() == body_id.is_none());
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    if lifetime_ignore(&path) {
+        return;
+    }
+
     if let Some(s) = path.segments.last() {
         if s.to_string().starts_with("_DERIVE_builtin_Structural_FOR_") {
             return;
@@ -1962,6 +1998,7 @@ fn erase_const_or_static<'tcx>(
             params: vec![],
             ret: Some((None, return_typ)),
             body: body,
+            asyncness: false,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -2008,6 +2045,13 @@ fn erase_mir_bound<'a, 'tcx>(
         Some(Bound::ProofFn(ClosureKind::FnMut))
     } else if Some(&VerusItem::External(ExternalItem::ProofFn)) == verus_item {
         Some(Bound::ProofFn(ClosureKind::Fn))
+    } else if Some(id) == tcx.lang_items().future_trait() {
+        let (args, _) = erase_generic_args(ctxt, state, args, true);
+        // println!("is future trait {:#?}", trait_path);
+        let mut trait_path = state.trait_name(&trait_path);
+        // trait_path.rename_count = 0;
+        // trait_path.kind = IdKind::Builtin;
+        Some(Bound::Trait { trait_path, args, equality: None })
     } else if state.trait_decl_set.contains(&trait_path) {
         let (args, _) = erase_generic_args(ctxt, state, args, true);
         let trait_path = state.trait_name(&trait_path);
@@ -2111,9 +2155,13 @@ fn erase_mir_predicates<'a, 'tcx>(
                     let (x_args, _) =
                         erase_generic_args(ctxt, state, &pred.projection_term.args[n..], true);
                     let x_args = x_args.into_iter().map(|a| a.as_lifetime()).collect();
-                    if let Bound::Trait { trait_path: _, args: _, equality } = &mut bound {
+                    if let Bound::Trait { trait_path, args: _, equality } = &mut bound {
                         assert!(equality.is_none());
-                        let name = state.typ_param(assoc_item.name().to_ident_string(), None);
+                        let mut name = state.typ_param(assoc_item.name().to_ident_string(), None);
+                        if trait_path.raw_id == "Future" && trait_path.kind == IdKind::Builtin {
+                            name.kind = IdKind::Builtin;
+                            name.rename_count = 0;
+                        }
                         *equality = Some((name, x_args, typ_eq));
                     } else if matches!(&bound, Bound::Pointee | Bound::Thin) {
                         // keep as is
@@ -2199,12 +2247,17 @@ fn erase_fn_common<'tcx>(
     empty_body: bool,
     external_body: bool,
     body_id: Option<&BodyId>,
+    async_body: bool, //TODO
 ) {
     if ctxt.ignored_functions.contains(&id) {
         return;
     }
 
     let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    if lifetime_ignore(&path) {
+        return;
+    }
 
     if let Some(local_id) = id.as_local() {
         let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_id);
@@ -2259,7 +2312,26 @@ fn erase_fn_common<'tcx>(
         let fn_sig = ctxt.tcx.fn_sig(id);
         let fn_sig = fn_sig.skip_binder();
         state.rename_count += 1;
-        let name = state.fun_name(&fun_name);
+        let name = if async_body {
+            let mut path_with_no_prefix = Vec::new();
+            for i in 0..path.segments.len() {
+                if i == path.segments.len() - 1 {
+                    path_with_no_prefix.push(Arc::new(
+                        path.segments[i].chars().skip(vir::def::VERUS_ASYNC_BODY.len()).collect(),
+                    ));
+                } else {
+                    path_with_no_prefix.push(path.segments[i].clone());
+                }
+            }
+            state.fun_name(&Arc::new(FunX {
+                path: Arc::new(PathX {
+                    krate: path.krate.clone(),
+                    segments: Arc::new(path_with_no_prefix),
+                }),
+            }))
+        } else {
+            state.fun_name(&fun_name)
+        };
         let inputs = &fn_sig.inputs().skip_binder();
         assert!(inputs.len() == f_vir.x.params.len());
         let params_info: Vec<(Option<Span>, bool)> = if let Some(body) = body {
@@ -2397,6 +2469,7 @@ fn erase_fn_common<'tcx>(
             params,
             ret,
             body: body_exp,
+            asyncness: async_body,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -2417,6 +2490,7 @@ fn import_fn<'tcx>(ctxt: &mut Context<'tcx>, state: &mut State, id: DefId) {
         true,
         true,
         None,
+        false,
     );
 }
 
@@ -2449,6 +2523,7 @@ fn erase_fn<'tcx>(
     empty_body: bool,
     external_body: bool,
     body_id: Option<&BodyId>,
+    async_body: bool,
 ) {
     erase_fn_common(
         Some(krate),
@@ -2462,13 +2537,22 @@ fn erase_fn<'tcx>(
         empty_body,
         external_body,
         body_id,
+        async_body,
     );
 }
 
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
+    let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_id);
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
     let trait_id = trait_ref.skip_binder().def_id;
+
+    let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
+
+    if lifetime_ignore(&impl_path) || lifetime_ignore(&trait_path) {
+        return;
+    }
+
     let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
     let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
     let is_copy_or_clone = is_copy || is_clone;
@@ -2550,6 +2634,12 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     if !state.reached.insert((None, trait_id)) {
         return;
     }
+
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_id);
+    if lifetime_ignore(&path) {
+        return;
+    }
+
     // HACK: we cannot yet handle FnOnce::Output
     if let Some(fn_once) = ctxt.tcx.lang_items().fn_once_trait() {
         if trait_id == fn_once {
@@ -2747,6 +2837,7 @@ fn erase_trait_item<'tcx>(
                     body_id.is_none(),
                     vattrs.external_body,
                     body_id,
+                    vattrs.async_body,
                 );
             }
             TraitItemKind::Type(_bounds, None) => {}
@@ -2777,6 +2868,9 @@ fn erase_impl<'tcx>(
                 if vattrs.reveal_group {
                     continue;
                 }
+                if vattrs.async_wrapper {
+                    continue;
+                }
                 match &kind {
                     ImplItemKind::Fn(sig, body_id) => {
                         erase_fn(
@@ -2790,6 +2884,7 @@ fn erase_impl<'tcx>(
                             false,
                             vattrs.external_body,
                             Some(body_id),
+                            vattrs.async_body,
                         );
                     }
                     _ => panic!(),
@@ -2836,6 +2931,11 @@ fn erase_datatype<'tcx>(
 ) {
     let datatype = Box::new(datatype);
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    if lifetime_ignore(&path) {
+        return;
+    }
+
     let name = state.datatype_name(&path);
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
@@ -2849,7 +2949,8 @@ fn erase_datatype<'tcx>(
         &mut typ_params,
         &mut generic_bounds,
     );
-    let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+    let generic_params: Vec<GenericParam> =
+        lifetimes.into_iter().chain(typ_params.into_iter()).collect();
     let span = Some(span);
     let decl = DatatypeDecl { name, span, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);
@@ -3131,6 +3232,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         // item is external
                         continue;
                     }
+
                     let attrs = tcx.hir_attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
                     if vattrs.internal_reveal_fn || vattrs.internal_const_body {
@@ -3174,6 +3276,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             if vattrs.reveal_group {
                                 continue;
                             }
+                            if vattrs.async_wrapper {
+                                continue;
+                            }
                             if !vattrs.external_fn_specification {
                                 erase_fn(
                                     krate,
@@ -3186,6 +3291,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                                     false,
                                     vattrs.external_body,
                                     Some(body_id),
+                                    vattrs.async_body,
                                 );
                             } else {
                                 let body = ctxt.tcx.hir_body(*body_id);
@@ -3285,4 +3391,27 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     }
     assert!(state.rename_bound_for.len() == 0);
     state
+}
+
+/// vstd::Future trait is treated as a different trait than core::Future,
+/// and rustc does not allow await on vstd::Future
+/// Here we ignore the trait defs and base util functions defined in vstd::future::lifetime_ignore
+pub(crate) fn lifetime_ignore<'tcx>(path: &Path) -> bool {
+    println!("lifetime_ignore path {:#?}", path);
+    match &**path {
+        PathX { krate: None, .. } => false,
+        PathX { krate: Some(krate_name), segments } => {
+            match (segments.get(0), segments.get(1), segments.last()) {
+                (_, _, Some(raw_name)) if **krate_name == "core" && **raw_name == "Future" => true,
+                (Some(root_mod), Some(sub_mod), _)
+                    if **krate_name == "vstd"
+                        && **root_mod == "future"
+                        && **sub_mod == "lifetime_ignore" =>
+                {
+                    true
+                }
+                _ => false,
+            }
+        }
+    }
 }

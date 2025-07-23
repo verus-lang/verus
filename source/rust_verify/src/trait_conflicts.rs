@@ -238,7 +238,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         let Dt::Path(path) = &d.x.name else {
             panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");
         };
-
+        if lifetime_ignore(&path) {
+            continue;
+        }
         let (generic_params, generic_bounds) = gen_generics(
             state,
             &d.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
@@ -266,6 +268,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     let mut used_traits: HashSet<Path> = HashSet::new();
     let mut used_assoc_typs: HashSet<(Path, Ident)> = HashSet::new();
     for t in &vir_crate.traits {
+        if lifetime_ignore(&t.x.name) {
+            continue;
+        }
         let (t_params, mut t_bounds) = gen_generics(
             state,
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
@@ -303,6 +308,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
 
     for i in &vir_crate.trait_impls {
         if !used_traits.contains(&i.x.trait_path) {
+            continue;
+        }
+        if lifetime_ignore(&i.x.impl_path) || lifetime_ignore(&i.x.trait_path) {
             continue;
         }
         let span = spans.from_air_span(&i.span, None);

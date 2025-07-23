@@ -2125,9 +2125,20 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 true,
             )
         }
-        ExprKind::Closure(Closure { fn_decl: _, body: body_id, .. }) => {
+        ExprKind::Closure(Closure {
+            def_id: _,
+            binder: _,
+            constness: _,
+            capture_clause: _,
+            bound_generic_params: _,
+            fn_decl_span: _,
+            fn_arg_span: _,
+            fn_decl: _,
+            body,
+            kind: _,
+        }) => {
             if expr_vattrs.internal_const_header_wrapper {
-                let closure_body = find_body(&bctx.ctxt, body_id);
+                let closure_body = find_body(&bctx.ctxt, body);
                 expr_to_vir(bctx, closure_body.value, modifier)
             } else {
                 closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)

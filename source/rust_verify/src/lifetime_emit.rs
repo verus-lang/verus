@@ -439,6 +439,11 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             }
             state.write("))");
         }
+        // ExpX::Call(target, _typ_args, exps)
+        //         if matches!(target.1, ExpX::Await) => {
+        //             emit_exp(state, &exps[0]);
+        //             state.write(".await");
+        //         }
         ExpX::Call(target, typ_args, exps) => {
             emit_exp(state, target);
             if typ_args.len() > 0 {
@@ -723,6 +728,11 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             emit_exp(state, e2);
             state.write("))");
         }
+        ExpX::Await(exp) => {
+            println!("found await {:#?}", exp);
+            emit_exp(state, exp);
+            state.write(".await");
+        }
     }
     state.end_span(*span);
 }
@@ -914,6 +924,9 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
     state.newdecl();
     state.newline();
     state.begin_span(f.sig_span);
+    if f.asyncness {
+        state.write("async ");
+    }
     state.write("fn ");
     state.write_spanned(f.name.to_string(), f.name_span);
     emit_generic_params(state, &f.generic_params);

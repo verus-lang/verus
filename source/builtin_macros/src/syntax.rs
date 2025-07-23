@@ -6,7 +6,6 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
-use syn::Receiver;
 use syn::token::Comma;
 use syn_verus::BroadcastUse;
 use syn_verus::DefaultEnsures;
@@ -18,6 +17,7 @@ use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
+use syn_verus::token::OpensInvariants;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     VisitMut, visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut,
@@ -39,6 +39,7 @@ use syn_verus::{
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub(crate) const VERUS_ASYNC_BODY: &str = "VERUS_ASYNC_BODY__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -394,6 +395,139 @@ pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
     visit_pat.visit_pat_mut(pat);
     let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
     return (x_decls, x_assigns);
+}
+
+fn rewrite_async_ensures(ensures: &mut Ensures, ret_id: &Ident) {
+    for expr in ensures.exprs.exprs.iter_mut() {
+        *expr = syn_verus::parse::<Expr>(
+            rejoin_tokens(
+            quote_spanned_builtin! { builtin, expr.span() => #builtin::imply( #ret_id.awaited(), {let #ret_id = #ret_id.view(); #expr}) }.into())
+        ).expect("fail to rewrite ensures clasue of async function");
+    }
+}
+
+fn visit_async_fn_open_invariants_mut(
+    erase_ghost: &EraseGhost,
+    attrs: &mut Vec<Attribute>,
+    sig: &mut Signature,
+) -> Option<Item> {
+    if erase_ghost.erase() {
+        return None;
+    }
+    if is_external(attrs) {
+        return None;
+    }
+
+    if sig.spec.invariants.is_none() {
+        // defaults to none
+        sig.spec.invariants = Some(SignatureInvariants {
+            token: OpensInvariants { span: sig.span() },
+            set: InvariantNameSet::None(syn_verus::InvariantNameSetNone {
+                token: syn_verus::token::InvNone { span: sig.span() },
+            }),
+        });
+        return None;
+    } else if !matches!(
+        sig.spec.invariants,
+        Some(SignatureInvariants { token: _, set: InvariantNameSet::None(_) })
+    ) {
+        return Some(Item::Verbatim(
+            quote_spanned!( sig.spec.invariants.as_ref().unwrap().span() => const _: () = { compile_error!( "async functions cannot open invariants" ) };),
+        ));
+    } else {
+        return None;
+    }
+}
+
+fn visit_async_wrapper_fn_mut(
+    erase_ghost: &EraseGhost,
+    attrs: &mut Vec<Attribute>,
+    sig: &mut Signature,
+    block: Option<&mut Block>,
+    is_impl_fn: bool,
+) {
+    if erase_ghost.erase() {
+        return;
+    }
+    if is_external(attrs) {
+        return;
+    }
+
+    if has_external_code(attrs) == false {
+        attrs.push(mk_verus_attr(sig.span(), quote! { external_body }));
+    }
+
+    sig.asyncness = None;
+
+    match &mut sig.output {
+        ReturnType::Default => {
+            let ret_id = Ident::new("ret", sig.span());
+            sig.output = ReturnType::Type(
+                token::RArrow { spans: [sig.span(), sig.span()] },
+                None,
+                Some(Box::new((
+                    token::Paren { span: into_spans(sig.span()) },
+                    Pat::Verbatim(quote_spanned! {sig.span() => #ret_id}),
+                    syn_verus::token::Colon { spans: [sig.span()] },
+                ))),
+                Box::new(Type::Verbatim(quote_spanned! {sig.span() => impl Future<Output = ()>})),
+            );
+            if let Some(block) = block {
+                block.stmts = vec![Stmt::Expr(
+                    Expr::Verbatim(quote_spanned! {block.span() => make_future(())}),
+                    None,
+                )];
+            }
+
+            if let Some(ensures) = &mut sig.spec.ensures {
+                rewrite_async_ensures(ensures, &ret_id);
+            }
+        }
+        ReturnType::Type(_rarrow, _tracked, pat, typ) => {
+            *typ =
+                Box::new(Type::Verbatim(quote_spanned! {typ.span() => impl Future<Output = #typ>}));
+            if let Some(block) = block {
+                let generics = verus_generic_to_tokens(&sig.generics);
+                let (self_token_op, args) = verus_inputs_to_tokens(&sig.inputs);
+
+                let generics_token = {
+                    match generics {
+                        Some(generics) => Some(quote_spanned!( sig.generics.span() => ::#generics)),
+                        None => None,
+                    }
+                };
+                let receiver_token = {
+                    match (is_impl_fn, self_token_op) {
+                        (true, None) => Some(quote_spanned!( sig.inputs.span() => Self::)),
+                        (true, Some(self_token)) => {
+                            Some(quote_spanned!( sig.inputs.span() => #self_token.))
+                        }
+                        (false, None) => None,
+                        (false, Some(self_token)) => {
+                            Some(quote_spanned!( sig.inputs.span() => #self_token.))
+                        }
+                    }
+                };
+                let async_body_ident = Ident::new(
+                    &(VERUS_ASYNC_BODY.to_owned() + &sig.ident.to_string()),
+                    sig.ident.span(),
+                );
+                let call_self = quote_spanned!(block.span() => make_future(#receiver_token#async_body_ident#generics_token(#args)));
+
+                block.stmts = vec![Stmt::Expr(Expr::Verbatim(call_self), None)];
+            }
+            if let Some(ensures) = &mut sig.spec.ensures {
+                let ret_id = match pat {
+                    Some(pat) => match &pat.1 {
+                        Pat::Ident(pat_ident) => &pat_ident.ident,
+                        _ => panic!(),
+                    },
+                    None => panic!(),
+                };
+                rewrite_async_ensures(ensures, ret_id);
+            }
+        }
+    }
 }
 
 fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
@@ -1390,6 +1524,103 @@ impl Visitor {
         self.visit_expr_mut(&mut expr);
         expr.to_tokens(&mut new_stream);
         proc_macro::TokenStream::from(new_stream)
+    }
+
+    fn visit_items_gen_async_fun_wrapper(&mut self, items: &mut Vec<Item>) {
+        if self.erase_ghost.erase() {
+            return;
+        }
+        let mut async_gen_funs = vec![];
+        for item in items.iter_mut() {
+            if let Item::Fn(item_fn) = item {
+                if item_fn.sig.asyncness.is_some() && !is_external(&item_fn.attrs) {
+                    if let Some(err_item) = visit_async_fn_open_invariants_mut(
+                        &self.erase_ghost,
+                        &mut item_fn.attrs,
+                        &mut item_fn.sig,
+                    ) {
+                        async_gen_funs.push(err_item);
+                    }
+                    let mut item_fn_copy = item_fn.clone();
+                    item_fn_copy
+                        .attrs
+                        .push(mk_verus_attr(item_fn.sig.span(), quote! { async_body }));
+                    item_fn_copy.sig.asyncness = None;
+                    item_fn_copy.sig.ident = Ident::new(
+                        &(VERUS_ASYNC_BODY.to_owned() + &item_fn_copy.sig.ident.to_string()),
+                        item_fn_copy.sig.ident.span(),
+                    );
+                    async_gen_funs.push(Item::Fn(item_fn_copy));
+
+                    visit_async_wrapper_fn_mut(
+                        &self.erase_ghost,
+                        &mut item_fn.attrs,
+                        &mut item_fn.sig,
+                        Some(&mut item_fn.block),
+                        false,
+                    );
+                    item_fn.attrs.push(mk_verus_attr(item_fn.sig.span(), quote! { async_wrapper }));
+                }
+            } else if let Item::Impl(impl_item) = item {
+                let mut async_gen_impl_funs = vec![];
+                for item in impl_item.items.iter_mut() {
+                    if let ImplItem::Fn(impl_item_fn) = item {
+                        if impl_item_fn.sig.asyncness.is_some() && !is_external(&impl_item_fn.attrs)
+                        {
+                            if let Some(err_item) = visit_async_fn_open_invariants_mut(
+                                &self.erase_ghost,
+                                &mut impl_item_fn.attrs,
+                                &mut impl_item_fn.sig,
+                            ) {
+                                async_gen_funs.push(err_item);
+                            }
+                            let mut impl_item_fun_copy: ImplItemFn = impl_item_fn.clone();
+                            impl_item_fun_copy.attrs.push(mk_verus_attr(
+                                impl_item_fn.sig.span(),
+                                quote! { async_body },
+                            ));
+                            impl_item_fun_copy.sig.asyncness = None;
+                            impl_item_fun_copy.sig.ident = Ident::new(
+                                &(VERUS_ASYNC_BODY.to_owned()
+                                    + &impl_item_fun_copy.sig.ident.to_string()),
+                                impl_item_fun_copy.sig.ident.span(),
+                            );
+                            async_gen_impl_funs.push(ImplItem::Fn(impl_item_fun_copy));
+
+                            visit_async_wrapper_fn_mut(
+                                &self.erase_ghost,
+                                &mut impl_item_fn.attrs,
+                                &mut impl_item_fn.sig,
+                                Some(&mut impl_item_fn.block),
+                                true,
+                            );
+                            impl_item_fn.attrs.push(mk_verus_attr(
+                                impl_item_fn.sig.span(),
+                                quote! { async_wrapper },
+                            ));
+                        }
+                    }
+                }
+                impl_item.items.append(&mut async_gen_impl_funs);
+            } else if let Item::Trait(item_trait) = item {
+                for item in item_trait.items.iter_mut() {
+                    if let TraitItem::Fn(trait_item_fn) = item {
+                        if trait_item_fn.sig.asyncness.is_some()
+                            && !is_external(&trait_item_fn.attrs)
+                        {
+                            async_gen_funs.push(Item::Verbatim(
+                                quote_spanned!( trait_item_fn.sig.asyncness.unwrap().span() => const _: () = { compile_error!( "verus does not yet support async trait function" ) };),
+                            ));
+                        }
+                    }
+                }
+            } else if let Item::Mod(item_mod) = item {
+                if let Some((_, mod_items)) = &mut item_mod.content {
+                    self.visit_items_gen_async_fun_wrapper(mod_items);
+                }
+            }
+        }
+        items.append(&mut async_gen_funs);
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
@@ -3145,6 +3376,16 @@ impl Visitor {
         true
     }
 
+    /// Rewrite await
+    fn handle_await(&mut self, expr: &mut Expr) {
+        if let Expr::Await(syn_verus::ExprAwait { attrs: _, base, .. }) = expr {
+            let call_expr = syn_verus::parse::<Expr>(quote_spanned_vstd! {
+                vstd, base.span() => #vstd::future::lifetime_ignore::VerusFuture::verus_await_future(#base)
+            }.into()).expect("failed to rewrite await expr");
+            *expr = call_expr;
+        }
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -3599,6 +3840,8 @@ impl VisitMut for Visitor {
         {
             return;
         }
+
+        self.handle_await(expr);
 
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
@@ -4524,6 +4767,9 @@ pub(crate) fn rewrite_items(
         rustdoc: env_rustdoc(),
     };
     visitor.visit_items_prefilter(&mut items.items);
+
+    visitor.visit_items_gen_async_fun_wrapper(&mut items.items);
+
     for mut item in &mut items.items {
         visitor.visit_item_mut(&mut item);
         visitor.inside_ghost = 0;

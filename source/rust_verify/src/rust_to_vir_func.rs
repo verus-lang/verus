@@ -189,6 +189,8 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
+                    async_wrapper: false,
+                    async_body: false,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
@@ -868,6 +870,8 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
+        async_wrapper: vattrs.async_wrapper,
+        async_body: vattrs.async_body,
     };
     Ok(Arc::new(fattrs))
 }

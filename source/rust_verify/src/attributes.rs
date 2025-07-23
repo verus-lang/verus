@@ -346,6 +346,8 @@ pub(crate) enum Attr {
     UsesUnerasedProxy,
     EncodedConst,
     EncodedStatic,
+    AsyncWrapper,
+    AsyncBody,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -783,6 +785,10 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "encoded_static" => {
                         v.push(Attr::EncodedStatic)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "async_wrapper" => {
+                        v.push(Attr::AsyncWrapper)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "async_body" => v.push(Attr::AsyncBody),
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -1032,6 +1038,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unerased_proxy: bool,
     pub(crate) encoded_const: bool,
     pub(crate) encoded_static: bool,
+    pub(crate) async_wrapper: bool,
+    pub(crate) async_body: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1200,6 +1208,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         unerased_proxy: false,
         encoded_const: false,
         encoded_static: false,
+        async_wrapper: false,
+        async_body: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1278,6 +1288,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::EncodedConst => vs.encoded_const = true,
             Attr::EncodedStatic => vs.encoded_static = true,
             Attr::UsesUnerasedProxy => {}
+            Attr::AsyncWrapper => vs.async_wrapper = true,
+            Attr::AsyncBody => vs.async_body = true,
             _ => {}
         }
     }

@@ -82,6 +82,7 @@ pub(crate) type Exp = Box<(Span, ExpX)>;
 #[derive(Debug, Clone)]
 pub(crate) enum ExpX {
     Panic,
+    Await(Exp),
     Var(Id),
     Op(Vec<Exp>, Typ),
     Call(Exp, Vec<Typ>, Vec<Exp>),
@@ -219,4 +220,5 @@ pub(crate) struct FunDecl {
     pub(crate) params: Vec<Param>,
     pub(crate) ret: Option<(Option<Span>, Typ)>,
     pub(crate) body: Exp,
+    pub(crate) asyncness: bool,
 }

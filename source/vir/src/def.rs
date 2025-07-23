@@ -223,6 +223,7 @@ pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 pub const QID_OPAQUE_TYPE_BOUND: &str = "opaque_type_bound";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub const VERUS_ASYNC_BODY: &str = "VERUS_ASYNC_BODY__";
 
 pub const STRSLICE_IS_ASCII: &str = "str%strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "str%strslice_len";

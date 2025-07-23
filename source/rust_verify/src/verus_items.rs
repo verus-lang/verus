@@ -305,6 +305,7 @@ pub(crate) enum VstdItem {
     CastArrayPtrToSlicePtr,
     CastPtrToUsize,
     VecIndex,
+    VerusAwait,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -540,6 +541,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
+
+        ("verus::vstd::future::lifetime_ignore::VerusFuture::verus_await_future", VerusItem::Vstd(VstdItem::VerusAwait, None)),
 
         ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
 
