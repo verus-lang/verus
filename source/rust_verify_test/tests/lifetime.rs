@@ -1259,3 +1259,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] consts_issue1791 verus_code! {
+        pub fn hello() -> [u64; 2]
+        {
+            S::A
+        }
+
+        pub fn hello2() -> u64
+        {
+            S::X
+        }
+
+        pub struct S {}
+
+        impl S {
+            pub const X: u64 = 42;
+
+            pub const A: [u64; 2] = [1, 2];
+        }
+    } => Ok(())
+}
