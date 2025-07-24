@@ -4,6 +4,7 @@ use crate::vstd::arithmetic::power::*;
 use crate::vstd::arithmetic::power2::*;
 use crate::vstd::arithmetic::mul::*;
 use crate::vstd::calc_macro::*;
+use crate::vstd::layout;
 use crate::vstd::prelude::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::primitive_int::PrimitiveInt;
@@ -912,7 +913,7 @@ impl CompatibleSmallerBaseFor<usize> for u8 {
 pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
     requires
         x.to_nat() as usize & y.to_nat() as usize == 0,
-        x.len() == y.len() <= size_of::<usize>(),
+        x.len() == y.len() <= layout::size_of::<usize>(),
         x.wf(),
         y.wf(),
         x.endian == y.endian,
@@ -933,8 +934,8 @@ pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
         let y_least = y.least() as u8;
 
         // To compute pow(256, x.drop_least().len()), which is the upper bound on x.drop_least().to_nat(), 
-        // at most we need to unfold pow size_of::<usize>() times, since x.drop_least().len() < size_of::<usize>().
-        // Since size_of::<usize>() <= 8, we reveal with fuel 8.
+        // at most we need to unfold pow layout::size_of::<usize>() times, since x.drop_least().len() < layout::size_of::<usize>().
+        // Since layout::size_of::<usize>() <= 8, we reveal with fuel 8.
         reveal_with_fuel(pow, 8);
         assert(x.drop_least().to_nat() * 256 <= usize::MAX) by {x.drop_least().to_nat_upper_bound()};
         assert(y.drop_least().to_nat() * 256 <= usize::MAX) by {y.drop_least().to_nat_upper_bound()};
