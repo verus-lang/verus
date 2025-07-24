@@ -3554,23 +3554,32 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
-    (::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
@@ -3582,7 +3591,7 @@ macro_rules! assert_seqs_equal_internal {
         $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
             $crate::vstd::prelude::assert_(s1.len() == s2.len());
             $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
-                $crate::vstd::prelude::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::requires($crate::vstd::prelude::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });

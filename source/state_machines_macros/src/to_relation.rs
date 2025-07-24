@@ -2,9 +2,9 @@ use crate::ast::{Arm, SimplStmt, SplitKind};
 use indexmap::IndexSet;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned};
-use syn_verus::spanned::Spanned;
-use syn_verus::visit::Visit;
-use syn_verus::{Expr, Lit, LitStr};
+use verus_syn::spanned::Spanned;
+use verus_syn::visit::Visit;
+use verus_syn::{Expr, Lit, LitStr};
 
 /// Converts a transition description into a relation between `pre` and `post`.
 /// Overall, this process has two steps:
@@ -126,7 +126,7 @@ impl<'ast> Visit<'ast> for UseGetter<'ast> {
     }
 
     fn visit_expr(&mut self, node: &'ast Expr) {
-        syn_verus::visit::visit_expr(self, node);
+        verus_syn::visit::visit_expr(self, node);
 
         match node {
             Expr::Verbatim(stream) => {

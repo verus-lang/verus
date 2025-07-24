@@ -468,7 +468,7 @@ test_verify_one_file! {
     #[test] test_apply_to_builtin verus_code! {
         #[verifier(external_type_specification)]
         pub struct Foo(int);
-    } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_type_specification` to Verus builtin types")
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_type_specification` to Verus verus_builtin types")
 }
 
 test_verify_one_file! {

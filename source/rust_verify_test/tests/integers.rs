@@ -372,7 +372,7 @@ test_verify_one_file! {
             }
         }
 
-        impl<T: builtin::Integer> S<T> {
+        impl<T: verus_builtin::Integer> S<T> {
             spec fn t_int(t: T) -> int {
                 Self::reveal_(t) as int
             }
@@ -399,7 +399,7 @@ test_verify_one_file! {
             }
         }
 
-        impl<T: builtin::Integer> S<T> {
+        impl<T: verus_builtin::Integer> S<T> {
             spec(checked) fn t_int(t: T) -> nat {
                 Self::reveal_(t) as nat
             }
@@ -453,7 +453,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         struct S;
         impl Integer for S {}
-    } => Err(err) => assert_rust_error_msg(err, "the trait `builtin::Integer` requires an `unsafe impl` declaration")
+    } => Err(err) => assert_rust_error_msg(err, "the trait `verus_builtin::Integer` requires an `unsafe impl` declaration")
 }
 
 test_verify_one_file! {

@@ -452,7 +452,7 @@ test_verify_one_file! {
         trait T {
             fn f(i: u32) -> (r: u32)
                 requires
-                    (builtin::default_ensures)(true),
+                    (verus_builtin::default_ensures)(true),
                 ensures
                     r <= i,
             {
@@ -481,7 +481,7 @@ test_verify_one_file! {
             ensures
                 r <= i,
         {
-            assert((builtin::default_ensures)(true));
+            assert((verus_builtin::default_ensures)(true));
             i / 2
         }
     } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")

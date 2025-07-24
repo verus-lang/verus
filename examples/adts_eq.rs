@@ -1,5 +1,5 @@
 // rust_verify/tests/example.rs
-use builtin_macros::*;
+use verus_builtin_macros::*;
 use vstd::*;
 
 verus! {

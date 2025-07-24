@@ -10,7 +10,7 @@ use vstd::prelude::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, prelude::*, *};
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 tokenized_state_machine! {InternSystem<T> {
     fields {

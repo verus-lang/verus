@@ -11,12 +11,12 @@ use crate::self_type_visitor::replace_self_sm;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
-use syn_verus::Token;
-use syn_verus::buffer::Cursor;
-use syn_verus::parse;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::spanned::Spanned;
-use syn_verus::{
+use verus_syn::Token;
+use verus_syn::buffer::Cursor;
+use verus_syn::parse;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::spanned::Spanned;
+use verus_syn::{
     AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
     GenericParam, Generics, Ident, ImplItemFn, Item, ItemFn, Meta, MetaList, PathArguments,
     Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause, braced,
@@ -233,7 +233,7 @@ fn attr_is_polarity(attr: &Attribute) -> bool {
                 }
                 [segment] if segment == "cfg_attr" => {
                     let nested = match attr.parse_args_with(
-                        syn_verus::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
+                        verus_syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
                     ) {
                         Ok(nested) => nested,
                         Err(_) => return false,
@@ -410,7 +410,7 @@ fn get_sharding_type(
                 let msg =
                     "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]";
                 let nested = match attr.parse_args_with(
-                    syn_verus::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
+                    verus_syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
                 ) {
                     Ok(nested) => nested,
                     Err(_) => return Err(Error::new(attr.span(), msg)),

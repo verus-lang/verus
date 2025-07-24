@@ -1,8 +1,8 @@
 // most of the codes are copied from: https://github.com/utaal/verified-nrkernel/blob/main/page-table/lib.rs
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 #[allow(unused_imports)]
 use vstd::{pervasive::*, *};
 

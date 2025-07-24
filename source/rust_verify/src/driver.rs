@@ -125,6 +125,8 @@ pub(crate) fn run_with_erase_macro_compile(
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if vstd == Vstd::IsCore {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    } else if vstd == Vstd::NoVstd {
+        rustc_args.extend(["--cfg", "verus_no_vstd"].map(|s| s.to_string()));
     }
     let allow = &[
         "unused_imports",
@@ -186,7 +188,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                         Some(VerusRoot { path, in_vargo: false })
                     } else {
                         // TODO suppress warning when building verus itself
-                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the verus_builtin and vstd crates are likely missing");
                         None
                     }
                 })

@@ -114,7 +114,7 @@ macro_rules! pcell_opt_internal {
 #[macro_export]
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!(
+        ::verus_builtin_macros::verus_proof_macro_exprs!(
             $crate::vstd::cell::pcell_opt_internal!($($tail)*)
         )
     }
@@ -137,7 +137,7 @@ macro_rules! pcell_points_internal {
 #[macro_export]
 macro_rules! pcell_points {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!(
+        ::verus_builtin_macros::verus_proof_macro_exprs!(
             $crate::vstd::cell::pcell_points_internal!($($tail)*)
         )
     }

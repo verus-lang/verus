@@ -85,14 +85,14 @@ fn attribute_is_variant_internal(
                         );
                         let field_str = field_ident.to_string();
 
-                        quote_spanned_builtin! { builtin, get_ident.span() =>
+                        quote_spanned_builtin! { verus_builtin, get_ident.span() =>
                             #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
                             #[verus::internal(spec)]
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
-                                #builtin::get_variant_field(self, #variant_ident_str, #field_str)
+                                #verus_builtin::get_variant_field(self, #variant_ident_str, #field_str)
                             }
                         }
                     })
@@ -108,14 +108,14 @@ fn attribute_is_variant_internal(
                             v.ast().ident.span(),
                         );
 
-                        quote_spanned_builtin! { builtin, get_ident.span() =>
+                        quote_spanned_builtin! { verus_builtin, get_ident.span() =>
                             #[cfg(verus_keep_ghost)]
                             #[allow(non_snake_case)]
                             #[verus::internal(spec)]
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
-                                #builtin::get_variant_field(self, #variant_ident_str, #field_lit)
+                                #verus_builtin::get_variant_field(self, #variant_ident_str, #field_lit)
                             }
                         }
                     })
@@ -123,15 +123,15 @@ fn attribute_is_variant_internal(
                 &syn::Fields::Unit => quote! {},
             };
 
-            quote_spanned_builtin! { builtin, variant_ident.span() =>
-                ::builtin_macros::verus! {
+            quote_spanned_builtin! { verus_builtin, variant_ident.span() =>
+                ::verus_builtin_macros::verus! {
                     #[cfg(verus_keep_ghost)]
                     #[allow(non_snake_case)]
                     #[verus::internal(spec)]
                     #[verifier::inline]
                     #publish
                     #vis fn #fun_ident(&self) -> bool {
-                        #builtin::is_variant(self, #variant_ident_str)
+                        #verus_builtin::is_variant(self, #variant_ident_str)
                     }
 
                     #get_fns

@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 #[allow(unused_imports)]
 use vstd::*;
 
@@ -25,7 +25,7 @@ fn main2() {
 }
 
 spec fn mul(a: u64, b: u64) -> u64 {
-    builtin::mul(a, b)
+    verus_builtin::mul(a, b)
 }
 
 spec fn divides(v: u64, d: u64) -> bool {

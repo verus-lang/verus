@@ -1,7 +1,7 @@
 use crate::ast::SimplStmt;
 use crate::safety_conditions::has_any_assert_simpl;
 use quote::quote;
-use syn_verus::{Expr, Ident, Type};
+use verus_syn::{Expr, Ident, Type};
 
 /// Returns an equivalent SimplStmt sequence that has no 'assert' statements in it.
 ///
