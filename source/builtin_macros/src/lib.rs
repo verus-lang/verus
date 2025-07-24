@@ -265,21 +265,6 @@ pub(crate) fn cfg_no_vstd() -> bool {
     false
 }
 
-#[cfg(verus_keep_ghost)]
-pub(crate) fn cfg_verify_vstd() -> bool {
-    static CFG_VERIFY_VSTD: OnceLock<bool> = OnceLock::new();
-    *CFG_VERIFY_VSTD.get_or_init(|| {
-        let ts: proc_macro::TokenStream = quote::quote! { ::core::module_path!() }.into();
-        let str_ts = match ts.expand_expr() {
-            Ok(name) => name.to_string(),
-            _ => {
-                panic!("cfg_verify_core call failed")
-            }
-        };
-        str_ts.starts_with("\"vstd::")
-    })
-}
-
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
 /// then returns f!(exprs'),
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
