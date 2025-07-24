@@ -1299,10 +1299,12 @@ where
         v.visit_qself(it);
     }
     v.visit_path(&node.path);
-    skip!(node.paren_token);
-    for el in Punctuated::pairs(&node.inputs) {
-        let it = el.value();
-        full!(v.visit_fn_arg(it));
+    if let Some(it) = &node.inputs {
+        skip!((it).0);
+        for el in Punctuated::pairs(&(it).1) {
+            let it = el.value();
+            full!(v.visit_fn_arg(it));
+        }
     }
     v.visit_return_type(&node.output);
     if let Some(it) = &node.requires {

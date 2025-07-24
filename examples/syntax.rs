@@ -4,8 +4,13 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
 
-#[verifier::external]
 fn main() {}
+
+const EXTERNAL_C: u8 = 7;
+
+fn external_f(u: u8) -> u8 {
+    u / 2
+}
 
 verus! {
 
@@ -664,6 +669,24 @@ proof fn broadcast_use() {
         broadcast use vstd::seq_lib::group_seq_properties;
 
     };
+}
+
+/// Specifications can be assumed for functions and constants from outside Verus.
+/// Warning: such specifications are trusted to be correct, so they must be chosen carefully.
+assume_specification[EXTERNAL_C] -> u8
+    returns
+        7u8,
+;
+
+assume_specification[external_f](u: u8) -> (r: u8)
+    ensures
+        r <= u,
+;
+
+fn test_external() {
+    assert(EXTERNAL_C == 7);
+    let x = external_f(10);
+    assert(x <= 10);
 }
 
 } // verus!
