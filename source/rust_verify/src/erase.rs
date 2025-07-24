@@ -23,6 +23,7 @@ pub enum CompilableOperator {
     TrackedBorrowMut,
     UseTypeInvariant,
     ClosureToFnProof(Mode),
+    Resolve,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).

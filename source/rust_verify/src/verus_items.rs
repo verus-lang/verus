@@ -373,6 +373,10 @@ pub(crate) enum VerusItem {
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
     External(ExternalItem),
+    Resolve,
+    HasResolved,
+    MutRefCurrent,
+    MutRefFuture,
 }
 
 #[rustfmt::skip]
@@ -565,6 +569,10 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
         ("verus::builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
         ("verus::builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
+        ("verus::builtin::resolve",          VerusItem::Resolve),
+        ("verus::builtin::has_resolved",     VerusItem::HasResolved),
+        ("verus::builtin::mut_ref_current",  VerusItem::MutRefCurrent),
+        ("verus::builtin::mut_ref_future",   VerusItem::MutRefFuture),
     ]
 }
 
