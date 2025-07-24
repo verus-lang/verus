@@ -52,8 +52,6 @@ pub struct ErasureHints {
     pub hir_vir_ids: Vec<(HirId, AstId)>,
     /// Details of each call in the first run's HIR
     pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
-    /// Details of some expressions in first run's HIR
-    pub resolved_exprs: Vec<(SpanData, vir::ast::Expr)>,
     /// Details of some patterns in first run's HIR
     pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
