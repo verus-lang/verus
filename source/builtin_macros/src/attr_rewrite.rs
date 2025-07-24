@@ -390,7 +390,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 );
                 fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
             }
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig);
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, false, false);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             fun.to_tokens(&mut new_stream);
@@ -416,7 +416,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 }.into();
             }
             let mut signature = closure_to_fn_sig(&closure);
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut signature);
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut signature, false, true);
             let body = &closure.body;
             let new_body = quote_spanned!(closure.body.span() =>
                 #(#spec_stmts)*
@@ -441,7 +441,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 );
             }
 
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig);
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig, true, false);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let mut spec_fun_opt = syntax_trait::split_trait_method_syn(&method, erase.erase());
             let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
