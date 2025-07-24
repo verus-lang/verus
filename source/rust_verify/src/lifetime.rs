@@ -458,7 +458,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     if let Some(mut file) = lifetime_log_file {
         write!(file, "{}", &rust_code).expect("error writing to lifetime log file");
     }
-    let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
+    let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json", "--edition=2024"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         // avoid warning about jobserver fd
