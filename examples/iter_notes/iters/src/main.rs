@@ -183,10 +183,8 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     }
 
     open spec fn inv(&self) -> bool {
-        // TODO: remove redundancy
-        &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
+        &&& 0 <= self.pos <= self.pos_back == self.vec@.len()
         &&& self.pos <= self.next_count@
-        &&& self.pos_back == self.vec@.len()    // Without this, reaches_monotonic fails (b/c outputs is defined in terms of pos_back)
         &&& {
             ||| self.next_count@ == self.pos && 0 <= self.pos < self.pos_back
             ||| self.next_count@ >= self.pos && self.pos == self.pos_back
