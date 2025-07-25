@@ -70,6 +70,8 @@ pub trait DoubleEndedIter: Iter {
     fn next_back(&mut self) -> Option<Self::Item>
         // TODO
         ;
+
+    // TODO: Also provides advance_back_by (nightly), nth_back, try_rfold, rfold, rfind
 }
 
 pub trait ExactSizeIter: Iter {
@@ -237,6 +239,23 @@ pub struct Take3<T> {
     pub count: usize,
     pub ghost_count: Ghost<int>,
     pub start_pos: Ghost<int>,
+}
+
+impl<T: Iter> Take3<T> {
+    fn new(iter: T) -> (r: Take3<T>)
+        requires
+            iter.inv(),
+        ensures
+            r.inv(),
+            r.inner == iter,
+            r.outputs().len() == 0,
+    {
+        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.outputs().len() as int) }
+    }
+
+    spec fn spec_new(iter: T) -> Take3<T> {
+        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.outputs().len() as int) }
+    }
 }
 
 impl<T: Iter> Iter for Take3<T> {
@@ -442,7 +461,57 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
     assert(s == v@);
 }
 
-fn test1(v: &MyVec<u8>)
+fn test_take3_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Take3::new(v.iter());
+    let r = iter.next();
+    assert(r == Some(0u8));
+    let r = iter.next();
+    assert(r == Some(10u8));
+    let r = iter.next();
+    assert(r == Some(20u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_take3_take3_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Take3::new(Take3::new(v.iter()));
+    let r = iter.next();
+    assert(r == Some(0u8));
+    let r = iter.next();
+    assert(r == Some(10u8));
+    let r = iter.next();
+    assert(r == Some(20u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_skip3_skip3_seq(v: &MyVec<u8>)
     requires
         v@.len() == 10,
         v@[0] == 0,
@@ -469,7 +538,7 @@ fn test1(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
-fn test3(v: &MyVec<u8>)
+fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
 {
@@ -502,7 +571,7 @@ fn test3(v: &MyVec<u8>)
 }
 
 #[verifier::loop_isolation(false)]
-fn test3_iso_false(v: &MyVec<u8>)
+fn test_skip3_skip3_loop_iso_false(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
 {
@@ -528,6 +597,50 @@ fn test3_iso_false(v: &MyVec<u8>)
         }
     }
     assert(s == v@.skip(6));
+}
+
+fn test_skip3_take3_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Take3::new(Skip3::new(v.iter()));
+    let r = iter.next();
+    assert(r == Some(30u8));
+    let r = iter.next();
+    assert(r == Some(40u8));
+    let r = iter.next();
+    assert(r == Some(50u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_take3_skip3_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Skip3::new(Take3::new(v.iter()));
+    let r = iter.next();
+    assert(r.is_none());
 }
 
 
