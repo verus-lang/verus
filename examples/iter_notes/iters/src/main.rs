@@ -66,8 +66,19 @@ pub trait Iter where Self: Sized {
 pub trait DoubleEndedIter: Iter {
     spec fn outputs_back(&self) -> Seq<Option<Self::Item>>;
 
-    fn next_back(&mut self) -> Option<Self::Item>
-        // TODO
+    // TODO: Some form of obeys_spec relating to the fact that next and next_back
+    //       are not supposed to pass each other?  
+    // Rust docs (https://doc.rust-lang.org/std/iter/trait.DoubleEndedIterator.html) 
+    // are ambiguous here.
+    fn next_back(&mut self) -> (r: Option<Self::Item>)
+        requires
+            old(self).inv(),
+        ensures
+            self.inv(),
+            old(self).reaches(*self),
+            self.outputs().len() == old(self).outputs().len() + 1,
+            self.operations() == old(self).operations().push(Operation::NextBack),
+            r == self.outputs().last(),
         ;
 
     // TODO: Also provides advance_back_by (nightly), nth_back, try_rfold, rfold, rfind
@@ -76,6 +87,9 @@ pub trait DoubleEndedIter: Iter {
 pub trait ExactSizeIter: Iter {
     spec fn spec_len(&self) -> nat;
 
+    // TODO: Some form of obeys_spec relating this to operations?  
+    // Rust docs (https://doc.rust-lang.org/std/iter/trait.ExactSizeIterator.html) 
+    // are ambiguous here.
     fn len(&self) -> usize
         // TODO
         ;
@@ -109,6 +123,7 @@ pub broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I
 mod examples {
 
 use vstd::prelude::*;
+use vstd::calc;
 use crate::iters::*;
 broadcast use {reaches_reflexive, reaches_transitive_after_next_if_requested};
 
@@ -206,19 +221,219 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     }
 
     fn next(&mut self) -> (r: Option<Self::Item>)
-//         ensures
-//             self.next_count@ == old(self).next_count@ + 1,
-//             old(self).pos < self.pos_back ==> r == Some(self.vec@[old(self).pos as int]) && self.pos == old(self).pos + 1,
-//             old(self).pos >= self.pos_back ==> r.is_none() && self.pos == old(self).pos,
-// // TODO: these need to go through "reaches", not ensures:
-// // For example, Skip3 needs to say that it reached from iter0 --> iter3 by taking only next steps, not next_back.
-// // And then vec needs to use this "only-next" information to talk about pos_back.
-// // Arguably, this "only-next" information is best expressed via:
-// //   - len of outputs, outputs_back, operations (directly useful if it's all next or all next_back)
-// //   - elements of operations (clumsily but generally)
-//             self.pos_back == old(self).pos_back,
-//             self.next_back_count@ == old(self).next_back_count@,
     {
+        proof {
+            self.next_count@ = self.next_count@ + 1;
+        }
+        if self.pos < self.pos_back {
+            let _ = self.vec.len(); // HACK
+            let i = self.pos;
+            self.pos = i + 1;
+            Some(self.vec.index(i))
+        } else {
+            None
+        }
+    }
+}
+
+
+#[verifier::ext_equal]
+pub struct MyVecFancyIter<'a, T> {
+    pub vec: &'a MyVec<T>,
+    pub pos: usize,
+    pub pos_back: usize,
+    pub next_count: Ghost<int>,
+    pub next_back_count: Ghost<int>,
+    pub ops: Ghost<Seq<Operation>>,
+}
+
+pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> Seq<Option<T>> 
+    decreases ops.len(),
+{
+    if ops.len() == 0 {
+        Seq::empty()
+    } else {
+        if 0 <= start < end < contents.len() {
+            match ops.first() {
+                Operation::Next => seq![Some(contents[start])] + apply_ops(ops.drop_first(), contents, start + 1, end),
+                Operation::NextBack => seq![Some(contents[end])] + apply_ops(ops.drop_first(), contents, start, end - 1),
+            }
+        } else {
+            Seq::new(ops.len(), |_i| None)
+        }
+    }
+}
+
+proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
+    ensures 
+        apply_ops(ops, contents, start, end).len() == ops.len(),
+    decreases ops.len(),
+{
+    if ops.len() == 0 {
+    } else {
+        apply_ops_len(ops.drop_first(), contents, start + 1, end);
+        apply_ops_len(ops.drop_first(), contents, start, end - 1);
+    }
+}
+
+proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>, start:int, end: int)
+    requires
+        ops1.is_prefix_of(ops2),
+    ensures 
+        apply_ops(ops1, contents, start, end).is_prefix_of(apply_ops(ops2, contents, start, end))
+    decreases ops1.len(),
+{
+    if ops1.len() == 0 {
+    } else {
+        apply_ops_monotonic(ops1.drop_first(), ops2.drop_first(), contents, start + 1, end);
+        apply_ops_monotonic(ops1.drop_first(), ops2.drop_first(), contents, start, end - 1);
+    }
+}
+
+// proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>)
+//     requires
+//         ops1.len() + ops2.len() == contents.len(),
+//     ensures
+//         apply_ops(ops1, contents, 0, ops1.len() as int) +
+//         apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int)
+//         == apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int),
+// {
+//     if ops1.len() == 0 {
+//     } else {
+//         assert(0 < ops1.len() <= contents.len());
+//         calc! {
+//             (==)
+//             apply_ops(ops1, contents, 0, ops1.len() as int) +
+//             apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int);
+//             {}
+//             ({
+//             let lhs = match ops1.first() {
+//                 Operation::Next => seq![Some(contents[0])] + apply_ops(ops1.drop_first(), contents, 1, ops1.len() as int),
+//                 Operation::NextBack => seq![Some(contents[ops1.len()])] + apply_ops(ops1.drop_first(), contents, 0, ops1.len() as int - 1),
+//             };
+//             lhs + apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int)});
+//             {
+//                 assume(false);
+//             }
+//             apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int);
+//         }
+//         assume(false);
+//     }
+// }
+
+
+// proof fn apply_ops_uniform<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int, cutoff: int)
+//     requires
+//         0 <= start <= cutoff <= end < ops.len(),
+//         forall |i| 0 <= i < cutoff ==> ops[i] is Next,
+//     ensures 
+//         apply_ops(ops, contents, start, end) == 
+//         Seq::new(
+//                 (cutoff - start) as nat,
+//                 |i: int| if i < contents.len() { Some(contents[i]) } else { None },
+//             )
+//     decreases ops.len(),
+// {
+// assume(false);
+//     if ops.len() == 0 {
+//     } else {
+//         if 0 <= start < end <= contents.len() {
+//             if cutoff > start && cutoff < end  && end < ops.len() - 1 {
+//                 apply_ops_uniform(ops.drop_first(), contents, start + 1, end, cutoff - 1);
+//                 apply_ops_uniform(ops.drop_first(), contents, start, end - 1, cutoff - 1);
+//             }
+//         } else {
+
+//         }
+//     }
+// }
+
+impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
+    type Item = T;
+
+    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+        if self.next_back_count == 0 {
+            Seq::new(
+                self.next_count@ as nat,
+                |i: int| if i < self.vec@.len() { Some(self.vec@[i]) } else { None },
+            )
+        } else if self.next_count == 0 {
+            Seq::new(
+                self.next_back_count@ as nat,
+                |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
+            )
+        } else {
+            // Seq::new(
+            //     (self.next_count@ + self.next_back_count@) as nat,
+            //     |i: int| Some(???)
+            // )
+            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() - 1)
+        }
+    }
+
+    open spec fn operations(&self) -> Seq<Operation> {
+        //Seq::new((self.next_count@ + self.next_back_count@) as nat, |_i: int| Operation::Next)
+        self.ops@
+    }
+
+    open spec fn inv(&self) -> bool {
+        // The two positions are in bounds and don't pass each other
+        &&& 0 <= self.pos <= self.pos_back < self.vec@.len()
+        // pos can't move faster than next_count
+        &&& 0 <= self.pos <= self.next_count@
+        // pos_back can't move faster than next_back_count
+        &&& 0 <= self.next_back_count@ <= self.pos_back
+        // All operations have been counted
+        &&& self.operations().len() == self.next_count@ + self.next_back_count@
+        // In the simple cases, we have a uniform set of operations
+        &&& self.next_back_count == 0 <==> forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next
+        &&& self.next_count == 0 <==> forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack
+        // Possible positions when we've done a modest number of operations and when we've done too many
+        &&& {
+            ||| self.next_count@ == self.pos && self.pos < self.pos_back
+            ||| self.next_count@ >= self.pos && self.pos == self.pos_back
+        }
+        &&& {
+            ||| self.next_back_count@ == self.vec@.len() - 1 - self.pos_back && self.pos < self.pos_back
+            ||| self.next_back_count@ >= self.vec@.len() - 1 - self.pos_back && self.pos == self.pos_back
+        }
+    }
+
+    open spec fn reaches(&self, dest: Self) -> bool {
+        &&& self.vec == dest.vec 
+        &&& self.next_count@ <= dest.next_count@ 
+        &&& self.next_back_count@ <= dest.next_back_count@
+        &&& self.operations().is_prefix_of(dest.operations())
+    }
+
+    proof fn reaches_reflexive(&self) {
+    }
+
+    proof fn reaches_transitive(&self, iter1: Self, iter2: Self) {
+    }
+
+    proof fn reaches_monotonic(&self, dest: Self) {
+        apply_ops_len(self.operations(), self.vec@, 0, self.vec@.len() - 1);
+        apply_ops_len(dest.operations(), self.vec@, 0, self.vec@.len() - 1);
+        assert(self.outputs().len() <= dest.outputs().len());
+        apply_ops_monotonic(self.operations(), dest.operations(), self.vec@, 0, self.vec@.len() - 1);
+        if self.next_back_count == 0 {
+            if dest.next_back_count == 0 {
+            } else if dest.next_count == 0 {
+            } else {
+                assert forall |i| 0 <= i < self.next_count@ implies dest.operations()[i] is Next by {
+                    assert(dest.operations()[i] == self.operations()[i]);   // OBSERVE
+                };
+                assume(false);
+            }
+        } else {
+            assume(false);
+        }
+    }
+
+    fn next(&mut self) -> (r: Option<Self::Item>)
+    {
+assume(false);
         proof {
             self.next_count@ = self.next_count@ + 1;
         }
