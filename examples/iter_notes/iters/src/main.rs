@@ -48,8 +48,7 @@ pub trait Iter where Self: Sized {
             dest.inv(),
             self.reaches(dest),
         ensures
-            self.outputs().len() <= dest.outputs().len(),
-            self.outputs() == dest.outputs().take(self.outputs().len() as int),
+            self.outputs().is_prefix_of(dest.outputs()),
         ;
 
     fn next(&mut self) -> (r: Option<Self::Item>) where Self: core::marker::Sized
