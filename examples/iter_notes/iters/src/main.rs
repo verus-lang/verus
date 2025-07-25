@@ -207,18 +207,18 @@ impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
     }
 
     fn next(&mut self) -> (r: Option<Self::Item>)
-        ensures
-            self.next_count@ == old(self).next_count@ + 1,
-            old(self).pos < self.pos_back ==> r == Some(self.vec@[old(self).pos as int]) && self.pos == old(self).pos + 1,
-            old(self).pos >= self.pos_back ==> r.is_none() && self.pos == old(self).pos,
-// TODO: these need to go through "reaches", not ensures:
-// For example, Skip3 needs to say that it reached from iter0 --> iter3 by taking only next steps, not next_back.
-// And then vec needs to use this "only-next" information to talk about pos_back.
-// Arguably, this "only-next" information is best expressed via:
-//   - len of outputs, outputs_back, operations (directly useful if it's all next or all next_back)
-//   - elements of operations (clumsily but generally)
-            self.pos_back == old(self).pos_back,
-            self.next_back_count@ == old(self).next_back_count@,
+//         ensures
+//             self.next_count@ == old(self).next_count@ + 1,
+//             old(self).pos < self.pos_back ==> r == Some(self.vec@[old(self).pos as int]) && self.pos == old(self).pos + 1,
+//             old(self).pos >= self.pos_back ==> r.is_none() && self.pos == old(self).pos,
+// // TODO: these need to go through "reaches", not ensures:
+// // For example, Skip3 needs to say that it reached from iter0 --> iter3 by taking only next steps, not next_back.
+// // And then vec needs to use this "only-next" information to talk about pos_back.
+// // Arguably, this "only-next" information is best expressed via:
+// //   - len of outputs, outputs_back, operations (directly useful if it's all next or all next_back)
+// //   - elements of operations (clumsily but generally)
+//             self.pos_back == old(self).pos_back,
+//             self.next_back_count@ == old(self).next_back_count@,
     {
         proof {
             self.next_count@ = self.next_count@ + 1;
