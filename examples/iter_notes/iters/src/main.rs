@@ -247,26 +247,35 @@ pub struct MyVecFancyIter<'a, T> {
     pub ops: Ghost<Seq<Operation>>,
 }
 
-pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> Seq<Option<T>> 
+// Sequentially applies each operation to the start/end points, 
+// generating a series of elements from contents (or None if start/end meet or exceed contents' bounds).
+// Next operations read from `start`; NextBack operations read from `end - 1`
+pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> (Seq<Option<T>>, int, int)
     decreases ops.len(),
 {
     if ops.len() == 0 {
-        Seq::empty()
+        (Seq::empty(), start, end)
     } else {
-        if 0 <= start < end < contents.len() {
+        if 0 <= start < end <= contents.len() {
             match ops.first() {
-                Operation::Next => seq![Some(contents[start])] + apply_ops(ops.drop_first(), contents, start + 1, end),
-                Operation::NextBack => seq![Some(contents[end])] + apply_ops(ops.drop_first(), contents, start, end - 1),
+                Operation::Next => {
+                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start + 1, end);
+                    (seq![Some(contents[start])] + rest, final_start, final_end)
+                }
+                Operation::NextBack => {
+                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start, end - 1);
+                    (seq![Some(contents[end - 1])] + rest, final_start, final_end)
+                }
             }
         } else {
-            Seq::new(ops.len(), |_i| None)
+            (Seq::new(ops.len(), |_i| None), start, end)
         }
     }
 }
 
 proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures 
-        apply_ops(ops, contents, start, end).len() == ops.len(),
+        apply_ops(ops, contents, start, end).0.len() == ops.len(),
     decreases ops.len(),
 {
     if ops.len() == 0 {
@@ -280,7 +289,7 @@ proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, cont
     requires
         ops1.is_prefix_of(ops2),
     ensures 
-        apply_ops(ops1, contents, start, end).is_prefix_of(apply_ops(ops2, contents, start, end))
+        apply_ops(ops1, contents, start, end).0.is_prefix_of(apply_ops(ops2, contents, start, end).0)
     decreases ops1.len(),
 {
     if ops1.len() == 0 {
@@ -290,36 +299,46 @@ proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, cont
     }
 }
 
-// proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>)
-//     requires
-//         ops1.len() + ops2.len() == contents.len(),
-//     ensures
-//         apply_ops(ops1, contents, 0, ops1.len() as int) +
-//         apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int)
-//         == apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int),
-// {
-//     if ops1.len() == 0 {
-//     } else {
-//         assert(0 < ops1.len() <= contents.len());
-//         calc! {
-//             (==)
-//             apply_ops(ops1, contents, 0, ops1.len() as int) +
-//             apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int);
-//             {}
-//             ({
-//             let lhs = match ops1.first() {
-//                 Operation::Next => seq![Some(contents[0])] + apply_ops(ops1.drop_first(), contents, 1, ops1.len() as int),
-//                 Operation::NextBack => seq![Some(contents[ops1.len()])] + apply_ops(ops1.drop_first(), contents, 0, ops1.len() as int - 1),
-//             };
-//             lhs + apply_ops(ops2, contents, ops1.len() as int, (ops1.len() + ops2.len()) as int)});
-//             {
-//                 assume(false);
-//             }
-//             apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int);
-//         }
-//         assume(false);
-//     }
-// }
+proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>)
+    requires
+        ops1.len() + ops2.len() == contents.len(),
+    ensures
+        ({
+            let (s, start, end) = apply_ops(ops1, contents, 0, contents.len() - 1);
+            s + apply_ops(ops2, contents, start, end).0
+        })
+        == apply_ops(ops1 + ops2, contents, 0, contents.len() - 1).0,
+    decreases ops1.len()
+{
+    if ops1.len() == 0 {
+    } else {
+        //assert(0 <= 0 < contents.len() - 1 < contents.len());
+        let (s, start, end) = apply_ops(ops1, contents, 0, contents.len() as int);
+        let (s_rest, start_rest, end_rest) = match ops1.first() {
+                Operation::Next => apply_ops(ops1.drop_first(), contents, 1, contents.len() as int),
+                Operation::NextBack => apply_ops(ops1.drop_first(), contents, 0, contents.len() - 1),
+        };
+        let head = match ops1.first() {
+                Operation::Next => seq![Some(contents[0])],
+                Operation::NextBack => seq![Some(contents[contents.len() - 1])],
+        };
+        calc! {
+            (==)
+            s + apply_ops(ops2, contents, start, end).0;
+            { assert(s == head + s_rest); }
+            head + s_rest + apply_ops(ops2, contents, start, end).0;
+            {
+                apply_ops_concat(ops1.drop_first(), ops2, contents);
+            }
+            head + s_rest + apply_ops(ops2, contents, start, end).0;
+            {
+                assume(false);
+            }
+            apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int).0;
+        }
+        assume(false);
+    }
+}
 
 
 // proof fn apply_ops_uniform<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int, cutoff: int)
@@ -367,7 +386,7 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
             //     (self.next_count@ + self.next_back_count@) as nat,
             //     |i: int| Some(???)
             // )
-            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() - 1)
+            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int).0
         }
     }
 
@@ -378,11 +397,12 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
 
     open spec fn inv(&self) -> bool {
         // The two positions are in bounds and don't pass each other
-        &&& 0 <= self.pos <= self.pos_back < self.vec@.len()
+        &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         // pos can't move faster than next_count
         &&& 0 <= self.pos <= self.next_count@
         // pos_back can't move faster than next_back_count
-        &&& 0 <= self.next_back_count@ <= self.pos_back
+        &&& 0 <= self.next_back_count@ 
+        &&& self.next_back_count@ >= self.vec@.len() - self.pos_back
         // All operations have been counted
         &&& self.operations().len() == self.next_count@ + self.next_back_count@
         // In the simple cases, we have a uniform set of operations
@@ -394,8 +414,8 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
             ||| self.next_count@ >= self.pos && self.pos == self.pos_back
         }
         &&& {
-            ||| self.next_back_count@ == self.vec@.len() - 1 - self.pos_back && self.pos < self.pos_back
-            ||| self.next_back_count@ >= self.vec@.len() - 1 - self.pos_back && self.pos == self.pos_back
+            ||| self.next_back_count@ == self.vec@.len() - self.pos_back && self.pos < self.pos_back
+            ||| self.next_back_count@ >= self.vec@.len() - self.pos_back && self.pos == self.pos_back
         }
     }
 
@@ -413,10 +433,10 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     }
 
     proof fn reaches_monotonic(&self, dest: Self) {
-        apply_ops_len(self.operations(), self.vec@, 0, self.vec@.len() - 1);
-        apply_ops_len(dest.operations(), self.vec@, 0, self.vec@.len() - 1);
+        apply_ops_len(self.operations(), self.vec@, 0, self.vec@.len() as int);
+        apply_ops_len(dest.operations(), self.vec@, 0, self.vec@.len() as int);
         assert(self.outputs().len() <= dest.outputs().len());
-        apply_ops_monotonic(self.operations(), dest.operations(), self.vec@, 0, self.vec@.len() - 1);
+        apply_ops_monotonic(self.operations(), dest.operations(), self.vec@, 0, self.vec@.len() as int);
         if self.next_back_count == 0 {
             if dest.next_back_count == 0 {
             } else if dest.next_count == 0 {
