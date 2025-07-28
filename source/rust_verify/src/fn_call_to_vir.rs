@@ -196,8 +196,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
 
     let mut record_name = name.clone();
-    let target_kind = if tcx.trait_of_item(f).is_none() {
-        vir::ast::CallTargetKind::Static
+    let (target_kind, resolved_target_did) = if tcx.trait_of_item(f).is_none() {
+        (vir::ast::CallTargetKind::Static, f)
     } else {
         let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
         let res = resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
@@ -215,12 +215,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
                 record_name = f.clone();
 
-                vir::ast::CallTargetKind::DynamicResolved {
-                    resolved: f,
-                    typs,
-                    impl_paths,
-                    is_trait_default: false,
-                }
+                (
+                    vir::ast::CallTargetKind::DynamicResolved {
+                        resolved: f,
+                        typs,
+                        impl_paths,
+                        is_trait_default: false,
+                    },
+                    did,
+                )
             }
             ResolutionResult::Resolved {
                 impl_def_id: _,
@@ -250,24 +253,31 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
                 let f = vir::def::trait_inherit_default_name(&f, &impl_path);
 
-                vir::ast::CallTargetKind::DynamicResolved {
-                    resolved: f,
-                    typs,
-                    impl_paths,
-                    is_trait_default: true,
-                }
+                (
+                    vir::ast::CallTargetKind::DynamicResolved {
+                        resolved: f,
+                        typs,
+                        impl_paths,
+                        is_trait_default: true,
+                    },
+                    did,
+                )
             }
             ResolutionResult::Builtin(b) => {
                 unsupported_err!(expr.span, format!("built-in instance {:?}", b));
             }
             ResolutionResult::Unresolved => {
                 // Method is generic
-                vir::ast::CallTargetKind::Dynamic
+                (vir::ast::CallTargetKind::Dynamic, f)
             }
         }
     };
 
-    record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
+    record_call(
+        bctx,
+        expr,
+        ResolvedCall::Call(name.clone(), record_name, resolved_target_did, bctx.in_ghost),
+    );
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
@@ -301,7 +311,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let mut record_trait_fun = trait_fun.clone();
 
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
-    let target_kind = match res {
+    let (target_kind, resolved_target_did) = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
             let impl_paths = get_impl_paths(bctx, did, args, None);
@@ -310,20 +320,27 @@ pub(crate) fn deref_to_vir<'tcx>(
 
             record_trait_fun = resolved.clone();
 
-            vir::ast::CallTargetKind::DynamicResolved {
-                resolved,
-                typs,
-                impl_paths,
-                is_trait_default: false,
-            }
+            (
+                vir::ast::CallTargetKind::DynamicResolved {
+                    resolved,
+                    typs,
+                    impl_paths,
+                    is_trait_default: false,
+                },
+                did,
+            )
         }
-        ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
+        ResolutionResult::Unresolved => (vir::ast::CallTargetKind::Dynamic, trait_fun_id),
         _ => crate::internal_err!(span, "unexpected deref"),
     };
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
+    record_call(
+        bctx,
+        expr,
+        ResolvedCall::Call(trait_fun.clone(), record_trait_fun, resolved_target_did, bctx.in_ghost),
+    );
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
@@ -2403,12 +2420,14 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, target_did, in_ghost), Some(paths))
+            if paths.2.is_some() =>
+        {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost)
+            ResolvedCall::Call(ufun, rfun, target_did, in_ghost)
         }
         (resolved_call, _) => resolved_call,
     };

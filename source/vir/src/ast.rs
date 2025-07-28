@@ -15,8 +15,8 @@ use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
-
 pub enum VirErrAs {
+    NonBlockingError(VirErr),
     Warning(VirErr),
     Note(VirErr),
 }
@@ -1462,9 +1462,9 @@ pub struct KrateX {
     /// List of all modules in the crate
     pub modules: Vec<Module>,
     /// List of all 'external' functions in the crate (only useful for diagnostics)
-    pub external_fns: Vec<Fun>,
+    pub external_fns: Vec<(Fun, Result<(Function, String), VirErr>)>,
     /// List of all 'external' types in the crate (only useful for diagnostics)
-    pub external_types: Vec<Path>,
+    pub external_types: Vec<(Path, Result<(Datatype, String), VirErr>)>,
     /// Map rustc-based internal paths to friendlier names for error messages
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info

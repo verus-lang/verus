@@ -440,11 +440,11 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
             .expect("cannot write to vir write");
     }
     for external_fn in external_fns.iter() {
-        let external_fn_node = nodes!(external_fn {external_fn.to_node(opts)});
+        let external_fn_node = nodes!(external_fn {external_fn.0.to_node(opts)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&external_fn_node))
             .expect("cannot write to vir write");
     }
-    for external_type in external_types.iter() {
+    for (external_type, _) in external_types.iter() {
         let external_type_node = nodes!(external_type {path_to_node(external_type)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&external_type_node))
             .expect("cannot write to vir write");
