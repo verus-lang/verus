@@ -1,3 +1,4 @@
+use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
@@ -2700,6 +2701,7 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
+            name_def_id_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         });
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
@@ -2812,9 +2814,46 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-
+        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
+            Some(e)
+        } else if let Err(e) = check_crate_result {
+            Some(e)
+        } else {
+            None
+        };
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
+                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
+                    // This diagnostic message may be a verification boundary violation.
+                    // In that case, we want to try to construct a suggestion to deal with the problem.
+
+                    let err = match maybe_p {
+                        Some(p) => {
+                            // Try to build a DefId, then check if the corresponding Def is an Adt or Fun-like
+                            // let did = vir_path_to_def_id(tcx, &ctxt.verus_items, &p);
+                            let map = ctxt.name_def_id_map.borrow();
+                            let did = map.get(&p);
+                            match did {
+                                Some(did) => {
+                                    match build_boundary_suggestion(&ctxt, *did, &p) {
+                                        Ok(s) => err.help(format!(
+                                            "The following declaration may resolve this error:\n{}",
+                                            s
+                                        )),
+                                        Err(_) => err, //e) => err.help(format!("No suggestion could be constructed: {}", e.note)),
+                                    }
+                                }
+                                None => err,
+                            }
+                        }
+                        None => err,
+                    };
+                    if first_error.is_none() {
+                        first_error = Some(err.clone().into())
+                    } else {
+                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+                    }
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2823,8 +2862,10 @@ impl Verifier {
                 }
             }
         }
-        check_crate_result1.map_err(|e| (e, Vec::new()))?;
-        check_crate_result.map_err(|e| (e, Vec::new()))?;
+        if let Some(first_error) = first_error {
+            return Err((first_error, Vec::new()));
+        }
+
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
         let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
@@ -3085,6 +3126,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         }
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
+                        }
+                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
                 }

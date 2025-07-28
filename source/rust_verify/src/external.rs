@@ -374,8 +374,12 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path =
-                        def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
+                    self.module_path = def_id_to_vir_path(
+                        self.ctxt.tcx,
+                        &self.ctxt.verus_items,
+                        def_id,
+                        self.ctxt.path_def_id_ref(),
+                    );
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {
