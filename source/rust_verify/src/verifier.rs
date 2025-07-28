@@ -2755,11 +2755,6 @@ impl Verifier {
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
-        // Replace ResolvedCall::CallPlaceholder with ResolvedCall::CallModes
-        // For simplicity, do this relatively soon, before various fixups change function names,
-        // but do it after pruning for efficiency.
-        ctxt.erasure_info.borrow_mut().resolve_call_modes(&vir_crate);
-
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
         crate::import_export::export_crate(
@@ -2793,7 +2788,7 @@ impl Verifier {
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
-            unpruned_crate,
+            &unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,
@@ -2826,7 +2821,7 @@ impl Verifier {
         let direct_var_modes = erasure_info.direct_var_modes.clone();
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
-        let erasure_hints = crate::erase::ErasureHints {
+        let mut erasure_hints = crate::erase::ErasureHints {
             vir_crate,
             hir_vir_ids,
             resolved_calls,
@@ -2836,6 +2831,10 @@ impl Verifier {
             external_functions,
             ignored_functions,
         };
+        // Replace ResolvedCall::CallPlaceholder with ResolvedCall::CallModes
+        // Do this on the unpruned_crate, before various fixups change function names,
+        // and making sure that the lifetime checking has unpruned info if it needs it.
+        erasure_hints.resolve_call_modes(&unpruned_crate);
         self.erasure_hints = Some(erasure_hints);
 
         let time4 = Instant::now();

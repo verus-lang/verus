@@ -3,7 +3,7 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 use rustc_span::SpanData;
 
-use vir::ast::{Fun, Krate, Mode, Path, Pattern};
+use vir::ast::{Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
 use std::sync::Arc;
@@ -70,4 +70,33 @@ pub struct ErasureHints {
     pub external_functions: Vec<Fun>,
     /// List of function spans ignored by the verifier. These should not be erased
     pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+}
+
+impl ErasureHints {
+    pub(crate) fn resolve_call_modes(&mut self, vir_crate: &Krate) {
+        use std::collections::HashMap;
+        let mut functions: HashMap<Fun, Function> = HashMap::new();
+        for f in vir_crate.functions.iter() {
+            functions.insert(f.x.name.clone(), f.clone());
+        }
+        for (_, _, r) in &mut self.resolved_calls {
+            if let ResolvedCall::CallPlaceholder(ufun, rfun, in_ghost) = r {
+                // Note: in principle, the unresolved function ufun should always be present,
+                // but we currently allow external declarations of resolved trait functions
+                // without a corresponding external trait declaration.
+                let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                    dbg!(ufun, rfun);
+                    panic!("missing function for ResolvedCall::CallPlaceholder");
+                };
+                if *in_ghost && f.x.mode == Mode::Exec {
+                    // This must be an autospec, so change exec -> spec
+                    let param_modes = Arc::new(f.x.params.iter().map(|_| Mode::Spec).collect());
+                    *r = ResolvedCall::CallModes(None, Mode::Spec, param_modes);
+                } else {
+                    let param_modes = Arc::new(f.x.params.iter().map(|p| p.x.mode).collect());
+                    *r = ResolvedCall::CallModes(Some(rfun.clone()), f.x.mode, param_modes);
+                }
+            }
+        }
+    }
 }
