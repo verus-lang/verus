@@ -30,7 +30,7 @@ fn atomic_caller(
     requires inv.constant() == patomic.id(),
 {
     // assert PRIVATE PRE of fetch_add_plus_1
-    let old_v = patomic.fetch_add_plus_1(3) atomically {
+    let old_v = fetch_add_plus_1(patomic, 3) atomically {
         // transforming an atomic invariant into an atomic update
         open_atomic_invariant!(inv => permu64 => {
             /* open atomic update start */
@@ -79,11 +79,11 @@ fn non_atomic_caller() {
 }
 
 // at the linearisation point:
-//   (reading the current value of the Atomic),
+//   (reading the current value of the Atomic)PAtom,
 //   adding (v + 1) to the value of the Atomic and wrapping if we overflow
 
 
-fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
+fn fetch_add_plus_1(patomic: PAtomicU64, v: u64) -> (r: u64)
     // Tracked(AU): Tracked<AtomicUpdate<PermissionU64, PermissionU64>>
     atomic_update: atomic_spec { // AU indicates the linearisation point
         (tracked p: PermissionU64) -> (tracked out_p: PermissionU64)
