@@ -976,19 +976,9 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        // In VIR there's the same check, but Rustc will complain first, and throw out
-        // some errors about "constrain_type", which are confusing and the users should not see.
-        // Instead we give an early error with nicer error msg here.
         if let Some((p, _)) = &ret_pat {
-            for input in &sig.inputs {
-                if let FnArgKind::Typed(pt) = &input.kind {
-                    if pt.pat.as_ref() == p {
-                        stmts.push(stmt_with_semi!(
-                            input.span() =>
-                            compile_error!("parameter name cannot be the same as the return value name")
-                        ));
-                    }
-                }
+            if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
+                stmts.push(err_stmt);
             }
         }
 
@@ -4729,7 +4719,7 @@ fn take_sig_with_spec(
 pub(crate) fn verus_inputs_to_tokens(
     inputs: &Punctuated<FnArg, Token![,]>,
 ) -> (Option<TokenStream>, TokenStream) {
-    let mut ret = TokenStream::new();
+    let mut arg_tokens = TokenStream::new();
     let mut args: Punctuated<verus_syn::Expr, Comma> = Punctuated::new();
     let mut self_token = None;
     for input in inputs.iter() {
@@ -4737,13 +4727,19 @@ pub(crate) fn verus_inputs_to_tokens(
             (_, FnArgKind::Receiver(receiver)) => {
                 self_token = Some(receiver.self_token.clone().to_token_stream());
             }
-            (_, FnArgKind::Typed(pat_type)) => {
-                args.push(Expr::Verbatim(pat_type.pat.to_token_stream()));
-            }
+            (_, FnArgKind::Typed(pat_type)) => match &*pat_type.pat {
+                Pat::Ident(pat_ident) => {
+                    args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
+                }
+                _ => {
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                }
+            },
         }
     }
-    args.to_tokens(&mut ret);
-    (self_token, ret)
+    args.to_tokens(&mut arg_tokens);
+    (self_token, arg_tokens)
 }
 
 pub(crate) fn inputs_to_tokens(
@@ -4757,9 +4753,15 @@ pub(crate) fn inputs_to_tokens(
             syn::FnArg::Receiver(receiver) => {
                 self_token = Some(receiver.self_token.clone().to_token_stream());
             }
-            syn::FnArg::Typed(pat_type) => {
-                args.push(Expr::Verbatim(pat_type.pat.to_token_stream()));
-            }
+            syn::FnArg::Typed(pat_type) => match &*pat_type.pat {
+                syn::Pat::Ident(pat_ident) => {
+                    args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
+                }
+                _ => {
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                }
+            },
         }
     }
     args.to_tokens(&mut ret);
@@ -4858,19 +4860,9 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
 
-    // In VIR there's the same check, but Rustc will complain first, and throw out
-    // some errors about "constrain_type", which ar confusing and the users should not see.
-    // Instead we give an early error with nice error msg here.
     if let Some((p, _)) = &ret_pat {
-        for input in &sig.inputs {
-            if let syn::FnArg::Typed(pt) = &input {
-                if pt.pat.to_token_stream().to_string() == p.to_token_stream().to_string() {
-                    spec_stmts.push(stmt_with_semi!(
-                        input.span() =>
-                        compile_error!("parameter name cannot be the same as the return value name")
-                    ));
-                }
-            }
+        if let Some(err_stmt) = check_return_ident(p, &sig.inputs) {
+            spec_stmts.push(err_stmt);
         }
     }
 
@@ -5411,4 +5403,44 @@ fn get_ex_ident_mangle_path(qself: &Option<verus_syn::QSelf>, path: &Path) -> Id
     }
 
     return Ident::new(&s, path.span());
+}
+
+/// In VIR there's the same check, but Rustc will complain first, and throw out
+/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// Instead we give an early error with nice error msg here.
+fn check_return_ident(
+    ret_pat: &Pat,
+    input_args: &syn::punctuated::Punctuated<syn::FnArg, Comma>,
+) -> Option<Stmt> {
+    for input in input_args {
+        if let syn::FnArg::Typed(pt) = &input {
+            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+                return Some(stmt_with_semi!(
+                    input.span() =>
+                    compile_error!("parameter name cannot be the same as the return value name")
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// In VIR there's the same check, but Rustc will complain first, and throw out
+/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// Instead we give an early error with nice error msg here.
+fn check_verus_return_ident(
+    ret_pat: &Pat,
+    input_args: &Punctuated<FnArg, verus_syn::token::Comma>,
+) -> Option<Stmt> {
+    for input in input_args {
+        if let FnArgKind::Typed(pt) = &input.kind {
+            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+                return Some(stmt_with_semi!(
+                    input.span() =>
+                    compile_error!("parameter name cannot be the same as the return value name")
+                ));
+            }
+        }
+    }
+    None
 }
