@@ -27,7 +27,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
+use vir::ast::{DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::{VERUS_SPEC, field_ident_from_rust};
 use vir::messages::AstId;
@@ -944,36 +944,16 @@ fn erase_call<'tcx>(
                 erase_spec_exps(ctxt, state, expr, exps)
             }
         }
-        ResolvedCall::Call(f_name, autospec_usage) => {
-            if !ctxt.functions.contains_key(f_name) {
-                panic!("internal error: function call to {:?} not found {:?}", f_name, expr.span);
-            }
-            let f = &ctxt.functions[f_name];
-            let f = if let Some(f) = f {
-                f
-            } else {
-                panic!("internal error: call to external function {:?} {:?}", f_name, expr.span);
-            };
-
-            let (f_name, f) = match (autospec_usage, &f.x.attrs.autospec) {
-                (AutospecUsage::IfMarked, Some(new_f_name)) => {
-                    let f = &ctxt.functions[new_f_name];
-                    let f = if let Some(f) = f {
-                        f
-                    } else {
-                        panic!(
-                            "internal error: call to external function {:?} {:?}",
-                            f_name, expr.span
-                        );
-                    };
-                    (new_f_name.clone(), f.clone())
-                }
-                _ => (f_name.clone(), f.clone()),
-            };
-
-            if f.x.mode == Mode::Spec {
+        ResolvedCall::CallPlaceholder(ufun, rfun, _) => {
+            dbg!(ufun, rfun);
+            panic!("internal Verus error: could not find mode declarations for function")
+        }
+        ResolvedCall::CallModes(f_name, f_mode, param_modes) => {
+            if *f_mode == Mode::Spec {
                 return None;
             }
+            let f_name =
+                f_name.as_ref().expect("expected Some function name for non-spec function call");
 
             // Maybe resolve from trait function to a specific implementation
 
@@ -1025,9 +1005,10 @@ fn erase_call<'tcx>(
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
-            assert!(receiver.map(|_| 1).unwrap_or(0) + args_slice.len() == f.x.params.len());
-            for (param, e) in f.x.params.iter().zip(receiver.into_iter().chain(args_slice.iter())) {
-                if param.x.mode == Mode::Spec {
+            assert!(receiver.map(|_| 1).unwrap_or(0) + args_slice.len() == param_modes.len());
+            let param_iter = param_modes.iter().zip(receiver.into_iter().chain(args_slice.iter()));
+            for (param_mode, e) in param_iter {
+                if *param_mode == Mode::Spec {
                     let exp = erase_expr(ctxt, state, true, e);
                     is_some = is_some || exp.is_some();
                     exps.push(erase_spec_exps_force_typ(

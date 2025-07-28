@@ -3,8 +3,10 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 use rustc_span::SpanData;
 
-use vir::ast::{AutospecUsage, Fun, Krate, Mode, Path, Pattern};
+use vir::ast::{Fun, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
+
+use std::sync::Arc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
@@ -34,14 +36,19 @@ pub enum ResolvedCall {
     SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
-    /// The call is to a function, and we record the resolved name of the function here.
-    Call(Fun, AutospecUsage),
+    /// The call is to a function, and we temporarily record the name of the function here
+    /// (both unresolved and resolved), as well as an in_ghost flag.
+    /// This is replaced by CallModes as soon as the modes are available.
+    CallPlaceholder(Fun, Fun, bool),
+    /// The call is to a function with some mode and some parameter modes
+    /// (The name may be None for spec functions)
+    CallModes(Option<Fun>, Mode, Arc<Vec<Mode>>),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// The call is to a dynamically computed function, and is exec
     NonStaticExec,
     /// The call is to a dynamically computed function, and is proof
-    NonStaticProof(std::sync::Arc<Vec<Mode>>),
+    NonStaticProof(Arc<Vec<Mode>>),
 }
 
 #[derive(Clone)]
