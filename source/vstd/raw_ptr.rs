@@ -1210,3 +1210,23 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 }
 
 } // verus!
+
+#[verus_spec(v =>
+    with 
+        Tracked(perm): Tracked<&'a PointsTo<T>>
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
+    opens_invariants none
+    no_unwind
+)]
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T
+{
+    ptr_ref(ptr, Tracked::assume_new())
+}
