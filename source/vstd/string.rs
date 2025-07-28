@@ -350,6 +350,15 @@ impl<'a> View for Chars<'a> {
 }
 
 #[cfg(feature = "alloc")]
+impl<'a> DeepView for Chars<'a> {
+    type V = <Self as View>::V;
+
+    open spec fn deep_view(&self) -> Self::V {
+        self@
+    }
+}
+
+#[cfg(feature = "alloc")]
 pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
     ensures
         ({

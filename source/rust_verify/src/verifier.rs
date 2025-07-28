@@ -2675,7 +2675,6 @@ impl Verifier {
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
             resolved_calls: vec![],
-            resolved_exprs: vec![],
             resolved_pats: vec![],
             direct_var_modes: vec![],
             external_functions: vec![],
@@ -2759,6 +2758,11 @@ impl Verifier {
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
+        // Replace ResolvedCall::CallPlaceholder with ResolvedCall::CallModes
+        // For simplicity, do this relatively soon, before various fixups change function names,
+        // but do it after pruning for efficiency.
+        ctxt.erasure_info.borrow_mut().resolve_call_modes(&vir_crate);
+
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
         crate::import_export::export_crate(
@@ -2821,7 +2825,6 @@ impl Verifier {
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
         let resolved_calls = erasure_info.resolved_calls.clone();
-        let resolved_exprs = erasure_info.resolved_exprs.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
         let direct_var_modes = erasure_info.direct_var_modes.clone();
         let external_functions = erasure_info.external_functions.clone();
@@ -2831,7 +2834,6 @@ impl Verifier {
             vir_crate: unpruned_crate,
             hir_vir_ids,
             resolved_calls,
-            resolved_exprs,
             resolved_pats,
             erasure_modes,
             direct_var_modes,

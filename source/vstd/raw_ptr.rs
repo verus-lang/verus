@@ -779,6 +779,7 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
         size != 0,
     ensures
         pt.1@.is_range(pt.0.addr() as int, size as int),
+        pt.0.addr() + size <= usize::MAX + 1,
         pt.2@@ == (DeallocData {
             addr: pt.0.addr(),
             size: size as nat,

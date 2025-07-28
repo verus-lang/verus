@@ -1758,6 +1758,10 @@ impl Visitor {
         }
     }
 
+    fn visit_impl_items_post(&mut self, _items: &mut Vec<ImplItem>) {
+        // nothing to do
+    }
+
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
@@ -4165,6 +4169,20 @@ impl Parse for Items {
     }
 }
 
+struct ImplItems {
+    items: Vec<ImplItem>,
+}
+
+impl Parse for ImplItems {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<ImplItems> {
+        let mut items = Vec::new();
+        while !input.is_empty() {
+            items.push(input.parse()?);
+        }
+        Ok(ImplItems { items })
+    }
+}
+
 #[derive(Debug)]
 enum MacroElement {
     Comma(Token![,]),
@@ -4437,6 +4455,40 @@ pub(crate) fn rewrite_items(
         visitor.inside_arith = InsideArith::None;
     }
     visitor.visit_items_post(&mut items.items);
+    for item in items.items {
+        item.to_tokens(&mut new_stream);
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
+pub(crate) fn rewrite_impl_items(
+    stream: proc_macro::TokenStream,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+    for_trait: bool,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let mut items: ImplItems = parse_macro_input!(stream as ImplItems);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
+    for mut item in &mut items.items {
+        visitor.visit_impl_item_mut(&mut item);
+        visitor.inside_ghost = 0;
+        visitor.inside_const = false;
+        visitor.inside_arith = InsideArith::None;
+    }
+    visitor.visit_impl_items_post(&mut items.items);
     for item in items.items {
         item.to_tokens(&mut new_stream);
     }
@@ -5041,7 +5093,7 @@ macro_rules! declare_mk_rust_attr {
 declare_mk_rust_attr!(mk_rust_attr, syn_verus);
 declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
-/// Constructs #[verus::internal(tokens)]
+/// Constructs #[verus::internal(tokens)] and #[verifier::tokens]
 macro_rules! declare_mk_verus_attr {
     ($name:ident, $name2:ident, $s:ident) => {
         pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
@@ -5081,18 +5133,9 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("verifier", span),
                 arguments: $s::PathArguments::None,
             });
+            path_segments.push($s::parse_quote_spanned!(span => #tokens));
             let path = $s::Path { leading_colon: None, segments: path_segments };
-            let meta = if tokens.is_empty() {
-                $s::Meta::Path(path)
-            } else {
-                $s::Meta::List($s::MetaList {
-                    path,
-                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
-                        span: into_spans(span),
-                    }),
-                    tokens: quote! { #tokens },
-                })
-            };
+            let meta = $s::Meta::Path(path);
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
