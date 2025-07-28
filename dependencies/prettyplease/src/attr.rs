@@ -94,7 +94,7 @@ impl Printer {
         if meta
             .path
             .get_ident()
-            .is_some_and(|x| x.to_string() == "trigger")
+            .map_or(false, |x| x.to_string() == "trigger")
         {
             self.attr_tokens(meta.tokens.clone());
             return;

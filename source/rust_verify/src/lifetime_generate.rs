@@ -12,9 +12,9 @@ use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
-    AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode, Pat,
-    PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    AssocItemKind, BinOpKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig,
+    HirId, Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode,
+    Pat, PatExpr, PatExprKind, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
     TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
@@ -1593,9 +1593,26 @@ fn erase_expr_inner<'tcx>(
                 _ => erase_spec_exps(ctxt, state, expr, vec![exp1]),
             }
         }
-        ExprKind::Binary(_op, e1, e2) => {
-            let exp1 = erase_expr(ctxt, state, expect_spec, e1);
-            let exp2 = erase_expr(ctxt, state, expect_spec, e2);
+        ExprKind::Binary(op, e1, e2) => {
+            let mut exp1 = erase_expr(ctxt, state, expect_spec, e1);
+            let mut exp2 = erase_expr(ctxt, state, expect_spec, e2);
+            let use_ref = matches!(
+                op.node,
+                BinOpKind::Eq
+                    | BinOpKind::Ne
+                    | BinOpKind::Gt
+                    | BinOpKind::Ge
+                    | BinOpKind::Lt
+                    | BinOpKind::Le
+            );
+            if use_ref {
+                if let Some(e) = exp1 {
+                    exp1 = Some(Box::new((e.0, ExpX::AddrOf(Mutability::Not, e))))
+                }
+                if let Some(e) = exp2 {
+                    exp2 = Some(Box::new((e.0, ExpX::AddrOf(Mutability::Not, e))))
+                }
+            }
             erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
         }
         ExprKind::Index(e1, e2, _span) => {
@@ -2215,7 +2232,7 @@ fn erase_fn_common<'tcx>(
         } else {
             None
         };
-        let body_exp = if body.is_none() || external_body {
+        let mut body_exp = if body.is_none() || external_body {
             force_block(Some(Box::new((sig_span, ExpX::Panic))), sig_span)
         } else {
             let body = &body.expect("body");
@@ -2303,7 +2320,7 @@ fn erase_fn_common<'tcx>(
             let new_param = Param { name, span, typ, is_mut_var };
             params.push(new_param);
         }
-        let ret = if let Some(sig) = sig {
+        let mut ret = if let Some(sig) = sig {
             match sig.decl.output {
                 rustc_hir::FnRetTy::DefaultReturn(_) => None,
                 rustc_hir::FnRetTy::Return(ty) => {
@@ -2317,6 +2334,31 @@ fn erase_fn_common<'tcx>(
         } else {
             Some((None, erase_ty(ctxt, state, &fn_sig.output().skip_binder())))
         };
+
+        if matches!(f_vir.x.item_kind, vir::ast::ItemKind::Static) {
+            // For static `static x: T` we change it to
+            // fn x() -> &'static T {
+            //     static_ref(body)
+            // }
+
+            let (name, mut return_typ) = ret.clone().unwrap();
+
+            let target = Box::new((
+                sig_span,
+                ExpX::Var(Id::new(IdKind::Builtin, 0, "static_ref".to_string())),
+            ));
+            body_exp =
+                Box::new((sig_span, ExpX::Call(target, vec![return_typ.clone()], vec![body_exp])));
+            body_exp = Box::new((sig_span, ExpX::Block(vec![], Some(body_exp))));
+
+            return_typ = Box::new(TypX::Ref(
+                return_typ,
+                Some(Id::new(IdKind::Builtin, 0, "'static".to_string())),
+                Mutability::Not,
+            ));
+            ret = Some((name, return_typ));
+        }
+
         state.enclosing_fun_id = None;
 
         // Special case for trait with direct self argument
@@ -2752,6 +2794,9 @@ fn erase_impl<'tcx>(
                 let id = owner_id.to_def_id();
                 let attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
                 let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                if crate_items.is_impl_item_external(impl_item_ref.id) {
+                    continue;
+                }
                 match &kind {
                     ImplItemKind::Const(_, body_id) => {
                         erase_const_or_static(
@@ -3182,6 +3227,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Impl(impll) => {
+                            if vattrs.external_trait_blanket {
+                                continue;
+                            }
                             erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
                         ItemKind::TraitAlias(_, _, _) => {

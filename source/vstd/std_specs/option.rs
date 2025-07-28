@@ -7,25 +7,6 @@ use core::option::Option::Some;
 
 verus! {
 
-impl<T> View for Option<T> {
-    type V = Option<T>;
-
-    open spec fn view(&self) -> Option<T> {
-        *self
-    }
-}
-
-impl<T: DeepView> DeepView for Option<T> {
-    type V = Option<T::V>;
-
-    open spec fn deep_view(&self) -> Option<T::V> {
-        match self {
-            Some(t) => Some(t.deep_view()),
-            None => None,
-        }
-    }
-}
-
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
     #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
@@ -243,6 +224,68 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
     ensures
         opt.is_none() ==> res.is_none(),
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
+;
+
+impl<T: super::cmp::PartialEqSpec> super::cmp::PartialEqSpecImpl for Option<T> {
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Option<T>) -> bool {
+        match (self, other) {
+            (None, None) => true,
+            (Some(x), Some(y)) => x.eq_spec(y),
+            _ => false,
+        }
+    }
+}
+
+pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> bool
+;
+
+impl<T: super::cmp::PartialOrdSpec> super::cmp::PartialOrdSpecImpl for Option<T> {
+    open spec fn obeys_partial_cmp_spec() -> bool {
+        T::obeys_partial_cmp_spec()
+    }
+
+    open spec fn partial_cmp_spec(&self, other: &Option<T>) -> Option<core::cmp::Ordering> {
+        match (self, other) {
+            (None, None) => Some(core::cmp::Ordering::Equal),
+            (None, Some(_)) => Some(core::cmp::Ordering::Less),
+            (Some(_), None) => Some(core::cmp::Ordering::Greater),
+            (Some(x), Some(y)) => x.partial_cmp_spec(y),
+        }
+    }
+}
+
+pub assume_specification<T: PartialOrd>[ <Option<T> as PartialOrd>::partial_cmp ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> Option<core::cmp::Ordering>
+;
+
+impl<T: super::cmp::OrdSpec> super::cmp::OrdSpecImpl for Option<T> {
+    open spec fn obeys_cmp_spec() -> bool {
+        T::obeys_cmp_spec()
+    }
+
+    open spec fn cmp_spec(&self, other: &Option<T>) -> core::cmp::Ordering {
+        match (self, other) {
+            (None, None) => core::cmp::Ordering::Equal,
+            (None, Some(_)) => core::cmp::Ordering::Less,
+            (Some(_), None) => core::cmp::Ordering::Greater,
+            (Some(x), Some(y)) => x.cmp_spec(y),
+        }
+    }
+}
+
+pub assume_specification<T: Ord>[ <Option<T> as Ord>::cmp ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> core::cmp::Ordering
 ;
 
 // ok_or

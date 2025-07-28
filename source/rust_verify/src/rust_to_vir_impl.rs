@@ -34,8 +34,6 @@ pub(crate) struct ExternalInfo {
     type_id_map: HashMap<DefId, bool>,
     // all non-external trait impls
     pub(crate) internal_trait_impls: HashSet<DefId>,
-    // external_trait_blanket impls
-    pub(crate) external_trait_blanket: HashSet<DefId>,
     // all #[verifier::external_fn_specification] functions that implement a trait
     pub(crate) external_fn_specification_trait_method_impls: Vec<(DefId, rustc_span::Span)>,
     // For verifier::external_trait_extension(TSpec via TSpecImpl),
@@ -51,7 +49,6 @@ impl ExternalInfo {
             type_paths: HashSet::new(),
             type_id_map: HashMap::new(),
             internal_trait_impls: HashSet::new(),
-            external_trait_blanket: HashSet::new(),
             external_fn_specification_trait_method_impls: Vec::new(),
             external_trait_extension_impl_map: HashMap::new(),
         }
@@ -83,6 +80,7 @@ fn trait_impl_to_vir<'tcx>(
     external_info: &mut ExternalInfo,
     module_path: Path,
     auto_imported: bool,
+    external_trait_blanket: bool,
 ) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
     let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
     if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
@@ -155,6 +153,7 @@ fn trait_impl_to_vir<'tcx>(
         trait_typ_arg_impls: ctxt.spanned_new(path_span, impl_paths),
         owning_module: Some(module_path),
         auto_imported,
+        external_trait_blanket,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok(Some((trait_path, types, trait_impl)))
@@ -348,6 +347,7 @@ pub(crate) fn translate_impl<'tcx>(
         }
     }
 
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
         let impl_def_id = item.owner_id.to_def_id();
         external_info.internal_trait_impls.insert(impl_def_id);
@@ -361,6 +361,7 @@ pub(crate) fn translate_impl<'tcx>(
             external_info,
             module_path.clone(),
             false,
+            vattrs.external_trait_blanket,
         )? {
             vir.trait_impls.push(trait_impl);
             Some((trait_path, types))
@@ -380,6 +381,9 @@ pub(crate) fn translate_impl<'tcx>(
     };
 
     for impl_item_ref in impll.items {
+        if vattrs.external_trait_blanket {
+            continue;
+        }
         let impl_item = ctxt.tcx.hir_impl_item(impl_item_ref.id);
         let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
 
@@ -580,10 +584,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 // already processed our own trait impls
                 continue;
             }
-            if external_info.external_trait_blanket.contains(&impl_def_id) {
-                // We replace the blanket impl with individual external_trait_extension impls
-                continue;
-            }
             let is_new_trait = new_traits.contains(&path);
             let is_local_impl = impl_def_id.krate == rustc_span::def_id::LOCAL_CRATE;
             if is_new_trait || is_local_impl {
@@ -628,6 +628,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             external_info,
             module_path,
             true,
+            false,
         );
         if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
@@ -750,6 +751,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             None,
             external_info,
             module_path,
+            false,
             false,
         )? {
             krate.trait_impls.push(trait_impl);

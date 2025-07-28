@@ -46,6 +46,7 @@ pub struct GlobalCtx {
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
+    pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -292,6 +293,7 @@ impl GlobalCtx {
 
         use crate::ast::TraitImpl;
         let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+        let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         let mut replace_with: HashMap<Node, Node> = HashMap::new();
         for t in &krate.traits {
@@ -310,6 +312,9 @@ impl GlobalCtx {
             trait_impl_map.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
         }
         for trait_impl in &krate.trait_impls {
+            if trait_impl.x.external_trait_blanket {
+                continue;
+            }
             // If TSpec extends T with spec functions,
             // merge 'impl TSpec for typ' into 'impl T for typ'.
             if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
@@ -317,7 +322,7 @@ impl GlobalCtx {
                 for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
                     if let ImplPath::TraitImplPath(imp) = imp {
                         if let Some(candidate) = trait_impl_map.get(imp) {
-                            if &candidate.x.trait_path == t {
+                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
                                 candidates.push(candidate.clone());
                             }
                         }
@@ -331,6 +336,10 @@ impl GlobalCtx {
                     Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
                 assert!(!replace_with.contains_key(&extension_node));
                 replace_with.insert(extension_node, origin_node);
+                trait_impl_to_extensions
+                    .entry(origin_impl.x.impl_path.clone())
+                    .or_default()
+                    .push(trait_impl.x.impl_path.clone());
             }
         }
         let mut func_call_graph: GraphBuilder<Node> =
@@ -368,6 +377,9 @@ impl GlobalCtx {
             }
         }
         for t in &krate.trait_impls {
+            if t.x.external_trait_blanket {
+                continue;
+            }
             // Heuristic: put trait impls first, because they are likely to precede
             // many functions that rely on them.
             func_call_graph
@@ -630,6 +642,7 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            trait_impl_to_extensions,
             qid_map,
             rlimit,
             interpreter_log,
@@ -658,6 +671,7 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,

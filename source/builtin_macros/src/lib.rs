@@ -25,8 +25,10 @@ mod struct_decl_inv;
 mod structural;
 mod syntax_trait;
 mod topological_sort;
+mod unerased_proxies;
 
 decl_derive!([Structural] => structural::derive_structural);
+decl_derive!([StructuralEq] => structural::derive_structural_eq);
 
 decl_attribute! {
     [is_variant] =>
@@ -99,6 +101,18 @@ pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
+}
+
+/// Like verus!, but for use inside a (non-trait) impl
+#[proc_macro]
+pub fn verus_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, false)
+}
+
+/// Like verus!, but for use inside a trait impl
+#[proc_macro]
+pub fn verus_trait_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, true)
 }
 
 #[proc_macro]

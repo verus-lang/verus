@@ -580,6 +580,15 @@ pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_vir_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert!(err.errors.len() == expected_msgs.len());
+    assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
+    for (error, expected_msg) in err.errors.iter().zip(expected_msgs.iter()) {
+        assert!(error.message.contains(expected_msg));
+    }
+}
+
+#[allow(dead_code)]
 pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     assert!(
         err.errors.iter().any(|x| x.message.contains("custom attribute panicked")

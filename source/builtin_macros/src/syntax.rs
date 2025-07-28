@@ -36,7 +36,6 @@ use syn_verus::{
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
-const VERUS_UNERASED_PROXY: &str = "VERUS_UNERASED_PROXY__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -69,8 +68,8 @@ enum InsideArith {
     Fixed,
 }
 
-struct Visitor {
-    erase_ghost: EraseGhost,
+pub(crate) struct Visitor {
+    pub(crate) erase_ghost: EraseGhost,
     // TODO: this should always be true
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
@@ -94,7 +93,7 @@ struct Visitor {
     assign_to: bool,
 
     // Add extra verus signature information to the docstring
-    rustdoc: bool,
+    pub(crate) rustdoc: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -463,10 +462,6 @@ fn merge_default_ensures(
 }
 
 impl Visitor {
-    fn needs_unerased_proxies(&self) -> bool {
-        self.erase_ghost.keep() && !self.rustdoc
-    }
-
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
     }
@@ -511,8 +506,7 @@ impl Visitor {
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
         final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
-        is_const: bool,
-        span: Span,
+        _span: Span,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -741,16 +735,7 @@ impl Visitor {
             }
         }
 
-        if is_const {
-            vec![Stmt::Expr(
-                Expr::Verbatim(
-                    quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
-                ),
-                None,
-            )]
-        } else {
-            spec_stmts
-        }
+        spec_stmts
     }
 
     fn visit_fn(
@@ -945,8 +930,7 @@ impl Visitor {
         self.inside_ghost += 1; // for requires, ensures, etc.
 
         let sig_span = sig.span().clone();
-        let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig.constness.is_some(), sig_span);
+        let spec_stmts = self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -992,29 +976,6 @@ impl Visitor {
                 })));
             }
         } else {
-            let ensures = self.take_ghost(con_ensures);
-            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-                self.inside_ghost += 1;
-                let mut stmts: Vec<Stmt> = Vec::new();
-                if attrs.len() > 0 {
-                    let err = "outer attributes only allowed on function's ensures";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
-                } else if exprs.exprs.len() > 0 {
-                    for expr in exprs.exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    // Use a closure in the ensures to avoid circular const definition.
-                    // Note: we can't use con.ident as the closure pattern,
-                    // because Rust would treat this as a const path pattern.
-                    // So we use a 0-parameter closure.
-                    stmts.push(stmt_with_semi!(builtin, token.span => #[verus::internal(const_header_wrapper)] || { #builtin::ensures(|| [#exprs]); }));
-                }
-                let mut block = std::mem::take(con_block).expect("const-with-ensures block");
-                block.stmts.splice(0..0, stmts);
-                *con_block = Some(block);
-                self.inside_ghost -= 1;
-            }
             if let Some(block) = std::mem::take(con_block) {
                 let expr_block = syn_verus::ExprBlock { attrs: vec![], label: None, block: *block };
                 *con_expr = Some(Box::new(Expr::Block(expr_block)));
@@ -1022,6 +983,7 @@ impl Visitor {
                 *con_semi_token = Some(Semi { spans: [con_span] });
             }
         }
+        *con_ensures = None;
     }
 
     fn visit_const_or_static(
@@ -1735,8 +1697,36 @@ impl Visitor {
                 TokenStream::new()
             }
         } else {
-            let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote_spanned_builtin!{ builtin, span =>
-                #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); }), None))
+            let stmts: Vec<Stmt> = paths
+                .iter()
+                .map(|path| {
+                    let mut path = path.clone();
+                    let mut attrs = Vec::new();
+                    // move any cfg attrs from path to the stmt
+                    let mut i = 0;
+                    while i < path.attrs.len() {
+                        if path.attrs[i].path().get_ident().map(|i| i.to_string())
+                            == Some("cfg".to_string())
+                        {
+                            let elt = path.attrs.remove(i);
+                            attrs.push(elt);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    let block = Expr::Verbatim(quote_spanned_builtin!(builtin, span => {
+                        #[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() {
+                            #builtin::reveal_hide_internal_path_(#path)
+                        } __VERUS_REVEAL_INTERNAL__
+                    }));
+                    let one = Expr::Verbatim(quote_spanned!(span => 1));
+                    let mut expr: Expr = parse_quote_spanned_builtin!(builtin, span =>
+                        #builtin::reveal_hide_(#block, #one)
+                    );
+                    expr.replace_attrs(attrs);
+                    let stmt = Stmt::Expr(expr, Some(Token![;](span)));
+                    stmt
+                })
                 .collect();
             let block = Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
             let mut item_fn: ItemFn = parse_quote_spanned! { span =>
@@ -1768,161 +1758,13 @@ impl Visitor {
         }
     }
 
-    fn item_needs_unerased_proxy(&self, item: &Item) -> bool {
-        match item {
-            Item::Const(item_const) => !is_external(&item_const.attrs),
-            Item::Fn(item_fn) => item_fn.sig.constness.is_some() && !is_external(&item_fn.attrs),
-            _ => false,
-        }
-    }
-
-    fn item_translate_const_to_0_arg_fn(&self, item: Item) -> Item {
-        match item {
-            Item::Const(item_const) => {
-                let span = item_const.span();
-                let ItemConst {
-                    mut attrs,
-                    vis,
-                    const_token,
-                    ident,
-                    generics,
-                    colon_token,
-                    ty,
-                    eq_token: _,
-                    expr,
-                    semi_token: _,
-                    publish,
-                    mode,
-                    ensures,
-                    block,
-                } = item_const;
-                attrs.push(mk_verus_attr(span, quote! { encoded_const }));
-
-                let publish = match (publish, &mode, &vis) {
-                    (publish, _, Visibility::Inherited) => publish,
-                    (
-                        Publish::Default,
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Default,
-                        _,
-                    ) => Publish::Open(syn_verus::Open { token: token::Open { span } }),
-                    (publish, _, _) => publish,
-                };
-
-                Item::Fn(ItemFn {
-                    attrs,
-                    vis,
-                    sig: Signature {
-                        spec: SignatureSpec {
-                            prover: None,
-                            requires: None,
-                            recommends: None,
-                            ensures,
-                            default_ensures: None,
-                            returns: None,
-                            decreases: None,
-                            invariants: None,
-                            unwind: None,
-                            with: None,
-                        },
-                        publish,
-                        constness: None,
-                        asyncness: None,
-                        unsafety: None,
-                        abi: None,
-                        broadcast: None,
-                        mode: mode,
-                        fn_token: token::Fn { span: const_token.span },
-                        ident: ident.clone(),
-                        generics,
-                        paren_token: Paren { span: into_spans(colon_token.span) },
-                        inputs: Punctuated::new(),
-                        variadic: None,
-                        output: ReturnType::Type(
-                            token::RArrow { spans: [colon_token.span, colon_token.span] },
-                            None,
-                            None, /*
-                                  Some(Box::new((
-                                      Paren { span: into_spans(colon_token.span) },
-                                      Pat::Verbatim(quote!{ #ident }),
-                                      colon_token,
-                                  ))), */
-                            ty,
-                        ),
-                    },
-                    block: (match block {
-                        Some(block) => block,
-                        _ => {
-                            let expr = expr.unwrap();
-                            Box::new(Block {
-                                brace_token: Brace { span: into_spans(expr.span()) },
-                                stmts: vec![Stmt::Expr(*expr, None)],
-                            })
-                        }
-                    }),
-                    semi_token: None,
-                })
-            }
-            item => item,
-        }
-    }
-
-    fn item_make_proxy(&self, item: Item) -> Item {
-        let mut item = item;
-        item = self.item_translate_const_to_0_arg_fn(item);
-        match &mut item {
-            Item::Fn(item_fn) => {
-                item_fn.sig.ident = Ident::new(
-                    &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
-                    item_fn.sig.span(),
-                );
-                item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
-            }
-            _ => unreachable!(),
-        }
-        item
-    }
-
-    fn item_make_external_and_erased(&mut self, item: Item) -> Item {
-        let mut item = item;
-
-        self.erase_ghost = EraseGhost::Erase;
-        self.visit_item_mut(&mut item);
-        self.erase_ghost = EraseGhost::Keep;
-
-        let span = item.span();
-        let attributes = match &mut item {
-            Item::Fn(item_fn) => &mut item_fn.attrs,
-            Item::Const(item_const) => &mut item_const.attrs,
-            _ => unreachable!(),
-        };
-        attributes.push(mk_verifier_attr(span, quote! { external }));
-        attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
-
-        item
-    }
-
-    fn visit_items_make_unerased_proxies(&mut self, items: &mut Vec<Item>) {
-        if !self.needs_unerased_proxies() {
-            return;
-        }
-
-        let mut new_items = vec![];
-
-        for item in std::mem::take(items).into_iter() {
-            if self.item_needs_unerased_proxy(&item) {
-                let proxy = self.item_make_proxy(item.clone());
-                let erased = self.item_make_external_and_erased(item);
-                new_items.push(proxy);
-                new_items.push(erased);
-            } else {
-                new_items.push(item);
-            }
-        }
-
-        *items = new_items;
+    fn visit_impl_items_post(&mut self, _items: &mut Vec<ImplItem>) {
+        // nothing to do
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        self.visit_impl_items_make_unerased_proxies(items, for_trait);
+
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 ImplItem::Fn(fun) => match fun.sig.mode {
@@ -4315,6 +4157,20 @@ impl Parse for Items {
     }
 }
 
+struct ImplItems {
+    items: Vec<ImplItem>,
+}
+
+impl Parse for ImplItems {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<ImplItems> {
+        let mut items = Vec::new();
+        while !input.is_empty() {
+            items.push(input.parse()?);
+        }
+        Ok(ImplItems { items })
+    }
+}
+
 #[derive(Debug)]
 enum MacroElement {
     Comma(Token![,]),
@@ -4593,6 +4449,40 @@ pub(crate) fn rewrite_items(
     proc_macro::TokenStream::from(new_stream)
 }
 
+pub(crate) fn rewrite_impl_items(
+    stream: proc_macro::TokenStream,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+    for_trait: bool,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let mut items: ImplItems = parse_macro_input!(stream as ImplItems);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
+    for mut item in &mut items.items {
+        visitor.visit_impl_item_mut(&mut item);
+        visitor.inside_ghost = 0;
+        visitor.inside_const = false;
+        visitor.inside_arith = InsideArith::None;
+    }
+    visitor.visit_impl_items_post(&mut items.items);
+    for item in items.items {
+        item.to_tokens(&mut new_stream);
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr(
     erase_ghost: EraseGhost,
     inside_ghost: bool,
@@ -4793,13 +4683,7 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
     let sig_span = sig.span().clone();
-    spec_stmts.extend(visitor.take_sig_specs(
-        &mut spec,
-        ret_pat,
-        final_ret_pat,
-        sig.constness.is_some(),
-        sig_span,
-    ));
+    spec_stmts.extend(visitor.take_sig_specs(&mut spec, ret_pat, final_ret_pat, sig_span));
     spec_stmts
 }
 
@@ -5197,7 +5081,7 @@ macro_rules! declare_mk_rust_attr {
 declare_mk_rust_attr!(mk_rust_attr, syn_verus);
 declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
-/// Constructs #[verus::internal(tokens)]
+/// Constructs #[verus::internal(tokens)] and #[verifier::tokens]
 macro_rules! declare_mk_verus_attr {
     ($name:ident, $name2:ident, $s:ident) => {
         pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
@@ -5237,18 +5121,9 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("verifier", span),
                 arguments: $s::PathArguments::None,
             });
+            path_segments.push($s::parse_quote_spanned!(span => #tokens));
             let path = $s::Path { leading_colon: None, segments: path_segments };
-            let meta = if tokens.is_empty() {
-                $s::Meta::Path(path)
-            } else {
-                $s::Meta::List($s::MetaList {
-                    path,
-                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
-                        span: into_spans(span),
-                    }),
-                    tokens: quote! { #tokens },
-                })
-            };
+            let meta = $s::Meta::Path(path);
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,

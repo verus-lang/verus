@@ -302,6 +302,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         if !used_traits.contains(&i.x.trait_path) {
             continue;
         }
+        if i.x.external_trait_blanket {
+            continue;
+        }
         let span = spans.from_air_span(&i.span, None);
         let (generic_params, generic_bounds) =
             gen_generics(state, &*i.x.typ_params, &i.x.typ_bounds);

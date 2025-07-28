@@ -218,6 +218,8 @@ const PRELUDE: &str = "\
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(tuple_trait)]
+#![feature(f16)]
+#![feature(f128)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -274,7 +276,7 @@ struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
 
-struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a dyn Fn<A, Output = O>>);
+struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a fn(A) -> O>);
 struct FOpts<const B: u8, C, const D: u8, const E: u8, const G: u8>(PhantomData<C>);
 trait ProofFnOnce {}
 trait ProofFnMut: ProofFnOnce {}

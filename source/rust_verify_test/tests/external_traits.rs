@@ -288,26 +288,6 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;
         }
 
-        #[verifier::external_trait_specification]
-        pub trait ExPartialEq<Rhs: ?Sized> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExEq: PartialEq {
-            type ExternalTraitSpecificationFor: core::cmp::Eq;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExOrd: Eq + PartialOrd {
-            type ExternalTraitSpecificationFor: Ord;
-        }
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
@@ -404,17 +384,17 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_extension_vstd verus_code! {
-        use vstd::std_specs::core::PartialEqSpec;
+        use vstd::std_specs::cmp::PartialEqSpec;
         broadcast proof fn axiom_spec_eq_u8(x: u8, y: u8)
             ensures
-                #[trigger] x.spec_eq(&y) <==> x == y,
+                #[trigger] x.eq_spec(&y) <==> x == y,
         {
             admit();
         }
         fn test(u: u8, v: u8) {
             broadcast use axiom_spec_eq_u8;
-            assert(u.spec_eq(&u));
-            assert(u.spec_eq(&v)); // FAILS
+            assert(u.eq_spec(&u));
+            assert(u.eq_spec(&v)); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -521,6 +501,96 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "TSpec must have a matching impl")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_trait_impl_axioms verus_code! {
+        #[verifier::external]
+        trait T {}
+        #[verifier::external]
+        impl T for u32 {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+            type ExternalTraitSpecificationFor: T;
+        }
+        impl TSpecImpl for u32 {
+        }
+
+        uninterp spec fn f<A>(x: A) -> bool;
+
+        broadcast proof fn p<A: TSpec>(x: A)
+            ensures #[trigger] f(x)
+        {
+            admit();
+        }
+
+        proof fn test1() {
+            assert(f(5u32)); // FAILS
+        }
+
+        proof fn test2() {
+            broadcast use p;
+            assert(f(5u32));
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_blanket_impl verus_code! {
+        #[verifier::external]
+        trait T {}
+        #[verifier::external]
+        impl T for u32 {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+            type ExternalTraitSpecificationFor: T;
+        }
+        impl TSpecImpl for u32 {
+        }
+
+        uninterp spec fn f<A: T>(a: A) -> bool;
+
+        broadcast proof fn b1<A: TSpec>(a: A)
+            ensures
+                #[trigger] f(a),
+        {
+            admit();
+        }
+
+        broadcast proof fn b2<A: T>(a: A)
+            ensures
+                #[trigger] f(a),
+        {
+            // Rust accepts this because of the blanket implementation for TSpec:
+            b1(a);
+        }
+
+        proof fn call1<A: T>(a: A) {
+            // Rust accepts this because of the blanket implementation for TSpec:
+            b1::<A>(a);
+            assert(f(a));
+        }
+
+        proof fn call2<A: T>(a: A) {
+            b2::<A>(a);
+            assert(f(a));
+        }
+
+        proof fn use1<A: T>(a: A) {
+            broadcast use b1;
+            // Verus emits axiom for blanket implementation for TSpec, allowing this to work:
+            assert(f(a));
+        }
+
+        proof fn use2<A: T>(a: A) {
+            broadcast use b2;
+            assert(f(a));
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

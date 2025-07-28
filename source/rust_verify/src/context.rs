@@ -5,13 +5,12 @@ use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
-use vir::ast::{Expr, Ident, Mode, Pattern};
+use vir::ast::{Ident, Mode, Pattern};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
-    pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
