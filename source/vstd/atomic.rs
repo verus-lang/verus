@@ -12,11 +12,6 @@ use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
 
-pub struct AtomicUpdate<X, Y> {
-    //pred: Pred,
-    _dummy: core::marker::PhantomData<fn(X) -> Y>,
-}
-
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // TODO we could support `std::intrinsics::wrapping_add`
@@ -674,6 +669,54 @@ impl<T> PAtomicPtr<T> {
 }
 
 verus! {
+
+#[verifier::reject_recursive_types(X)]
+pub struct AtomicUpdate<X, Y, Pred> {
+    pred: Pred,
+    _dummy: core::marker::PhantomData<spec_fn(X) -> Y>,
+}
+
+#[doc(hidden)]
+#[verifier::reject_recursive_types(X)]
+pub struct UpdateTypeInject<X, Y, P> {
+    _dummy: core::marker::PhantomData<(spec_fn(X) -> Y, P)>,
+}
+
+pub trait UpdatePredicate<X, Y> {
+    spec fn req(x: X) -> bool;
+    spec fn ens(x: X, y: Y) -> bool;
+}
+
+impl<X, Y> UpdatePredicate<X, Y> for () {
+    open spec fn req(x: X) -> bool {
+        true
+    }
+
+    open spec fn ens(x: X, y: Y) -> bool {
+        true
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+#[verifier::external_body]
+pub proof fn update_internal<X, Y, Pred: UpdatePredicate<X, Y>>(
+    _update_type_inject: UpdateTypeInject<X, Y, Pred>,
+    x: X,
+) -> (y: Y)
+    requires Pred::req(x),
+    ensures Pred::ens(x, y),
+{
+    arbitrary()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
+#[doc(hidden)]
+#[verifier::external_body]
+pub fn atomically<X, Y, P>(_f: impl FnOnce(UpdateTypeInject<X, Y, P>)) -> tracked AtomicUpdate<X, Y, P> {
+    arbitrary()
+}
 
 impl<T> PAtomicPtr<T> {
     #[inline(always)]

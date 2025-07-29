@@ -907,7 +907,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     adt_arg,
                 ))
             }
-            ExprItem::Atomically => todo!(),
         },
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),

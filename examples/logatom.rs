@@ -11,7 +11,8 @@ fn atomic_function(x: i32) -> (y: i32)
     requires x == 2,
     ensures y == 3,
 {
-    drop(atom_upd);
+    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, ()> = atom_upd;
+
     return x + 1;
 }
 

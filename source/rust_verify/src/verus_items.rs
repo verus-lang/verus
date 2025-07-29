@@ -148,7 +148,6 @@ pub(crate) enum ExprItem {
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
     InferSpecForLoopIter,
-    Atomically,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -296,6 +295,7 @@ pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     SetFn(SetItem),
     Invariant(InvariantItem),
+    Atomically,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -431,7 +431,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
         ("verus::builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
-        ("verus::builtin::atomically",              VerusItem::Expr(ExprItem::Atomically)),
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
@@ -531,6 +530,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
+
+        ("verus::vstd::atomic::atomically",  VerusItem::Vstd(VstdItem::Atomically, Some(Arc::new("atomic::atomically".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),

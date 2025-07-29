@@ -6,7 +6,6 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
-use syn_verus::punctuated::Pair;
 use syn_verus::AtomicSpec;
 use syn_verus::AtomicallyBlock;
 use syn_verus::BroadcastUse;
@@ -14,9 +13,10 @@ use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
 use syn_verus::ExprMethodCall;
+use syn_verus::PermTuple;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
-use syn_verus::punctuated::Punctuated;
+use syn_verus::punctuated::{Pair, Punctuated};
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
@@ -26,7 +26,6 @@ use syn_verus::visit_mut::{
     visit_item_enum_mut, visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut,
     visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
-use syn_verus::PermTuple;
 use syn_verus::{
     AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
@@ -520,7 +519,7 @@ impl Visitor {
             tokens
         }
 
-        let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else {return};
+        let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else { return };
         let full_span = atomic_spec.span();
 
         let AtomicSpec {
@@ -541,7 +540,7 @@ impl Visitor {
         let new_perms = perms_to_type(&new_perms);
 
         let extra_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_perms, #new_perms>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_perms, #new_perms, ()>
         );
 
         sig.inputs.push(extra_arg);
@@ -3116,8 +3115,12 @@ impl Visitor {
         let span = atomically.span();
         let AtomicallyBlock { update_binder, body, .. } = atomically;
 
-        let extra_arg = Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, span =>
-            #builtin::atomically::<_, #vstd::atomic::AtomicUpdate<_, _>>(move |#update_binder: fn(_) -> _| #body)
+        let extra_arg = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
+            #vstd::atomic::atomically(move |typ_inj| {
+                let #update_binder = move |x| #vstd::atomic::update_internal(typ_inj, x);
+
+                #body
+            })
         ));
 
         args.push(extra_arg);
