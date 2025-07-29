@@ -358,16 +358,11 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
                 |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
             )
         } else {
-            // Seq::new(
-            //     (self.next_count@ + self.next_back_count@) as nat,
-            //     |i: int| Some(???)
-            // )
             apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int)
         }
     }
 
     open spec fn operations(&self) -> Seq<Operation> {
-        //Seq::new((self.next_count@ + self.next_back_count@) as nat, |_i: int| Operation::Next)
         self.ops@
     }
 
@@ -382,8 +377,8 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         // All operations have been counted
         &&& self.operations().len() == self.next_count@ + self.next_back_count@
         // In the simple cases, we have a uniform set of operations
-        &&& self.next_back_count == 0 <==> forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next
-        &&& self.next_count == 0 <==> forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack
+        &&& self.next_back_count == 0 <==> (forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next)
+        &&& self.next_count == 0 <==> (forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack)
         // Possible positions when we've done a modest number of operations and when we've done too many
         &&& {
             ||| self.next_count@ == self.pos && self.pos < self.pos_back
@@ -435,18 +430,38 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
 
     fn next(&mut self) -> (r: Option<Self::Item>)
     {
-assume(false);
         proof {
+            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
             self.next_count@ = self.next_count@ + 1;
         }
-        if self.pos < self.pos_back {
+        self.ops = Ghost(self.ops@.push(Operation::Next));
+        proof {
+            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
+        }
+        let r = if self.pos < self.pos_back {
             let _ = self.vec.len(); // HACK
             let i = self.pos;
             self.pos = i + 1;
             Some(self.vec.index(i))
         } else {
             None
+        };
+        // Prove that `inv` still holds
+        assert(!(self.operations().last() is NextBack));    // OBSERVE
+        proof {
+            if forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next {
+                assert forall |i| 0 <= i < old(self).operations().len() implies old(self).operations()[i] is Next by {
+                    assert(old(self).operations()[i] == self.operations()[i]);
+                }
+            }
         }
+        // Prove that r is the final element in `outputs()`
+        proof {
+            if self.next_back_count == 0 {
+            } else {
+            }
+        }
+        r
     }
 }
 
