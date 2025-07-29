@@ -3,7 +3,7 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 use rustc_span::SpanData;
 
-use vir::ast::{Datatype, Dt, Fun, Krate, Mode, Path, Pattern};
+use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
@@ -45,13 +45,10 @@ pub enum ResolvedCall {
     SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
-    /// The call is to a function, and we temporarily record the name of the function here
+    /// The call is to a function, and we record the name of the function here
     /// (both unresolved and resolved), as well as an in_ghost flag.
     /// This is replaced by CallModes as soon as the modes are available.
-    CallPlaceholder(Fun, Fun, bool),
-    /// The call is to a function with some mode and some parameter modes
-    /// (The name may be None for spec functions)
-    CallModes(Mode, Arc<Vec<Mode>>),
+    Call(Fun, Fun, bool),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// Path and variant of datatype constructor. Used for ExprKind::Struct nodes.
@@ -97,6 +94,7 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 /// traversal generate CallErasure values.
 fn resolved_call_to_call_erase(
     _span: Span,
+    functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
 ) -> Result<CallErasure, VirErr> {
@@ -105,18 +103,24 @@ fn resolved_call_to_call_erase(
         ResolvedCall::SpecAllowProofArgs => {
             CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
         }
-        ResolvedCall::CallPlaceholder(ufun, rfun, _) => {
-            dbg!(ufun, rfun);
-            panic!("internal Verus error: could not find mode declarations for function")
-        }
-        ResolvedCall::CallModes(mode, param_modes) => {
-            if *mode == Mode::Spec {
+        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+            // Note: in principle, the unresolved function ufun should always be present,
+            // but we currently allow external declarations of resolved trait functions
+            // without a corresponding external trait declaration.
+            let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                dbg!(ufun, rfun);
+                panic!("internal Verus error: could not find mode declarations for function")
+            };
+            if *in_ghost && f.x.mode == Mode::Exec {
+                // This must be an autospec, so change exec -> spec
+                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
+            } else if f.x.mode == Mode::Spec {
                 CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
             } else {
                 let args =
-                    param_modes
+                    f.x.params
                         .iter()
-                        .map(|mode| match mode {
+                        .map(|p| match p.x.mode {
                             Mode::Spec => ExpectSpec::Yes,
                             Mode::Proof | Mode::Exec => ExpectSpec::No,
                         })
@@ -249,6 +253,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         }
     }
 
+    let mut functions = HashMap::<Fun, Function>::new();
+    for f in &erasure_hints.vir_crate.functions {
+        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", &f.x.name));
+    }
+
     let mut datatypes = HashMap::<Path, Datatype>::new();
     for d in &erasure_hints.vir_crate.datatypes {
         if let Dt::Path(path) = &d.x.name {
@@ -261,7 +270,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         let span = span_data.span();
         calls.insert(
             *hir_id,
-            resolved_call_to_call_erase(span, &datatypes, resolved_call)?,
+            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?,
         );
     }
 

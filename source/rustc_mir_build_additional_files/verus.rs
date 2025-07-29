@@ -254,7 +254,6 @@ pub(crate) fn handle_call<'tcx>(
     };
 
     match erasure_ctxt.calls.get(&expr.hir_id) {
-// TODO: shouldn't None be an internal error?
         None => CallErasure::keep_all(),
         Some(call_erasure) => call_erasure.clone(),
     }

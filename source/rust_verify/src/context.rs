@@ -7,7 +7,7 @@ use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
-use vir::ast::{Fun, Function, Ident, Krate, Mode, Path, Pattern, VirErr};
+use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
@@ -49,40 +49,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
-}
-
-impl ErasureInfo {
-    pub(crate) fn resolve_call_modes(&mut self, vir_crate: &Krate) {
-        use std::collections::HashMap;
-        let mut functions: HashMap<Fun, Function> = HashMap::new();
-        for f in vir_crate.functions.iter() {
-            functions.insert(f.x.name.clone(), f.clone());
-        }
-        for (_, _, r) in &mut self.resolved_calls {
-            if let ResolvedCall::CallPlaceholder(ufun, rfun, in_ghost) = r {
-                // Note: in principle, the unresolved function ufun should always be present,
-                // but we currently allow external declarations of resolved trait functions
-                // without a corresponding external trait declaration.
-                if let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) {
-                    if *in_ghost && f.x.mode == Mode::Exec {
-                        // This must be an autospec, so change exec -> spec
-                        let param_modes = Arc::new(f.x.params.iter().map(|_| Mode::Spec).collect());
-                        *r = ResolvedCall::CallModes(Mode::Spec, param_modes);
-                    } else {
-                        let param_modes = Arc::new(f.x.params.iter().map(|p| p.x.mode).collect());
-                        *r = ResolvedCall::CallModes(f.x.mode, param_modes);
-                    }
-                }
-                // If the function is missing, just leave the CallPlaceholder as-is,
-                // and any future attempt to use the CallPlaceholder
-                // is considered an internal Verus error.
-                // The function can be missing for various reasons:
-                // - the call is to an external function with no spec,
-                //   which we want to report as an error later, not here.
-                // - the called function was pruned
-            }
-        }
-    }
 }
 
 impl<'tcx> ContextX<'tcx> {

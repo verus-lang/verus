@@ -2758,11 +2758,6 @@ impl Verifier {
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
 
-        // Replace ResolvedCall::CallPlaceholder with ResolvedCall::CallModes
-        // For simplicity, do this relatively soon, before various fixups change function names,
-        // but do it after pruning for efficiency.
-        ctxt.erasure_info.borrow_mut().resolve_call_modes(&vir_crate);
-
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
         crate::import_export::export_crate(
@@ -2796,7 +2791,7 @@ impl Verifier {
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
-            unpruned_crate.clone(),
+            &unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,

@@ -265,11 +265,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     };
 
-    record_call(
-        bctx,
-        expr,
-        ResolvedCall::CallPlaceholder(name.clone(), record_name, bctx.in_ghost),
-    );
+    record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
@@ -325,11 +321,7 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    record_call(
-        bctx,
-        expr,
-        ResolvedCall::CallPlaceholder(trait_fun.clone(), record_trait_fun, bctx.in_ghost),
-    );
+    record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
@@ -2263,12 +2255,12 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::CallPlaceholder(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::CallPlaceholder(ufun, rfun, in_ghost)
+            ResolvedCall::Call(ufun, rfun, in_ghost)
         }
         (resolved_call, _) => resolved_call,
     };
