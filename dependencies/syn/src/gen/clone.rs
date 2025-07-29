@@ -129,6 +129,36 @@ impl Clone for crate::AssumeSpecification {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::AtomicSpec {
+    fn clone(&self) -> Self {
+        crate::AtomicSpec {
+            atomically_token: self.atomically_token.clone(),
+            paren_token: self.paren_token.clone(),
+            atomic_update: self.atomic_update.clone(),
+            block_token: self.block_token.clone(),
+            old_perms: self.old_perms.clone(),
+            arrow_token: self.arrow_token.clone(),
+            new_perms: self.new_perms.clone(),
+            comma1_token: self.comma1_token.clone(),
+            requires: self.requires.clone(),
+            ensures: self.ensures.clone(),
+            comma2_token: self.comma2_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::AtomicallyBlock {
+    fn clone(&self) -> Self {
+        crate::AtomicallyBlock {
+            atomically_token: self.atomically_token.clone(),
+            or1_token: self.or1_token.clone(),
+            update_binder: self.update_binder.clone(),
+            or2_token: self.or2_token.clone(),
+            body: self.body.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Copy for crate::AttrStyle {}
@@ -583,6 +613,7 @@ impl Clone for crate::ExprCall {
             func: self.func.clone(),
             paren_token: self.paren_token.clone(),
             args: self.args.clone(),
+            atomically: self.atomically.clone(),
         }
     }
 }
@@ -862,6 +893,7 @@ impl Clone for crate::ExprMethodCall {
             turbofish: self.turbofish.clone(),
             paren_token: self.paren_token.clone(),
             args: self.args.clone(),
+            atomically: self.atomically.clone(),
         }
     }
 }
@@ -2266,6 +2298,25 @@ impl Clone for crate::PathSegment {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PermTuple {
+    fn clone(&self) -> Self {
+        crate::PermTuple {
+            paren_token: self.paren_token.clone(),
+            fields: self.fields.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PermTupleField {
+    fn clone(&self) -> Self {
+        crate::PermTupleField {
+            ident: self.ident.clone(),
+            colon_token: self.colon_token.clone(),
+            ty: self.ty.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::PointerMutability {
@@ -2477,6 +2528,7 @@ impl Clone for crate::SignatureSpec {
     fn clone(&self) -> Self {
         crate::SignatureSpec {
             prover: self.prover.clone(),
+            atomic_spec: self.atomic_spec.clone(),
             requires: self.requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),

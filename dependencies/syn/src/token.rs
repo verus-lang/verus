@@ -792,6 +792,7 @@ define_keywords! {
     "broadcast"   pub struct Broadcast
     "group"       pub struct BroadcastGroup
     "assume_specification" pub struct AssumeSpecification
+    "atomically"  pub struct Atomically
 }
 
 define_punctuation! {
@@ -1082,6 +1083,7 @@ macro_rules! Token {
     [SpecFn]      => { $crate::token::SpecFn };
     [proof_fn]    => { $crate::token::ProofFn };
     [assume_specification]   => { $crate::token::AssumeSpecification };
+    [atomically]  => { $crate::token::Atomically };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };
     [<==>]        => { $crate::token::Equiv };

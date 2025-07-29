@@ -684,7 +684,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
+                                    .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
                     }
                     _ => panic!(
@@ -713,11 +713,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
                         let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
-                            "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
-                        );
+                                    "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
+                                );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
+                                    .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1))
                     }
                     _ => panic!(
@@ -907,6 +907,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     adt_arg,
                 ))
             }
+            ExprItem::Atomically => todo!(),
         },
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),

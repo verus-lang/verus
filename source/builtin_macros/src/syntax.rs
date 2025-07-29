@@ -6,10 +6,14 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
+use syn_verus::punctuated::Pair;
+use syn_verus::AtomicSpec;
+use syn_verus::AtomicallyBlock;
 use syn_verus::BroadcastUse;
 use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
+use syn_verus::ExprMethodCall;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
@@ -22,6 +26,7 @@ use syn_verus::visit_mut::{
     visit_item_enum_mut, visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut,
     visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
+use syn_verus::PermTuple;
 use syn_verus::{
     AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
@@ -501,6 +506,47 @@ impl Visitor {
         }
     }
 
+    #[allow(unused)]
+    fn handle_atomic_spec(&mut self, sig: &mut Signature) {
+        fn perms_to_type(perms: &PermTuple) -> TokenStream {
+            let mut tokens = TokenStream::new();
+            perms.paren_token.surround(&mut tokens, |tokens| {
+                for (field, comma) in perms.fields.pairs().map(Pair::into_tuple) {
+                    field.ty.to_tokens(tokens);
+                    comma.to_tokens(tokens);
+                }
+            });
+
+            tokens
+        }
+
+        let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else {return};
+        let full_span = atomic_spec.span();
+
+        let AtomicSpec {
+            atomically_token,
+            paren_token,
+            atomic_update,
+            block_token,
+            old_perms,
+            arrow_token,
+            new_perms,
+            comma1_token,
+            requires,
+            ensures,
+            comma2_token,
+        } = atomic_spec;
+
+        let old_perms = perms_to_type(&old_perms);
+        let new_perms = perms_to_type(&new_perms);
+
+        let extra_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_perms, #new_perms>
+        );
+
+        sig.inputs.push(extra_arg);
+    }
+
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
@@ -516,6 +562,7 @@ impl Visitor {
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+        debug_assert!(spec.atomic_spec.is_none());
 
         let ensures = merge_default_ensures(ensures, default_ensures);
 
@@ -750,6 +797,8 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let has_body = semi_token.is_none();
+
+        self.handle_atomic_spec(sig);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -1575,6 +1624,7 @@ impl Visitor {
             output: output,
             spec: SignatureSpec {
                 prover: None,
+                atomic_spec: None,
                 requires: requires,
                 recommends: None,
                 ensures: ensures,
@@ -1975,7 +2025,7 @@ impl Visitor {
             Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Exists(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Choose(..), .. }) => u,
-            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _ }) => {
+            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _, atomically: _ }) => {
                 if let Expr::Path(syn_verus::ExprPath { path, qself: None, attrs: _ }) = &**func {
                     if path.segments.len() == 1
                         && ILLEGAL_CALLEES.contains(&path.segments[0].ident.to_string().as_str())
@@ -2392,7 +2442,8 @@ impl Visitor {
                 args.push(take_expr(&mut *binary.right));
                 args.push(take_expr(&mut *binary.left));
             }
-            *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
+            let atomically = None;
+            *expr = Expr::Call(ExprCall { attrs, func, paren_token, args, atomically });
         } else if verus_eq {
             let attrs = std::mem::take(&mut binary.attrs);
             let func = match binary.op {
@@ -2416,7 +2467,8 @@ impl Visitor {
             let mut args = Punctuated::new();
             args.push(take_expr(&mut *binary.left));
             args.push(take_expr(&mut *binary.right));
-            let call = Expr::Call(ExprCall { attrs, func, paren_token, args });
+            let atomically = None;
+            let call = Expr::Call(ExprCall { attrs, func, paren_token, args, atomically });
             if eq {
                 *expr = call;
             } else {
@@ -3050,6 +3102,27 @@ impl Visitor {
         true
     }
 
+    fn handle_atomic_call(&mut self, expr: &mut Expr) {
+        let (Expr::Call(ExprCall { args, atomically, .. })
+        | Expr::MethodCall(ExprMethodCall { args, atomically, .. })) = expr
+        else {
+            return;
+        };
+
+        let Some(atomically) = atomically.take() else {
+            return;
+        };
+
+        let span = atomically.span();
+        let AtomicallyBlock { update_binder, body, .. } = atomically;
+
+        let extra_arg = Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, span =>
+            #builtin::atomically::<_, #vstd::atomic::AtomicUpdate<_, _>>(move |#update_binder: fn(_) -> _| #body)
+        ));
+
+        args.push(extra_arg);
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -3487,6 +3560,8 @@ enum ExtractQuantTriggersFound {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        self.handle_atomic_call(expr);
+
         if self.chain_operators(expr)
             || self.closure_quant_operators(expr)
             || self.handle_binary_ops(expr)

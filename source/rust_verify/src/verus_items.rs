@@ -148,6 +148,7 @@ pub(crate) enum ExprItem {
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
     InferSpecForLoopIter,
+    Atomically,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -430,6 +431,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
         ("verus::builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
+        ("verus::builtin::atomically",              VerusItem::Expr(ExprItem::Atomically)),
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
@@ -553,7 +555,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
-        
+
         ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
         ("verus::builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),

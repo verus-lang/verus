@@ -121,6 +121,31 @@ impl Hash for crate::AssumeSpecification {
         self.unwind.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::AtomicSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.atomic_update.hash(state);
+        self.old_perms.hash(state);
+        self.new_perms.hash(state);
+        self.comma1_token.hash(state);
+        self.requires.hash(state);
+        self.ensures.hash(state);
+        self.comma2_token.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::AtomicallyBlock {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.update_binder.hash(state);
+        self.body.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::AttrStyle {
@@ -889,6 +914,7 @@ impl Hash for crate::ExprCall {
         self.attrs.hash(state);
         self.func.hash(state);
         self.args.hash(state);
+        self.atomically.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1165,6 +1191,7 @@ impl Hash for crate::ExprMethodCall {
         self.method.hash(state);
         self.turbofish.hash(state);
         self.args.hash(state);
+        self.atomically.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2852,6 +2879,25 @@ impl Hash for crate::PathSegment {
         self.arguments.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PermTuple {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.fields.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PermTupleField {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ident.hash(state);
+        self.ty.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::PointerMutability {
@@ -3094,6 +3140,7 @@ impl Hash for crate::SignatureSpec {
         H: Hasher,
     {
         self.prover.hash(state);
+        self.atomic_spec.hash(state);
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);

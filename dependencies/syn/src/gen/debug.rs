@@ -136,6 +136,36 @@ impl Debug for crate::AssumeSpecification {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::AtomicSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicSpec");
+        formatter.field("atomically_token", &self.atomically_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("atomic_update", &self.atomic_update);
+        formatter.field("block_token", &self.block_token);
+        formatter.field("old_perms", &self.old_perms);
+        formatter.field("arrow_token", &self.arrow_token);
+        formatter.field("new_perms", &self.new_perms);
+        formatter.field("comma1_token", &self.comma1_token);
+        formatter.field("requires", &self.requires);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("comma2_token", &self.comma2_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::AtomicallyBlock {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicallyBlock");
+        formatter.field("atomically_token", &self.atomically_token);
+        formatter.field("or1_token", &self.or1_token);
+        formatter.field("update_binder", &self.update_binder);
+        formatter.field("or2_token", &self.or2_token);
+        formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::AttrStyle {
@@ -899,6 +929,7 @@ impl crate::ExprCall {
         formatter.field("func", &self.func);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("args", &self.args);
+        formatter.field("atomically", &self.atomically);
         formatter.finish()
     }
 }
@@ -1304,6 +1335,7 @@ impl crate::ExprMethodCall {
         formatter.field("turbofish", &self.turbofish);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("args", &self.args);
+        formatter.field("atomically", &self.atomically);
         formatter.finish()
     }
 }
@@ -3218,6 +3250,25 @@ impl Debug for crate::PathSegment {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PermTuple {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTuple");
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("fields", &self.fields);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PermTupleField {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTupleField");
+        formatter.field("ident", &self.ident);
+        formatter.field("colon_token", &self.colon_token);
+        formatter.field("ty", &self.ty);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::PointerMutability {
@@ -3464,6 +3515,7 @@ impl Debug for crate::SignatureSpec {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureSpec");
         formatter.field("prover", &self.prover);
+        formatter.field("atomic_spec", &self.atomic_spec);
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);

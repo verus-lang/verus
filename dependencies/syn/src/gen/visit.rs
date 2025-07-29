@@ -66,6 +66,12 @@ pub trait Visit<'ast> {
     fn visit_assume_specification(&mut self, i: &'ast crate::AssumeSpecification) {
         visit_assume_specification(self, i);
     }
+    fn visit_atomic_spec(&mut self, i: &'ast crate::AtomicSpec) {
+        visit_atomic_spec(self, i);
+    }
+    fn visit_atomically_block(&mut self, i: &'ast crate::AtomicallyBlock) {
+        visit_atomically_block(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_attr_style(&mut self, i: &'ast crate::AttrStyle) {
@@ -850,6 +856,12 @@ pub trait Visit<'ast> {
     fn visit_path_segment(&mut self, i: &'ast crate::PathSegment) {
         visit_path_segment(self, i);
     }
+    fn visit_perm_tuple(&mut self, i: &'ast crate::PermTuple) {
+        visit_perm_tuple(self, i);
+    }
+    fn visit_perm_tuple_field(&mut self, i: &'ast crate::PermTupleField) {
+        visit_perm_tuple_field(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_pointer_mutability(&mut self, i: &'ast crate::PointerMutability) {
@@ -1324,6 +1336,32 @@ where
         v.visit_signature_unwind(it);
     }
     skip!(node.semi);
+}
+pub fn visit_atomic_spec<'ast, V>(v: &mut V, node: &'ast crate::AtomicSpec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.atomically_token);
+    skip!(node.paren_token);
+    v.visit_ident(&node.atomic_update);
+    skip!(node.block_token);
+    v.visit_perm_tuple(&node.old_perms);
+    skip!(node.arrow_token);
+    v.visit_perm_tuple(&node.new_perms);
+    skip!(node.comma1_token);
+    v.visit_requires(&node.requires);
+    v.visit_ensures(&node.ensures);
+    skip!(node.comma2_token);
+}
+pub fn visit_atomically_block<'ast, V>(v: &mut V, node: &'ast crate::AtomicallyBlock)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.atomically_token);
+    skip!(node.or1_token);
+    v.visit_ident(&node.update_binder);
+    skip!(node.or2_token);
+    full!(v.visit_block(& * node.body));
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -2021,6 +2059,9 @@ where
         let it = el.value();
         v.visit_expr(it);
     }
+    if let Some(it) = &node.atomically {
+        v.visit_atomically_block(it);
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -2363,6 +2404,9 @@ where
     for el in Punctuated::pairs(&node.args) {
         let it = el.value();
         v.visit_expr(it);
+    }
+    if let Some(it) = &node.atomically {
+        v.visit_atomically_block(it);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4165,6 +4209,24 @@ where
     v.visit_ident(&node.ident);
     v.visit_path_arguments(&node.arguments);
 }
+pub fn visit_perm_tuple<'ast, V>(v: &mut V, node: &'ast crate::PermTuple)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.paren_token);
+    for el in Punctuated::pairs(&node.fields) {
+        let it = el.value();
+        v.visit_perm_tuple_field(it);
+    }
+}
+pub fn visit_perm_tuple_field<'ast, V>(v: &mut V, node: &'ast crate::PermTupleField)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_ident(&node.ident);
+    skip!(node.colon_token);
+    v.visit_type(&node.ty);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_pointer_mutability<'ast, V>(v: &mut V, node: &'ast crate::PointerMutability)
@@ -4422,6 +4484,9 @@ where
 {
     if let Some(it) = &node.prover {
         v.visit_prover(it);
+    }
+    if let Some(it) = &node.atomic_spec {
+        v.visit_atomic_spec(it);
     }
     if let Some(it) = &node.requires {
         v.visit_requires(it);

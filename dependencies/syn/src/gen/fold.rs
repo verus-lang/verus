@@ -68,6 +68,15 @@ pub trait Fold {
     ) -> crate::AssumeSpecification {
         fold_assume_specification(self, i)
     }
+    fn fold_atomic_spec(&mut self, i: crate::AtomicSpec) -> crate::AtomicSpec {
+        fold_atomic_spec(self, i)
+    }
+    fn fold_atomically_block(
+        &mut self,
+        i: crate::AtomicallyBlock,
+    ) -> crate::AtomicallyBlock {
+        fold_atomically_block(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn fold_attr_style(&mut self, i: crate::AttrStyle) -> crate::AttrStyle {
@@ -938,6 +947,15 @@ pub trait Fold {
     fn fold_path_segment(&mut self, i: crate::PathSegment) -> crate::PathSegment {
         fold_path_segment(self, i)
     }
+    fn fold_perm_tuple(&mut self, i: crate::PermTuple) -> crate::PermTuple {
+        fold_perm_tuple(self, i)
+    }
+    fn fold_perm_tuple_field(
+        &mut self,
+        i: crate::PermTupleField,
+    ) -> crate::PermTupleField {
+        fold_perm_tuple_field(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_pointer_mutability(
@@ -1422,6 +1440,39 @@ where
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
         unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
         semi: node.semi,
+    }
+}
+pub fn fold_atomic_spec<F>(f: &mut F, node: crate::AtomicSpec) -> crate::AtomicSpec
+where
+    F: Fold + ?Sized,
+{
+    crate::AtomicSpec {
+        atomically_token: node.atomically_token,
+        paren_token: node.paren_token,
+        atomic_update: f.fold_ident(node.atomic_update),
+        block_token: node.block_token,
+        old_perms: f.fold_perm_tuple(node.old_perms),
+        arrow_token: node.arrow_token,
+        new_perms: f.fold_perm_tuple(node.new_perms),
+        comma1_token: node.comma1_token,
+        requires: f.fold_requires(node.requires),
+        ensures: f.fold_ensures(node.ensures),
+        comma2_token: node.comma2_token,
+    }
+}
+pub fn fold_atomically_block<F>(
+    f: &mut F,
+    node: crate::AtomicallyBlock,
+) -> crate::AtomicallyBlock
+where
+    F: Fold + ?Sized,
+{
+    crate::AtomicallyBlock {
+        atomically_token: node.atomically_token,
+        or1_token: node.or1_token,
+        update_binder: f.fold_ident(node.update_binder),
+        or2_token: node.or2_token,
+        body: Box::new(full!(f.fold_block(* node.body))),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2016,6 +2067,7 @@ where
         func: Box::new(f.fold_expr(*node.func)),
         paren_token: node.paren_token,
         args: crate::punctuated::fold(node.args, f, F::fold_expr),
+        atomically: (node.atomically).map(|it| f.fold_atomically_block(it)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2321,6 +2373,7 @@ where
             .map(|it| f.fold_angle_bracketed_generic_arguments(it)),
         paren_token: node.paren_token,
         args: crate::punctuated::fold(node.args, f, F::fold_expr),
+        atomically: (node.atomically).map(|it| f.fold_atomically_block(it)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4107,6 +4160,28 @@ where
         arguments: f.fold_path_arguments(node.arguments),
     }
 }
+pub fn fold_perm_tuple<F>(f: &mut F, node: crate::PermTuple) -> crate::PermTuple
+where
+    F: Fold + ?Sized,
+{
+    crate::PermTuple {
+        paren_token: node.paren_token,
+        fields: crate::punctuated::fold(node.fields, f, F::fold_perm_tuple_field),
+    }
+}
+pub fn fold_perm_tuple_field<F>(
+    f: &mut F,
+    node: crate::PermTupleField,
+) -> crate::PermTupleField
+where
+    F: Fold + ?Sized,
+{
+    crate::PermTupleField {
+        ident: f.fold_ident(node.ident),
+        colon_token: node.colon_token,
+        ty: f.fold_type(node.ty),
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn fold_pointer_mutability<F>(
@@ -4362,6 +4437,7 @@ where
 {
     crate::SignatureSpec {
         prover: (node.prover).map(|it| f.fold_prover(it)),
+        atomic_spec: (node.atomic_spec).map(|it| f.fold_atomic_spec(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),

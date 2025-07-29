@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::*;
 use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
@@ -268,6 +270,7 @@ ast_struct! {
     pub struct SignatureSpec {
         // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<Prover>,
+        pub atomic_spec: Option<AtomicSpec>,
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
@@ -283,6 +286,7 @@ ast_struct! {
 impl SignatureSpec {
     pub fn erase_spec_fields(&mut self) {
         self.prover = None;
+        self.atomic_spec = None;
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
@@ -581,6 +585,47 @@ ast_struct! {
         pub base: Box<Expr>,
         pub arrow_token: Token![->],
         pub member: Member,
+    }
+}
+
+ast_struct! {
+    pub struct AtomicallyBlock {
+        pub atomically_token: Token![atomically],
+        pub or1_token: Token![|],
+        pub update_binder: Ident,
+        pub or2_token: Token![|],
+        pub body: Box<Block>,
+    }
+}
+
+ast_struct! {
+    pub struct PermTupleField {
+        pub ident: Ident,
+        pub colon_token: Token![:],
+        pub ty: Type,
+    }
+}
+
+ast_struct! {
+    pub struct PermTuple {
+        pub paren_token: token::Paren,
+        pub fields: Punctuated<PermTupleField, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct AtomicSpec {
+        pub atomically_token: Token![atomically],
+        pub paren_token: token::Paren,
+        pub atomic_update: Ident,
+        pub block_token: token::Brace,
+        pub old_perms: PermTuple,
+        pub arrow_token: Token![->],
+        pub new_perms: PermTuple,
+        pub comma1_token: Option<Token![,]>,
+        pub requires: Requires,
+        pub ensures: Ensures,
+        pub comma2_token: Option<Token![,]>,
     }
 }
 
@@ -1121,6 +1166,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
+            let atomic_spec: Option<AtomicSpec> = input.parse()?;
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
@@ -1132,6 +1178,7 @@ pub mod parsing {
 
             Ok(SignatureSpec {
                 prover,
+                atomic_spec,
                 requires,
                 recommends,
                 ensures,
@@ -1582,6 +1629,87 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AtomicallyBlock {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(AtomicallyBlock {
+                atomically_token: input.parse()?,
+                or1_token: input.parse()?,
+                update_binder: input.parse()?,
+                or2_token: input.parse()?,
+                body: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<AtomicallyBlock> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![atomically]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermTupleField {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PermTupleField {
+                ident: input.parse()?,
+                colon_token: input.parse()?,
+                ty: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermTuple {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            Ok(PermTuple {
+                paren_token: parenthesized!(content in input),
+                fields: content.parse_terminated(PermTupleField::parse, Token![,])?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AtomicSpec {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let parens;
+            let curlys;
+
+            let atomic_spec = AtomicSpec {
+                atomically_token: input.parse()?,
+                paren_token: parenthesized!(parens in input),
+                atomic_update: parens.parse()?,
+                block_token: braced!(curlys in input),
+                old_perms: curlys.parse()?,
+                arrow_token: curlys.parse()?,
+                new_perms: curlys.parse()?,
+                comma1_token: curlys.parse()?,
+                requires: curlys.parse()?,
+                ensures: curlys.parse()?,
+                comma2_token: input.parse()?,
+            };
+
+            Ok(atomic_spec)
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<AtomicSpec> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![atomically]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -1829,6 +1957,7 @@ mod printing {
     impl ToTokens for SignatureSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.prover.to_tokens(tokens);
+            self.atomic_spec.to_tokens(tokens);
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
@@ -2182,6 +2311,55 @@ mod printing {
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);
             self.semi.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AtomicallyBlock {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.atomically_token.to_tokens(tokens);
+            self.or1_token.to_tokens(tokens);
+            self.update_binder.to_tokens(tokens);
+            self.or2_token.to_tokens(tokens);
+            self.body.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermTupleField {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.ident.to_tokens(tokens);
+            self.colon_token.to_tokens(tokens);
+            self.ty.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermTuple {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                self.fields.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AtomicSpec {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.atomically_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.atomic_update.to_tokens(tokens);
+            });
+
+            self.block_token.surround(tokens, |tokens| {
+                self.old_perms.to_tokens(tokens);
+                self.arrow_token.to_tokens(tokens);
+                self.new_perms.to_tokens(tokens);
+                self.comma1_token.to_tokens(tokens);
+                self.requires.to_tokens(tokens);
+                self.ensures.to_tokens(tokens);
+                self.comma2_token.to_tokens(tokens);
+            });
         }
     }
 }

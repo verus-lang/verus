@@ -317,6 +317,31 @@ impl Debug for Lite<syn::AssumeSpecification> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::AtomicSpec> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicSpec");
+        formatter.field("atomic_update", Lite(&self.value.atomic_update));
+        formatter.field("old_perms", Lite(&self.value.old_perms));
+        formatter.field("new_perms", Lite(&self.value.new_perms));
+        if self.value.comma1_token.is_some() {
+            formatter.field("comma1_token", &Present);
+        }
+        formatter.field("requires", Lite(&self.value.requires));
+        formatter.field("ensures", Lite(&self.value.ensures));
+        if self.value.comma2_token.is_some() {
+            formatter.field("comma2_token", &Present);
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::AtomicallyBlock> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicallyBlock");
+        formatter.field("update_binder", Lite(&self.value.update_binder));
+        formatter.field("body", Lite(&self.value.body));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::AttrStyle> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match &self.value {
@@ -929,6 +954,20 @@ impl Debug for Lite<syn::Expr> {
                 if !_val.args.is_empty() {
                     formatter.field("args", Lite(&_val.args));
                 }
+                if let Some(val) = &_val.atomically {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::AtomicallyBlock);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("atomically", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::Expr::Cast(_val) => {
@@ -1328,6 +1367,20 @@ impl Debug for Lite<syn::Expr> {
                 }
                 if !_val.args.is_empty() {
                     formatter.field("args", Lite(&_val.args));
+                }
+                if let Some(val) = &_val.atomically {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::AtomicallyBlock);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("atomically", Print::ref_cast(val));
                 }
                 formatter.finish()
             }
@@ -1902,6 +1955,20 @@ impl Debug for Lite<syn::ExprCall> {
         if !self.value.args.is_empty() {
             formatter.field("args", Lite(&self.value.args));
         }
+        if let Some(val) = &self.value.atomically {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::AtomicallyBlock);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("atomically", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -2413,6 +2480,20 @@ impl Debug for Lite<syn::ExprMethodCall> {
         }
         if !self.value.args.is_empty() {
             formatter.field("args", Lite(&self.value.args));
+        }
+        if let Some(val) = &self.value.atomically {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::AtomicallyBlock);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("atomically", Print::ref_cast(val));
         }
         formatter.finish()
     }
@@ -5345,6 +5426,23 @@ impl Debug for Lite<syn::PathSegment> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::PermTuple> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTuple");
+        if !self.value.fields.is_empty() {
+            formatter.field("fields", Lite(&self.value.fields));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::PermTupleField> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTupleField");
+        formatter.field("ident", Lite(&self.value.ident));
+        formatter.field("ty", Lite(&self.value.ty));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::PointerMutability> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match &self.value {
@@ -5747,6 +5845,20 @@ impl Debug for Lite<syn::SignatureSpec> {
                 }
             }
             formatter.field("prover", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.atomic_spec {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::AtomicSpec);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("atomic_spec", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.requires {
             #[derive(RefCast)]
@@ -7150,6 +7262,11 @@ impl Debug for Lite<syn::token::Async> {
 impl Debug for Lite<syn::token::At> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![@]")
+    }
+}
+impl Debug for Lite<syn::token::Atomically> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![atomically]")
     }
 }
 impl Debug for Lite<syn::token::Auto> {

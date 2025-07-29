@@ -24,8 +24,8 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprGetField,
-    ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
+    Assert, AssertForall, Assume, AtomicallyBlock, BigAnd, BigOr, ClosureArg, Decreases, Ensures,
+    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
     InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
@@ -370,6 +370,7 @@ ast_struct! {
         pub func: Box<Expr>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -575,6 +576,7 @@ ast_struct! {
         pub turbofish: Option<AngleBracketedGenericArguments>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -1768,6 +1770,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![->]) {
                 let arrow_token: Token![->] = input.parse()?;
@@ -1824,7 +1827,9 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
+
                         continue;
                     }
                 }
@@ -1879,6 +1884,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![.])
                 && !input.peek(Token![..])
@@ -1914,6 +1920,7 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
                         continue;
                     }
@@ -3758,6 +3765,8 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
@@ -4081,6 +4090,7 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]

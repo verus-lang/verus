@@ -8,6 +8,7 @@ a.struct[title="struct syn::token::Assume"],
 a.struct[title="struct syn::token::AssumeSpecification"],
 a.struct[title="struct syn::token::Async"],
 a.struct[title="struct syn::token::At"],
+a.struct[title="struct syn::token::Atomically"],
 a.struct[title="struct syn::token::Auto"],
 a.struct[title="struct syn::token::Await"],
 a.struct[title="struct syn::token::Axiom"],
@@ -173,6 +174,7 @@ a.struct[title="struct syn::token::Assume"]::before,
 a.struct[title="struct syn::token::AssumeSpecification"]::before,
 a.struct[title="struct syn::token::Async"]::before,
 a.struct[title="struct syn::token::At"]::before,
+a.struct[title="struct syn::token::Atomically"]::before,
 a.struct[title="struct syn::token::Auto"]::before,
 a.struct[title="struct syn::token::Await"]::before,
 a.struct[title="struct syn::token::Axiom"]::before,
@@ -366,6 +368,10 @@ a.struct[title="struct syn::token::Async"]::before {
 
 a.struct[title="struct syn::token::At"]::before {
 	content: "Token![@]";
+}
+
+a.struct[title="struct syn::token::Atomically"]::before {
+	content: "Token![atomically]";
 }
 
 a.struct[title="struct syn::token::Auto"]::before {
@@ -1067,6 +1073,7 @@ a.struct[title="struct syn::token::As"]::after,
 a.struct[title="struct syn::token::Assert"]::after,
 a.struct[title="struct syn::token::Assume"]::after,
 a.struct[title="struct syn::token::Async"]::after,
+a.struct[title="struct syn::token::Atomically"]::after,
 a.struct[title="struct syn::token::Auto"]::after,
 a.struct[title="struct syn::token::Await"]::after,
 a.struct[title="struct syn::token::Axiom"]::after,

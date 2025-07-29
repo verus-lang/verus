@@ -22,6 +22,7 @@ pub fn increment_good(var: &AtomicU32) {
     }
 }
 ```
+
 Both functions satisfy the same naive specification:
 $$
 \{ v \mapsto n \}\;\;{\tt increment}(v)\;\;\{ v \mapsto n + 1 \}

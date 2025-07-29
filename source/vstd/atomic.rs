@@ -12,6 +12,11 @@ use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
 
+pub struct AtomicUpdate<X, Y> {
+    //pred: Pred,
+    _dummy: core::marker::PhantomData<fn(X) -> Y>,
+}
+
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
         // TODO we could support `std::intrinsics::wrapping_add`

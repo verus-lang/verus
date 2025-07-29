@@ -363,6 +363,76 @@
       }
     },
     {
+      "ident": "AtomicSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "atomically_token": {
+          "token": "Atomically"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "atomic_update": {
+          "proc_macro2": "Ident"
+        },
+        "block_token": {
+          "group": "Brace"
+        },
+        "old_perms": {
+          "syn": "PermTuple"
+        },
+        "arrow_token": {
+          "token": "RArrow"
+        },
+        "new_perms": {
+          "syn": "PermTuple"
+        },
+        "comma1_token": {
+          "option": {
+            "token": "Comma"
+          }
+        },
+        "requires": {
+          "syn": "Requires"
+        },
+        "ensures": {
+          "syn": "Ensures"
+        },
+        "comma2_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "AtomicallyBlock",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "atomically_token": {
+          "token": "Atomically"
+        },
+        "or1_token": {
+          "token": "Or"
+        },
+        "update_binder": {
+          "proc_macro2": "Ident"
+        },
+        "or2_token": {
+          "token": "Or"
+        },
+        "body": {
+          "box": {
+            "syn": "Block"
+          }
+        }
+      }
+    },
+    {
       "ident": "AttrStyle",
       "features": {
         "any": [
@@ -1608,6 +1678,11 @@
             },
             "punct": "Comma"
           }
+        },
+        "atomically": {
+          "option": {
+            "syn": "AtomicallyBlock"
+          }
         }
       }
     },
@@ -2319,6 +2394,11 @@
               "syn": "Expr"
             },
             "punct": "Comma"
+          }
+        },
+        "atomically": {
+          "option": {
+            "syn": "AtomicallyBlock"
           }
         }
       }
@@ -5695,6 +5775,42 @@
       }
     },
     {
+      "ident": "PermTuple",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "paren_token": {
+          "group": "Paren"
+        },
+        "fields": {
+          "punctuated": {
+            "element": {
+              "syn": "PermTupleField"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "PermTupleField",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "colon_token": {
+          "token": "Colon"
+        },
+        "ty": {
+          "syn": "Type"
+        }
+      }
+    },
+    {
       "ident": "PointerMutability",
       "features": {
         "any": [
@@ -6217,6 +6333,11 @@
         "prover": {
           "option": {
             "syn": "Prover"
+          }
+        },
+        "atomic_spec": {
+          "option": {
+            "syn": "AtomicSpec"
           }
         },
         "requires": {
@@ -7648,6 +7769,7 @@
     "AssumeSpecification": "assume_specification",
     "Async": "async",
     "At": "@",
+    "Atomically": "atomically",
     "Auto": "auto",
     "Await": "await",
     "Axiom": "axiom",

@@ -369,6 +369,13 @@ pub fn use_type_invariant<A>(_a: A) {
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::atomically"]
+#[verifier::proof]
+pub fn atomically<F, AU>(_f: F) -> AU {
+    unimplemented!();
+}
+
 //
 // Ghost, Tracked
 //
