@@ -111,16 +111,14 @@ fn function(args: Args) -> (res: R)
 The atomic pre- and post-condition, specified in the `atomic_spec` block, desugars to an additional *tracked* function argument `atomic_update: AtomicUpdate`, as follows:
 
 ```rs
-struct FunctionPred;
+struct FunctionPred {}
+
 impl UpdatePredicate<(Args, OldPerm), NewPerm> for FunctionPred {
-    spec fn req(x: (Args, OldPerm)) -> bool {
-        let (args, old_perm) = x;
+    spec fn req((args, old_perm): (Args, OldPerm)) -> bool {
         atomic_pre_condition(args, old_perm)
     }
 
-    spec fn ens(x: (Args, OldPerm), y: NewPerm) -> bool {
-        let (args, old_perm) = x;
-        let new_perm = y;
+    spec fn ens((args, old_perm): (Args, OldPerm), (new_perm): (NewPerm)) -> bool {
         atomic_post_condition(args, old_perm, new_perm)
     }
 }
@@ -156,7 +154,10 @@ function(args) atomically |update| {
 }
 ```
 
-This language construct desugars as follows:
+<details>
+<summary>Desugaring</summary>
+
+Ideally, this language feature would desugar to something like this:
 
 ```rs
 function(args, ::builtin::atomically(move |update| {
@@ -167,6 +168,64 @@ function(args, ::builtin::atomically(move |update| {
     // ...
 }))
 ```
+
+...but this requires the `atomically` function to have the following signature:
+
+```rs
+fn atomically<X, Y, Pred>(f: impl FnOnce(impl FnOnce(X) -> Y)) -> AtomicUpdate<X, Y, Pred>
+
+// with `impl Trait` expanded
+
+fn atomically<X, Y, Pred, F>(f: F) -> AtomicUpdate<X, Y, Pred>
+where
+    F: for<U: FnOnce(X) -> Y> FnOnce(U),
+```
+
+...which is a higher-kinded function and sadly not supported in Rust.
+
+After some experimentation, I (Aaron) ended up with this desugaring:
+
+```rs
+#[doc(hidden)]
+pub struct UpdateTypeInject<X, Y, P> {
+    _dummy: core::marker::PhantomData<(spec_fn(X) -> Y, P)>,
+}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+#[verifier::external_body]
+pub proof fn update_internal<X, Y, Pred: UpdatePredicate<X, Y>>(
+    _update_type_inject: UpdateTypeInject<X, Y, Pred>,
+    x: X,
+) -> (y: Y)
+    requires Pred::req(x),
+    ensures Pred::ens(x, y),
+{
+    arbitrary()
+}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+#[verifier::external_body]
+pub fn atomically<X, Y, P>(
+    _f: impl FnOnce(UpdateTypeInject<X, Y, P>)
+) -> AtomicUpdate<X, Y, P> {
+    arbitrary()
+}
+
+// --- 8< --- snip --- >8 ---
+
+function(args, ::vstd::atomic::atomically(move |upd_ty_inj| {
+    let update = move |x| ::vstd::atomic::update_internal(upd_ty_inj, x);
+    // ...
+    let new_perm = update(old_perm);
+    // ...
+}))
+```
+
+Note that with this encoding, we do not need to name the types of `X`, `Y` and `Pred` at call sight, the `atomically` function infers it from the callee through its return type, `upd_ty_inj` infers it from the `atomically` function, and `update_internal` gets it from `upd_ty_inj`.
+
+</details>
 
 Here, `update` is an uninterpreted function that takes ownership of `old_perm` and produces `new_perm`.
 This function must be called exactly once within the `atomically |update| { ... }` block.
