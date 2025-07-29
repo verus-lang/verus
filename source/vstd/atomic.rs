@@ -714,7 +714,7 @@ pub proof fn update_internal<X, Y, Pred: UpdatePredicate<X, Y>>(
 #[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
 #[doc(hidden)]
 #[verifier::external_body]
-pub fn atomically<X, Y, P>(_f: impl FnOnce(UpdateTypeInject<X, Y, P>)) -> tracked AtomicUpdate<X, Y, P> {
+pub fn atomically<X, Y, P>(_f: impl FnOnce(UpdateTypeInject<X, Y, P>)) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }
 

@@ -13,6 +13,7 @@ synstructure = { git = "https://github.com/mystor/synstructure.git", rev = "1079
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
 syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 prettyplease_verus = { path="../../dependencies/prettyplease" }
+convert_case = "0.4"
 
 [package.metadata.verus]
 is-builtin-macros = true

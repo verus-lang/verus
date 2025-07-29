@@ -1,5 +1,6 @@
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
+use convert_case::{Case, Casing};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -13,10 +14,9 @@ use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
 use syn_verus::ExprMethodCall;
-use syn_verus::PermTuple;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
-use syn_verus::punctuated::{Pair, Punctuated};
+use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
@@ -98,6 +98,8 @@ pub(crate) struct Visitor {
 
     // Add extra verus signature information to the docstring
     pub(crate) rustdoc: bool,
+
+    additional_items: Vec<Item>,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -507,18 +509,6 @@ impl Visitor {
 
     #[allow(unused)]
     fn handle_atomic_spec(&mut self, sig: &mut Signature) {
-        fn perms_to_type(perms: &PermTuple) -> TokenStream {
-            let mut tokens = TokenStream::new();
-            perms.paren_token.surround(&mut tokens, |tokens| {
-                for (field, comma) in perms.fields.pairs().map(Pair::into_tuple) {
-                    field.ty.to_tokens(tokens);
-                    comma.to_tokens(tokens);
-                }
-            });
-
-            tokens
-        }
-
         let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else { return };
         let full_span = atomic_spec.span();
 
@@ -531,19 +521,54 @@ impl Visitor {
             arrow_token,
             new_perms,
             comma1_token,
-            requires,
-            ensures,
+            mut requires,
+            mut ensures,
             comma2_token,
         } = atomic_spec;
 
-        let old_perms = perms_to_type(&old_perms);
-        let new_perms = perms_to_type(&new_perms);
+        let mut old_ty = TokenStream::new();
+        let mut new_ty = TokenStream::new();
+        old_perms.to_type_tokens(&mut old_ty);
+        new_perms.to_type_tokens(&mut new_ty);
 
-        let extra_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_perms, #new_perms, ()>
-        );
+        let mut pred_name = sig.ident.to_string().to_case(Case::Pascal);
+        pred_name.push_str("AtomicUpdatePredicate");
+        let pred_ident: Ident = Ident::new(&pred_name, sig.ident.span());
 
-        sig.inputs.push(extra_arg);
+        sig.inputs.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_ty, #new_ty, #pred_ident>
+        ));
+
+        self.additional_items.push(parse_quote_spanned!(full_span =>
+            pub struct #pred_ident { }
+        ));
+
+        let mut old_val = TokenStream::new();
+        let mut new_val = TokenStream::new();
+        old_perms.to_value_tokens(&mut old_val);
+        new_perms.to_value_tokens(&mut new_val);
+
+        let mut atomic_req = TokenStream::new();
+        for req in requires.exprs.exprs {
+            quote!(&&& #req).to_tokens(&mut atomic_req);
+        }
+
+        let mut atomic_ens = TokenStream::new();
+        for ens in ensures.exprs.exprs {
+            quote!(&&& #ens).to_tokens(&mut atomic_ens);
+        }
+
+        self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            impl #vstd::atomic::UpdatePredicate<#old_ty, #new_ty> for #pred_ident {
+                open spec fn req(#old_val: #old_ty) -> bool {
+                    #atomic_req
+                }
+
+                open spec fn ens(#old_val: #old_ty, #new_val: #new_ty) -> bool {
+                    #atomic_ens
+                }
+            }
+        ));
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -3116,9 +3141,8 @@ impl Visitor {
         let AtomicallyBlock { update_binder, body, .. } = atomically;
 
         let extra_arg = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-            #vstd::atomic::atomically(move |typ_inj| {
-                let #update_binder = move |x| #vstd::atomic::update_internal(typ_inj, x);
-
+            #vstd::atomic::atomically(move |#update_binder| {
+                let #update_binder = move |x| #vstd::atomic::update_internal(#update_binder, x);
                 #body
             })
         ));
@@ -4512,13 +4536,33 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     visitor.visit_items_prefilter(&mut items.items);
-    for mut item in &mut items.items {
-        visitor.visit_item_mut(&mut item);
+    let mut index = 0;
+    while index < items.items.len() {
+        let item = &mut items.items[index];
+        visitor.visit_item_mut(item);
         visitor.inside_ghost = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
+
+        // if !visitor.additional_items.is_empty() {
+        //     dbg!("debug print");
+        //     for item in visitor.additional_items.iter().chain(Some(&*item)) {
+        //         let s = item.to_token_stream().to_string();
+        //         eprintln!("\n{s}\n");
+        //     }
+        // }
+
+        items.items.append(&mut visitor.additional_items);
+        //while !visitor.additional_items.is_empty() {
+        //    let mut additional = std::mem::take(&mut visitor.additional_items);
+        //    visitor.visit_items_prefilter(&mut additional);
+        //    items.items.extend(additional);
+        //}
+
+        index += 1;
     }
     visitor.visit_items_post(&mut items.items);
     for item in items.items {
@@ -4546,6 +4590,7 @@ pub(crate) fn rewrite_impl_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
     for mut item in &mut items.items {
@@ -4579,6 +4624,7 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -4610,6 +4656,7 @@ pub(crate) fn rewrite_proof_decl(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     for mut ss in stmts {
         match ss {
@@ -4663,6 +4710,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(expr);
 }
@@ -4759,6 +4807,7 @@ pub(crate) fn sig_specs_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     let sig_span = sig.span().clone();
     spec_stmts.extend(visitor.take_sig_specs(&mut spec, ret_pat, final_ret_pat, sig_span));
@@ -4779,6 +4828,7 @@ pub(crate) fn while_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
@@ -4811,6 +4861,7 @@ pub(crate) fn for_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
@@ -4976,6 +5027,7 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -5000,6 +5052,7 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -5029,6 +5082,7 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
@@ -5064,6 +5118,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
         match element {

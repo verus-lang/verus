@@ -2344,6 +2344,29 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl PermTuple {
+        pub fn to_type_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                for pair in self.fields.pairs() {
+                    let (field, comma) = pair.into_tuple();
+                    field.ty.to_tokens(tokens);
+                    comma.to_tokens(tokens);
+                }
+            });
+        }
+
+        pub fn to_value_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                for pair in self.fields.pairs() {
+                    let (field, comma) = pair.into_tuple();
+                    field.ident.to_tokens(tokens);
+                    comma.to_tokens(tokens);
+                }
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for AtomicSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.atomically_token.to_tokens(tokens);
