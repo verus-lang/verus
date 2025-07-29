@@ -606,7 +606,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 UnaryOpr::HasResolved(_t) => {
                     let e = coerce_exp_to_poly(ctx, &e1);
-                    mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e.clone()))
+                    mk_exp(ExpX::UnaryOpr(op.clone(), e.clone()))
                 }
             }
         }
@@ -743,6 +743,17 @@ fn visit_exps_poly(ctx: &Ctx, state: &mut State, exps: &Exps) -> Exps {
 
 fn visit_trigs(ctx: &Ctx, state: &mut State, trigs: &Trigs) -> Trigs {
     Arc::new(trigs.iter().map(|e| visit_exps(ctx, state, e)).collect())
+}
+
+pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
+    let mut state = State {
+        remaining_temps: HashSet::new(),
+        types: ScopeMap::new(),
+        temp_types: HashMap::new(),
+        is_trait: false,
+        in_exec_closure: false,
+    };
+    visit_exp_native(ctx, &mut state, exp)
 }
 
 fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
