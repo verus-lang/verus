@@ -250,32 +250,32 @@ pub struct MyVecFancyIter<'a, T> {
 // Sequentially applies each operation to the start/end points, 
 // generating a series of elements from contents (or None if start/end meet or exceed contents' bounds).
 // Next operations read from `start`; NextBack operations read from `end - 1`
-pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> (Seq<Option<T>>, int, int)
+pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> Seq<Option<T>>
     decreases ops.len(),
 {
     if ops.len() == 0 {
-        (Seq::empty(), start, end)
+        Seq::empty()
     } else {
         if 0 <= start < end <= contents.len() {
             match ops.first() {
                 Operation::Next => {
-                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start + 1, end);
-                    (seq![Some(contents[start])] + rest, final_start, final_end)
+                    let rest = apply_ops(ops.drop_first(), contents, start + 1, end);
+                    seq![Some(contents[start])] + rest
                 }
                 Operation::NextBack => {
-                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start, end - 1);
-                    (seq![Some(contents[end - 1])] + rest, final_start, final_end)
+                    let rest = apply_ops(ops.drop_first(), contents, start, end - 1);
+                    seq![Some(contents[end - 1])] + rest
                 }
             }
         } else {
-            (Seq::new(ops.len(), |_i| None), start, end)
+            Seq::new(ops.len(), |_i| None)
         }
     }
 }
 
 proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures 
-        apply_ops(ops, contents, start, end).0.len() == ops.len(),
+        apply_ops(ops, contents, start, end).len() == ops.len(),
     decreases ops.len(),
 {
     if ops.len() == 0 {
@@ -289,7 +289,7 @@ proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, cont
     requires
         ops1.is_prefix_of(ops2),
     ensures 
-        apply_ops(ops1, contents, start, end).0.is_prefix_of(apply_ops(ops2, contents, start, end).0)
+        apply_ops(ops1, contents, start, end).is_prefix_of(apply_ops(ops2, contents, start, end))
     decreases ops1.len(),
 {
     if ops1.len() == 0 {
@@ -299,73 +299,49 @@ proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, cont
     }
 }
 
-proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>)
+proof fn apply_ops_uniform<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int, cutoff: int)
     requires
-        ops1.len() + ops2.len() == contents.len(),
-    ensures
-        ({
-            let (s, start, end) = apply_ops(ops1, contents, 0, contents.len() - 1);
-            s + apply_ops(ops2, contents, start, end).0
-        })
-        == apply_ops(ops1 + ops2, contents, 0, contents.len() - 1).0,
-    decreases ops1.len()
+        0 <= cutoff <= ops.len(),
+        end == contents.len(),
+        0 <= start,
+        forall |i| 0 <= i < cutoff ==> ops[i] is Next,
+    ensures 
+        apply_ops(ops.take(cutoff), contents, start, end) == 
+        Seq::new(
+                cutoff as nat,
+                |i: int| if start + i < contents.len() { Some(contents[start + i]) } else { None },
+            )
+    decreases cutoff
 {
-    if ops1.len() == 0 {
+    if cutoff == 0 {
     } else {
-        //assert(0 <= 0 < contents.len() - 1 < contents.len());
-        let (s, start, end) = apply_ops(ops1, contents, 0, contents.len() as int);
-        let (s_rest, start_rest, end_rest) = match ops1.first() {
-                Operation::Next => apply_ops(ops1.drop_first(), contents, 1, contents.len() as int),
-                Operation::NextBack => apply_ops(ops1.drop_first(), contents, 0, contents.len() - 1),
-        };
-        let head = match ops1.first() {
-                Operation::Next => seq![Some(contents[0])],
-                Operation::NextBack => seq![Some(contents[contents.len() - 1])],
-        };
-        calc! {
-            (==)
-            s + apply_ops(ops2, contents, start, end).0;
-            { assert(s == head + s_rest); }
-            head + s_rest + apply_ops(ops2, contents, start, end).0;
-            {
-                apply_ops_concat(ops1.drop_first(), ops2, contents);
-            }
-            head + s_rest + apply_ops(ops2, contents, start, end).0;
-            {
-                assume(false);
-            }
-            apply_ops(ops1 + ops2, contents, 0, (ops1.len() + ops2.len()) as int).0;
-        }
-        assume(false);
+        apply_ops_len(ops.take(cutoff), contents, start, end);
+        apply_ops_uniform(ops.take(cutoff), contents, start + 1, end, cutoff - 1);
+        assert(ops.take(cutoff).take(cutoff - 1) == ops.take(cutoff).drop_first()); // OBSERVE
     }
 }
 
-
-// proof fn apply_ops_uniform<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int, cutoff: int)
-//     requires
-//         0 <= start <= cutoff <= end < ops.len(),
-//         forall |i| 0 <= i < cutoff ==> ops[i] is Next,
-//     ensures 
-//         apply_ops(ops, contents, start, end) == 
-//         Seq::new(
-//                 (cutoff - start) as nat,
-//                 |i: int| if i < contents.len() { Some(contents[i]) } else { None },
-//             )
-//     decreases ops.len(),
-// {
-// assume(false);
-//     if ops.len() == 0 {
-//     } else {
-//         if 0 <= start < end <= contents.len() {
-//             if cutoff > start && cutoff < end  && end < ops.len() - 1 {
-//                 apply_ops_uniform(ops.drop_first(), contents, start + 1, end, cutoff - 1);
-//                 apply_ops_uniform(ops.drop_first(), contents, start, end - 1, cutoff - 1);
-//             }
-//         } else {
-
-//         }
-//     }
-// }
+proof fn apply_ops_uniform_back<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int, cutoff: int)
+    requires
+        0 <= cutoff <= ops.len(),
+        end <= contents.len(),
+        0 == start,
+        forall |i| 0 <= i < cutoff ==> ops[i] is NextBack,
+    ensures 
+        apply_ops(ops.take(cutoff), contents, start, end) == 
+        Seq::new(
+                cutoff as nat,
+                |i: int| if 0 <= end - i - 1 < contents.len() { Some(contents[end - i - 1]) } else { None },
+            )
+    decreases cutoff
+{
+    if cutoff == 0 {
+    } else {
+        apply_ops_len(ops.take(cutoff), contents, start, end);
+        apply_ops_uniform_back(ops.take(cutoff), contents, start, end - 1, cutoff - 1);
+        assert(ops.take(cutoff).take(cutoff - 1) == ops.take(cutoff).drop_first()); // OBSERVE
+    }
+}
 
 impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     type Item = T;
@@ -386,7 +362,7 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
             //     (self.next_count@ + self.next_back_count@) as nat,
             //     |i: int| Some(???)
             // )
-            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int).0
+            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int)
         }
     }
 
@@ -444,10 +420,16 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
                 assert forall |i| 0 <= i < self.next_count@ implies dest.operations()[i] is Next by {
                     assert(dest.operations()[i] == self.operations()[i]);   // OBSERVE
                 };
-                assume(false);
+                apply_ops_uniform(dest.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
             }
         } else {
-            assume(false);
+            if self.next_count == 0 {
+                assert forall |i| 0 <= i < self.next_back_count@ implies dest.operations()[i] is NextBack by {
+                    assert(dest.operations()[i] == self.operations()[i]);   // OBSERVE
+                };
+                apply_ops_uniform_back(dest.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
+            } else {
+            }
         }
     }
 
