@@ -1098,7 +1098,8 @@ fn output_other_fns(
         // TODO allow spec(checked) or something
         f.sig.mode = FnMode::Spec(ModeSpec { spec_token: token::Spec { span: inv.func.span() } });
         f.sig.publish = Publish::Open(Open { token: token::Open { span: inv.func.span() } });
-        impl_stream.extend(quote! { #[cfg(verus_keep_ghost_body)] ::builtin_macros::verus!{ #f } });
+        impl_stream
+            .extend(quote! { #[cfg(verus_keep_ghost_body)] ::builtin_macros::verus_impl!{ #f } });
     }
 
     for inv in invariants {
@@ -1128,7 +1129,7 @@ fn output_other_fns(
         fix_attrs(&mut f.attrs);
         impl_stream.extend(quote! {
           #[cfg(verus_keep_ghost_body)]
-          ::builtin_macros::verus!{ #f }
+          ::builtin_macros::verus_impl!{ #f }
         })
     }
 
