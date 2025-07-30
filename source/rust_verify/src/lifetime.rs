@@ -7,6 +7,7 @@ use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
+use rustc_hir::{AssocItemKind, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
@@ -58,10 +59,37 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
     rustc_hir_analysis::check_crate(tcx);
     if tcx.dcx().err_count() != 0 {
         return;
+    }
+    if !do_lifetime {
+        return;
+    }
+    let krate = tcx.hir_crate(());
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn { .. } => {
+                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item in impll.items {
+                            match item.kind {
+                                AssocItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => (),
+                },
+                _ => {}
+            }
+        }
     }
 }
 
@@ -225,7 +253,7 @@ impl rustc_driver::Callbacks for LifetimeCallbacks {
         _compiler: &rustc_interface::interface::Compiler,
         queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        check(queries);
+        check(queries, false);
         rustc_driver::Compilation::Stop
     }
 }
