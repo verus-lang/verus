@@ -123,7 +123,6 @@ pub broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I
 mod examples {
 
 use vstd::prelude::*;
-use vstd::calc;
 use crate::iters::*;
 broadcast use {reaches_reflexive, reaches_transitive_after_next_if_requested};
 
@@ -285,6 +284,26 @@ proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end:
     }
 }
 
+proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>, start: int, end: int) 
+    ensures
+        apply_ops(ops1 + ops2, contents, start, end) == ({
+            let (lhs, lhs_start, lhs_end) = apply_ops(ops1, contents, start, end);
+            let (rhs, rhs_start, rhs_end) = apply_ops(ops2, contents, lhs_start, lhs_end);
+            (lhs + rhs, rhs_start, rhs_end)
+        })
+    decreases ops1.len()
+{
+    if ops1.len() == 0 {
+
+    } else {
+        if 0 <= start < end <= contents.len() {
+            assert((ops1 + ops2).drop_first() == ops1.drop_first() + ops2);  // OBSERVE
+            apply_ops_concat(ops1.drop_first(), ops2, contents, start + 1, end);
+            apply_ops_concat(ops1.drop_first(), ops2, contents, start, end - 1);
+        } 
+    }
+}
+
 proof fn apply_ops_extend<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures
         ({
@@ -300,9 +319,13 @@ proof fn apply_ops_extend<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, e
                 &&& final_end == penultimate_end
             }
         }),
+    decreases ops.len()
 {
-assume(false);
+    apply_ops_concat(ops, seq![Operation::Next], contents, start, end);
+    assert(ops + seq![Operation::Next] == ops.push(Operation::Next));   // OBSERVE
+    reveal_with_fuel(apply_ops, 2);
 }
+
 
 
 proof fn apply_ops_last<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
