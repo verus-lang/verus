@@ -1170,7 +1170,7 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     }
 
     // As explained above, we may need to use the lifetime variable of the dummy capture argument
-    let dc_default_region = match expected_tys[ty_dc_idx].kind() {
+    let dc_default_region = match output_tys[ty_dc_idx].kind() {
         TyKind::Ref(region, _, _) => *region,
         TyKind::Adt(_, args) => args[0].as_region().unwrap(),
         _ => panic!("ty_dc_idx should have given DummyCapture type"),

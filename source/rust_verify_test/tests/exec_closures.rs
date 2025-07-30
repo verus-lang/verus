@@ -1694,7 +1694,10 @@ test_verify_one_file! {
             };
             require_static(clos1);
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`x.a.1.u` does not live long enough",
+        "borrowed data escapes outside of function",
+    ])
 }
 
 test_verify_one_file! {
