@@ -14,6 +14,14 @@ pub enum Operation {
     NextBack,
 }
 
+pub open spec fn all_next(s: Seq<Operation>) -> bool {
+    forall |i| 0 <= i < s.len() ==> s[i] is Next
+}
+
+pub open spec fn all_next_back(s: Seq<Operation>) -> bool {
+    forall |i| 0 <= i < s.len() ==> s[i] is NextBack
+}
+
 pub trait Iter where Self: Sized {
     type Item;
 
@@ -436,6 +444,16 @@ proof fn apply_ops_uniform_back<T>(ops: Seq<Operation>, contents: Seq<T>, start:
     }
 }
 
+impl<'a, T: Copy> MyVecFancyIter<'a, T> {
+    pub open spec fn all_next(&self) -> bool {
+        all_next(self.operations())
+    }
+    
+    pub open spec fn all_next_back(&self) -> bool {
+        all_next_back(self.operations())
+    }
+}
+
 impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     type Item = T;
 
@@ -470,8 +488,8 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         // All operations have been counted
         &&& self.operations().len() == self.next_count@ + self.next_back_count@
         // In the simple cases, we have a uniform set of operations
-        &&& self.next_back_count == 0 <==> (forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next)
-        &&& self.next_count == 0 <==> (forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack)
+        &&& self.next_back_count == 0 <==> self.all_next()
+        &&& self.next_count == 0 <==> self.all_next_back() 
         // Possible positions when we've done a modest number of operations and when we've done too many
         &&& {
             ||| self.next_count@ == self.pos && self.pos < self.pos_back
@@ -624,6 +642,8 @@ impl<T: Iter> Take3<T> {
     fn new(iter: T) -> (r: Take3<T>)
         requires
             iter.inv(),
+            // NOTE: TODO: Added this to cope with MyVecFancyIter
+            all_next(iter.operations()),
         ensures
             r.inv(),
             r.inner == iter,
@@ -659,6 +679,8 @@ impl<T: Iter> Iter for Take3<T> {
             ||| self.count < 3 && self.count == self.ghost_count@
             ||| self.count == 3 && self.ghost_count@ >= 3
         }
+        // NOTE: Added this to help with MyVecFancyIter
+        &&& all_next(self.inner.operations())
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -703,6 +725,8 @@ impl<T: Iter> Skip3<T> {
     fn new(iter: T) -> (r: Skip3<T>)
         requires
             iter.inv(),
+            // NOTE: TODO: Added this to cope with MyVecFancyIter
+            all_next(iter.operations()),
         ensures
             r.inv(),
             !r.has_started,
@@ -737,6 +761,8 @@ impl<T: Iter> Iter for Skip3<T> {
         &&& 0 <= self.start_pos@
         &&& !self.has_started ==> self.start_pos@ == self.inner.outputs().len()
         &&& self.has_started ==> self.start_pos@ + 3 <= self.inner.outputs().len()
+        // NOTE: Added this to help with MyVecFancyIter
+        &&& all_next(self.inner.operations())
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -766,7 +792,7 @@ impl<T: Iter> Iter for Skip3<T> {
     }
 }
 
-fn test0(v: &MyVec<u8>)
+fn test0_next(v: &MyVec<u8>)
     requires
         v@.len() == 10,
         v@[0] == 0,
@@ -783,9 +809,31 @@ fn test0(v: &MyVec<u8>)
     let mut iter = v.iter();
     let r = iter.next();
     assert(r == Some(0u8));
+    let r = iter.next();
+    assert(r == Some(10u8));
 }
 
-/*
+fn test0_next_back(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = v.iter();
+    let r = iter.next_back();
+    assert(r == Some(90u8));
+    let r = iter.next_back();
+    assert(r == Some(80u8));
+}
+
 fn test_loop0(v: &MyVec<u8>) {
     let ghost mut s: Seq<u8> = Seq::empty();
 
@@ -796,6 +844,9 @@ fn test_loop0(v: &MyVec<u8>) {
             0 <= iter.outputs().len() <= v@.len(), // should be a for loop auto-invariant
             s =~= v@.take(iter.outputs().len() as int),
         invariant
+            // NOTE: Needed to add one of the two following lines to help with MyVecFancyIter:
+            //iter.all_next(),
+            iter.next_back_count == 0,
             i0 == v.spec_iter(), // should be a for loop auto-invariant
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
@@ -823,6 +874,8 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
     let ghost i0 = iter;
     loop
         invariant
+            // NOTE: Added this line to help with MyVecFancyIter:
+            iter.next_back_count == 0,
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
             iter.pos_back == iter.vec@.len(), // should be a for loop auto-invariant
@@ -918,6 +971,7 @@ fn test_skip3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
+/*
 fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
@@ -949,6 +1003,7 @@ fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     }
     assert(s == v@.skip(6));
 }
+*/
 
 #[verifier::loop_isolation(false)]
 fn test_skip3_skip3_loop_iso_false(v: &MyVec<u8>)
@@ -1022,7 +1077,6 @@ fn test_take3_skip3_seq(v: &MyVec<u8>)
     let r = iter.next();
     assert(r.is_none());
 }
-*/
 
 } // mod examples
 
