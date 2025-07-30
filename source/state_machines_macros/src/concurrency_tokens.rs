@@ -23,10 +23,10 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use syn_verus::parse;
-use syn_verus::parse::Error;
-use syn_verus::spanned::Spanned;
-use syn_verus::{Expr, Generics, Ident, Pat, Type};
+use verus_syn::parse;
+use verus_syn::parse::Error;
+use verus_syn::spanned::Spanned;
+use verus_syn::{Expr, Generics, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
 // Note that everything is going to be inside a module, so for example,
@@ -1020,7 +1020,7 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        ::builtin_macros::verus!{
+        ::verus_builtin_macros::verus!{
             #[cfg(verus_keep_ghost_body)]
             #[verifier::external_body] /* vattr */
             pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret

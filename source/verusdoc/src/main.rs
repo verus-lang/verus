@@ -1,5 +1,5 @@
 // HTML Postprocessor for verusdoc.
-// The 'other half' to this mechanism is in builtin_macros/src/rustdoc.rs
+// The 'other half' to this mechanism is in verus_builtin_macros/src/rustdoc.rs
 // which has more high-level details.
 
 use html5ever::{QualName, local_name, namespace_url, ns};

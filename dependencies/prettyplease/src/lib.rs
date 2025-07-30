@@ -367,8 +367,8 @@ mod token;
 mod ty;
 
 use crate::algorithm::Printer;
-use syn_verus::Expr;
-use syn_verus::File;
+use verus_syn::Expr;
+use verus_syn::File;
 
 // Target line width.
 const MARGIN: isize = 89;

@@ -323,7 +323,7 @@ test_verify_one_file_with_options! {
 
         fn test_ret() {
             #[verifier::spec] let x = ret_spec();
-            builtin::assert_(x == 3);
+            verus_builtin::assert_(x == 3);
         }
     } => Ok(())
 }
@@ -339,7 +339,7 @@ test_verify_one_file_with_options! {
 
         fn test_ret() {
             let x = ret_spec();
-            builtin::assert_(x == 3);
+            verus_builtin::assert_(x == 3);
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
@@ -367,7 +367,7 @@ test_verify_one_file_with_options! {
     #[test] let_spec_pass ["--no-external-by-default"] => code! {
         fn test1() {
             #[verifier::spec] let x: u64 = 2;
-            builtin::assert_(x == 2);
+            verus_builtin::assert_(x == 2);
         }
     } => Ok(())
 }
@@ -378,7 +378,7 @@ test_verify_one_file_with_options! {
             #[verifier::spec] let x: u64;
             x = 2;
             x = 3;
-            builtin::assert_(false); // FAILS
+            verus_builtin::assert_(false); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
 }
@@ -440,7 +440,7 @@ test_verify_one_file_with_options! {
             if tr {
                 f(&mut e, b); // should fail: exec <- proof out assign
             }
-            builtin::assert_(e);
+            verus_builtin::assert_(e);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected mode proof, &mut argument has mode exec")
 }
@@ -539,7 +539,7 @@ test_verify_one_file! {
 
         #[verifier::proof]
         fn other(#[verifier::proof] node: Node) {
-            builtin::assume_(node.v < 10);
+            verus_builtin::assume_(node.v < 10);
             lemma(node);
             lemma(node);
         }
@@ -557,7 +557,7 @@ test_verify_one_file! {
 
             #[verifier::proof]
             fn other(&self, other_node: Node) {
-                builtin::assume_(other_node.v < 10);
+                verus_builtin::assume_(other_node.v < 10);
                 other_node.lemma();
             }
         }
@@ -616,7 +616,7 @@ test_verify_one_file! {
         fn foo<V>(x: Tracked<V>) {
             let y = &x;
 
-            builtin::assert_(equal((*y).view(), x.view()));
+            verus_builtin::assert_(equal((*y).view(), x.view()));
         }
     } => Ok(())
 }
@@ -1193,7 +1193,7 @@ test_verify_one_file! {
         fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `builtin::Ghost` in the current scope")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `verus_builtin::Ghost` in the current scope")
 }
 
 test_verify_one_file! {

@@ -5,21 +5,21 @@ use quote::ToTokens;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use syn_verus::Token;
-use syn_verus::TypeInfer;
-use syn_verus::buffer::Cursor;
-use syn_verus::parse;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse_macro_input;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::token::Comma;
-use syn_verus::visit;
-use syn_verus::visit::Visit;
-use syn_verus::visit_mut;
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::{
+use verus_syn::Token;
+use verus_syn::TypeInfer;
+use verus_syn::buffer::Cursor;
+use verus_syn::parse;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse_macro_input;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::token::Comma;
+use verus_syn::visit;
+use verus_syn::visit::Visit;
+use verus_syn::visit_mut;
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::{
     Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
     GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent, PatType,
     PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
@@ -77,7 +77,7 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
     output_wf(&sdi, &mut stream, wf_body_stream);
 
     Ok(quote! {
-        ::builtin_macros::verus!{
+        ::verus_builtin_macros::verus!{
             #stream
         }
     })
@@ -737,8 +737,8 @@ fn output_invariant(
                     let j = Member::Unnamed(Index { index: i as u32, span: dep.span() });
                     quote_spanned! { dep.span() => .#j }
                 };
-                e_stream_conjuncts.push(quote_spanned_builtin! { builtin, dep.span() =>
-                    #builtin::equal(#specifically_expr.constant()#field_access, self.#dep)
+                e_stream_conjuncts.push(quote_spanned_builtin! { verus_builtin, dep.span() =>
+                    #verus_builtin::equal(#specifically_expr.constant()#field_access, self.#dep)
                 });
             }
             for (i, quant) in quants.iter().enumerate() {
@@ -750,8 +750,8 @@ fn output_invariant(
                     quote_spanned! { quant.span() => .#j }
                 };
                 let quant_pat = &quant.pat;
-                e_stream_conjuncts.push(quote_spanned_builtin! { builtin, quant.span() =>
-                    #builtin::equal(#specifically_expr.constant()#field_access, #quant_pat)
+                e_stream_conjuncts.push(quote_spanned_builtin! { verus_builtin, quant.span() =>
+                    #verus_builtin::equal(#specifically_expr.constant()#field_access, #quant_pat)
                 });
             }
 
@@ -762,17 +762,17 @@ fn output_invariant(
                 }
 
                 if let Some(cond) = condition {
-                    e_stream = quote_spanned_builtin! { builtin, span =>
-                        #builtin::imply(
+                    e_stream = quote_spanned_builtin! { verus_builtin, span =>
+                        #verus_builtin::imply(
                             #cond,
                             #e_stream
                         )
                     }
                 }
                 if quants.len() > 0 {
-                    e_stream = quote_spanned_builtin! { builtin, span =>
-                        #builtin::forall(|#(#quants),*|
-                            #builtin::with_triggers(
+                    e_stream = quote_spanned_builtin! { verus_builtin, span =>
+                        #verus_builtin::forall(|#(#quants),*|
+                            #verus_builtin::with_triggers(
                                 ((#specifically_expr,),),
                                 #e_stream
                             )
