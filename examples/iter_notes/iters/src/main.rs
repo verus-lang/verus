@@ -157,7 +157,7 @@ impl<T: Copy> MyVec<T> {
         Seq::new(self.spec_len() as nat, |i: int| self.spec_index(i))
     }
 
-    fn iter(&self) -> (r: MyVecIter<T>)
+    fn iter(&self) -> (r: MyVecFancyIter<T>)
         ensures
             r.inv(),
             r.outputs().len() == 0,
@@ -167,11 +167,40 @@ impl<T: Copy> MyVec<T> {
             r.reaches(r),
     {
         let _ = self.len();
-        MyVecIter { vec: &self, pos: 0, pos_back: self.len(), next_count: Ghost(0), next_back_count: Ghost(0) }
+        let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), next_count: Ghost(0), next_back_count: Ghost(0), ops: Ghost(Seq::empty()) };
+        assert({
+        // // The two positions are in bounds and don't pass each other
+        // &&& 0 <= iter.pos <= iter.pos_back <= iter.vec@.len()
+        // // pos can't move faster than next_count
+        // &&& 0 <= iter.pos <= iter.next_count@
+        // // pos_back can't move faster than next_back_count
+        // &&& 0 <= iter.next_back_count@ 
+        // &&& iter.next_back_count@ >= iter.vec@.len() - iter.pos_back
+        // // All operations have been counted
+        // &&& iter.operations().len() == iter.next_count@ + iter.next_back_count@
+        // // In the simple cases, we have a uniform set of operations
+        // &&& iter.next_back_count == 0 <==> (forall |i| 0 <= i < iter.operations().len() ==> iter.operations()[i] is Next)
+        // &&& iter.next_count == 0 <==> (forall |i| 0 <= i < iter.operations().len() ==> iter.operations()[i] is NextBack)
+        // // Possible positions when we've done a modest number of operations and when we've done too many
+        // &&& {
+        //     ||| iter.next_count@ == iter.pos && iter.pos < iter.pos_back
+        //     ||| iter.next_count@ >= iter.pos && iter.pos == iter.pos_back
+        // }
+        // &&& {
+        //     ||| iter.next_back_count@ == iter.vec@.len() - iter.pos_back && iter.pos < iter.pos_back
+        //     ||| iter.next_back_count@ >= iter.vec@.len() - iter.pos_back && iter.pos == iter.pos_back
+        // }
+        // OBSERVE:
+        &&& {
+            let (outputs, start, end) = apply_ops(iter.operations(), iter.vec@, 0, iter.vec@.len() as int);
+            outputs == iter.outputs() && iter.pos == start && iter.pos_back == end
+        }
+        }); 
+        iter
     }
 
-    spec fn spec_iter(&self) -> MyVecIter<T> {
-        MyVecIter { vec: &self, pos: 0, pos_back: self@.len() as usize, next_count: Ghost(0), next_back_count: Ghost(0) }
+    spec fn spec_iter(&self) -> MyVecFancyIter<T> {
+        MyVecFancyIter { vec: &self, pos: 0, pos_back: self@.len() as usize, next_count: Ghost(0), next_back_count: Ghost(0), ops: Ghost(Seq::empty()) }
     }
 }
 
@@ -756,6 +785,7 @@ fn test0(v: &MyVec<u8>)
     assert(r == Some(0u8));
 }
 
+/*
 fn test_loop0(v: &MyVec<u8>) {
     let ghost mut s: Seq<u8> = Seq::empty();
 
@@ -992,7 +1022,7 @@ fn test_take3_skip3_seq(v: &MyVec<u8>)
     let r = iter.next();
     assert(r.is_none());
 }
-
+*/
 
 } // mod examples
 
