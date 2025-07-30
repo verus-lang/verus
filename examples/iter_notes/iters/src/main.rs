@@ -250,32 +250,32 @@ pub struct MyVecFancyIter<'a, T> {
 // Sequentially applies each operation to the start/end points, 
 // generating a series of elements from contents (or None if start/end meet or exceed contents' bounds).
 // Next operations read from `start`; NextBack operations read from `end - 1`
-pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> Seq<Option<T>>
+pub open spec fn apply_ops<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int) -> (Seq<Option<T>>, int, int)
     decreases ops.len(),
 {
     if ops.len() == 0 {
-        Seq::empty()
+        (Seq::empty(), start, end)
     } else {
         if 0 <= start < end <= contents.len() {
             match ops.first() {
                 Operation::Next => {
-                    let rest = apply_ops(ops.drop_first(), contents, start + 1, end);
-                    seq![Some(contents[start])] + rest
+                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start + 1, end);
+                    (seq![Some(contents[start])] + rest, final_start, final_end)
                 }
                 Operation::NextBack => {
-                    let rest = apply_ops(ops.drop_first(), contents, start, end - 1);
-                    seq![Some(contents[end - 1])] + rest
+                    let (rest, final_start, final_end) = apply_ops(ops.drop_first(), contents, start, end - 1);
+                    (seq![Some(contents[end - 1])] + rest, final_start, final_end)
                 }
             }
         } else {
-            Seq::new(ops.len(), |_i| None)
+            (Seq::new(ops.len(), |_i| None), start, end)
         }
     }
 }
 
 proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures 
-        apply_ops(ops, contents, start, end).len() == ops.len(),
+        apply_ops(ops, contents, start, end).0.len() == ops.len(),
     decreases ops.len(),
 {
     if ops.len() == 0 {
@@ -285,11 +285,57 @@ proof fn apply_ops_len<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end:
     }
 }
 
+proof fn apply_ops_extend<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
+    ensures
+        ({
+            let (outputs, penultimate_start, penultimate_end) = apply_ops(ops, contents, start, end);
+            let (extended, final_start, final_end) = apply_ops(ops.push(Operation::Next), contents, start, end);
+            if 0 <= penultimate_start < penultimate_end <= contents.len() {
+                &&& extended.last() == Some(contents[penultimate_start])
+                &&& final_start == penultimate_start + 1
+                &&& final_end == penultimate_end
+            } else {
+                &&& extended.last() == None::<T>
+                &&& final_start == penultimate_start
+                &&& final_end == penultimate_end
+            }
+        }),
+{
+assume(false);
+}
+
+
+proof fn apply_ops_last<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
+    requires
+        ops.len() > 0,
+    ensures
+        ({
+            let (outputs, final_start, final_end) = apply_ops(ops, contents, start, end);
+            outputs.last() == 
+                match ops.last() {
+                    Operation::Next => 
+                        if 0 <= final_start - 1 < final_end <= contents.len() {
+                            Some(contents[final_start - 1])
+                        } else {
+                            None
+                        },
+                    Operation::NextBack => 
+                        if 0 <= final_start < final_end + 1 <= contents.len() {
+                            Some(contents[final_end])
+                        } else {
+                            None
+                        }
+                    }
+        }),
+{
+assume(false);
+}
+
 proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     requires
         ops1.is_prefix_of(ops2),
     ensures 
-        apply_ops(ops1, contents, start, end).is_prefix_of(apply_ops(ops2, contents, start, end))
+        apply_ops(ops1, contents, start, end).0.is_prefix_of(apply_ops(ops2, contents, start, end).0)
     decreases ops1.len(),
 {
     if ops1.len() == 0 {
@@ -306,7 +352,7 @@ proof fn apply_ops_uniform<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, 
         0 <= start,
         forall |i| 0 <= i < cutoff ==> ops[i] is Next,
     ensures 
-        apply_ops(ops.take(cutoff), contents, start, end) == 
+        apply_ops(ops.take(cutoff), contents, start, end).0 == 
         Seq::new(
                 cutoff as nat,
                 |i: int| if start + i < contents.len() { Some(contents[start + i]) } else { None },
@@ -328,7 +374,7 @@ proof fn apply_ops_uniform_back<T>(ops: Seq<Operation>, contents: Seq<T>, start:
         0 == start,
         forall |i| 0 <= i < cutoff ==> ops[i] is NextBack,
     ensures 
-        apply_ops(ops.take(cutoff), contents, start, end) == 
+        apply_ops(ops.take(cutoff), contents, start, end).0 == 
         Seq::new(
                 cutoff as nat,
                 |i: int| if 0 <= end - i - 1 < contents.len() { Some(contents[end - i - 1]) } else { None },
@@ -358,7 +404,7 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
                 |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
             )
         } else {
-            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int)
+            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int).0
         }
     }
 
@@ -387,6 +433,10 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         &&& {
             ||| self.next_back_count@ == self.vec@.len() - self.pos_back && self.pos < self.pos_back
             ||| self.next_back_count@ >= self.vec@.len() - self.pos_back && self.pos == self.pos_back
+        }
+        &&& {
+            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
+            outputs == self.outputs() && self.pos == start && self.pos_back == end
         }
     }
 
@@ -454,12 +504,16 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
                     assert(old(self).operations()[i] == self.operations()[i]);
                 }
             }
-        }
-        // Prove that r is the final element in `outputs()`
-        proof {
+            apply_ops_extend(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
+
+            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
+            assert(self.pos == start && self.pos_back == end);
+
             if self.next_back_count == 0 {
-            } else {
-            }
+                apply_ops_uniform(self.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
+                assert(self.operations().take(self.operations().len() as int) == self.operations());  // OBSERVE
+                assert(outputs == self.outputs());
+            } 
         }
         r
     }
