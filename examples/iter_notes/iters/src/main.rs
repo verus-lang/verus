@@ -64,6 +64,7 @@ pub trait Iter where Self: Sized {
 }
 
 pub trait DoubleEndedIter: Iter {
+    // TODO: What's this for?
     spec fn outputs_back(&self) -> Seq<Option<Self::Item>>;
 
     // TODO: Some form of obeys_spec relating to the fact that next and next_back
@@ -304,7 +305,7 @@ proof fn apply_ops_concat<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, content
     }
 }
 
-proof fn apply_ops_extend<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
+proof fn apply_ops_extend_next<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures
         ({
             let (outputs, penultimate_start, penultimate_end) = apply_ops(ops, contents, start, end);
@@ -326,32 +327,26 @@ proof fn apply_ops_extend<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, e
     reveal_with_fuel(apply_ops, 2);
 }
 
-
-
-proof fn apply_ops_last<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
-    requires
-        ops.len() > 0,
+proof fn apply_ops_extend_back<T>(ops: Seq<Operation>, contents: Seq<T>, start:int, end: int)
     ensures
         ({
-            let (outputs, final_start, final_end) = apply_ops(ops, contents, start, end);
-            outputs.last() == 
-                match ops.last() {
-                    Operation::Next => 
-                        if 0 <= final_start - 1 < final_end <= contents.len() {
-                            Some(contents[final_start - 1])
-                        } else {
-                            None
-                        },
-                    Operation::NextBack => 
-                        if 0 <= final_start < final_end + 1 <= contents.len() {
-                            Some(contents[final_end])
-                        } else {
-                            None
-                        }
-                    }
+            let (outputs, penultimate_start, penultimate_end) = apply_ops(ops, contents, start, end);
+            let (extended, final_start, final_end) = apply_ops(ops.push(Operation::NextBack), contents, start, end);
+            if 0 <= penultimate_start < penultimate_end <= contents.len() {
+                &&& extended.last() == Some(contents[penultimate_end - 1])
+                &&& final_start == penultimate_start
+                &&& final_end == penultimate_end - 1
+            } else {
+                &&& extended.last() == None::<T>
+                &&& final_start == penultimate_start
+                &&& final_end == penultimate_end
+            }
         }),
+    decreases ops.len()
 {
-assume(false);
+    apply_ops_concat(ops, seq![Operation::NextBack], contents, start, end);
+    assert(ops + seq![Operation::NextBack] == ops.push(Operation::NextBack)); // OBSERVE
+    reveal_with_fuel(apply_ops, 2);
 }
 
 proof fn apply_ops_monotonic<T>(ops1: Seq<Operation>, ops2: Seq<Operation>, contents: Seq<T>, start:int, end: int)
@@ -527,13 +522,60 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
                     assert(old(self).operations()[i] == self.operations()[i]);
                 }
             }
-            apply_ops_extend(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
+            apply_ops_extend_next(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
 
             let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
             assert(self.pos == start && self.pos_back == end);
 
             if self.next_back_count == 0 {
                 apply_ops_uniform(self.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
+                assert(self.operations().take(self.operations().len() as int) == self.operations());  // OBSERVE
+                assert(outputs == self.outputs());
+            } 
+        }
+        r
+    }
+}
+
+
+impl<'a, T: Copy> DoubleEndedIter for MyVecFancyIter<'a, T> {
+    open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
+        self.outputs()
+    }
+
+    fn next_back(&mut self) -> (r: Option<Self::Item>)
+    {
+        proof {
+            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
+            self.next_back_count@ = self.next_back_count@ + 1;
+        }
+        self.ops = Ghost(self.ops@.push(Operation::NextBack));
+        proof {
+            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
+        }
+        let r = if self.pos < self.pos_back {
+            let _ = self.vec.len(); // HACK
+            let i = self.pos_back - 1;
+            self.pos_back = i;
+            Some(self.vec.index(i))
+        } else {
+            None
+        };
+        // Prove that `inv` still holds
+        assert(!(self.operations().last() is Next));    // OBSERVE
+        proof {
+            if forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack {
+                assert forall |i| 0 <= i < old(self).operations().len() implies old(self).operations()[i] is NextBack by {
+                    assert(old(self).operations()[i] == self.operations()[i]);
+                }
+            }
+            apply_ops_extend_back(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
+
+            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
+            assert(self.pos == start && self.pos_back == end);
+
+            if self.next_count == 0 {
+                apply_ops_uniform_back(self.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
                 assert(self.operations().take(self.operations().len() as int) == self.operations());  // OBSERVE
                 assert(outputs == self.outputs());
             } 
