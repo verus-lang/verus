@@ -113,6 +113,8 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
+            | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefFuture
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
@@ -238,7 +240,11 @@ fn check_trigger_expr(
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }
             ExpX::Unary(op, arg) => match op {
-                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot(_) => {
+                UnaryOp::StrLen
+                | UnaryOp::StrIsAscii
+                | UnaryOp::BitNot(_)
+                | UnaryOp::MutRefCurrent
+                | UnaryOp::MutRefFuture => {
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())
                 }

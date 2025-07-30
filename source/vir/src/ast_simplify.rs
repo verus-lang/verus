@@ -16,7 +16,8 @@ use crate::ast::{
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
 use crate::ast_util::{
-    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, typ_args_for_datatype_typ, wrap_in_trigger,
+    conjoin, disjoin, if_then_else, mk_block, mk_eq, mk_ineq, typ_args_for_datatype_typ, unit_typ,
+    wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -614,6 +615,27 @@ fn simplify_one_expr(
                 }
                 _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
+        }
+        ExprX::DerefMut(e) => Ok(SpannedTyped::new(
+            &expr.span,
+            &expr.typ,
+            ExprX::Unary(UnaryOp::MutRefCurrent, e.clone()),
+        )),
+        ExprX::BorrowMut(place) => {
+            let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone()));
+            let borrow_phase_one = SpannedTyped::new(
+                &expr.span,
+                &mut_ref_typ,
+                ExprX::BorrowMutPhaseOne(place.clone()),
+            );
+            let (stmt, e) = temp_expr(state, &borrow_phase_one);
+            let borrow_phase_two = SpannedTyped::new(
+                &expr.span,
+                &unit_typ(),
+                ExprX::BorrowMutPhaseTwo(place.clone(), e.clone()),
+            );
+            let borrow_phase_two = Spanned::new(expr.span.clone(), StmtX::Expr(borrow_phase_two));
+            Ok(mk_block(&expr.span, vec![stmt, borrow_phase_two], Some(e)))
         }
         _ => Ok(expr.clone()),
     }

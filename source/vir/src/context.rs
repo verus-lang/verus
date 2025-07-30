@@ -214,6 +214,7 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::MutRef(_) => {}
                     }
                 }
             }

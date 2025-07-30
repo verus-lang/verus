@@ -907,6 +907,7 @@ fn erase_call<'tcx>(
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
                 UseTypeInvariant => Some((false, "use_type_invariant", false)),
+                Resolve => Some((false, "resolve", false)),
                 ClosureToFnProof(_) => Some((false, "closure_to_fn_proof", false)),
             };
             if let Some((true, method, expect_spec_inside)) = builtin_method {
