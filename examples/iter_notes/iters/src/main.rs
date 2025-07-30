@@ -173,6 +173,7 @@ impl<T: Copy> MyVec<T> {
             r.next_back_count@ == 0,
             r.vec == &self,
             r.reaches(r),
+            r == self.spec_iter(),  // NOTE: Added this to fix test_skip3_skip3_loop_iso_true after converting to MyVecFancyIter
     {
         let _ = self.len();
         let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), next_count: Ghost(0), next_back_count: Ghost(0), ops: Ghost(Seq::empty()) };
@@ -971,7 +972,6 @@ fn test_skip3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
-/*
 fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
@@ -1003,7 +1003,6 @@ fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     }
     assert(s == v@.skip(6));
 }
-*/
 
 #[verifier::loop_isolation(false)]
 fn test_skip3_skip3_loop_iso_false(v: &MyVec<u8>)
