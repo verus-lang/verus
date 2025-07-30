@@ -1604,6 +1604,34 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_verus_capture_is_more_precise_fail_tracked verus_code! {
+        use vstd::*;
+
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            a: Y,
+            b: Y,
+        }
+
+        fn test4(x: X) {
+            let mut x = x;
+
+            let clos1 = || {
+                assert(x == x);
+                let tracked y = &x.a;
+            };
+
+            x.a = Y { u: 0 };
+
+            clos1();
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a` because it is borrowed")
+}
+
+test_verify_one_file! {
     #[test] test_complex_projections verus_code! {
         use vstd::*;
 
@@ -1691,6 +1719,62 @@ test_verify_one_file! {
             let clos1 = || {
                 assert(x == x);
                 let y = &x.a.1.u;
+            };
+            require_static(clos1);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`x.a.1.u` does not live long enough",
+        "borrowed data escapes outside of function",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] test_tracked_complex_projections2 verus_code! {
+        use vstd::*;
+
+        struct Y<'a, Z> {
+            u: &'a Z,
+        }
+
+        struct X<'a, Z> {
+            a: (Y<'a, Z>, Box<Y<'a, Z>>),
+            b: Y<'a, Z>,
+        }
+
+        fn test1<'a>(x: X<'a, u64>, t: Box<Y<'a, u64>>) {
+            let mut x = x;
+
+            let clos1 = || {
+                assert(x == x);
+                let tracked y = &x.a.1.u;
+            };
+
+            x.a.1 = t;
+
+            clos1();
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot assign to `x.a.1` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] test_tracked_complex_projections3 verus_code! {
+        use vstd::*;
+
+        struct Y<'a, Z> {
+            u: &'a Z,
+        }
+
+        struct X<'a, Z> {
+            a: (Y<'a, Z>, Box<Y<'a, Z>>),
+            b: Y<'a, Z>,
+        }
+
+        fn require_static<A: 'static>(a: A) { }
+
+        fn test2<'a>(x: X<'a, u64>, t: Box<Y<'a, u64>>) {
+            let clos1 = || {
+                assert(x == x);
+                let tracked y = &x.a.1.u;
             };
             require_static(clos1);
         }
