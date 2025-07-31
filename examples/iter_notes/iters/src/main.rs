@@ -168,11 +168,11 @@ impl<T: Copy> MyVec<T> {
     fn iter(&self) -> (r: MyVecFancyIter<T>)
         ensures
             r.inv(),
-            r.outputs().len() == 0,
-            r.pos_back == self@.len(),
-            r.next_back_count@ == 0,
-            r.vec == &self,
-            r.reaches(r),
+            // r.outputs().len() == 0,
+            // r.pos_back == self@.len(),
+            // r.next_back_count@ == 0,
+            // r.vec == &self,
+            // r.reaches(r),
             r == self.spec_iter(),  // NOTE: Added this to fix test_skip3_skip3_loop_iso_true after converting to MyVecFancyIter
     {
         let _ = self.len();
@@ -793,6 +793,82 @@ impl<T: Iter> Iter for Skip3<T> {
     }
 }
 
+
+pub struct Rev<T> {
+    pub inner: T,
+}
+
+impl<T: DoubleEndedIter> Rev<T> {
+    fn new(iter: T) -> (r: Rev<T>)
+        requires
+            iter.inv(),
+            // NOTE: TODO: Added this to cope with MyVecFancyIter
+            // all_next(iter.operations()),
+        ensures
+            r.inv(),
+            r.inner == iter,
+    {
+        Rev { inner: iter }
+    }
+
+    spec fn spec_new(iter: T) -> Rev<T> {
+        Rev { inner: iter }
+    }
+}
+
+impl<T: DoubleEndedIter> Iter for Rev<T> {
+    type Item = T::Item;
+
+    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+        self.inner.outputs()
+    }
+
+    open spec fn operations(&self) -> Seq<Operation> {
+        self.inner.operations().map_values(|op| 
+            match op { 
+                Operation::Next => Operation:: NextBack,
+                Operation::NextBack => Operation::Next,
+            })
+    }
+
+    open spec fn inv(&self) -> bool {
+        &&& self.inner.inv()
+    }
+
+    open spec fn reaches(&self, dest: Self) -> bool {
+        self.inner.reaches(dest.inner)
+    }
+
+    proof fn reaches_reflexive(&self) {
+        self.inner.reaches_reflexive()
+    }
+
+    proof fn reaches_transitive(&self, iter1: Self, iter2: Self) {
+        self.inner.reaches_transitive(iter1.inner, iter2.inner)
+    }
+
+    proof fn reaches_monotonic(&self, dest: Self) {
+        self.inner.reaches_monotonic(dest.inner)
+    }
+
+    fn next(&mut self) -> (r: Option<Self::Item>) {
+        self.inner.next_back()
+    }
+}
+
+impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
+    open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
+        self.outputs()
+    }
+
+    fn next_back(&mut self) -> (r: Option<Self::Item>) {
+        self.inner.next()
+    }
+
+}
+
+
+
 fn test0_next(v: &MyVec<u8>)
     requires
         v@.len() == 10,
@@ -846,8 +922,8 @@ fn test_loop0(v: &MyVec<u8>) {
             s =~= v@.take(iter.outputs().len() as int),
         invariant
             // NOTE: Needed to add one of the two following lines to help with MyVecFancyIter:
-            //iter.all_next(),
-            iter.next_back_count == 0,
+            iter.all_next(),
+            //iter.next_back_count == 0,
             i0 == v.spec_iter(), // should be a for loop auto-invariant
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
@@ -1077,6 +1153,64 @@ fn test_take3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
+fn all_true<I: Iter<Item=bool>>(iter: &mut I) -> (r: (Ghost<int>, bool))
+    requires
+        old(iter).outputs().len() == 0,
+    ensures
+        ({
+            let (count, result) = r;
+            &&& count == iter.outputs().len()
+            &&& result == forall |i| 0 <= i < iter.outputs().len() ==> (#[trigger]iter.outputs()[i] matches Some(b) && b)
+        }),
+        all_next(iter.operations()),
+{
+    // TODO
+    assume(false);
+    (Ghost(0), true)
+}
+/*
+fn all_true_caller(v: &MyVec<bool>)
+    requires
+        v@.len() == 10,
+{
+    let mut iter = v.iter();
+    let (Ghost(count), b) = all_true(&mut iter);
+    proof {
+        if count == 10 && b {
+            assert(iter.outputs().len() == 10);
+            assert(forall |i| 0 <= i < v@.len() ==> (#[trigger]iter.outputs()[i] matches Some(b) && b));
+            assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
+        }
+    }
+
+
+}
+
+fn test_rev_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = v.iter();
+    let r = iter.next_back();
+    assert(r == Some(90u8));
+    let mut iter_r = Rev::new(v.iter());
+    let r = iter_r.next();
+    assert(r is Some);
+    assert(r == Some(90u8));
+    // let r = iter_r.next();
+    // assert(r == Some(80u8));
+}
+*/
 } // mod examples
 
 } // verus!
