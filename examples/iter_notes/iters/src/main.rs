@@ -521,13 +521,7 @@ impl<T: Iter> Iter for Skip3<T> {
 
     open spec fn events(&self) -> Events<Self::Item> {
         if self.has_started {
-            Events::new(
-                Seq::new(
-                    (self.inner.events().len() - self.start_pos@ - 3) as nat,
-                    |i: int| self.inner.events()[self.start_pos@ + 3 + i] 
-                )
-            )
-            //self.inner.events().skip(3 + self.start_pos@)
+            self.inner.events().skip(3 + self.start_pos@)
         } else {
             Events::empty()
         }
