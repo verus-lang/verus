@@ -420,7 +420,7 @@ impl<T: Iter> Take3<T> {
         requires
             iter.inv(),
             // NOTE: TODO: Added this to cope with MyVecFancyIter
-            iter.events().all_next(),
+            //iter.events().all_next(),
         ensures
             r.inv(),
             r.inner == iter,
@@ -455,7 +455,7 @@ impl<T: Iter> Iter for Take3<T> {
             ||| self.count == 3 && self.ghost_count@ >= 3
         }
         // NOTE: Added this to help with MyVecFancyIter
-        &&& self.inner.events().all_next()
+        //&&& self.inner.events().all_next()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -686,6 +686,7 @@ fn test0_next_back(v: &MyVec<u8>)
     let r = iter.next_back();
     assert(r == Some(80u8));
 }
+*/
 
 fn test_loop0(v: &MyVec<u8>) {
     let ghost mut s: Seq<u8> = Seq::empty();
@@ -694,19 +695,18 @@ fn test_loop0(v: &MyVec<u8>) {
     let ghost i0 = iter;
     loop
         invariant_except_break
-            0 <= iter.outputs().len() <= v@.len(), // should be a for loop auto-invariant
-            s =~= v@.take(iter.outputs().len() as int),
+            0 <= iter.events().len() <= v@.len(), // should be a for loop auto-invariant
+            s =~= v@.take(iter.events().len() as int),
         invariant
-            // NOTE: Needed to add one of the two following lines to help with MyVecFancyIter:
-            iter.all_next(),
-            //iter.next_back_count == 0,
+            // NOTE: Needed to add the following line to help with MyVecFancyIter (for-loop iterator could automatically add it):
+            iter.events().all_next(),
             i0 == v.spec_iter(), // should be a for loop auto-invariant
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
             iter.pos_back == iter.vec@.len(), // should be a for loop auto-invariant
         ensures
             s =~= v@,
-        decreases v@.len() - iter.outputs().len(),
+        decreases v@.len() - iter.events().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -727,14 +727,14 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
     let ghost i0 = iter;
     loop
         invariant
-            // NOTE: Added this line to help with MyVecFancyIter:
-            iter.next_back_count == 0,
+            // NOTE: Added this line to help with MyVecFancyIter (for-loop iterator could automatically add it):
+            iter.events().all_next(),
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
             iter.pos_back == iter.vec@.len(), // should be a for loop auto-invariant
-            0 <= iter.outputs().len() <= v@.len(), // should be a for loop auto-invariant
-            s =~= v@.take(iter.outputs().len() as int),
-        decreases v@.len() - iter.outputs().len(),
+            0 <= iter.events().len() <= v@.len(), // should be a for loop auto-invariant
+            s =~= v@.take(iter.events().len() as int),
+        decreases v@.len() - iter.events().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -746,7 +746,6 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
     }
     assert(s == v@);
 }
-*/
 
 fn test_take3_seq(v: &MyVec<u8>)
     requires
