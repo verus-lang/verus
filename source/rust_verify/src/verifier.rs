@@ -2630,6 +2630,7 @@ impl Verifier {
         let time_hir0 = Instant::now();
 
         rustc_hir_analysis::check_crate(tcx);
+
         if tcx.dcx().err_count() != 0 {
             return Ok(false);
         }
@@ -3082,7 +3083,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         for msg in &msgs {
                             reporter.report(&msg.clone().to_any());
                         }
-                        reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
+                        reporter.report(
+                            &note_bare("This error was found in Verus's Trait-Conflict-Checker")
+                                .to_any(),
+                        );
                         return rustc_driver::Compilation::Stop;
                     }
                 }
