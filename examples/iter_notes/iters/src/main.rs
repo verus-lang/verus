@@ -37,6 +37,7 @@ impl<T> Events<T> {
     pub open spec fn is_prefix_of(self, other: Self) -> bool { self.s.is_prefix_of(other.s) }
     pub open spec fn push(self, e: Event<T>) -> Self { Events { s: self.s.push(e) } }
     pub open spec fn last(self) -> Event<T> { self.s.last() }
+    pub open spec fn skip(self, n: int) -> Self { Events { s: self.s.skip(n) } }
     #[verifier::inline]
     pub open spec fn spec_index(self, i: int) -> Event<T> { self.s[i] }
 
@@ -490,7 +491,7 @@ impl<T: Iter> Iter for Take3<T> {
         }
     }
 }
-/*
+
 pub struct Skip3<T> {
     pub inner: T,
     pub has_started: bool,
@@ -501,44 +502,44 @@ impl<T: Iter> Skip3<T> {
     fn new(iter: T) -> (r: Skip3<T>)
         requires
             iter.inv(),
-            // NOTE: TODO: Added this to cope with MyVecFancyIter
-            all_next(iter.operations()),
         ensures
             r.inv(),
             !r.has_started,
             r.inner == iter,
-            r.outputs().len() == 0,
+            r.events().len() == 0,
     {
-        Skip3 { inner: iter, has_started: false, start_pos: Ghost(iter.outputs().len() as int) }
+        Skip3 { inner: iter, has_started: false, start_pos: Ghost(iter.events().len() as int) }
     }
 
     spec fn spec_new(iter: T) -> Skip3<T> {
-        Skip3 { inner: iter, has_started: false, start_pos: Ghost(iter.outputs().len() as int) }
+        Skip3 { inner: iter, has_started: false, start_pos: Ghost(iter.events().len() as int) }
     }
 }
 
 impl<T: Iter> Iter for Skip3<T> {
     type Item = T::Item;
 
-    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
+    open spec fn events(&self) -> Events<Self::Item> {
         if self.has_started {
-            self.inner.outputs().skip(3 + self.start_pos@)
+            Events::new(
+                Seq::new(
+                    (self.inner.events().len() - self.start_pos@ - 3) as nat,
+                    |i: int| self.inner.events()[self.start_pos@ + 3 + i] 
+                )
+            )
+            //self.inner.events().skip(3 + self.start_pos@)
         } else {
-            Seq::empty()
+            Events::empty()
         }
-    }
-
-    open spec fn operations(&self) -> Seq<Operation> {
-        Seq::new(self.outputs().len(), |_i: int| Operation::Next)
     }
 
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
-        &&& !self.has_started ==> self.start_pos@ == self.inner.outputs().len()
-        &&& self.has_started ==> self.start_pos@ + 3 <= self.inner.outputs().len()
-        // NOTE: Added this to help with MyVecFancyIter
-        &&& all_next(self.inner.operations())
+        &&& !self.has_started ==> self.start_pos@ == self.inner.events().len()
+        &&& self.has_started ==> self.start_pos@ + 3 <= self.inner.events().len()
+        // We only perform Next operations
+        &&& forall |i| self.start_pos@ <= i < self.inner.events().len() ==> (#[trigger] self.inner.events()[i].op) is Next
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -569,6 +570,7 @@ impl<T: Iter> Iter for Skip3<T> {
 }
 
 
+/*
 pub struct Rev<T> {
     pub inner: T,
 }
@@ -797,7 +799,30 @@ fn test_take3_take3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
-/*
+fn test_skip3_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 7,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+{
+    let mut iter = Skip3::new(v.iter());
+    let r = iter.next();
+    assert(r == Some(30u8));
+    let r = iter.next();
+    assert(r == Some(40u8));
+    let r = iter.next();
+    assert(r == Some(50u8));
+    let r = iter.next();
+    assert(r == Some(60u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
 fn test_skip3_skip3_seq(v: &MyVec<u8>)
     requires
         v@.len() == 10,
@@ -825,6 +850,7 @@ fn test_skip3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
+/*
 fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
