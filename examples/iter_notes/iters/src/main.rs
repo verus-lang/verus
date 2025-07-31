@@ -36,8 +36,10 @@ impl<T> Events<T> {
     pub open spec fn len(self) -> nat { self.s.len() }
     pub open spec fn is_prefix_of(self, other: Self) -> bool { self.s.is_prefix_of(other.s) }
     pub open spec fn push(self, e: Event<T>) -> Self { Events { s: self.s.push(e) } }
+    pub open spec fn reverse(self) -> Self { Events { s: self.s.reverse() } }
     pub open spec fn last(self) -> Event<T> { self.s.last() }
     pub open spec fn skip(self, n: int) -> Self { Events { s: self.s.skip(n) } }
+    pub open spec fn map_values(self, f: spec_fn(Event<T>) -> Event<T>) -> Self { Events::new(self.s.map_values(f)) }
     #[verifier::inline]
     pub open spec fn spec_index(self, i: int) -> Event<T> { self.s[i] }
 
@@ -557,51 +559,62 @@ impl<T: Iter> Iter for Skip3<T> {
     }
 }
 
-
 /*
 pub struct Rev<T> {
     pub inner: T,
+    pub ghost_count: Ghost<int>,
+    pub start_pos: Ghost<int>,
 }
 
 impl<T: DoubleEndedIter> Rev<T> {
     fn new(iter: T) -> (r: Rev<T>)
         requires
             iter.inv(),
-            // NOTE: TODO: Added this to cope with MyVecFancyIter
-            // all_next(iter.operations()),
         ensures
             r.inv(),
             r.inner == iter,
     {
-        Rev { inner: iter }
+        Rev { inner: iter, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
     }
 
     spec fn spec_new(iter: T) -> Rev<T> {
-        Rev { inner: iter }
+        Rev { inner: iter, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
     }
 }
 
 impl<T: DoubleEndedIter> Iter for Rev<T> {
     type Item = T::Item;
 
-    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
-        self.inner.outputs()
-    }
+    open spec fn events(&self) -> Events<Self::Item> {
+        Events::new(
+            Seq::new(
+                self.ghost_count@ as nat,
+                |i: int| self.inner.events()[self.start_pos@ + i], 
+            )
+        )
 
-    open spec fn operations(&self) -> Seq<Operation> {
-        self.inner.operations().map_values(|op| 
-            match op { 
-                Operation::Next => Operation:: NextBack,
-                Operation::NextBack => Operation::Next,
-            })
+        // self.inner.events().map_values(|e: Event<Self::Item>| {
+        //     use Operation::*;
+        //     let op = match e.op { 
+        //         Next => NextBack,
+        //         NextBack => Next,
+        //     };
+        //     Event::new(op, e.v)
+        // })
     }
 
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
+        &&& 0 <= self.start_pos@
+        &&& self.inner.events().len() == self.start_pos@ + self.ghost_count@
+        // &&& self.events().all_next() <==> self.inner.events().all_next_back()
+        // &&& self.events().all_next_back() <==> self.inner.events().all_next()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
-        self.inner.reaches(dest.inner)
+        &&& self.inner.reaches(dest.inner)
+        &&& self.start_pos == dest.start_pos
+        &&& self.ghost_count@ <= dest.ghost_count@
     }
 
     proof fn reaches_reflexive(&self) {
@@ -617,22 +630,33 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     }
 
     fn next(&mut self) -> (r: Option<Self::Item>) {
-        self.inner.next_back()
+        proof {
+            self.reaches_reflexive();
+            self.ghost_count@ = self.ghost_count@ + 1;
+        }
+        let r = self.inner.next_back();
+        // proof {
+        //     if self.events().all_next() {
+        //         assert forall |i| 0 <= i < self.inner.events().len() implies #[trigger] self.inner.events()[i].op is NextBack by {
+        //             assert(self.events()[i].op is Next);    // OBSERVE
+        //         };
+        //     }
+        // }
+        r
     }
 }
 
-impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
-    open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
-        self.outputs()
-    }
+// impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
+//     open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
+//         self.outputs()
+//     }
 
-    fn next_back(&mut self) -> (r: Option<Self::Item>) {
-        self.inner.next()
-    }
+//     fn next_back(&mut self) -> (r: Option<Self::Item>) {
+//         self.inner.next()
+//     }
 
-}
+// }
 */
-
 
 fn test0_next(v: &MyVec<u8>)
     requires
