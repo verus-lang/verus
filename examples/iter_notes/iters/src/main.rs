@@ -25,19 +25,22 @@ impl<T> Event<T> {
     }
 }
 
+#[verifier::ext_equal]
 pub struct Events<T> {
     pub s: Seq<Event<T>>
 }
 
 impl<T> Events<T> {
     // Forwarding useful seq operations
-    pub open spec fn new() -> Self { Events { s: Seq::empty() } }
+    pub open spec fn empty() -> Self { Events { s: Seq::empty() } }
     pub open spec fn len(self) -> nat { self.s.len() }
     pub open spec fn is_prefix_of(self, other: Self) -> bool { self.s.is_prefix_of(other.s) }
     pub open spec fn push(self, e: Event<T>) -> Self { Events { s: self.s.push(e) } }
     pub open spec fn last(self) -> Event<T> { self.s.last() }
 
     // Event-specific functionality    
+    pub open spec fn new(s: Seq<Event<T>>) -> Self { Events { s } }
+
     pub open spec fn all_next(self) -> bool {
         forall |i| 0 <= i < self.s.len() ==> #[trigger] self.s[i].op is Next
     }
@@ -273,7 +276,7 @@ impl<T: Copy> MyVec<T> {
             r == self.spec_iter(),  
     {
         let _ = self.len();
-        let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), events: Ghost(Events::new()) };
+        let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), events: Ghost(Events::empty()) };
         // Establish that inv holds
         assert({
             &&& iter.events().all_next() ==> iter.events().outputs() == 
@@ -292,7 +295,7 @@ impl<T: Copy> MyVec<T> {
     }
 
     spec fn spec_iter(&self) -> MyVecFancyIter<T> {
-        MyVecFancyIter { vec: &self, pos: 0, pos_back: self@.len() as usize, events: Ghost(Events::new()) }
+        MyVecFancyIter { vec: &self, pos: 0, pos_back: self@.len() as usize, events: Ghost(Events::empty()) }
     }
 }
 
@@ -615,6 +618,7 @@ impl<'a, T: Copy> DoubleEndedIter for MyVecFancyIter<'a, T> {
         r
     }
 }
+*/
 
 pub struct Take3<T> {
     pub inner: T,
@@ -628,44 +632,42 @@ impl<T: Iter> Take3<T> {
         requires
             iter.inv(),
             // NOTE: TODO: Added this to cope with MyVecFancyIter
-            all_next(iter.operations()),
+            iter.events().all_next(),
         ensures
             r.inv(),
             r.inner == iter,
-            r.outputs().len() == 0,
+            r.events().len() == 0,
     {
-        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.outputs().len() as int) }
+        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
     }
 
     spec fn spec_new(iter: T) -> Take3<T> {
-        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.outputs().len() as int) }
+        Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
     }
 }
 
 impl<T: Iter> Iter for Take3<T> {
     type Item = T::Item;
 
-    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
-        Seq::new(
-            self.ghost_count@ as nat,
-            |i: int| if i < 3 { self.inner.outputs()[self.start_pos@ + i] } else { None },
+    open spec fn events(&self) -> Events<Self::Item> {
+        Events::new(
+            Seq::new(
+                self.ghost_count@ as nat,
+                |i: int| if i < 3 { self.inner.events().s[self.start_pos@ + i] } else { Event::new(Operation::Next, None) },
+            )
         )
-    }
-
-    open spec fn operations(&self) -> Seq<Operation> {
-        Seq::new(self.outputs().len(), |_i: int| Operation::Next)
     }
 
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
-        &&& self.inner.outputs().len() == self.start_pos@ + self.count
+        &&& self.inner.events().len() == self.start_pos@ + self.count
         &&& {
             ||| self.count < 3 && self.count == self.ghost_count@
             ||| self.count == 3 && self.ghost_count@ >= 3
         }
         // NOTE: Added this to help with MyVecFancyIter
-        &&& all_next(self.inner.operations())
+        &&& self.inner.events().all_next()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -693,13 +695,14 @@ impl<T: Iter> Iter for Take3<T> {
         }
         if self.count < 3 {
             self.count = self.count + 1;
-            self.inner.next()
+            let r = self.inner.next();
+            r
         } else {
             None
         }
     }
 }
-
+/*
 pub struct Skip3<T> {
     pub inner: T,
     pub has_started: bool,
@@ -955,6 +958,7 @@ fn test_loop0_iso_false(v: &MyVec<u8>) {
     }
     assert(s == v@);
 }
+*/
 
 fn test_take3_seq(v: &MyVec<u8>)
     requires
@@ -972,6 +976,7 @@ fn test_take3_seq(v: &MyVec<u8>)
 {
     let mut iter = Take3::new(v.iter());
     let r = iter.next();
+    assert(iter.inner.events().outputs()[0] == Some(0u8));  // Key missing fact
     assert(r == Some(0u8));
     let r = iter.next();
     assert(r == Some(10u8));
@@ -981,6 +986,7 @@ fn test_take3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
+/*
 fn test_take3_take3_seq(v: &MyVec<u8>)
     requires
         v@.len() == 10,
