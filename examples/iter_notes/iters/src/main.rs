@@ -303,11 +303,13 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         // Nice cases for what the outputs look like
         &&& self.events().all_next() ==> 
-            (forall |i| 0 <= i < self.events().len() ==>
-                #[trigger] self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[i]) } else { None })
+            (forall |i| #![trigger self.events()[i].v] #![trigger self.vec@[i]]
+                0 <= i < self.events().len() ==>
+                    self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[i]) } else { None })
         &&& self.events().all_next_back() ==> 
-            (forall |i| 0 <= i < self.events().len() ==>
-                #[trigger] self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
+            (forall |i| #![trigger self.events()[i].v] #![trigger self.vec@[i]]
+                0 <= i < self.events().len() ==>
+                    self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
         // pos can't move faster than next_count
         &&& 0 <= self.pos <= self.events().next_count()
         // pos_back can't move faster than next_back_count
@@ -949,22 +951,25 @@ fn test_take3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
-/*
 fn all_true<I: Iter<Item=bool>>(iter: &mut I) -> (r: (Ghost<int>, bool))
     requires
-        old(iter).outputs().len() == 0,
+        old(iter).inv(),
+        old(iter).events().len() == 0,
     ensures
+        iter.inv(),
+        iter.events().all_next(),
+        old(iter).reaches(*iter),   // Need this so we learn that: iter.vec@ == v@
         ({
             let (count, result) = r;
-            &&& count == iter.outputs().len()
-            &&& result == forall |i| 0 <= i < iter.outputs().len() ==> (#[trigger]iter.outputs()[i] matches Some(b) && b)
+            &&& count == iter.events().len()
+            &&& result == forall |i| 0 <= i < iter.events().len() ==> (#[trigger]iter.events()[i].v matches Some(b) && b)
         }),
-        all_next(iter.operations()),
 {
     // TODO
     assume(false);
     (Ghost(0), true)
 }
+
 fn all_true_caller(v: &MyVec<bool>)
     requires
         v@.len() == 10,
@@ -973,15 +978,15 @@ fn all_true_caller(v: &MyVec<bool>)
     let (Ghost(count), b) = all_true(&mut iter);
     proof {
         if count == 10 && b {
-            assert(iter.outputs().len() == 10);
-            assert(forall |i| 0 <= i < v@.len() ==> (#[trigger]iter.outputs()[i] matches Some(b) && b));
+            // assert(iter.events().len() == 10);
+            // assert(forall |i| 0 <= i < v@.len() ==> ((#[trigger]iter.events()[i]).v matches Some(b) && b));
+
+            // assert(forall |i| 0 <= i < v@.len() ==> ((iter.events()[i]).v == Some(#[trigger]v@[i])));
             assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
         }
     }
-
-
 }
-
+/*
 fn test_rev_seq(v: &MyVec<u8>)
     requires
         v@.len() == 10,
