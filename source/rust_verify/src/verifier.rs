@@ -2635,11 +2635,6 @@ impl Verifier {
             return Ok(false);
         }
 
-        tcx.ensure_ok().check_private_in_public(());
-        tcx.hir_for_each_module(|module| {
-            tcx.ensure_ok().check_mod_privacy(module);
-        });
-
         self.air_no_span = {
             let no_span = tcx
                 .hir_crate(())
@@ -2839,6 +2834,21 @@ impl Verifier {
         };
         self.erasure_hints = Some(erasure_hints);
 
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                &self.verus_items.as_ref().unwrap(),
+                self.erasure_hints.as_ref().unwrap(),
+            )
+            .map_err(|e| (e, Vec::new()))?;
+        }
+
+        // These can invoke mir_borrowck when opaque types are involved.
+        // Thus, we can only run these after initializing erasure_hints
+        tcx.ensure_ok().check_private_in_public(());
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_mod_privacy(module);
+        });
+
         let time4 = Instant::now();
         self.time_vir = time4 - time0;
         self.time_vir_rust_to_vir = time2 - time1;
@@ -2940,14 +2950,43 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             dep_tracker.config_install(config);
         }
 
-        config.override_queries = Some(|_session, providers| {
-            providers.hir_crate = hir_crate;
-            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-            providers.lint_mod = |_, _| {};
-            providers.check_liveness = |_, _| {};
-            providers.check_mod_deathness = |_, _| {};
-            rustc_mir_build_verus::verus_provide(providers);
-        });
+        if self.verifier.args.no_lifetime {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| {};
+                providers.check_mod_deathness = |_, _| {};
+
+                providers.mir_borrowck = |tcx, _local_def_id| {
+                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                        rustc_data_structures::fx::FxIndexMap::default(),
+                    )))
+                };
+            });
+        } else {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| {};
+                providers.check_mod_deathness = |_, _| {};
+
+                rustc_mir_build_verus::verus_provide(providers);
+
+                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
+                // This happens earlier than we'd like, so we disable it.
+                // TODO: when we support opaque types we should run this check later
+                providers.check_well_formed =
+                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
+                        let node = tcx.hir_node_by_def_id(def_id);
+                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
+                            return Ok(());
+                        }
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                    };
+            });
+        }
     }
 
     fn after_expansion<'tcx>(
@@ -3103,16 +3142,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         }
 
         if !self.verifier.args.no_lifetime {
-            let res = crate::erase::setup_verus_ctxt_for_thir_erasure(
-                &self.verifier.verus_items.as_ref().unwrap(),
-                self.verifier.erasure_hints.as_ref().unwrap(),
-            );
-            if let Err(err) = res {
-                let reporter = Reporter::new(&spans, compiler);
-                reporter.report_as(&err.to_any(), MessageLevel::Error);
-                return rustc_driver::Compilation::Stop;
-            }
-
             self.spans = Some(spans);
             return rustc_driver::Compilation::Continue;
         }
