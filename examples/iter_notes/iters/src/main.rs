@@ -14,21 +14,125 @@ pub enum Operation {
     NextBack,
 }
 
-pub open spec fn all_next(s: Seq<Operation>) -> bool {
-    forall |i| 0 <= i < s.len() ==> s[i] is Next
+pub struct Event<T> {
+    pub op: Operation,
+    pub v: Option<T>,
 }
 
-pub open spec fn all_next_back(s: Seq<Operation>) -> bool {
-    forall |i| 0 <= i < s.len() ==> s[i] is NextBack
+impl<T> Event<T> {
+    pub open spec fn new(op: Operation, v: Option<T>) -> Self {
+        Event {op, v }
+    }
 }
+
+pub struct Events<T> {
+    pub s: Seq<Event<T>>
+}
+
+impl<T> Events<T> {
+    // Forwarding useful seq operations
+    pub open spec fn new() -> Self { Events { s: Seq::empty() } }
+    pub open spec fn len(self) -> nat { self.s.len() }
+    pub open spec fn is_prefix_of(self, other: Self) -> bool { self.s.is_prefix_of(other.s) }
+    pub open spec fn push(self, e: Event<T>) -> Self { Events { s: self.s.push(e) } }
+    pub open spec fn last(self) -> Event<T> { self.s.last() }
+
+    // Event-specific functionality    
+    pub open spec fn all_next(self) -> bool {
+        forall |i| 0 <= i < self.s.len() ==> #[trigger] self.s[i].op is Next
+    }
+
+    pub open spec fn all_next_back(self) -> bool {
+        forall |i| 0 <= i < self.s.len() ==> #[trigger] self.s[i].op is NextBack
+    }
+
+    pub open spec fn outputs(self) -> Seq<Option<T>> {
+        self.s.map_values(|e: Event<T>| e.v)
+    }
+
+    pub open spec fn next_count(self) -> nat {
+        self.s.fold_left(0, |acc: nat, e: Event<T>| if e.op is Next { acc + 1 } else { acc })
+    }
+
+    pub open spec fn next_back_count(self) -> nat {
+        self.s.fold_left(0, |acc: nat, e: Event<T>| if e.op is NextBack { acc + 1 } else { acc })
+    }
+
+    pub proof fn append_next(&self, r: Option<T>) -> (s_new: Self)
+        ensures
+            s_new.s == self.s.push(Event::new(Operation::Next, r)),
+            s_new.all_next() <==> self.all_next(),
+            s_new.next_count() == self.next_count() + 1,
+            s_new.next_back_count() == self.next_back_count(),
+            s_new.outputs() == self.outputs().push(r),
+    {
+        let s_new = Events { s: self.s.push(Event::new(Operation::Next, r)) };
+        if s_new.all_next() {
+            assert forall |i| 0 <= i < self.s.len() implies #[trigger] self.s[i].op is Next by {
+                assert(self.s[i] == self.s.push(Event::new(Operation::Next, r))[i]);
+            }
+        }
+
+        assert(s_new.next_count() == self.next_count() + 1) by {
+            assert(s_new.s.drop_last() == self.s);
+        }
+
+        assert(s_new.next_back_count() == self.next_back_count()) by {
+            assert(s_new.s.drop_last() == self.s);
+        }
+
+        s_new
+    }
+}
+
+pub open spec fn all_next<T>(s: Seq<Event<T>>) -> bool {
+    forall |i| 0 <= i < s.len() ==> #[trigger] s[i].op is Next
+}
+
+pub open spec fn all_next_back<T>(s: Seq<Event<T>>) -> bool {
+    forall |i| 0 <= i < s.len() ==> #[trigger] s[i].op is NextBack
+}
+
+pub open spec fn outputs<T>(s: Seq<Event<T>>) -> Seq<Option<T>> {
+    s.map_values(|e: Event<T>| e.v)
+}
+
+
+pub proof fn all_next_extend_new<T>(s: Seq<Event<T>>, r: Option<T>)
+    requires all_next(s),
+    ensures all_next(s.push(Event::new(Operation::Next, r))),
+{
+}
+pub proof fn all_next_extend_old<T>(s: Seq<Event<T>>, r: Option<T>)
+    requires all_next(s.push(Event::new(Operation::Next, r))),
+    ensures all_next(s),
+{
+    assert forall |i| 0 <= i < s.len() implies #[trigger] s[i].op is Next by {
+        assert(s[i] == s.push(Event::new(Operation::Next, r))[i]);
+    }
+}
+
+pub proof fn extend_events_next<T>(s: Seq<Event<T>>, r: Option<T>) -> (s_new: Seq<Event<T>>)
+    ensures
+        s_new == s.push(Event::new(Operation::Next, r)),
+        all_next(s) <==> all_next(s_new),
+
+{
+    let s_new = s.push(Event::new(Operation::Next, r));
+    if all_next(s_new) {
+        assert forall |i| 0 <= i < s.len() implies #[trigger] s[i].op is Next by {
+            assert(s[i] == s.push(Event::new(Operation::Next, r))[i]);
+        }
+    }
+    s_new
+}
+
 
 pub trait Iter where Self: Sized {
     type Item;
 
-    // Results of calls to next made so far
-    spec fn outputs(&self) -> Seq<Option<Self::Item>>;
-
-    spec fn operations(&self) -> Seq<Operation>;
+    // History of calls to next/next_back made so far
+    spec fn events(&self) -> Events<Self::Item>;
 
     spec fn inv(&self) -> bool;
 
@@ -56,7 +160,7 @@ pub trait Iter where Self: Sized {
             dest.inv(),
             self.reaches(dest),
         ensures
-            self.outputs().is_prefix_of(dest.outputs()),
+            self.events().is_prefix_of(dest.events()),
         ;
 
     fn next(&mut self) -> (r: Option<Self::Item>) where Self: core::marker::Sized
@@ -65,16 +169,12 @@ pub trait Iter where Self: Sized {
         ensures
             self.inv(),
             old(self).reaches(*self),
-            self.outputs().len() == old(self).outputs().len() + 1,
-            self.operations() == old(self).operations().push(Operation::Next),
-            r == self.outputs().last(),
+            self.events() == old(self).events().push(Event::new(Operation::Next, r)),
+            self.events().outputs().last() == r,    // TODO: This can be derived from prev. line, but seem to simplify reasoning
         ;
 }
 
 pub trait DoubleEndedIter: Iter {
-    // TODO: What's this for?
-    spec fn outputs_back(&self) -> Seq<Option<Self::Item>>;
-
     // TODO: Some form of obeys_spec relating to the fact that next and next_back
     //       are not supposed to pass each other?  
     // Rust docs (https://doc.rust-lang.org/std/iter/trait.DoubleEndedIterator.html) 
@@ -85,9 +185,7 @@ pub trait DoubleEndedIter: Iter {
         ensures
             self.inv(),
             old(self).reaches(*self),
-            self.outputs().len() == old(self).outputs().len() + 1,
-            self.operations() == old(self).operations().push(Operation::NextBack),
-            r == self.outputs().last(),
+            self.events() == old(self).events().push(Event::new(Operation::NextBack, r)),
         ;
 
     // TODO: Also provides advance_back_by (nightly), nth_back, try_rfold, rfold, rfind
@@ -127,7 +225,6 @@ pub broadcast proof fn reaches_transitive_after_next_if_requested<I: Iter>(i1: I
 }
 
 }
-
 
 mod examples {
 
@@ -173,104 +270,29 @@ impl<T: Copy> MyVec<T> {
             // r.next_back_count@ == 0,
             // r.vec == &self,
             // r.reaches(r),
-            r == self.spec_iter(),  // NOTE: Added this to fix test_skip3_skip3_loop_iso_true after converting to MyVecFancyIter
+            r == self.spec_iter(),  
     {
         let _ = self.len();
-        let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), next_count: Ghost(0), next_back_count: Ghost(0), ops: Ghost(Seq::empty()) };
+        let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), events: Ghost(Events::new()) };
+        // Establish that inv holds
         assert({
-        // // The two positions are in bounds and don't pass each other
-        // &&& 0 <= iter.pos <= iter.pos_back <= iter.vec@.len()
-        // // pos can't move faster than next_count
-        // &&& 0 <= iter.pos <= iter.next_count@
-        // // pos_back can't move faster than next_back_count
-        // &&& 0 <= iter.next_back_count@ 
-        // &&& iter.next_back_count@ >= iter.vec@.len() - iter.pos_back
-        // // All operations have been counted
-        // &&& iter.operations().len() == iter.next_count@ + iter.next_back_count@
-        // // In the simple cases, we have a uniform set of operations
-        // &&& iter.next_back_count == 0 <==> (forall |i| 0 <= i < iter.operations().len() ==> iter.operations()[i] is Next)
-        // &&& iter.next_count == 0 <==> (forall |i| 0 <= i < iter.operations().len() ==> iter.operations()[i] is NextBack)
-        // // Possible positions when we've done a modest number of operations and when we've done too many
-        // &&& {
-        //     ||| iter.next_count@ == iter.pos && iter.pos < iter.pos_back
-        //     ||| iter.next_count@ >= iter.pos && iter.pos == iter.pos_back
-        // }
-        // &&& {
-        //     ||| iter.next_back_count@ == iter.vec@.len() - iter.pos_back && iter.pos < iter.pos_back
-        //     ||| iter.next_back_count@ >= iter.vec@.len() - iter.pos_back && iter.pos == iter.pos_back
-        // }
-        // OBSERVE:
-        &&& {
-            let (outputs, start, end) = apply_ops(iter.operations(), iter.vec@, 0, iter.vec@.len() as int);
-            outputs == iter.outputs() && iter.pos == start && iter.pos_back == end
-        }
-        }); 
+            &&& iter.events().all_next() ==> iter.events().outputs() == 
+                Seq::new(
+                    iter.events().len() as nat,
+                    |i: int| if i < iter.vec@.len() { Some(iter.vec@[i]) } else { None },
+                )
+            &&& iter.events().all_next_back() ==> iter.events().outputs() == 
+                Seq::new(
+                    iter.events().len() as nat,
+                    |i: int| if i < iter.vec@.len() { Some(iter.vec@[iter.vec@.len() - i - 1]) } else { None },
+                )
+        }); // OBSERVE
+
         iter
     }
 
     spec fn spec_iter(&self) -> MyVecFancyIter<T> {
-        MyVecFancyIter { vec: &self, pos: 0, pos_back: self@.len() as usize, next_count: Ghost(0), next_back_count: Ghost(0), ops: Ghost(Seq::empty()) }
-    }
-}
-
-#[verifier::ext_equal]
-pub struct MyVecIter<'a, T> {
-    pub vec: &'a MyVec<T>,
-    pub pos: usize,
-    pub pos_back: usize,
-    pub next_count: Ghost<int>,
-    pub next_back_count: Ghost<int>,
-}
-
-impl<'a, T: Copy> Iter for MyVecIter<'a, T> {
-    type Item = T;
-
-    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
-        Seq::new(
-            self.next_count@ as nat,
-            |i: int| if i < self.pos_back { Some(self.vec@[i]) } else { None },
-        )
-    }
-
-    open spec fn operations(&self) -> Seq<Operation> {
-        Seq::new(self.outputs().len(), |_i: int| Operation::Next)
-    }
-
-    open spec fn inv(&self) -> bool {
-        &&& 0 <= self.pos <= self.pos_back == self.vec@.len()
-        &&& self.pos <= self.next_count@
-        &&& {
-            ||| self.next_count@ == self.pos && 0 <= self.pos < self.pos_back
-            ||| self.next_count@ >= self.pos && self.pos == self.pos_back
-        }
-    }
-
-    open spec fn reaches(&self, dest: Self) -> bool {
-        self.vec == dest.vec && self.next_count@ <= dest.next_count@
-    }
-
-    proof fn reaches_reflexive(&self) {
-    }
-
-    proof fn reaches_transitive(&self, iter1: Self, iter2: Self) {
-    }
-
-    proof fn reaches_monotonic(&self, dest: Self) {
-    }
-
-    fn next(&mut self) -> (r: Option<Self::Item>)
-    {
-        proof {
-            self.next_count@ = self.next_count@ + 1;
-        }
-        if self.pos < self.pos_back {
-            let _ = self.vec.len(); // HACK
-            let i = self.pos;
-            self.pos = i + 1;
-            Some(self.vec.index(i))
-        } else {
-            None
-        }
+        MyVecFancyIter { vec: &self, pos: 0, pos_back: self@.len() as usize, events: Ghost(Events::new()) }
     }
 }
 
@@ -280,11 +302,10 @@ pub struct MyVecFancyIter<'a, T> {
     pub vec: &'a MyVec<T>,
     pub pos: usize,
     pub pos_back: usize,
-    pub next_count: Ghost<int>,
-    pub next_back_count: Ghost<int>,
-    pub ops: Ghost<Seq<Operation>>,
+    pub events: Ghost<Events<T>>,
 }
 
+/*
 // Sequentially applies each operation to the start/end points, 
 // generating a series of elements from contents (or None if start/end meet or exceed contents' bounds).
 // Next operations read from `start`; NextBack operations read from `end - 1`
@@ -444,73 +465,77 @@ proof fn apply_ops_uniform_back<T>(ops: Seq<Operation>, contents: Seq<T>, start:
         assert(ops.take(cutoff).take(cutoff - 1) == ops.take(cutoff).drop_first()); // OBSERVE
     }
 }
+*/
 
 impl<'a, T: Copy> MyVecFancyIter<'a, T> {
-    pub open spec fn all_next(&self) -> bool {
-        all_next(self.operations())
-    }
+    // pub open spec fn all_next(&self) -> bool {
+    //     all_next(self.events())
+    // }
     
-    pub open spec fn all_next_back(&self) -> bool {
-        all_next_back(self.operations())
-    }
+    // pub open spec fn all_next_back(&self) -> bool {
+    //     all_next_back(self.events())
+    // }
+
+    // pub open spec fn next_count(&self) -> nat {
+    //     self.events().fold_left(0, |acc: nat, e: Event<T>| if e.op is Next { acc + 1 } else { acc })
+    // }
+    
+    // pub open spec fn next_back_count(&self) -> nat {
+    //     self.events().fold_left(0, |acc: nat, e: Event<T>| if e.op is NextBack { acc + 1 } else { acc })
+    // }
 }
 
 impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     type Item = T;
 
-    open spec fn outputs(&self) -> Seq<Option<Self::Item>> {
-        if self.next_back_count == 0 {
-            Seq::new(
-                self.next_count@ as nat,
-                |i: int| if i < self.vec@.len() { Some(self.vec@[i]) } else { None },
-            )
-        } else if self.next_count == 0 {
-            Seq::new(
-                self.next_back_count@ as nat,
-                |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
-            )
-        } else {
-            apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int).0
-        }
-    }
-
-    open spec fn operations(&self) -> Seq<Operation> {
-        self.ops@
+    open spec fn events(&self) -> Events<T> {
+        self.events@
     }
 
     open spec fn inv(&self) -> bool {
         // The two positions are in bounds and don't pass each other
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
+        // Nice cases for what the outputs look like
+        &&& self.events().all_next() ==> self.events().outputs() == 
+            Seq::new(
+                self.events().len() as nat,
+                |i: int| if i < self.vec@.len() { Some(self.vec@[i]) } else { None },
+            )
+        &&& self.events().all_next_back() ==> self.events().outputs() == 
+            Seq::new(
+                self.events().len() as nat,
+                |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
+            )
         // pos can't move faster than next_count
-        &&& 0 <= self.pos <= self.next_count@
+        &&& 0 <= self.pos <= self.events().next_count()
         // pos_back can't move faster than next_back_count
-        &&& 0 <= self.next_back_count@ 
-        &&& self.next_back_count@ >= self.vec@.len() - self.pos_back
+        &&& 0 <= self.events().next_back_count()
+        &&& self.events().next_back_count() >= self.vec@.len() - self.pos_back
         // All operations have been counted
-        &&& self.operations().len() == self.next_count@ + self.next_back_count@
+        &&& self.events().len() == self.events().next_count() + self.events().next_back_count()
         // In the simple cases, we have a uniform set of operations
-        &&& self.next_back_count == 0 <==> self.all_next()
-        &&& self.next_count == 0 <==> self.all_next_back() 
+        &&& self.events().next_back_count() == 0 <==> self.events().all_next()
+        &&& self.events().next_count() == 0 <==> self.events().all_next_back() 
         // Possible positions when we've done a modest number of operations and when we've done too many
         &&& {
-            ||| self.next_count@ == self.pos && self.pos < self.pos_back
-            ||| self.next_count@ >= self.pos && self.pos == self.pos_back
+            ||| self.events().next_count() == self.pos && self.pos < self.pos_back
+            ||| self.events().next_count() >= self.pos && self.pos == self.pos_back
         }
         &&& {
-            ||| self.next_back_count@ == self.vec@.len() - self.pos_back && self.pos < self.pos_back
-            ||| self.next_back_count@ >= self.vec@.len() - self.pos_back && self.pos == self.pos_back
+            ||| self.events().next_back_count() == self.vec@.len() - self.pos_back && self.pos < self.pos_back
+            ||| self.events().next_back_count() >= self.vec@.len() - self.pos_back && self.pos == self.pos_back
         }
-        &&& {
-            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
-            outputs == self.outputs() && self.pos == start && self.pos_back == end
-        }
+        // // &&& {
+        // //     let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
+        // //     outputs == self.outputs() && self.pos == start && self.pos_back == end
+        // // }
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
         &&& self.vec == dest.vec 
-        &&& self.next_count@ <= dest.next_count@ 
-        &&& self.next_back_count@ <= dest.next_back_count@
-        &&& self.operations().is_prefix_of(dest.operations())
+        // &&& self.next_count@ <= dest.next_count@ 
+        // &&& self.next_back_count@ <= dest.next_back_count@
+        &&& self.events().is_prefix_of(dest.events())
     }
 
     proof fn reaches_reflexive(&self) {
@@ -520,40 +545,10 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     }
 
     proof fn reaches_monotonic(&self, dest: Self) {
-        apply_ops_len(self.operations(), self.vec@, 0, self.vec@.len() as int);
-        apply_ops_len(dest.operations(), self.vec@, 0, self.vec@.len() as int);
-        assert(self.outputs().len() <= dest.outputs().len());
-        apply_ops_monotonic(self.operations(), dest.operations(), self.vec@, 0, self.vec@.len() as int);
-        if self.next_back_count == 0 {
-            if dest.next_back_count == 0 {
-            } else if dest.next_count == 0 {
-            } else {
-                assert forall |i| 0 <= i < self.next_count@ implies dest.operations()[i] is Next by {
-                    assert(dest.operations()[i] == self.operations()[i]);   // OBSERVE
-                };
-                apply_ops_uniform(dest.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
-            }
-        } else {
-            if self.next_count == 0 {
-                assert forall |i| 0 <= i < self.next_back_count@ implies dest.operations()[i] is NextBack by {
-                    assert(dest.operations()[i] == self.operations()[i]);   // OBSERVE
-                };
-                apply_ops_uniform_back(dest.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
-            } else {
-            }
-        }
     }
 
     fn next(&mut self) -> (r: Option<Self::Item>)
     {
-        proof {
-            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
-            self.next_count@ = self.next_count@ + 1;
-        }
-        self.ops = Ghost(self.ops@.push(Operation::Next));
-        proof {
-            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
-        }
         let r = if self.pos < self.pos_back {
             let _ = self.vec.len(); // HACK
             let i = self.pos;
@@ -562,30 +557,19 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         } else {
             None
         };
+
+        // Record this event
+        self.events = Ghost(self.events@.append_next(r));
+
         // Prove that `inv` still holds
-        assert(!(self.operations().last() is NextBack));    // OBSERVE
-        proof {
-            if forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is Next {
-                assert forall |i| 0 <= i < old(self).operations().len() implies old(self).operations()[i] is Next by {
-                    assert(old(self).operations()[i] == self.operations()[i]);
-                }
-            }
-            apply_ops_extend_next(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
-
-            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
-            assert(self.pos == start && self.pos_back == end);
-
-            if self.next_back_count == 0 {
-                apply_ops_uniform(self.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
-                assert(self.operations().take(self.operations().len() as int) == self.operations());  // OBSERVE
-                assert(outputs == self.outputs());
-            } 
-        }
+        assert(!(self.events().last().op is NextBack));    // OBSERVE
+        assert(self.events().all_next() ==>
+            self.events().outputs() =~= Seq::new(self.events().len(), (|i:int| if i < self.vec.view().len() { Some(self.vec.view().index(i)) } else { None })));  // OBSERVE
         r
     }
 }
 
-
+/*
 impl<'a, T: Copy> DoubleEndedIter for MyVecFancyIter<'a, T> {
     open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
         self.outputs()
@@ -866,7 +850,7 @@ impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
     }
 
 }
-
+*/
 
 
 fn test0_next(v: &MyVec<u8>)
@@ -890,6 +874,7 @@ fn test0_next(v: &MyVec<u8>)
     assert(r == Some(10u8));
 }
 
+/*
 fn test0_next_back(v: &MyVec<u8>)
     requires
         v@.len() == 10,
@@ -1168,7 +1153,6 @@ fn all_true<I: Iter<Item=bool>>(iter: &mut I) -> (r: (Ghost<int>, bool))
     assume(false);
     (Ghost(0), true)
 }
-/*
 fn all_true_caller(v: &MyVec<bool>)
     requires
         v@.len() == 10,
@@ -1211,6 +1195,7 @@ fn test_rev_seq(v: &MyVec<u8>)
     // assert(r == Some(80u8));
 }
 */
+
 } // mod examples
 
 } // verus!
