@@ -37,6 +37,8 @@ impl<T> Events<T> {
     pub open spec fn is_prefix_of(self, other: Self) -> bool { self.s.is_prefix_of(other.s) }
     pub open spec fn push(self, e: Event<T>) -> Self { Events { s: self.s.push(e) } }
     pub open spec fn last(self) -> Event<T> { self.s.last() }
+    #[verifier::inline]
+    pub open spec fn spec_index(self, i: int) -> Event<T> { self.s[i] }
 
     // Event-specific functionality    
     pub open spec fn new(s: Seq<Event<T>>) -> Self { Events { s } }
@@ -49,9 +51,9 @@ impl<T> Events<T> {
         forall |i| 0 <= i < self.s.len() ==> #[trigger] self.s[i].op is NextBack
     }
 
-    pub open spec fn outputs(self) -> Seq<Option<T>> {
-        self.s.map_values(|e: Event<T>| e.v)
-    }
+    // pub open spec fn outputs(self) -> Seq<Option<T>> {
+    //     self.s.map_values(|e: Event<T>| e.v)
+    // }
 
     pub open spec fn next_count(self) -> nat {
         self.s.fold_left(0, |acc: nat, e: Event<T>| if e.op is Next { acc + 1 } else { acc })
@@ -67,7 +69,7 @@ impl<T> Events<T> {
             s_new.all_next() <==> self.all_next(),
             s_new.next_count() == self.next_count() + 1,
             s_new.next_back_count() == self.next_back_count(),
-            s_new.outputs() == self.outputs().push(r),
+            //s_new.outputs() == self.outputs().push(r),
     {
         let s_new = Events { s: self.s.push(Event::new(Operation::Next, r)) };
         if s_new.all_next() {
@@ -173,7 +175,7 @@ pub trait Iter where Self: Sized {
             self.inv(),
             old(self).reaches(*self),
             self.events() == old(self).events().push(Event::new(Operation::Next, r)),
-            self.events().outputs().last() == r,    // TODO: This can be derived from prev. line, but seem to simplify reasoning
+            self.events().last().v == r,    // REVIEW: Derivable from prev. line, but helps triggering by introducing spec_index on self.events()
         ;
 }
 
@@ -278,18 +280,18 @@ impl<T: Copy> MyVec<T> {
         let _ = self.len();
         let iter = MyVecFancyIter { vec: &self, pos: 0, pos_back: self.len(), events: Ghost(Events::empty()) };
         // Establish that inv holds
-        assert({
-            &&& iter.events().all_next() ==> iter.events().outputs() == 
-                Seq::new(
-                    iter.events().len() as nat,
-                    |i: int| if i < iter.vec@.len() { Some(iter.vec@[i]) } else { None },
-                )
-            &&& iter.events().all_next_back() ==> iter.events().outputs() == 
-                Seq::new(
-                    iter.events().len() as nat,
-                    |i: int| if i < iter.vec@.len() { Some(iter.vec@[iter.vec@.len() - i - 1]) } else { None },
-                )
-        }); // OBSERVE
+        // assert({
+        //     &&& iter.events().all_next() ==> iter.events().outputs() == 
+        //         Seq::new(
+        //             iter.events().len() as nat,
+        //             |i: int| if i < iter.vec@.len() { Some(iter.vec@[i]) } else { None },
+        //         )
+        //     &&& iter.events().all_next_back() ==> iter.events().outputs() == 
+        //         Seq::new(
+        //             iter.events().len() as nat,
+        //             |i: int| if i < iter.vec@.len() { Some(iter.vec@[iter.vec@.len() - i - 1]) } else { None },
+        //         )
+        // }); // OBSERVE
 
         iter
     }
@@ -499,16 +501,12 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         // The two positions are in bounds and don't pass each other
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         // Nice cases for what the outputs look like
-        &&& self.events().all_next() ==> self.events().outputs() == 
-            Seq::new(
-                self.events().len() as nat,
-                |i: int| if i < self.vec@.len() { Some(self.vec@[i]) } else { None },
-            )
-        &&& self.events().all_next_back() ==> self.events().outputs() == 
-            Seq::new(
-                self.events().len() as nat,
-                |i: int| if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None },
-            )
+        &&& self.events().all_next() ==> 
+            (forall |i| 0 <= i < self.events().len() ==>
+                #[trigger] self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[i]) } else { None })
+        &&& self.events().all_next_back() ==> 
+            (forall |i| 0 <= i < self.events().len() ==>
+                #[trigger] self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
         // pos can't move faster than next_count
         &&& 0 <= self.pos <= self.events().next_count()
         // pos_back can't move faster than next_back_count
@@ -566,8 +564,8 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
 
         // Prove that `inv` still holds
         assert(!(self.events().last().op is NextBack));    // OBSERVE
-        assert(self.events().all_next() ==>
-            self.events().outputs() =~= Seq::new(self.events().len(), (|i:int| if i < self.vec.view().len() { Some(self.vec.view().index(i)) } else { None })));  // OBSERVE
+        // assert(self.events().all_next() ==>
+        //     self.events().outputs() =~= Seq::new(self.events().len(), (|i:int| if i < self.vec.view().len() { Some(self.vec.view().index(i)) } else { None })));  // OBSERVE
         r
     }
 }
@@ -653,7 +651,7 @@ impl<T: Iter> Iter for Take3<T> {
         Events::new(
             Seq::new(
                 self.ghost_count@ as nat,
-                |i: int| if i < 3 { self.inner.events().s[self.start_pos@ + i] } else { Event::new(Operation::Next, None) },
+                |i: int| if i < 3 { self.inner.events()[self.start_pos@ + i] } else { Event::new(Operation::Next, None) },
             )
         )
     }
@@ -976,7 +974,6 @@ fn test_take3_seq(v: &MyVec<u8>)
 {
     let mut iter = Take3::new(v.iter());
     let r = iter.next();
-    assert(iter.inner.events().outputs()[0] == Some(0u8));  // Key missing fact
     assert(r == Some(0u8));
     let r = iter.next();
     assert(r == Some(10u8));
