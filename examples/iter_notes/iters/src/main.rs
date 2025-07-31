@@ -850,7 +850,6 @@ fn test_skip3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
-/*
 fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     requires
         v@.len() >= 6,
@@ -861,8 +860,8 @@ fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
     let ghost i0 = iter;
     loop
         invariant_except_break
-            0 <= iter.outputs().len() <= v@.len() - 6, // should be a for loop auto-invariant
-            s =~= v@.skip(6).take(iter.outputs().len() as int),
+            0 <= iter.events().len() <= v@.len() - 6, // should be a for loop auto-invariant
+            s =~= v@.skip(6).take(iter.events().len() as int),
         invariant
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
@@ -870,7 +869,7 @@ fn test_skip3_skip3_loop_iso_true(v: &MyVec<u8>)
             i0 == Skip3::spec_new(Skip3::spec_new(v.spec_iter())), // should be a for loop auto-invariant
         ensures
             s =~= v@.skip(6),
-        decreases v@.len() - 6 - iter.outputs().len(),
+        decreases v@.len() - 6 - iter.events().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -897,9 +896,9 @@ fn test_skip3_skip3_loop_iso_false(v: &MyVec<u8>)
             i0.reaches(iter), // should be a for loop auto-invariant
             iter.inv(), // should be a for loop auto-invariant
             iter.inner.inner.pos_back == iter.inner.inner.vec@.len(), // should be a for loop auto-invariant
-            0 <= iter.outputs().len() <= v@.len() - 6, // should be a for loop auto-invariant
-            s =~= v@.skip(6).take(iter.outputs().len() as int),
-        decreases v@.len() - 6 - iter.outputs().len(),
+            0 <= iter.events().len() <= v@.len() - 6, // should be a for loop auto-invariant
+            s =~= v@.skip(6).take(iter.events().len() as int),
+        decreases v@.len() - 6 - iter.events().len(),
     {
         if let Some(r) = iter.next() {
             proof {
@@ -956,6 +955,7 @@ fn test_take3_skip3_seq(v: &MyVec<u8>)
     assert(r.is_none());
 }
 
+/*
 fn all_true<I: Iter<Item=bool>>(iter: &mut I) -> (r: (Ghost<int>, bool))
     requires
         old(iter).outputs().len() == 0,
