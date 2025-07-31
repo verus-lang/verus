@@ -654,8 +654,8 @@ impl Verifier {
             // Summarize the triggers it used
             let triggers = &bnd_info.user.as_ref().unwrap().trigs;
             for trigger in triggers.iter() {
-                // HACK: we do not have span info for the builtin crate
-                if !trigger.iter().any(|t| t.span.as_string.contains("builtin")) {
+                // HACK: we do not have span info for the verus_builtin crate
+                if !trigger.iter().any(|t| t.span.as_string.contains("verus_builtin")) {
                     msg = trigger.iter().fold(msg, |m, e| m.primary_span(&e.span));
                 }
             }
@@ -2666,7 +2666,7 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
-        // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
+        // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],

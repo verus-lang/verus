@@ -4,7 +4,7 @@ use crate::expr;
 use crate::fixup::FixupContext;
 use crate::mac;
 use crate::INDENT;
-use syn_verus::{BinOp, Expr, Stmt};
+use verus_syn::{BinOp, Expr, Stmt};
 
 impl Printer {
     pub fn stmt(&mut self, stmt: &Stmt, is_last: bool) {

@@ -479,13 +479,13 @@ pub(crate) fn handle_external_fn<'tcx>(
         };
     let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
 
-    if external_path.krate == Some(Arc::new("builtin".to_string()))
+    if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
         && &*external_path.last_segment() != "clone"
         && !is_builtin_external
     {
         return err_span(
             sig.span,
-            "cannot apply `assume_specification` to Verus builtin functions",
+            "cannot apply `assume_specification` to Verus verus_builtin functions",
         );
     }
 
@@ -2013,7 +2013,10 @@ pub(crate) fn get_external_def_id<'tcx>(
             ),
             ResolutionResult::Builtin(b) => err_span(
                 sig.span,
-                format!("Verus assume_specification does not support this builtin impl '{:?}'", b),
+                format!(
+                    "Verus assume_specification does not support this verus_builtin impl '{:?}'",
+                    b
+                ),
             ),
             ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
                 unsupported_err!(sig.span, "assume_specification for a provided trait method");

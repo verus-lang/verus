@@ -44,8 +44,8 @@
 //! assert(half_auth2@ == half_auth1@);
 //! ```
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use std::result::*;
 use vstd::pcm::*;
 use vstd::pcm_lib::*;

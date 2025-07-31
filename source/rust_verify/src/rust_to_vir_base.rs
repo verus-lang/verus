@@ -1556,7 +1556,7 @@ where
                     // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
                     //
                     // Do nothing
-                    // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                    // (What Verus actually cares about is the verus_builtin 'FnWithSpecification'
                     // trait which Fn/FnMut/FnOnce all get automatically.)
                     continue;
                 }

@@ -244,8 +244,8 @@ test_verify_one_file! {
         mod Y {
             #![allow(dead_code)] // this was needed for the original crash
 
-            use builtin::*;
-            use builtin_macros::*;
+            use verus_builtin::*;
+            use verus_builtin_macros::*;
 
             verus!{
                 mod X {
@@ -395,7 +395,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nat_no_use_builtin_issue575 ["no-auto-import-builtin"] => code! {
+    #[test] nat_no_use_builtin_issue575 ["no-auto-import-verus_builtin"] => code! {
         use vstd::prelude::*;
 
         pub struct MyType {
@@ -458,7 +458,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
+    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-verus_builtin"] => code! {
         use vstd::{prelude::*, seq::*};
 
         verus! {
@@ -512,8 +512,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-builtin"] => code! {
-        use builtin_macros::*;
+    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-verus_builtin"] => code! {
+        use verus_builtin_macros::*;
         #[allow(unused_imports)]
         use vstd::{seq::*, seq_lib::*};
 
@@ -883,7 +883,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
-        use state_machines_macros::state_machine;
+        use verus_state_machines_macros::state_machine;
         use vstd::*;
 
         state_machine!{ MachineWithProof {
@@ -1020,7 +1020,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] trait_proof_using_own_lemma verus_code! {
         mod m1 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 #[verifier::external_body]
                 pub struct S { p: core::marker::PhantomData<()> }
@@ -1047,7 +1047,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 use crate::m1::*;
 
@@ -1445,7 +1445,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_no_unsupported_trait_imports ["no-auto-import-builtin"] => code! {
+    #[test] test_no_unsupported_trait_imports ["no-auto-import-verus_builtin"] => code! {
         // https://github.com/verus-lang/verus/issues/1582
         // https://github.com/verus-lang/verus/issues/1597
         // https://github.com/verus-lang/verus/issues/1708

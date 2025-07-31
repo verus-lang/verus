@@ -446,7 +446,7 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     span: rustc_span::Span,
 ) {
     if ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore {
-        // This gives a lot of warnings from the embedding of the 'builtin' crate so ignore it
+        // This gives a lot of warnings from the embedding of the 'verus_builtin' crate so ignore it
         return;
     }
 

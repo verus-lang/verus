@@ -1,8 +1,8 @@
 // rust_verify/tests/example.rs expect-warnings
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 
 verus! {
 
@@ -80,7 +80,7 @@ fn test() {
 /*
 // ANCHOR: spec_fun_mod1
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub open spec fn min(x: int, y: int) -> int {
         if x <= y {
@@ -92,7 +92,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     fn test() {
@@ -103,7 +103,7 @@ mod M2 {
 
 // ANCHOR: spec_fun_mod2
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub closed spec fn min(x: int, y: int) -> int {
         if x <= y {
@@ -120,7 +120,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     fn test() {
@@ -138,7 +138,7 @@ mod M2 {
 /*
 // ANCHOR: spec_fun_proof
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub closed spec fn min(x: int, y: int) -> int {
         if x <= y {
@@ -158,7 +158,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     proof fn test() {
@@ -183,7 +183,7 @@ fn test_consts_infer() {
 // ANCHOR_END: spec_fun_proof_block1
 // ANCHOR: spec_fun_proof_block2
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub closed spec fn min(x: int, y: int) -> int {
         if x <= y {
@@ -204,7 +204,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     fn test() {
@@ -222,7 +222,7 @@ mod M2 {
 /*
 // ANCHOR: assert_by
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub closed spec fn min(x: int, y: int) -> int {
         if x <= y {
@@ -242,7 +242,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     fn test() {
@@ -260,7 +260,7 @@ mod M2 {
 /*
 // ANCHOR: determinism
 mod M1 {
-    use builtin::*;
+    use verus_builtin::*;
 
     pub closed spec fn s(i: int) -> int {
         i + 1
@@ -272,7 +272,7 @@ mod M1 {
 }
 
 mod M2 {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::M1::*;
 
     proof fn test_determinism() {
@@ -344,7 +344,7 @@ mod MA {
 }
 
 mod MB {
-    use builtin::*;
+    use verus_builtin::*;
     use crate::MA::*;
 
     // construct a ghost S

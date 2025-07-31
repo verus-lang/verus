@@ -3,7 +3,7 @@ use crate::fixup::FixupContext;
 use crate::iter::IterDelimited;
 use crate::path::PathKind;
 use crate::INDENT;
-use syn_verus::{Field, Fields, FieldsUnnamed, Variant, VisRestricted, Visibility};
+use verus_syn::{Field, Fields, FieldsUnnamed, Variant, VisRestricted, Visibility};
 
 impl Printer {
     pub fn variant(&mut self, variant: &Variant) {

@@ -587,10 +587,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             DirectiveItem::RevealHide => {
                 // {
-                //     ::builtin::reveal_({
+                //     ::verus_builtin::reveal_({
                 //             #[verus::internal(reveal_fn)]
                 //             fn __VERUS_REVEAL_INTERNAL__() {
-                //                 ::builtin::reveal_internal_path_(function::path)
+                //                 ::verus_builtin::reveal_internal_path_(function::path)
                 //             }
                 //             ;
                 //             __VERUS_REVEAL_INTERNAL__
@@ -681,15 +681,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
                         let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
-                            "invalid parameter for builtin::array_index at arg0, arg0 must be self",
+                            "invalid parameter for verus_builtin::array_index at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
+                            .expect("invalid parameter for verus_builtin::array_index at arg1; arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::array_index with two argument but did not receive it"
+                        "Expected a call for verus_builtin::array_index with two argument but did not receive it"
                     ),
                 }
             }
@@ -704,7 +704,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_len with one argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_len with one argument but did not receive it"
                     ),
                 }
             }
@@ -714,15 +714,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
                         let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
-                            "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
+                            "invalid parameter for verus_builtin::strslice_get_char at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
+                            .expect("invalid parameter for verus_builtin::strslice_get_char at arg1, arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_get_char with two argument but did not receive it"
                     ),
                 }
             }
@@ -737,7 +737,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_is_ascii with one argument but did not receive it"
                     ),
                 }
             }
@@ -1457,7 +1457,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
             // REVIEW: should this really be a 'compilable operator'?
-            // Imply is marked as unimplemented! in builtin.
+            // Imply is marked as unimplemented! in verus_builtin.
             record_compilable_operator(bctx, expr, CompilableOperator::Implies);
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
@@ -2100,7 +2100,7 @@ fn get_string_lit_arg<'tcx>(
         }
         _ => err_span(
             arg.span,
-            format!("Verus builtin `{fn_name_for_error_msg:}` requires a string literal"),
+            format!("Verus verus_builtin `{fn_name_for_error_msg:}` requires a string literal"),
         ),
     }
 }

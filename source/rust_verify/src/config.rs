@@ -62,11 +62,11 @@ pub struct LogArgs {
 pub enum Vstd {
     /// The current crate is vstd.
     IsVstd,
-    /// There is no vstd (only builtin). Really only used for testing.
+    /// There is no vstd (only verus_builtin). Really only used for testing.
     NoVstd,
     /// Imports the vstd crate like usual.
     Imported,
-    /// Embed vstd and builtin as modules, necessary for verifying the `core` library.
+    /// Embed vstd and verus_builtin as modules, necessary for verifying the `core` library.
     IsCore,
 }
 
