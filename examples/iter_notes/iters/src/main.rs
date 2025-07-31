@@ -70,7 +70,6 @@ impl<T> Events<T> {
             s_new.all_next() <==> self.all_next(),
             s_new.next_count() == self.next_count() + 1,
             s_new.next_back_count() == self.next_back_count(),
-            //s_new.outputs() == self.outputs().push(r),
     {
         let s_new = Events { s: self.s.push(Event::new(Operation::Next, r)) };
         if s_new.all_next() {
@@ -84,6 +83,31 @@ impl<T> Events<T> {
         }
 
         assert(s_new.next_back_count() == self.next_back_count()) by {
+            assert(s_new.s.drop_last() == self.s);
+        }
+
+        s_new
+    }
+    
+    pub proof fn append_next_back(&self, r: Option<T>) -> (s_new: Self)
+        ensures
+            s_new.s == self.s.push(Event::new(Operation::NextBack, r)),
+            s_new.all_next_back() <==> self.all_next_back(),
+            s_new.next_count() == self.next_count(),
+            s_new.next_back_count() == self.next_back_count() + 1,
+    {
+        let s_new = Events { s: self.s.push(Event::new(Operation::NextBack, r)) };
+        if s_new.all_next_back() {
+            assert forall |i| 0 <= i < self.s.len() implies #[trigger] self.s[i].op is NextBack by {
+                assert(self.s[i] == self.s.push(Event::new(Operation::NextBack, r))[i]);
+            }
+        }
+
+        assert(s_new.next_count() == self.next_count()) by {
+            assert(s_new.s.drop_last() == self.s);
+        }
+
+        assert(s_new.next_back_count() == self.next_back_count() + 1) by {
             assert(s_new.s.drop_last() == self.s);
         }
 
@@ -192,6 +216,7 @@ pub trait DoubleEndedIter: Iter {
             self.inv(),
             old(self).reaches(*self),
             self.events() == old(self).events().push(Event::new(Operation::NextBack, r)),
+            self.events().last().v == r,    // REVIEW: Derivable from prev. line, but helps triggering by introducing spec_index on self.events()
         ;
 
     // TODO: Also provides advance_back_by (nightly), nth_back, try_rfold, rfold, rfind
@@ -363,22 +388,9 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
     }
 }
 
-/*
 impl<'a, T: Copy> DoubleEndedIter for MyVecFancyIter<'a, T> {
-    open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
-        self.outputs()
-    }
-
     fn next_back(&mut self) -> (r: Option<Self::Item>)
     {
-        proof {
-            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
-            self.next_back_count@ = self.next_back_count@ + 1;
-        }
-        self.ops = Ghost(self.ops@.push(Operation::NextBack));
-        proof {
-            apply_ops_len(self.ops@, self.vec@, 0, self.vec@.len() as int);
-        }
         let r = if self.pos < self.pos_back {
             let _ = self.vec.len(); // HACK
             let i = self.pos_back - 1;
@@ -387,29 +399,13 @@ impl<'a, T: Copy> DoubleEndedIter for MyVecFancyIter<'a, T> {
         } else {
             None
         };
-        // Prove that `inv` still holds
-        assert(!(self.operations().last() is Next));    // OBSERVE
-        proof {
-            if forall |i| 0 <= i < self.operations().len() ==> self.operations()[i] is NextBack {
-                assert forall |i| 0 <= i < old(self).operations().len() implies old(self).operations()[i] is NextBack by {
-                    assert(old(self).operations()[i] == self.operations()[i]);
-                }
-            }
-            apply_ops_extend_back(old(self).operations(), self.vec@, 0, self.vec@.len() as int);
 
-            let (outputs, start, end) = apply_ops(self.operations(), self.vec@, 0, self.vec@.len() as int);
-            assert(self.pos == start && self.pos_back == end);
+        // Record this event
+        self.events = Ghost(self.events@.append_next_back(r));
 
-            if self.next_count == 0 {
-                apply_ops_uniform_back(self.operations(), self.vec@, 0, self.vec@.len() as int, self.operations().len() as int);
-                assert(self.operations().take(self.operations().len() as int) == self.operations());  // OBSERVE
-                assert(outputs == self.outputs());
-            } 
-        }
         r
     }
 }
-*/
 
 pub struct Take3<T> {
     pub inner: T,
@@ -422,8 +418,6 @@ impl<T: Iter> Take3<T> {
     fn new(iter: T) -> (r: Take3<T>)
         requires
             iter.inv(),
-            // NOTE: TODO: Added this to cope with MyVecFancyIter
-            //iter.events().all_next(),
         ensures
             r.inv(),
             r.inner == iter,
@@ -457,8 +451,6 @@ impl<T: Iter> Iter for Take3<T> {
             ||| self.count < 3 && self.count == self.ghost_count@
             ||| self.count == 3 && self.ghost_count@ >= 3
         }
-        // NOTE: Added this to help with MyVecFancyIter
-        //&&& self.inner.events().all_next()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -663,7 +655,6 @@ fn test0_next(v: &MyVec<u8>)
     assert(r == Some(10u8));
 }
 
-/*
 fn test0_next_back(v: &MyVec<u8>)
     requires
         v@.len() == 10,
@@ -684,7 +675,6 @@ fn test0_next_back(v: &MyVec<u8>)
     let r = iter.next_back();
     assert(r == Some(80u8));
 }
-*/
 
 fn test_loop0(v: &MyVec<u8>) {
     let ghost mut s: Seq<u8> = Seq::empty();
@@ -978,10 +968,6 @@ fn all_true_caller(v: &MyVec<bool>)
     let (Ghost(count), b) = all_true(&mut iter);
     proof {
         if count == 10 && b {
-            // assert(iter.events().len() == 10);
-            // assert(forall |i| 0 <= i < v@.len() ==> ((#[trigger]iter.events()[i]).v matches Some(b) && b));
-
-            // assert(forall |i| 0 <= i < v@.len() ==> ((iter.events()[i]).v == Some(#[trigger]v@[i])));
             assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
         }
     }
