@@ -1451,8 +1451,8 @@ test_verify_one_file_with_options! {
         // https://github.com/verus-lang/verus/issues/1708
         #![feature(extern_types)]
 
-        use builtin::*;
-        use builtin_macros::*;
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
 
         // The bug is a mishandling of unsupported types, so to test it,
         // declare a foreign type that is unlikely to be supported in future Verus versions:
