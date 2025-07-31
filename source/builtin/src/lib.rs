@@ -1797,17 +1797,20 @@ pub fn erased_ghost_value<S, T>(_: S) -> T {
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::DummyCapture"]
 #[derive(Clone, Copy)]
 pub struct DummyCapture<'a> {
     _ph: core::marker::PhantomData<&'a ()>,
 }
 
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::dummy_capture_new"]
 pub fn dummy_capture_new<'a>() -> DummyCapture<'a> {
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::dummy_capture_consume"]
 pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
     unimplemented!()
