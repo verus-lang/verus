@@ -2702,7 +2702,6 @@ impl Verifier {
             return Ok(false);
         }
 
-        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
         tcx.ensure_ok().check_private_in_public(());
         tcx.hir_for_each_module(|module| {
             tcx.ensure_ok().check_mod_privacy(module);
