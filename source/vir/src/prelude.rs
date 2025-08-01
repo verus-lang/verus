@@ -467,8 +467,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                 (<= ([i_lo] bits) ([i_clip] bits i))
                 (< ([i_clip] bits i) ([i_hi] bits))
                 (=> (and (<= ([i_lo] bits) i) (< i ([i_hi] bits)))
-                    (= i ([i_clip] bits i))
-                )
+                    (= i ([i_clip] bits i)))
+                (=> (<= ([i_hi] bits) i)
+                    (= ([i_clip] bits i)
+                       (- i ([u_hi] bits))))
             )
             :pattern (([i_clip] bits i))
             :qid prelude_i_clip
