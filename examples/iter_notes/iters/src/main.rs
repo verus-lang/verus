@@ -629,26 +629,16 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     }
 
     fn next(&mut self) -> (r: Option<Self::Item>) {
-        proof {
-            self.reaches_reflexive();
-            self.ghost_count@ = self.ghost_count@ + 1;
-        }
-        let r = self.inner.next_back();
-        r
+        self.inner.next_back()
     }
 }
 
-// impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
-//     open spec fn outputs_back(&self) -> Seq<Option<Self::Item>> {
-//         self.outputs()
-//     }
+impl<T: DoubleEndedIter> DoubleEndedIter for Rev<T> {
+    fn next_back(&mut self) -> (r: Option<Self::Item>) {
+        self.inner.next()
+    }
 
-//     fn next_back(&mut self) -> (r: Option<Self::Item>) {
-//         self.inner.next()
-//     }
-
-// }
-
+}
 
 fn test0_next(v: &MyVec<u8>)
     requires
@@ -989,7 +979,7 @@ fn all_true_caller(v: &MyVec<bool>)
     }
 }
 
-fn test_rev_seq(v: &MyVec<u8>)
+fn test_rev_next_seq(v: &MyVec<u8>)
     requires
         v@.len() == 3,
         v@[0] == 0,
@@ -1005,6 +995,25 @@ fn test_rev_seq(v: &MyVec<u8>)
     let r = iter.next();
     assert(r == Some(0u8));
     let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_rev_next_back_seq(v: &MyVec<u8>)
+    requires
+        v@.len() == 3,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+{
+    let mut iter = Rev::new(v.iter());
+    let r = iter.next_back();
+    assert(r is Some);
+    assert(r == Some(0u8));
+    let r = iter.next_back();
+    assert(r == Some(10u8));
+    let r = iter.next_back();
+    assert(r == Some(20u8));
+    let r = iter.next_back();
     assert(r.is_none());
 }
 
