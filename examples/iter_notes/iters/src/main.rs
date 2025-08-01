@@ -559,10 +559,10 @@ impl<T: Iter> Iter for Skip3<T> {
     }
 }
 
-/*
+
 pub struct Rev<T> {
     pub inner: T,
-    pub ghost_count: Ghost<int>,
+    pub ghost_count: Ghost<int>,    // TODO: Cut
     pub start_pos: Ghost<int>,
 }
 
@@ -586,27 +586,26 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     type Item = T::Item;
 
     open spec fn events(&self) -> Events<Self::Item> {
-        Events::new(
-            Seq::new(
-                self.ghost_count@ as nat,
-                |i: int| self.inner.events()[self.start_pos@ + i], 
-            )
-        )
-
-        // self.inner.events().map_values(|e: Event<Self::Item>| {
-        //     use Operation::*;
-        //     let op = match e.op { 
-        //         Next => NextBack,
-        //         NextBack => Next,
-        //     };
-        //     Event::new(op, e.v)
-        // })
+        // Events::new(
+        //     Seq::new(
+        //         self.ghost_count@ as nat,
+        //         |i: int| self.inner.events()[self.start_pos@ + i], 
+        //     )
+        // )
+        self.inner.events().skip(self.start_pos@).map_values(|e: Event<Self::Item>| {
+            use Operation::*;
+            let op = match e.op { 
+                Next => NextBack,
+                NextBack => Next,
+            };
+            Event::new(op, e.v)
+        })
     }
 
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
-        &&& self.inner.events().len() == self.start_pos@ + self.ghost_count@
+        &&& self.inner.events().len() == self.start_pos@ + self.events().len() // self.ghost_count@
         // &&& self.events().all_next() <==> self.inner.events().all_next_back()
         // &&& self.events().all_next_back() <==> self.inner.events().all_next()
     }
@@ -614,7 +613,7 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     open spec fn reaches(&self, dest: Self) -> bool {
         &&& self.inner.reaches(dest.inner)
         &&& self.start_pos == dest.start_pos
-        &&& self.ghost_count@ <= dest.ghost_count@
+        //&&& self.ghost_count@ <= dest.ghost_count@
     }
 
     proof fn reaches_reflexive(&self) {
@@ -635,13 +634,6 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
             self.ghost_count@ = self.ghost_count@ + 1;
         }
         let r = self.inner.next_back();
-        // proof {
-        //     if self.events().all_next() {
-        //         assert forall |i| 0 <= i < self.inner.events().len() implies #[trigger] self.inner.events()[i].op is NextBack by {
-        //             assert(self.events()[i].op is Next);    // OBSERVE
-        //         };
-        //     }
-        // }
         r
     }
 }
@@ -656,7 +648,7 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
 //     }
 
 // }
-*/
+
 
 fn test0_next(v: &MyVec<u8>)
     requires
@@ -996,32 +988,25 @@ fn all_true_caller(v: &MyVec<bool>)
         }
     }
 }
-/*
+
 fn test_rev_seq(v: &MyVec<u8>)
     requires
-        v@.len() == 10,
+        v@.len() == 3,
         v@[0] == 0,
         v@[1] == 10,
         v@[2] == 20,
-        v@[3] == 30,
-        v@[4] == 40,
-        v@[5] == 50,
-        v@[6] == 60,
-        v@[7] == 70,
-        v@[8] == 80,
-        v@[9] == 90,
 {
-    let mut iter = v.iter();
-    let r = iter.next_back();
-    assert(r == Some(90u8));
-    let mut iter_r = Rev::new(v.iter());
-    let r = iter_r.next();
+    let mut iter = Rev::new(v.iter());
+    let r = iter.next();
     assert(r is Some);
-    assert(r == Some(90u8));
-    // let r = iter_r.next();
-    // assert(r == Some(80u8));
+    assert(r == Some(20u8));
+    let r = iter.next();
+    assert(r == Some(10u8));
+    let r = iter.next();
+    assert(r == Some(0u8));
+    let r = iter.next();
+    assert(r.is_none());
 }
-*/
 
 } // mod examples
 
