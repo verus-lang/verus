@@ -562,7 +562,6 @@ impl<T: Iter> Iter for Skip3<T> {
 
 pub struct Rev<T> {
     pub inner: T,
-    pub ghost_count: Ghost<int>,    // TODO: Cut
     pub start_pos: Ghost<int>,
 }
 
@@ -574,11 +573,11 @@ impl<T: DoubleEndedIter> Rev<T> {
             r.inv(),
             r.inner == iter,
     {
-        Rev { inner: iter, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
+        Rev { inner: iter, start_pos: Ghost(iter.events().len() as int) }
     }
 
     spec fn spec_new(iter: T) -> Rev<T> {
-        Rev { inner: iter, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
+        Rev { inner: iter, start_pos: Ghost(iter.events().len() as int) }
     }
 }
 
@@ -605,15 +604,12 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
-        &&& self.inner.events().len() == self.start_pos@ + self.events().len() // self.ghost_count@
-        // &&& self.events().all_next() <==> self.inner.events().all_next_back()
-        // &&& self.events().all_next_back() <==> self.inner.events().all_next()
+        &&& self.inner.events().len() == self.start_pos@ + self.events().len()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
         &&& self.inner.reaches(dest.inner)
         &&& self.start_pos == dest.start_pos
-        //&&& self.ghost_count@ <= dest.ghost_count@
     }
 
     proof fn reaches_reflexive(&self) {
