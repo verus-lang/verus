@@ -360,7 +360,8 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &Context<'tcx>) -> Path {
 pub fn crate_to_vir<'a, 'tcx>(
     ctxt: &mut Context<'tcx>,
     imported: &Vec<Krate>,
-) -> Result<(Krate, CrateItems), VirErr> {
+    crate_items: &CrateItems,
+) -> Result<Krate, VirErr> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -388,8 +389,6 @@ pub fn crate_to_vir<'a, 'tcx>(
     external_info
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
-
-    let crate_items = crate::external::get_crate_items(ctxt)?;
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {
@@ -539,5 +538,5 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
 
-    Ok((Arc::new(vir), crate_items))
+    Ok(Arc::new(vir))
 }
