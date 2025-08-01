@@ -961,6 +961,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
     pub(crate) size_of_global: bool,
+    pub(crate) item_broadcast_use: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) external_auto_derives: AutoDerivesAttr,
@@ -1079,6 +1080,7 @@ pub(crate) fn get_external_attrs(
         sets_mode: false,
         verus_macro: false,
         size_of_global: false,
+        item_broadcast_use: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
         external_auto_derives: AutoDerivesAttr::Regular,
@@ -1096,6 +1098,7 @@ pub(crate) fn get_external_attrs(
             Attr::Mode(_) => es.sets_mode = true,
             Attr::VerusMacro => es.verus_macro = true,
             Attr::SizeOfGlobal => es.size_of_global = true,
+            Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
             Attr::ExternalAutoDerives(None) => {

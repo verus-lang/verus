@@ -2627,6 +2627,10 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
+        if self.args.no_lifetime {
+            rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
+        }
+
         self.air_no_span = {
             let no_span = tcx
                 .hir_crate(())
@@ -2694,6 +2698,9 @@ impl Verifier {
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_aware_ids(&crate_items);
+        }
 
         let time_hir0 = Instant::now();
 
@@ -2701,11 +2708,6 @@ impl Verifier {
         if tcx.dcx().err_count() != 0 {
             return Ok(false);
         }
-
-        tcx.ensure_ok().check_private_in_public(());
-        tcx.hir_for_each_module(|module| {
-            tcx.ensure_ok().check_mod_privacy(module);
-        });
 
         let time_hir1 = Instant::now();
         self.time_hir = time_hir1 - time_hir0;

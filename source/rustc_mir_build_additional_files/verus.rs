@@ -115,10 +115,18 @@ static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::n
 /// Used to communicate the VerusErasureCtxt
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
 
+pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
+    let v: &mut Option<Arc<HashSet<LocalDefId>>> = &mut VERUS_AWARE_DEF_IDS.write().unwrap();
+    if v.is_some() {
+        panic!("VERUS_AWARE_DEF_IDS has already been set");
+    }
+    *v = Some(ids);
+}
+
 pub fn set_verus_erasure_ctxt(erasure_ctxt: Arc<VerusErasureCtxt>) {
     let v: &mut Option<Arc<VerusErasureCtxt>> = &mut VERUS_ERASURE_CTXT.write().unwrap();
     if v.is_some() {
-        panic!("VerusErasureCtxt has already been set");
+        panic!("VERUS_ERASURE_CTXT has already been set");
     }
     *v = Some(erasure_ctxt);
 }
@@ -136,9 +144,9 @@ fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
 }
 
-/// Our erasure scheme will fail if this query runs too early, before we initialize the VerusErasureCtxt.
-/// However, there are some items (e.g. consts) where this happens intentionally because consts may be evaluated
-/// during type-checking.
+/// Our erasure scheme will fail if this query runs too early, before we initialize the
+/// VerusErasureCtxt. However, there are some items where this happens
+/// intentionally (e.g., for consts, which may be evaluated during type-checking).
 ///
 /// rust_verify needs to follow the scheme:
 ///
@@ -147,22 +155,23 @@ fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
 ///  3. initialize the VERUS_ERASURE_CTXT
 ///  4. Run lifetime checking
 ///
-/// As a result, thir_body is able to sanity check we're in a consistent state. If the VERUS_ERASURE_CTXT
-/// hasn't been initialized yet, we check that the given item is one that doesn't need it.
-fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
+/// As a result, thir_body is able to sanity check we're in a consistent state.
+/// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
+/// item is one that doesn't need it.
+pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
     if get_verus_erasure_ctxt_option().is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
             Some(m) => {
                 if m.contains(&local_def_id) {
                     panic!(
-                        "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` to work around the issue.",
+                        "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temperary measure to work around the issue.",
                         local_def_id
                     );
                 }
             }
             None => {
                 panic!(
-                    "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` to work around the issue.",
+                    "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
                     local_def_id
                 );
             }
@@ -277,7 +286,7 @@ impl ExpectSpecArgs {
             ExpectSpecArgs::AllNo => ExpectSpec::No,
             ExpectSpecArgs::AllYes => ExpectSpec::Yes,
             ExpectSpecArgs::AllPropagate => ExpectSpec::Propagate,
-            ExpectSpecArgs::PerArg(args) => args[args.len() - 1],
+            ExpectSpecArgs::PerArg(args) => *args.last().unwrap(),
         }
     }
 }

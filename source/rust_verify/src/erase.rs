@@ -10,10 +10,11 @@ use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, ExpectSpec, ExpectSpecArgs, NodeErase, VarErasure, VerusErasureCtxt,
-    set_verus_erasure_ctxt,
+    set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
 
@@ -319,4 +320,28 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 
     Ok(())
+}
+
+pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+    // Requirements:
+    //  - If a function requires Verus-erasure, then it MUST be in the set
+    //  - If a function has special properties (e.g., being const), that may cause Rust
+    //    to run mir_borrowck on it before Verus mode-checking, then it MUST NOT be in the set.
+    // For anything else: it doesn't matter.
+    //
+    // Since most consts are marked external, we can just use the VerusAware set for this.
+    // We carve out exceptions for some special directives.
+
+    let mut s = HashSet::<LocalDefId>::new();
+    for item in crate_items.items.iter() {
+        match &item.verif {
+            crate::external::VerifOrExternal::VerusAware { const_directive, .. } => {
+                if !*const_directive {
+                    s.insert(item.id.owner_id().def_id);
+                }
+            }
+            crate::external::VerifOrExternal::External { .. } => {}
+        }
+    }
+    set_verus_aware_def_ids(Arc::new(s));
 }
