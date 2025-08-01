@@ -932,6 +932,37 @@ fn all_true_caller(v: &MyVec<bool>)
         }
     }
 }
+/*
+fn all_true_simpler<I: Iter<Item=bool>>(iter: &mut I) -> (r: bool)
+    requires
+        old(iter).inv(),
+        old(iter).events().len() == 0,
+    ensures
+        iter.inv(),
+        iter.events().all_next(),
+        old(iter).reaches(*iter),   // Need this so we learn that: iter.vec@ == v@
+        ({
+            &&& iter.events().last().v is None
+            &&& r == forall |i| 0 <= i < iter.events().len() - 1 ==> (#[trigger]iter.events().output(i) matches Some(b) && b)
+        }),
+{
+    // TODO
+    assume(false);
+    true
+}
+
+fn all_true_simpler_caller(v: &MyVec<bool>)
+{
+    let mut iter = v.iter();
+    let b = all_true_simpler(&mut iter);
+    proof {
+        assert(iter.events().len() == v@.len());
+        if b {
+            assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
+        }
+    }
+}
+*/
 
 fn test_rev_next_seq(v: &MyVec<u8>)
     requires
