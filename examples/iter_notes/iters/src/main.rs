@@ -298,11 +298,14 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
             (forall |i| #![trigger self.events().output(i)] #![trigger self.vec@[i]]
                 0 <= i < self.events().len() ==>
                     self.events().output(i) == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
-        // pos can't move faster than next_count
-        &&& 0 <= self.pos <= self.events().next_count()
-        // pos_back can't move faster than next_back_count
-        &&& 0 <= self.events().next_back_count()
-        &&& self.events().next_back_count() >= self.vec@.len() - self.pos_back
+
+        //   These no longer seem to be needed
+        // // pos can't move faster than next_count
+        // &&& 0 <= self.pos <= self.events().next_count()
+        // // pos_back can't move faster than next_back_count
+        // &&& 0 <= self.events().next_back_count()
+        // &&& self.events().next_back_count() >= self.vec@.len() - self.pos_back
+
         // All operations have been counted
         &&& self.events().len() == self.events().next_count() + self.events().next_back_count()
         // In the simple cases, we have a uniform set of operations
