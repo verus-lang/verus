@@ -2627,14 +2627,6 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
-        let time_hir0 = Instant::now();
-
-        rustc_hir_analysis::check_crate(tcx);
-
-        if tcx.dcx().err_count() != 0 {
-            return Ok(false);
-        }
-
         self.air_no_span = {
             let no_span = tcx
                 .hir_crate(())
@@ -2659,14 +2651,17 @@ impl Verifier {
             })
         };
 
-        let time_hir1 = Instant::now();
-        self.time_hir = time_hir1 - time_hir0;
-
-        let time0 = Instant::now();
-
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
         // TODO vec![vir::verus_builtins::verus_builtin_krate(&self.air_no_span.clone().unwrap())];
+
+        let import_len = self.args.import.len();
+        let multi_crate = self.args.export.is_some()
+            || import_len > 0
+            || self.args.use_crate_name
+            || self.via_cargo_args.is_some();
+        crate::rust_to_vir_base::MULTI_CRATE
+            .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
         let erasure_info = ErasureInfo {
             hir_vir_ids: vec![],
@@ -2678,7 +2673,7 @@ impl Verifier {
             bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let import_len = self.args.import.len();
+
         let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
         let mut ctxt = Arc::new(ContextX {
             cmd_line_args: self.args.clone(),
@@ -2693,27 +2688,41 @@ impl Verifier {
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
         });
-        let multi_crate = self.args.export.is_some()
-            || import_len > 0
-            || self.args.use_crate_name
-            || self.via_cargo_args.is_some();
-        crate::rust_to_vir_base::MULTI_CRATE
-            .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
         let map_err_diagnostics =
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
+        let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+
+        let time_hir0 = Instant::now();
+
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
+        }
+
+        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
+        tcx.ensure_ok().check_private_in_public(());
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_mod_privacy(module);
+        });
+
+        let time_hir1 = Instant::now();
+        self.time_hir = time_hir1 - time_hir0;
+
+        let time0 = Instant::now();
+
         // Convert HIR -> VIR
         let time1 = Instant::now();
-        let (vir_crate, item_to_module_map) =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
+        let vir_crate =
+            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
-        self.item_to_module_map = Some(Arc::new(item_to_module_map));
+        self.item_to_module_map = Some(Arc::new(crate_items));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
