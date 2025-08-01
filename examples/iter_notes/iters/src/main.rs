@@ -42,6 +42,8 @@ impl<T> Events<T> {
     pub open spec fn map_values(self, f: spec_fn(Event<T>) -> Event<T>) -> Self { Events::new(self.s.map_values(f)) }
     #[verifier::inline]
     pub open spec fn spec_index(self, i: int) -> Event<T> { self.s[i] }
+    #[verifier::inline]
+    pub open spec fn output(self, i: int) -> Option<T> { self.s[i].v }
 
     // Event-specific functionality    
     pub open spec fn new(s: Seq<Event<T>>) -> Self { Events { s } }
@@ -116,49 +118,6 @@ impl<T> Events<T> {
         s_new
     }
 }
-
-pub open spec fn all_next<T>(s: Seq<Event<T>>) -> bool {
-    forall |i| 0 <= i < s.len() ==> #[trigger] s[i].op is Next
-}
-
-pub open spec fn all_next_back<T>(s: Seq<Event<T>>) -> bool {
-    forall |i| 0 <= i < s.len() ==> #[trigger] s[i].op is NextBack
-}
-
-pub open spec fn outputs<T>(s: Seq<Event<T>>) -> Seq<Option<T>> {
-    s.map_values(|e: Event<T>| e.v)
-}
-
-
-pub proof fn all_next_extend_new<T>(s: Seq<Event<T>>, r: Option<T>)
-    requires all_next(s),
-    ensures all_next(s.push(Event::new(Operation::Next, r))),
-{
-}
-pub proof fn all_next_extend_old<T>(s: Seq<Event<T>>, r: Option<T>)
-    requires all_next(s.push(Event::new(Operation::Next, r))),
-    ensures all_next(s),
-{
-    assert forall |i| 0 <= i < s.len() implies #[trigger] s[i].op is Next by {
-        assert(s[i] == s.push(Event::new(Operation::Next, r))[i]);
-    }
-}
-
-pub proof fn extend_events_next<T>(s: Seq<Event<T>>, r: Option<T>) -> (s_new: Seq<Event<T>>)
-    ensures
-        s_new == s.push(Event::new(Operation::Next, r)),
-        all_next(s) <==> all_next(s_new),
-
-{
-    let s_new = s.push(Event::new(Operation::Next, r));
-    if all_next(s_new) {
-        assert forall |i| 0 <= i < s.len() implies #[trigger] s[i].op is Next by {
-            assert(s[i] == s.push(Event::new(Operation::Next, r))[i]);
-        }
-    }
-    s_new
-}
-
 
 pub trait Iter where Self: Sized {
     type Item;
@@ -330,13 +289,15 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
         // Nice cases for what the outputs look like
         &&& self.events().all_next() ==> 
-            (forall |i| #![trigger self.events()[i].v] #![trigger self.vec@[i]]
+            // Note: We use two different triggers here.  The first helps with internal proofs,
+            //       while the second helps with proofs about the contents of the vec's values.
+            (forall |i| #![trigger self.events().output(i)] #![trigger self.vec@[i]]
                 0 <= i < self.events().len() ==>
-                    self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[i]) } else { None })
+                    self.events().output(i) == if i < self.vec@.len() { Some(self.vec@[i]) } else { None })
         &&& self.events().all_next_back() ==> 
-            (forall |i| #![trigger self.events()[i].v] #![trigger self.vec@[i]]
+            (forall |i| #![trigger self.events().output(i)] #![trigger self.vec@[i]]
                 0 <= i < self.events().len() ==>
-                    self.events()[i].v == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
+                    self.events().output(i) == if i < self.vec@.len() { Some(self.vec@[self.vec@.len() - i - 1]) } else { None })
         // pos can't move faster than next_count
         &&& 0 <= self.pos <= self.events().next_count()
         // pos_back can't move faster than next_back_count
@@ -585,12 +546,6 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
     type Item = T::Item;
 
     open spec fn events(&self) -> Events<Self::Item> {
-        // Events::new(
-        //     Seq::new(
-        //         self.ghost_count@ as nat,
-        //         |i: int| self.inner.events()[self.start_pos@ + i], 
-        //     )
-        // )
         self.inner.events().skip(self.start_pos@).map_values(|e: Event<Self::Item>| {
             use Operation::*;
             let op = match e.op { 
@@ -954,7 +909,7 @@ fn all_true<I: Iter<Item=bool>>(iter: &mut I) -> (r: (Ghost<int>, bool))
         ({
             let (count, result) = r;
             &&& count == iter.events().len()
-            &&& result == forall |i| 0 <= i < iter.events().len() ==> (#[trigger]iter.events()[i].v matches Some(b) && b)
+            &&& result == forall |i| 0 <= i < iter.events().len() ==> (#[trigger]iter.events().output(i) matches Some(b) && b)
         }),
 {
     // TODO
