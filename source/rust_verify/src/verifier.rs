@@ -3151,37 +3151,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
+        self.spans = Some(spans);
         if !self.verifier.args.no_lifetime {
-            self.spans = Some(spans);
-            return rustc_driver::Compilation::Continue;
+            rustc_driver::Compilation::Continue
+        } else {
+            self.finish_verus(compiler);
+            rustc_driver::Compilation::Stop
         }
-
-        match self.verifier.verify_crate(compiler, &spans) {
-            Ok(()) => {}
-            Err(err) => {
-                if let VerifyErr::Vir(err) = err {
-                    let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err.to_any(), MessageLevel::Error);
-                }
-                self.verifier.encountered_vir_error = true;
-            }
-        }
-        if !self.verifier.args.output_json
-            && !self.verifier.encountered_error
-            && !self.verifier.encountered_vir_error
-        {
-            println!(
-                "verification results:: {} verified, {} errors{}",
-                self.verifier.count_verified,
-                self.verifier.count_errors,
-                if !crate::driver::is_verifying_entire_crate(&self.verifier) {
-                    " (partial verification with `--verify-*`)"
-                } else {
-                    ""
-                }
-            );
-        }
-        rustc_driver::Compilation::Stop
     }
 
     fn after_analysis<'tcx>(
@@ -3189,6 +3165,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         compiler: &Compiler,
         _tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
+        self.finish_verus(compiler);
+        rustc_driver::Compilation::Stop
+    }
+}
+
+impl VerifierCallbacksEraseMacro {
+    fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
@@ -3215,7 +3198,5 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             );
         }
-
-        rustc_driver::Compilation::Stop
     }
 }
