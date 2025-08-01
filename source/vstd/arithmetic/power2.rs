@@ -22,6 +22,7 @@ use super::power::{
     lemma_pow_positive,
     lemma_pow_adds,
     lemma_pow_strictly_increases,
+    lemma_pow_increases,
     lemma_pow_subtracts,
 };
 
@@ -111,6 +112,18 @@ pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     lemma_pow2(e1);
     lemma_pow2(e2);
     lemma_pow_strictly_increases(2, e1, e2);
+}
+
+/// Proof that if `e1 <= e2` then `2^e1 <= 2^e2`.
+pub broadcast proof fn lemma_pow2_increases(e1: nat, e2: nat)
+    requires
+        e1 <= e2,
+    ensures
+        #[trigger] pow2(e1) <= #[trigger] pow2(e2),
+{
+    lemma_pow2(e1);
+    lemma_pow2(e2);
+    lemma_pow_increases(2, e1, e2);
 }
 
 /// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64.
