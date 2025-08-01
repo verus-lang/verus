@@ -283,6 +283,7 @@ pub struct Verifier {
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
     /// the parallel bucket verification
@@ -447,6 +448,7 @@ impl Verifier {
             args,
             user_filter: None,
             erasure_hints: None,
+            verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
@@ -492,6 +494,7 @@ impl Verifier {
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
+            verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -2624,6 +2627,10 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         crate_name: String,
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
+        if self.args.no_lifetime {
+            rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
+        }
+
         self.air_no_span = {
             let no_span = tcx
                 .hir_crate(())
@@ -2667,6 +2674,7 @@ impl Verifier {
             direct_var_modes: vec![],
             external_functions: vec![],
             ignored_functions: vec![],
+            bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2690,6 +2698,9 @@ impl Verifier {
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_aware_ids(&crate_items);
+        }
 
         let time_hir0 = Instant::now();
 
@@ -2697,12 +2708,6 @@ impl Verifier {
         if tcx.dcx().err_count() != 0 {
             return Ok(false);
         }
-
-        tcx.par_hir_body_owners(|def_id| tcx.ensure_ok().check_match(def_id).expect("check_match"));
-        tcx.ensure_ok().check_private_in_public(());
-        tcx.hir_for_each_module(|module| {
-            tcx.ensure_ok().check_mod_privacy(module);
-        });
 
         let time_hir1 = Instant::now();
         self.time_hir = time_hir1 - time_hir0;
@@ -2792,7 +2797,7 @@ impl Verifier {
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
-            unpruned_crate,
+            &unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,
@@ -2825,8 +2830,9 @@ impl Verifier {
         let direct_var_modes = erasure_info.direct_var_modes.clone();
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
+        let bodies = erasure_info.bodies.clone();
         let erasure_hints = crate::erase::ErasureHints {
-            vir_crate,
+            vir_crate: unpruned_crate,
             hir_vir_ids,
             resolved_calls,
             resolved_pats,
@@ -2834,8 +2840,24 @@ impl Verifier {
             direct_var_modes,
             external_functions,
             ignored_functions,
+            bodies,
         };
         self.erasure_hints = Some(erasure_hints);
+
+        if !self.args.no_lifetime {
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                &self.verus_items.as_ref().unwrap(),
+                self.erasure_hints.as_ref().unwrap(),
+            )
+            .map_err(|e| (e, Vec::new()))?;
+        }
+
+        // These can invoke mir_borrowck when opaque types are involved.
+        // Thus, we can only run these after initializing erasure_hints
+        tcx.ensure_ok().check_private_in_public(());
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_mod_privacy(module);
+        });
 
         let time4 = Instant::now();
         self.time_vir = time4 - time0;
@@ -2892,6 +2914,7 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
+    pub(crate) spans: Option<SpanContext>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -2937,22 +2960,43 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             dep_tracker.config_install(config);
         }
 
-        config.override_queries = Some(|_session, providers| {
-            providers.hir_crate = hir_crate;
+        if self.verifier.args.no_lifetime {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| {};
+                providers.check_mod_deathness = |_, _| {};
 
-            // Hooking mir_const_qualif solves constness issue in function body,
-            // but const-eval will still do check-const when evaluating const
-            // value. Thus const_header_wrapper is still needed.
-            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
-            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
-            // by const evaluation through the mir interpreter.
-            providers.mir_borrowck = |tcx, _local_def_id| {
-                Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
-                    rustc_data_structures::fx::FxIndexMap::default(),
-                )))
-            };
-        });
+                providers.mir_borrowck = |tcx, _local_def_id| {
+                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                        rustc_data_structures::fx::FxIndexMap::default(),
+                    )))
+                };
+            });
+        } else {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                providers.lint_mod = |_, _| {};
+                providers.check_liveness = |_, _| {};
+                providers.check_mod_deathness = |_, _| {};
+
+                rustc_mir_build_verus::verus_provide(providers);
+
+                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
+                // This happens earlier than we'd like, so we disable it.
+                // TODO: when we support opaque types we should run this check later
+                providers.check_well_formed =
+                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
+                        let node = tcx.hir_node_by_def_id(def_id);
+                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
+                            return Ok(());
+                        }
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.check_well_formed)(tcx, def_id)
+                    };
+            });
+        }
     }
 
     fn after_expansion<'tcx>(
@@ -2998,6 +3042,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.time_import = time_import1 - time_import0;
         let verus_items =
             Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        self.verifier.verus_items = Some(verus_items.clone());
         let spans = SpanContextX::new(
             tcx,
             tcx.stable_crate_id(LOCAL_CRATE),
@@ -3005,6 +3050,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
             self.verus_externs.as_ref(),
         );
+
         {
             let reporter = Reporter::new(&spans, compiler);
             if self.verifier.args.trace {
@@ -3058,13 +3104,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
+                // TODO the "lifetime" subsystem is misnamed now, as its only role is
+                // trait conflict checking
                 crate::lifetime::check_tracked_lifetimes(
-                    self.verifier.args.clone(),
-                    tcx,
-                    verus_items,
                     &spans,
-                    self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
-                    self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                     lifetime_log_file,
                 )
@@ -3089,7 +3132,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         for msg in &msgs {
                             reporter.report(&msg.clone().to_any());
                         }
-                        reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
+                        reporter.report(
+                            &note_bare("This error was found in Verus's Trait-Conflict-Checker")
+                                .to_any(),
+                        );
                         return rustc_driver::Compilation::Stop;
                     }
                 }
@@ -3105,6 +3151,28 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
+        self.spans = Some(spans);
+        if !self.verifier.args.no_lifetime {
+            rustc_driver::Compilation::Continue
+        } else {
+            self.finish_verus(compiler);
+            rustc_driver::Compilation::Stop
+        }
+    }
+
+    fn after_analysis<'tcx>(
+        &mut self,
+        compiler: &Compiler,
+        _tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        self.finish_verus(compiler);
+        rustc_driver::Compilation::Stop
+    }
+}
+
+impl VerifierCallbacksEraseMacro {
+    fn finish_verus(&mut self, compiler: &Compiler) {
+        let spans = self.spans.clone().unwrap();
         match self.verifier.verify_crate(compiler, &spans) {
             Ok(()) => {}
             Err(err) => {
@@ -3130,6 +3198,5 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             );
         }
-        rustc_driver::Compilation::Stop
     }
 }

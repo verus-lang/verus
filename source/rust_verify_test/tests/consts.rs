@@ -503,3 +503,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] assoc_const_struct verus_code! {
+        pub struct Foo {
+        }
+
+        impl Foo {
+            pub const BAR: Self = Self { };
+
+            pub fn get_bar(&self) -> Foo {
+                Foo::BAR
+            }
+        }
+    } => Ok(())
+}

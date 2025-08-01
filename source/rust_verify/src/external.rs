@@ -70,7 +70,7 @@ pub struct CrateItem {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path },
+    VerusAware { module_path: Path, const_directive: bool },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -324,7 +324,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         // Append this item to the items
 
         let verif = if state_for_this_item == VerifState::Verify {
-            VerifOrExternal::VerusAware { module_path: self.module_path.clone() }
+            VerifOrExternal::VerusAware {
+                module_path: self.module_path.clone(),
+                const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
+            }
         } else {
             let path_opt =
                 def_id_to_vir_path_option(self.ctxt.tcx, Some(&self.ctxt.verus_items), def_id);
@@ -424,8 +427,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
                     ));
                 } else {
-                    self.items[this_item_idx].verif =
-                        VerifOrExternal::VerusAware { module_path: self.module_path.clone() }
+                    self.items[this_item_idx].verif = VerifOrExternal::VerusAware {
+                        module_path: self.module_path.clone(),
+                        const_directive: false,
+                    }
                 }
             }
         }

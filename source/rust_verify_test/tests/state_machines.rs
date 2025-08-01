@@ -7297,7 +7297,7 @@ test_verify_one_file! {
         proof fn test(tracked t: A::x) -> (tracked r: (A::x, A::x)) {
             (t, t)
         }
-    } => Err(e) => assert_vir_error_msg(e, "use of moved value")
+    } => Err(e) => assert_rust_error_msg(e, "use of moved value")
 }
 
 test_verify_one_file! {

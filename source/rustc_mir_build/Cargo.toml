@@ -1,0 +1,11 @@
+[package]
+name = "rustc_mir_build"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+# tidy-alphabetical-start
+itertools = "0.12"
+
+tracing = "0.1"
+# tidy-alphabetical-end
