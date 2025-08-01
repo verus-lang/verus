@@ -1303,10 +1303,12 @@ where
         v.visit_qself_mut(it);
     }
     v.visit_path_mut(&mut node.path);
-    skip!(node.paren_token);
-    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
-        let it = el.value_mut();
-        full!(v.visit_fn_arg_mut(it));
+    if let Some(it) = &mut node.inputs {
+        skip!((it).0);
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_fn_arg_mut(it));
+        }
     }
     v.visit_return_type_mut(&mut node.output);
     if let Some(it) = &mut node.requires {
