@@ -25,7 +25,7 @@ use rustc_middle::ty::{
 };
 use rustc_middle::ty::{BoundVarReplacerDelegate, TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -109,6 +109,9 @@ pub struct VerusErasureCtxt {
     pub dummy_capture_struct_def_id: DefId,
 }
 
+/// Used to communicate the set of LocalDefIds that may require erasure.
+static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::new(None);
+
 /// Used to communicate the VerusErasureCtxt
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
 
@@ -131,6 +134,40 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
 
 fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
+}
+
+/// Our erasure scheme will fail if this query runs too early, before we initialize the VerusErasureCtxt.
+/// However, there are some items (e.g. consts) where this happens intentionally because consts may be evaluated
+/// during type-checking.
+///
+/// rust_verify needs to follow the scheme:
+///
+///  1. Compute the set of LocalDefIds that require erasure, and initialize the VERUS_AWARE_DEF_IDS
+///  2. Run hir_typeck, compute mode info
+///  3. initialize the VERUS_ERASURE_CTXT
+///  4. Run lifetime checking
+///
+/// As a result, thir_body is able to sanity check we're in a consistent state. If the VERUS_ERASURE_CTXT
+/// hasn't been initialized yet, we check that the given item is one that doesn't need it.
+fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
+    if get_verus_erasure_ctxt_option().is_none() {
+        match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
+            Some(m) => {
+                if m.contains(&local_def_id) {
+                    panic!(
+                        "Internal Verus Error: The thir_body query is running for item {:?} which may require erasure, but the VerusErasureCtxt has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` to work around the issue.",
+                        local_def_id
+                    );
+                }
+            }
+            None => {
+                panic!(
+                    "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` to work around the issue.",
+                    local_def_id
+                );
+            }
+        }
+    }
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -431,8 +468,6 @@ pub(crate) fn erase_node<'tcx>(
             panic!("erase_node got unexpected kind");
         }
     };
-
-    let erasure_ctxt = get_verus_erasure_ctxt();
 
     let expr_ids = expr_ids
         .iter()
