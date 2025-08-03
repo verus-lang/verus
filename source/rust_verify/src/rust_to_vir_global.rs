@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustc_hir::{Item, ItemKind};
-use vir::ast::{IntRange, Typ, TypX, VirErr};
+use vir::ast::{IntRange, Typ, TypX, VirErr, KrateX, Visibility};
 
 use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};
 
@@ -125,4 +125,14 @@ pub(crate) fn process_const_early<'tcx>(
         }
     }
     Ok(())
+}
+
+pub(crate) fn fixup_global_broadcast_visibility(vir: &mut KrateX) {
+    for function in vir.functions.iter_mut() {
+        if function.x.attrs.size_of_broadcast_proof {
+            let functionx = Arc::make_mut(function);
+            let vis = Visibility::public(); //vir::ast_util::widest_visibility_for_types_in_exprs(&functionx.ensure.0);
+            functionx.x.visibility = vis;
+        }
+    }
 }

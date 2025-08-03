@@ -538,5 +538,7 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
 
+    crate::rust_to_vir_global::fixup_global_broadcast_visibility(&mut vir);
+
     Ok(Arc::new(vir))
 }

@@ -745,7 +745,11 @@ pub fn prune_krate_for_module_or_krate(
                     Some(m) if m == module => {
                         root_functions.insert(f.x.name.clone());
                     }
-                    _ => {}
+                    _ => {
+                        if f.x.attrs.size_of_broadcast_proof && is_visible_to(&f.x.visibility, module) {
+                            root_functions.insert(f.x.name.clone());
+                        }
+                    }
                 }
             }
         }

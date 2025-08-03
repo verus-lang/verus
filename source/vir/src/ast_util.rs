@@ -1251,3 +1251,53 @@ impl Opaqueness {
         }
     }
 }
+
+/// Visibility for the given type (doesn't recurse into type arguments)
+fn visibility_for_typ_node(typ: &Typ) {
+    match &**typ {
+        TypX::Bool
+          | TypX::Int(_)
+          | TypX::SpecFn(..)
+          | SpecFn(..)
+          | AnonymousClosure(..)
+          | Decorate(_, _, _)
+          | Boxed(_)
+          | TypParam(_)
+          | Primitive(_, _)
+          | PointeeMetadata(_)
+          | TypeId
+          | ConstInt(_)
+          | ConstBool(_)
+          | Air(_) => Visibility::public(),
+
+        FnDef(fun, _, _) => {
+        }
+        Datatype(dt, _, _) => {
+        }
+        Projection { trait_typ_args: _,
+    }
+}
+
+/// Widest visibility that can see all types in the Expr
+fn widest_visibility_for_types_in_exprs(expr: &Expr) -> Visibility {
+    let mut v = Visibility::public();
+    ast_visitor_check(expr,
+      |_, _| Ok(()),
+      |_, _| Ok(()),
+      |_, _| Ok(()),
+      |_, typ, span| {
+          v = v.join(visibility_for_typ_node(typ))
+          Ok(())
+      },
+    ).unwrap();
+    v
+}
+
+/// Widest visibility that can see all types in the Exprs
+fn widest_visibility_for_types_in_exprs(exprs: &Exprs) -> Visibility {
+    let mut v = Visibility::public();
+    for e in exprs.iter() {
+        v = v.join(widest_visibility_for_types_in_expr(e));
+    }
+    v
+}
