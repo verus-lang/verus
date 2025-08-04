@@ -2,6 +2,7 @@ use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
+use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
@@ -14,6 +15,7 @@ use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
+use rustc_hir::def::DefKind;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
@@ -319,7 +321,7 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
-    item_to_module_map: Option<Arc<crate::external::CrateItems>>,
+    crate_items: Option<Arc<crate::external::CrateItems>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -472,7 +474,7 @@ impl Verifier {
             crate_names: None,
             air_no_span: None,
             current_crate_modules: None,
-            item_to_module_map: None,
+            crate_items: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -518,7 +520,7 @@ impl Verifier {
             crate_names: self.crate_names.clone(),
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
-            item_to_module_map: self.item_to_module_map.clone(),
+            crate_items: self.crate_items.clone(),
             buckets: self.buckets.clone(),
 
             expand_flag: self.expand_flag,
@@ -2723,7 +2725,7 @@ impl Verifier {
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
         self.current_crate_modules = Some(vir_crate.modules.clone());
-        self.item_to_module_map = Some(Arc::new(crate_items));
+        self.crate_items = Some(Arc::new(crate_items));
 
         // Export crate if requested.
         let crate_metadata = crate::import_export::CrateMetadata {
@@ -3151,26 +3153,41 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             return rustc_driver::Compilation::Stop;
         }
 
-        self.spans = Some(spans);
         if !self.verifier.args.no_lifetime {
-            rustc_driver::Compilation::Continue
-        } else {
-            self.finish_verus(compiler);
-            rustc_driver::Compilation::Stop
+            self.run_lifetime_checks_on_verus_aware_items(tcx);
         }
+
+        self.spans = Some(spans);
+        self.finish_verus(compiler);
+
+        rustc_driver::Compilation::Stop
     }
 
     fn after_analysis<'tcx>(
         &mut self,
-        compiler: &Compiler,
+        _compiler: &Compiler,
         _tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
-        self.finish_verus(compiler);
         rustc_driver::Compilation::Stop
     }
 }
 
 impl VerifierCallbacksEraseMacro {
+    fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
+        for crate_item in self.verifier.crate_items.as_ref().unwrap().items.iter() {
+            match &crate_item.verif {
+                VerifOrExternal::VerusAware { module_path: _, const_directive: false } => {
+                    let def_id = crate_item.id.owner_id().def_id;
+                    if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+                        tcx.ensure_ok().mir_borrowck(def_id);
+                    }
+                }
+                VerifOrExternal::VerusAware { module_path: _, const_directive: true }
+                | VerifOrExternal::External { .. } => {}
+            }
+        }
+    }
+
     fn finish_verus(&mut self, compiler: &Compiler) {
         let spans = self.spans.clone().unwrap();
         match self.verifier.verify_crate(compiler, &spans) {
