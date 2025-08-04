@@ -3186,10 +3186,11 @@ impl VerifierCallbacksEraseMacro {
                     Some(VerifOrExternal::VerusAware {
                         module_path: _,
                         const_directive: false,
+                        external_body: false,
                     }) => {
                         tcx.ensure_ok().mir_borrowck(def_id);
                     }
-                    Some(VerifOrExternal::VerusAware { module_path: _, const_directive: true })
+                    Some(VerifOrExternal::VerusAware { .. })
                     | Some(VerifOrExternal::External { .. })
                     | None => {}
                 }

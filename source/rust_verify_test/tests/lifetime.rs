@@ -1436,3 +1436,27 @@ test_verify_one_file! {
         "cannot move out of `x.y` which is behind a shared reference",
     ])
 }
+
+test_verify_one_file! {
+    #[test] external_body_that_uses_external_structs verus_code! {
+        #[verifier::external_body]
+        struct X(u64, u64);
+
+        #[verifier::external]
+        struct Y(u64, u64);
+
+        #[verifier::external_body]
+        struct X1 { a: u64, b: u64 }
+
+        #[verifier::external]
+        struct Y1 { a: u64, b: u64 }
+
+        #[verifier::external_body]
+        fn test() {
+            let x = X(3, 4);
+            let y = Y(5, 6);
+            let x1 = X1 { a: 13, b: 14 };
+            let y1 = Y1 { a: 15, b: 16 };
+        }
+    } => Ok(())
+}

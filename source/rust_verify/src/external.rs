@@ -70,7 +70,7 @@ pub struct CrateItem {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path, const_directive: bool },
+    VerusAware { module_path: Path, const_directive: bool, external_body: bool },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -327,6 +327,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             VerifOrExternal::VerusAware {
                 module_path: self.module_path.clone(),
                 const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
+                external_body: my_eattrs.external_body,
             }
         } else {
             let path_opt =
@@ -430,6 +431,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                     self.items[this_item_idx].verif = VerifOrExternal::VerusAware {
                         module_path: self.module_path.clone(),
                         const_directive: false,
+                        external_body: false,
                     }
                 }
             }
