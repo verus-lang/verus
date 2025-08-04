@@ -15,7 +15,6 @@ use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
-use rustc_hir::def::DefKind;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
@@ -3157,6 +3156,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             self.run_lifetime_checks_on_verus_aware_items(tcx);
         }
 
+        if let Some(_guar) = compiler.sess.dcx().has_errors() {
+            return rustc_driver::Compilation::Stop;
+        }
+
         self.spans = Some(spans);
         self.finish_verus(compiler);
 
@@ -3174,18 +3177,24 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
 impl VerifierCallbacksEraseMacro {
     fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
-        for crate_item in self.verifier.crate_items.as_ref().unwrap().items.iter() {
-            match &crate_item.verif {
-                VerifOrExternal::VerusAware { module_path: _, const_directive: false } => {
-                    let def_id = crate_item.id.owner_id().def_id;
-                    if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+        let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
+        tcx.par_hir_body_owners(|def_id| {
+            if !tcx.is_typeck_child(def_id.to_def_id()) {
+                let owner_id = rustc_hir::OwnerId { def_id: def_id };
+                let crate_item = crate_items.map.get(&owner_id);
+                match &crate_item {
+                    Some(VerifOrExternal::VerusAware {
+                        module_path: _,
+                        const_directive: false,
+                    }) => {
                         tcx.ensure_ok().mir_borrowck(def_id);
                     }
+                    Some(VerifOrExternal::VerusAware { module_path: _, const_directive: true })
+                    | Some(VerifOrExternal::External { .. })
+                    | None => {}
                 }
-                VerifOrExternal::VerusAware { module_path: _, const_directive: true }
-                | VerifOrExternal::External { .. } => {}
             }
-        }
+        });
     }
 
     fn finish_verus(&mut self, compiler: &Compiler) {
