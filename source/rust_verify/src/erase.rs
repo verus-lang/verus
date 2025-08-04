@@ -135,10 +135,7 @@ fn resolved_call_to_call_erase(
                 Mode::Spec => {
                     CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
                 }
-                Mode::Exec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
-                }
-                Mode::Proof => {
+                Mode::Proof | Mode::Exec => {
                     let variant = datatype.x.get_variant(variant_name);
                     let args = variant
                         .fields
@@ -164,10 +161,7 @@ fn resolved_call_to_call_erase(
                 Mode::Spec => {
                     CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
                 }
-                Mode::Exec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
-                }
-                Mode::Proof => {
+                Mode::Proof | Mode::Exec => {
                     let variant = datatype.x.get_variant(variant_name);
                     let mut args = fields
                         .iter()

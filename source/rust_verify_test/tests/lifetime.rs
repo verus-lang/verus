@@ -1342,7 +1342,7 @@ test_verify_one_file! {
             // this is ok, both uses of x are in ghost position
             let tracked s = S { x: x, y: x };
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -1388,8 +1388,51 @@ test_verify_one_file! {
             // this is ok, both uses of x are in ghost position
             let tracked s = S { x: x.y, y: x.y };
         }
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "cannot move out of",
-        "cannot move out of",
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot move out of `x.y` which is behind a shared reference",
+        "cannot move out of `x.y` which is behind a shared reference",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields_fn_style verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S(ghost Y, ghost Y);
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S(x.y, x.y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields_fn_style verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S(tracked Y, tracked Y);
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S(x.y, x.y);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot move out of `x.y` which is behind a shared reference",
+        "cannot move out of `x.y` which is behind a shared reference",
     ])
 }
