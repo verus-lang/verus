@@ -650,12 +650,12 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(builtin, token.span => #builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
                                     Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p| [#contrain_typ_expr, #exprs])),
+                                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p| [#contrain_typ_expr, #exprs])),
                                     ),
                                     Some(Semi { spans: [token.span] }),
                                 ));

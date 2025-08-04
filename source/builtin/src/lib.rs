@@ -240,7 +240,7 @@ pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::constrain_type"]
+#[rustc_diagnostic_item = "verus::verus_builtin::constrain_type"]
 #[verifier::spec]
 pub fn constrain_type<T>(_x: T, _y: T) -> bool {
     true
