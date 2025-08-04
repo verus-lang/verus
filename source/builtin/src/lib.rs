@@ -239,6 +239,13 @@ pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
     body
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::constrain_type"]
+#[verifier::spec]
+pub fn constrain_type<T>(_x: T, _y: T) -> bool {
+    true
+}
+
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
 #[macro_export]

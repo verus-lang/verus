@@ -66,7 +66,7 @@ pub struct Header {
     pub hidden: Vec<Fun>,
     pub require: Exprs,
     pub recommend: Exprs,
-    pub ensure_id_typ: Option<(VarIdent, Typ)>,
+    pub ensure_id_typ: Option<(VarIdent, Option<Typ>)>,
     pub ensure: (Exprs, Exprs),
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
@@ -85,7 +85,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
-    let mut ensure: Option<(Option<(VarIdent, Typ)>, (Exprs, Exprs))> = None;
+    let mut ensure: Option<(Option<(VarIdent, Option<Typ>)>, (Exprs, Exprs))> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
