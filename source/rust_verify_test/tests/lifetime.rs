@@ -1051,3 +1051,115 @@ test_verify_one_file! {
         pub struct Container<T: Borrowable>(T);
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_specification_on_external_function verus_code! {
+        struct X {
+            u: u64
+        }
+
+        uninterp spec fn foo(x: X) -> bool;
+        uninterp spec fn bar(x: X) -> bool;
+
+        fn exec_foo(x: X) {
+        }
+
+        // REVIEW: reconsider if this should be allowed
+
+        #[verifier::external]
+        fn test(x: X)
+            requires foo(x) && bar(x),
+        {
+            exec_foo(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields verus_code! {
+        struct X {
+            u: u64,
+        }
+
+        // REVIEW: consider requiring structs to be marked 'tracked' or 'ghost' to have
+        // tracked/ghost fields
+        // (note: the reason this test works is that, even though the struct is exec,
+        // it is used in a tracked-mode way)
+        struct S {
+            ghost x: X,
+            ghost y: X,
+        }
+
+        proof fn test(tracked x: X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x, y: x };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields verus_code! {
+        struct X {
+            u: u64,
+        }
+
+        struct S {
+            tracked x: X,
+            tracked y: X,
+        }
+
+        proof fn test(tracked x: X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x, y: x };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields_2 verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S {
+            ghost x: Y,
+            ghost y: Y,
+        }
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x.y, y: x.y };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields_2 verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S {
+            tracked x: Y,
+            tracked y: Y,
+        }
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x.y, y: x.y };
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot move out of",
+        "cannot move out of",
+    ])
+}
