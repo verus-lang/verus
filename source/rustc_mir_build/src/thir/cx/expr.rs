@@ -43,12 +43,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     #[instrument(level = "trace", skip(self, hir_expr))]
     pub(super) fn mirror_expr_inner(&mut self, hir_expr: &'tcx hir::Expr<'tcx>) -> ExprId {
+        let spec = self.verus_ctxt.expr_is_spec[&hir_expr.hir_id];
         let expr_scope =
             region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
 
         trace!(?hir_expr.hir_id, ?hir_expr.span);
 
-        let mut expr = self.make_mirror_unadjusted(hir_expr);
+        let mut expr = self.make_mirror_unadjusted(hir_expr, spec);
 
         trace!(?expr.ty);
 
@@ -57,7 +58,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             for adjustment in self.typeck_results.expr_adjustments(hir_expr) {
                 trace!(?expr, ?adjustment);
                 let span = expr.span;
-                expr = self.apply_adjustment(hir_expr, expr, adjustment, span);
+                expr = self.apply_adjustment(hir_expr, expr, adjustment, span, spec);
             }
         }
 
@@ -86,6 +87,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         mut expr: Expr<'tcx>,
         adjustment: &Adjustment<'tcx>,
         mut span: Span,
+        spec: bool,
     ) -> Expr<'tcx> {
         let Expr { temp_lifetime, .. } = expr;
 
@@ -236,6 +238,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
         };
 
+        let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind, spec);
+
         Expr { temp_lifetime, ty: adjustment.target, span, kind }
     }
 
@@ -327,13 +331,18 @@ impl<'tcx> ThirBuildCx<'tcx> {
     }
 
     #[instrument(level = "debug", skip(self), ret)]
-    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>) -> Expr<'tcx> {
+    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>, spec: bool) -> Expr<'tcx> {
         let tcx = self.tcx;
         let expr_ty = self.typeck_results.expr_ty(expr);
         let (temp_lifetime, backwards_incompatible) =
             self.rvalue_scopes.temporary_scope(self.region_scope_tree, expr.hir_id.local_id);
 
+        let kind_opt = crate::verus_expr::mirror_expr_pre(self, expr);
+        let kind_opt_is_some = kind_opt.is_some();
+
         let kind = match expr.kind {
+            _ if kind_opt_is_some => kind_opt.unwrap(),
+
             // Here comes the interesting stuff:
             hir::ExprKind::MethodCall(segment, receiver, args, fn_span) => {
                 // Rewrite a.b(c) into UFCS form like Trait::b(a, c)
@@ -668,6 +677,22 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
+                #[rustfmt::skip]
+                let kind = if let Some((upvars, fake_reads)) =
+                    crate::verus::get_override_closure_kind(self, def_id)
+                {
+                    ExprKind::Closure(Box::new(ClosureExpr {
+                        closure_id: def_id,
+                        args,
+                        upvars,
+                        movability,
+                        fake_reads,
+                    }))
+                } else if self.verus_ctxt.skip_closure(def_id) {
+                    crate::verus::erase_tree_kind(self, expr)
+                } else {
+                // leave unindented for easier merging
+
                 let upvars = self
                     .tcx
                     .closure_captures(def_id)
@@ -698,11 +723,14 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     movability,
                     fake_reads,
                 }))
+
+                }; // end of unindented region
+                kind
             }
 
             hir::ExprKind::Path(ref qpath) => {
                 let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
-                self.convert_path_expr(expr, res)
+                self.convert_path_expr(expr, res, spec)
             }
 
             hir::ExprKind::InlineAsm(asm) => ExprKind::InlineAsm(Box::new(InlineAsmExpr {
@@ -934,6 +962,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
             hir::ExprKind::Err(_) => unreachable!("cannot lower a `hir::ExprKind::Err` to THIR"),
         };
 
+        let kind = if kind_opt_is_some {
+            kind
+        } else {
+            crate::verus_expr::mirror_expr_post(self, expr, kind, spec)
+        };
+
         Expr {
             temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
             ty: expr_ty,
@@ -1020,7 +1054,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
         self.thir.arms.push(arm)
     }
 
-    fn convert_path_expr(&mut self, expr: &'tcx hir::Expr<'tcx>, res: Res) -> ExprKind<'tcx> {
+    fn convert_path_expr(
+        &mut self,
+        expr: &'tcx hir::Expr<'tcx>,
+        res: Res,
+        spec: bool,
+    ) -> ExprKind<'tcx> {
         let args = self.typeck_results.node_args(expr.hir_id);
         match res {
             // A regular function, constructor function or a constant.
@@ -1097,7 +1136,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             }
 
-            Res::Local(var_hir_id) => self.convert_var(var_hir_id),
+            Res::Local(var_hir_id) => {
+                match crate::verus::handle_var(self, expr, var_hir_id, spec) {
+                    Some(expr) => expr,
+                    None => self.convert_var(var_hir_id),
+                }
+            }
 
             _ => span_bug!(expr.span, "res `{:?}` not yet implemented", res),
         }
@@ -1180,7 +1224,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         ExprKind::Deref { arg: ref_expr }
     }
 
-    fn convert_captured_hir_place(
+    pub(crate) fn convert_captured_hir_place(
         &mut self,
         closure_expr: &'tcx hir::Expr<'tcx>,
         place: HirPlace<'tcx>,
@@ -1237,7 +1281,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         captured_place_expr
     }
 
-    fn capture_upvar(
+    pub(crate) fn capture_upvar(
         &mut self,
         closure_expr: &'tcx hir::Expr<'tcx>,
         captured_place: &'tcx ty::CapturedPlace<'tcx>,
