@@ -937,7 +937,7 @@ impl<A> Seq<A> {
     }
 
     /// Conversion of a sequence to multiset is equivalent to conversion of its reversion to multiset
-    proof fn lemma_reverse_to_multiset(self)
+    pub proof fn lemma_reverse_to_multiset(self)
         ensures
             self.reverse().to_multiset() =~= self.to_multiset(),
         decreases self.len(),
