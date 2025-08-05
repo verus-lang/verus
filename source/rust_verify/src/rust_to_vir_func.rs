@@ -225,6 +225,7 @@ pub(crate) fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
+        atomically: None,
     };
     let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
 

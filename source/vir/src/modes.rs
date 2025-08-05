@@ -1617,6 +1617,8 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
+        ExprX::Update(_exp) => todo!(),
+        ExprX::Atomically(_exp) => todo!(),
     };
     Ok((mode?, None))
 }

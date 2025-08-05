@@ -676,45 +676,26 @@ pub struct AtomicUpdate<X, Y, Pred> {
     _dummy: core::marker::PhantomData<spec_fn(X) -> Y>,
 }
 
-#[doc(hidden)]
-#[verifier::reject_recursive_types(X)]
-pub struct UpdateTypeInject<X, Y, P> {
-    _dummy: core::marker::PhantomData<(spec_fn(X) -> Y, P)>,
-}
-
 pub trait UpdatePredicate<X, Y> {
-    spec fn req(x: X) -> bool;
-    spec fn ens(x: X, y: Y) -> bool;
+    spec fn req(self, x: X) -> bool;
+    spec fn ens(self, x: X, y: Y) -> bool;
 }
 
 impl<X, Y> UpdatePredicate<X, Y> for () {
-    open spec fn req(x: X) -> bool {
+    open spec fn req(self, x: X) -> bool {
         true
     }
 
-    open spec fn ens(x: X, y: Y) -> bool {
+    open spec fn ens(self, x: X, y: Y) -> bool {
         true
     }
-}
-
-#[cfg(verus_keep_ghost)]
-#[doc(hidden)]
-#[verifier::external_body]
-pub proof fn update_internal<X, Y, Pred: UpdatePredicate<X, Y>>(
-    _update_type_inject: UpdateTypeInject<X, Y, Pred>,
-    x: X,
-) -> (y: Y)
-    requires Pred::req(x),
-    ensures Pred::ens(x, y),
-{
-    arbitrary()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
 #[doc(hidden)]
 #[verifier::external_body]
-pub fn atomically<X, Y, P>(_f: impl FnOnce(UpdateTypeInject<X, Y, P>)) -> AtomicUpdate<X, Y, P> {
+pub fn atomically<X, Y, P>(_f: impl FnOnce(fn(X) -> Y)) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }
 

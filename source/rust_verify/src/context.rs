@@ -45,6 +45,12 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
+    pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
+}
+
+pub(crate) struct AtomicallyCtxt {
+    pub(crate) update_binder: HirId,
+    pub(crate) found: std::sync::atomic::AtomicBool,
 }
 
 impl<'tcx> ContextX<'tcx> {

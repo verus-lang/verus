@@ -1,5 +1,5 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
-use crate::context::BodyCtxt;
+use crate::context::{AtomicallyCtxt, BodyCtxt};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
@@ -28,6 +28,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
     ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
@@ -559,6 +560,29 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                 mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
+            }
+            SpecItem::Atomically => {
+                let [arg_expr] = args.as_slice() else { todo!() };
+                let ExprKind::Closure(closure) = arg_expr.kind else { todo!() };
+
+                let body = tcx.hir_body(closure.body);
+                let [update_param] = body.params else { todo!() };
+
+                //let ExprKind::Block(block, _) = body.value.kind else { todo!() };
+                //dbg!(&body);
+
+                let actx = Arc::new(AtomicallyCtxt {
+                    update_binder: update_param.pat.hir_id,
+                    found: AtomicBool::new(false),
+                });
+
+                let atomically = Some(actx.clone());
+                let bctx_inner = BodyCtxt { atomically, ..bctx.clone() };
+
+                let value = expr_to_vir(&bctx_inner, body.value, outer_modifier)?;
+                dbg!(actx.found.load(Ordering::Relaxed));
+
+                mk_expr(ExprX::Atomically(value))
             }
         },
         VerusItem::Quant(quant_item) => {

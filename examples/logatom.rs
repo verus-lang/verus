@@ -2,7 +2,7 @@ use vstd::prelude::*;
 
 verus! {
 
-fn atomic_function(x: i32) -> (y: i32)
+pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
     atomically (atom_upd) {
         (z: i32) -> (w: i32),
         requires z == 5,
@@ -16,11 +16,11 @@ fn atomic_function(x: i32) -> (y: i32)
     return x + 1;
 }
 
-fn atomic_call() {
+pub fn atomic_call() {
     let x = 2;
-    let y = atomic_function(x) atomically |update| {
-        let z: i32 = 5;
-        let w: i32 = update(z);
+    let y = atomic_function(x, "hi", ()) atomically |update| {
+        let z = 5;
+        let w = update(z);
     };
 }
 

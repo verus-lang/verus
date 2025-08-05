@@ -106,6 +106,7 @@ pub(crate) enum SpecItem {
     OpensInvariants,
     OpensInvariantsExcept,
     OpensInvariantsSet,
+    Atomically,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -295,7 +296,6 @@ pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     SetFn(SetItem),
     Invariant(InvariantItem),
-    Atomically,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -531,7 +531,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
-        ("verus::vstd::atomic::atomically",  VerusItem::Vstd(VstdItem::Atomically, Some(Arc::new("atomic::atomically".to_owned())))),
+        ("verus::vstd::atomic::atomically",  VerusItem::Spec(SpecItem::Atomically)),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
@@ -579,8 +579,7 @@ pub(crate) struct VerusItems {
 pub(crate) fn from_diagnostic_items(
     diagnostic_items: &rustc_hir::diagnostic_items::DiagnosticItems,
 ) -> VerusItems {
-    let verus_item_map: HashMap<&str, VerusItem> =
-        verus_items_map().iter().map(|(k, v)| (*k, v.clone())).collect();
+    let verus_item_map: HashMap<&str, VerusItem> = verus_items_map().into_iter().collect();
     let diagnostic_name_to_id = &diagnostic_items.name_to_id;
     let mut id_to_name: HashMap<DefId, VerusItem> = HashMap::new();
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();

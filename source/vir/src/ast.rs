@@ -863,6 +863,10 @@ pub enum ExprX {
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    /// Atomic function call update marker
+    Atomically(Expr),
+    /// Atomic function call update marker
+    Update(Expr),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue

@@ -39,7 +39,7 @@ use rustc_middle::ty::{
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
     FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Primitive,
@@ -1533,8 +1533,27 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 false,
                             ))
                         }
-                        (rustc_hir::def::Res::Local(_), _) => {
-                            None // dynamically computed function, see below
+                        (rustc_hir::def::Res::Local(local_hir_id), _) => {
+                            let maybe_actx = bctx
+                                .atomically
+                                .as_deref()
+                                // .inspect(|actx| {
+                                //     dbg!(&local_hir_id);
+                                //     dbg!(tcx.hir_opt_name(local_hir_id));
+                                //     dbg!(&actx.update_binder);
+                                // })
+                                .filter(|actx| actx.update_binder == local_hir_id);
+
+                            if let Some(actx) = &maybe_actx {
+                                actx.found.store(true, Ordering::Relaxed);
+
+                                let [input] = args_slice else { todo!() };
+                                let arg = expr_to_vir(bctx, input, modifier)?;
+                                let typ = Arc::new(TypX::Bool);
+                                Some(Ok(bctx.spanned_typed_new(fun.span, &typ, ExprX::Update(arg))))
+                            } else {
+                                None // dynamically computed function, see below
+                            }
                         }
                         _ => {
                             unsupported_err!(

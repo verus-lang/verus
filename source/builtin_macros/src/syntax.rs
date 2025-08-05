@@ -16,6 +16,7 @@ use syn_verus::ExprForLoop;
 use syn_verus::ExprMethodCall;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
+use syn_verus::punctuated::Pair;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
@@ -508,7 +509,7 @@ impl Visitor {
     }
 
     #[allow(unused)]
-    fn handle_atomic_spec(&mut self, sig: &mut Signature) {
+    fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) {
         let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else { return };
         let full_span = atomic_spec.span();
 
@@ -535,13 +536,31 @@ impl Visitor {
         pred_name.push_str("AtomicUpdatePredicate");
         let pred_ident: Ident = Ident::new(&pred_name, sig.ident.span());
 
-        sig.inputs.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_ty, #new_ty, #pred_ident>
-        ));
+        let mut args_ty_tokens = TokenStream::new();
+        let mut args_pat_tokens = TokenStream::new();
+        for (fn_arg, comma) in sig.inputs.pairs().map(Pair::into_tuple) {
+            let FnArgKind::Typed(pat_type) = &fn_arg.kind else { todo!() };
+
+            pat_type.pat.to_tokens(&mut args_pat_tokens);
+            pat_type.ty.to_tokens(&mut args_ty_tokens);
+
+            comma.to_tokens(&mut args_pat_tokens);
+            comma.to_tokens(&mut args_ty_tokens);
+        }
+
+        let inputs = &sig.inputs;
+        let generics = &sig.generics;
+        let where_clause = &generics.where_clause;
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
-            pub struct #pred_ident { }
+            #vis struct #pred_ident #generics #where_clause {
+                #vis ghost data: ( #args_ty_tokens ),
+            }
         ));
+
+        let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_ty, #new_ty, #pred_ident #generics>
+        );
 
         let mut old_val = TokenStream::new();
         let mut new_val = TokenStream::new();
@@ -549,26 +568,31 @@ impl Visitor {
         new_perms.to_value_tokens(&mut new_val);
 
         let mut atomic_req = TokenStream::new();
-        for req in requires.exprs.exprs {
+        for req in &requires.exprs.exprs {
             quote!(&&& #req).to_tokens(&mut atomic_req);
         }
 
         let mut atomic_ens = TokenStream::new();
-        for ens in ensures.exprs.exprs {
+        for ens in &ensures.exprs.exprs {
             quote!(&&& #ens).to_tokens(&mut atomic_ens);
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #vstd::atomic::UpdatePredicate<#old_ty, #new_ty> for #pred_ident {
-                open spec fn req(#old_val: #old_ty) -> bool {
+            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
+            for #pred_ident #generics #where_clause {
+                open spec fn req(self, #old_val: #old_ty) -> bool {
+                    let ( #args_pat_tokens ) = self.data;
                     #atomic_req
                 }
 
-                open spec fn ens(#old_val: #old_ty, #new_val: #new_ty) -> bool {
+                open spec fn ens(self, #old_val: #old_ty, #new_val: #new_ty) -> bool {
+                    let ( #args_pat_tokens ) = self.data;
                     #atomic_ens
                 }
             }
         ));
+
+        sig.inputs.push(update_arg);
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -822,7 +846,7 @@ impl Visitor {
 
         let has_body = semi_token.is_none();
 
-        self.handle_atomic_spec(sig);
+        self.handle_atomic_spec(sig, vis);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -3142,7 +3166,7 @@ impl Visitor {
 
         let extra_arg = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
             #vstd::atomic::atomically(move |#update_binder| {
-                let #update_binder = move |x| #vstd::atomic::update_internal(#update_binder, x);
+                let _args = ( #args );
                 #body
             })
         ));
@@ -4548,7 +4572,9 @@ pub(crate) fn rewrite_items(
         visitor.inside_arith = InsideArith::None;
 
         // if !visitor.additional_items.is_empty() {
-        //     dbg!("debug print");
+        //     let msg = "debug print";
+        //     dbg!(msg);
+
         //     for item in visitor.additional_items.iter().chain(Some(&*item)) {
         //         let s = item.to_token_stream().to_string();
         //         eprintln!("\n{s}\n");
