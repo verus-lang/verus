@@ -593,7 +593,7 @@ test_verify_one_file! {
                 self.lemma(t);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `t`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }
 
 test_verify_one_file_with_options! {
@@ -1335,7 +1335,7 @@ test_verify_one_file! {
                 let tracked z: Tracked<S> = Tracked(x);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file! {
@@ -1348,7 +1348,7 @@ test_verify_one_file! {
             }
             let tracked y = x;
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file! {

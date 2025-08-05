@@ -95,7 +95,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(tcx);
+            crate::lifetime::check(tcx, true);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
@@ -242,6 +242,7 @@ pub fn run(
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         verus_externs,
+        spans: None,
     };
     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {

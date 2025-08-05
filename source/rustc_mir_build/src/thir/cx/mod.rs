@@ -27,7 +27,20 @@ pub(crate) fn thir_body(
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
-    let expr = cx.mirror_expr(body.value);
+
+    crate::verus::check_this_query_isnt_running_early(owner_def);
+
+    let expr = if crate::verus::erase_body(&mut cx, owner_def) {
+        crate::verus::erase_tree(&mut cx, body.value)
+    } else {
+        cx.verus_ctxt.prep_expr(body.value, false);
+        cx.mirror_expr(body.value)
+    };
+
+    //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(expr);
 
     let owner_id = tcx.local_def_id_to_hir_id(owner_def);
     if let Some(fn_decl) = tcx.hir_fn_decl_by_hir_id(owner_id) {
@@ -52,22 +65,24 @@ pub(crate) fn thir_body(
 }
 
 /// Context for lowering HIR to THIR for a single function body (or other kind of body).
-struct ThirBuildCx<'tcx> {
-    tcx: TyCtxt<'tcx>,
+pub(crate) struct ThirBuildCx<'tcx> {
+    pub(crate) tcx: TyCtxt<'tcx>,
     /// The THIR data that this context is building.
-    thir: Thir<'tcx>,
+    pub(crate) thir: Thir<'tcx>,
 
-    typing_env: ty::TypingEnv<'tcx>,
+    pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
-    region_scope_tree: &'tcx region::ScopeTree,
-    typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    rvalue_scopes: &'tcx RvalueScopes,
+    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
+    pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
+    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
 
     /// The `DefId` of the owner of this body.
-    body_owner: DefId,
+    pub(crate) body_owner: DefId,
+
+    pub(crate) verus_ctxt: crate::verus::VerusThirBuildCtxt,
 }
 
 impl<'tcx> ThirBuildCx<'tcx> {
@@ -114,12 +129,16 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 .hir_attrs(hir_id)
                 .iter()
                 .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
 
     #[instrument(level = "debug", skip(self))]
     fn pattern_from_hir(&mut self, p: &'tcx hir::Pat<'tcx>) -> Box<Pat<'tcx>> {
-        pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p)
+        crate::verus::erase_pat(
+            self,
+            pat_from_hir(self.tcx, self.typing_env, self.typeck_results, p),
+        )
     }
 
     fn closure_env_param(&self, owner_def: LocalDefId, expr_id: HirId) -> Option<Param<'tcx>> {

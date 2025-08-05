@@ -312,8 +312,6 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks the auxiliary function constructed by spec const
     InternalConstBody,
-    // Marks the auxiliary function constructed to wrap the ensures of a const
-    InternalEnsuresWrapper,
     // Marks trusted code
     Trusted,
     // global size_of
@@ -728,9 +726,6 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "const_body" => {
                         v.push(Attr::InternalConstBody)
                     }
-                    AttrTree::Fun(_, arg, None) if arg == "const_header_wrapper" => {
-                        v.push(Attr::InternalEnsuresWrapper)
-                    }
                     AttrTree::Fun(_, arg, None) if arg == "broadcast_use_reveal" => {
                         v.push(Attr::BroadcastUseReveal)
                     }
@@ -966,6 +961,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
     pub(crate) size_of_global: bool,
+    pub(crate) item_broadcast_use: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) external_auto_derives: AutoDerivesAttr,
@@ -1015,7 +1011,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) internal_const_body: bool,
-    pub(crate) internal_const_header_wrapper: bool,
     pub(crate) broadcast_use_reveal: bool,
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
@@ -1085,6 +1080,7 @@ pub(crate) fn get_external_attrs(
         sets_mode: false,
         verus_macro: false,
         size_of_global: false,
+        item_broadcast_use: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
         external_auto_derives: AutoDerivesAttr::Regular,
@@ -1102,6 +1098,7 @@ pub(crate) fn get_external_attrs(
             Attr::Mode(_) => es.sets_mode = true,
             Attr::VerusMacro => es.verus_macro = true,
             Attr::SizeOfGlobal => es.size_of_global = true,
+            Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
             Attr::ExternalAutoDerives(None) => {
@@ -1181,7 +1178,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         sets_mode: false,
         internal_reveal_fn: false,
         internal_const_body: false,
-        internal_const_header_wrapper: false,
         broadcast_use_reveal: false,
         trusted: false,
         size_of_global: false,
@@ -1255,7 +1251,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::InternalConstBody => vs.internal_const_body = true,
-            Attr::InternalEnsuresWrapper => vs.internal_const_header_wrapper = true,
             Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,

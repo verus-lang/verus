@@ -2414,7 +2414,7 @@ test_verify_one_file! {
                 consume(*other);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
 }
 
 test_verify_one_file! {
@@ -3521,7 +3521,7 @@ test_verify_one_file! {
                 (s, s)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `s`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `s`")
 }
 
 test_verify_one_file! {

@@ -417,7 +417,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     let mut used_modules = HashSet::<Path>::new();
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
-            VerifOrExternal::VerusAware { module_path } => {
+            VerifOrExternal::VerusAware { module_path, const_directive: _, external_body: _ } => {
                 used_modules.insert(module_path.clone());
             }
             _ => {}
@@ -461,7 +461,7 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
-            VerifOrExternal::VerusAware { module_path } => {
+            VerifOrExternal::VerusAware { module_path, const_directive: _, external_body: _ } => {
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
