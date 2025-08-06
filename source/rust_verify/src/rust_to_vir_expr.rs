@@ -2481,14 +2481,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )?))
         }
         ExprKind::Closure(Closure { fn_decl: _, .. }) => {
-            Ok(ExprOrPlace::Expr(closure_to_vir(
-                bctx,
-                expr,
-                expr_typ()?,
-                false,
-                None,
-                modifier,
-            )?))
+            Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)?))
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
