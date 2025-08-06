@@ -932,7 +932,7 @@ fn all_true_caller(v: &MyVec<bool>)
         }
     }
 }
-/*
+
 fn all_true_simpler<I: Iter<Item=bool>>(iter: &mut I) -> (r: bool)
     requires
         old(iter).inv(),
@@ -950,13 +950,13 @@ fn all_true_simpler<I: Iter<Item=bool>>(iter: &mut I) -> (r: bool)
     assume(false);
     true
 }
-
+/*
 fn all_true_simpler_caller(v: &MyVec<bool>)
 {
     let mut iter = v.iter();
     let b = all_true_simpler(&mut iter);
     proof {
-        assert(iter.events().len() == v@.len());
+        assert(iter.events().len() == v@.len() + 1);
         if b {
             assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
         }
