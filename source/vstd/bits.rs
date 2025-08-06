@@ -34,6 +34,41 @@ use super::arithmetic::mul::{
 use super::calc_macro::*;
 
 } // verus!
+macro_rules! lemma_cast_signed_to_unsigned_preserves_mod {
+    ($name:ident, $iN:ty, $uN:ty, $range:expr) => {
+        #[cfg(verus_keep_ghost)]
+        verus! {
+        proof fn $name(s: $iN)
+            ensures
+                (s as $uN) as int % $range == s as int % $range
+        {
+            assert(s >= 0 ==> s as $uN == s as int);
+            assert(s < 0  ==> s as $uN == $range + (s as int)) by (bit_vector);
+        }
+        }
+    };
+}
+
+lemma_cast_signed_to_unsigned_preserves_mod!(lemma_cast_i8_to_u8_preserves_mod, i8, u8, 0x100);
+lemma_cast_signed_to_unsigned_preserves_mod!(
+    lemma_cast_i16_to_u16_preserves_mod,
+    i16,
+    u16,
+    0x1_0000
+);
+lemma_cast_signed_to_unsigned_preserves_mod!(
+    lemma_cast_i32_to_u32_preserves_mod,
+    i32,
+    u32,
+    0x1_0000_0000
+);
+lemma_cast_signed_to_unsigned_preserves_mod!(
+    lemma_cast_i64_to_u64_preserves_mod,
+    i64,
+    u64,
+    0x1_0000_0000_0000_0000
+);
+
 // Proofs that shift right is equivalent to division by power of 2.
 macro_rules! lemma_shr_is_div {
     ($name:ident, $uN:ty) => {
