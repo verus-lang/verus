@@ -34,21 +34,32 @@ use super::arithmetic::mul::{
 use super::calc_macro::*;
 
 } // verus!
-macro_rules! lemma_cast_signed_to_unsigned_preserves_mod {
+// Proofs that casts between signed and unsigned integers preserve value modulo word size.
+macro_rules! lemma_signedness_casts_preserve_mod {
     ($name_signed_to_unsigned:ident, $name_unsigned_to_signed:ident, $iN:ty, $uN:ty, $range:expr) => {
         #[cfg(verus_keep_ghost)]
         verus! {
-        proof fn $name_signed_to_unsigned(s: $iN)
+        #[doc = "Proof that casting from "]
+        #[doc = stringify!($iN)]
+        #[doc = " to "]
+        #[doc = stringify!($uN)]
+        #[doc = " preserves value modulo 2^n."]
+        pub broadcast proof fn $name_signed_to_unsigned(s: $iN)
             ensures
-                (s as $uN) as int % $range == s as int % $range
+                #[trigger] (s as $uN) as int % $range == s as int % $range
         {
             assert(s >= 0 ==> s as $uN == s as int);
             assert(s < 0  ==> s as $uN == $range + (s as int)) by (bit_vector);
         }
 
-        proof fn $name_unsigned_to_signed(u: $uN)
+        #[doc = "Proof that casting from "]
+        #[doc = stringify!($uN)]
+        #[doc = " to "]
+        #[doc = stringify!($iN)]
+        #[doc = " preserves value modulo 2^n."]
+        pub broadcast proof fn $name_unsigned_to_signed(u: $uN)
             ensures
-                (u as $iN) as int % $range == u as int % $range
+                #[trigger] (u as $iN) as int % $range == u as int % $range
         {
             assert(u < $range/2 ==> u as $iN == u as int);
             assert(u >= $range/2 ==> u as $iN == -(($range - u) as int)) by (bit_vector);
@@ -57,28 +68,28 @@ macro_rules! lemma_cast_signed_to_unsigned_preserves_mod {
     };
 }
 
-lemma_cast_signed_to_unsigned_preserves_mod!(
+lemma_signedness_casts_preserve_mod!(
     lemma_cast_i8_to_u8_preserves_mod,
     lemma_cast_u8_to_i8_preserves_mod,
     i8,
     u8,
     0x100int
 );
-lemma_cast_signed_to_unsigned_preserves_mod!(
+lemma_signedness_casts_preserve_mod!(
     lemma_cast_i16_to_u16_preserves_mod,
     lemma_cast_u16_to_i16_preserves_mod,
     i16,
     u16,
     0x1_0000int
 );
-lemma_cast_signed_to_unsigned_preserves_mod!(
+lemma_signedness_casts_preserve_mod!(
     lemma_cast_i32_to_u32_preserves_mod,
     lemma_cast_u32_to_i32_preserves_mod,
     i32,
     u32,
     0x1_0000_0000int
 );
-lemma_cast_signed_to_unsigned_preserves_mod!(
+lemma_signedness_casts_preserve_mod!(
     lemma_cast_i64_to_u64_preserves_mod,
     lemma_cast_u64_to_i64_preserves_mod,
     i64,
