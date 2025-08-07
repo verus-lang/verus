@@ -8,14 +8,15 @@
 ///
 /// Likewise, the specification is only meaningful when the `Key`
 /// obeys our hash table model, i.e., (1) `Key::hash` is
-/// deterministic and (2) any two `Key`s satisfying `==` are
-/// identical. We have an axiom that all primitive types and `Box`es
-/// thereof obey this model. But if you want to use some other key
-/// type `MyKey`, you need to explicitly state your assumption that it
-/// does so with
-/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`.
-/// In the future, we plan to devise a way for you to prove that it
-/// does so, so that you don't have to make such an assumption.
+/// deterministic, (2) any two `Key`s are identical if and only if the
+/// executable `==` operator considers them equal, and (3)
+/// `Key::clone` produces a result equal to its input. We have an
+/// axiom that all primitive types and `Box`es thereof obey this
+/// model. But if you want to use some other key type `MyKey`, you
+/// need to explicitly state your assumption that it does so with
+/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
+/// the future, we plan to devise a way for you to prove that it does
+/// so, so that you don't have to make such an assumption.
 ///
 /// By default, the Verus standard library brings useful axioms
 /// about the behavior of `HashMap` and `HashSet` into the ambient
@@ -81,14 +82,15 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
         result == DefaultHasher::spec_finish(state@),
 ;
 
-/// Specifies whether a type conforms to our requirements to be a key
-/// in our hash table (and hash set) model.
+/// Specifies whether a type `Key` conforms to our requirements to be
+/// a key in our hash table (and hash set) model.
 ///
-/// The two requirements are (1) the hash function
-/// has to be deterministic and (2) any two elements considered equal
-/// by the executable `==` operator must be identical. Requirement (1)
-/// isn't satisfied by having `Key` implement `Hash`, since this trait
-/// doesn't mandate determinism.
+/// The three requirements are (1) the hash function is deterministic,
+/// (2) any two keys of type `Key` are identical if and only if they
+/// are considered equal by the executable `==` operator, and (3) the
+/// executable `Key::clone` function produces a result identical to
+/// its input. Requirement (1) isn't satisfied by having `Key`
+/// implement `Hash`, since this trait doesn't mandate determinism.
 ///
 /// The standard library has axioms that all primitive types and `Box`es
 /// thereof obey this model. If you want to use some other key

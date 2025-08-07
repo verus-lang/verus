@@ -2414,7 +2414,7 @@ test_verify_one_file! {
                 consume(*other);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `*other` which is behind a shared reference")
 }
 
 test_verify_one_file! {
@@ -3501,7 +3501,7 @@ test_verify_one_file! {
         mod m1 {
             pub struct S;
             impl crate::T for S {
-                closed spec fn f() -> builtin::int { 15 }
+                closed spec fn f() -> verus_builtin::int { 15 }
                 proof fn g() {}
             }
         }
@@ -3521,7 +3521,7 @@ test_verify_one_file! {
                 (s, s)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `s`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `s`")
 }
 
 test_verify_one_file! {
@@ -3719,14 +3719,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_default19 verus_code! {
         mod m1 {
-            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            #[allow(unused_imports)]use verus_builtin_macros::*;#[allow(unused_imports)]use verus_builtin::*;
             pub trait T {
                 open spec fn f() -> int { 3 }
             }
             impl T for bool {}
         }
         mod m2 {
-            #[allow(unused_imports)]use builtin_macros::*;#[allow(unused_imports)]use builtin::*;
+            #[allow(unused_imports)]use verus_builtin_macros::*;#[allow(unused_imports)]use verus_builtin::*;
             use crate::m1::*;
             proof fn test() {
                 assert(<bool as T>::f() == 3);

@@ -643,7 +643,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-builtin"] => code! {
+    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
@@ -655,6 +655,8 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
         #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
         #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
+        #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
+        #![cfg_attr(verus_keep_ghost, feature(freeze))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),
@@ -663,7 +665,7 @@ test_verify_one_file_with_options! {
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]
-        mod builtin;
+        mod verus_builtin;
 
         #[path="../../../../vstd/vstd.rs"]
         mod vstd;

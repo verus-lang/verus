@@ -1,9 +1,9 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
@@ -15,7 +15,10 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
+use crate::sst_util::{
+    sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_unit_value,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -1075,6 +1078,15 @@ pub(crate) fn expr_to_stm_opt(
             let (stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
+        }
+        ExprX::AssignToPlace { place, rhs, op } => {
+            let loc = place_to_expr_loc(place);
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: *op },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
@@ -2393,7 +2405,89 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
+        ExprX::BorrowMut(_place) => {
+            panic!("BorrowMut should have been removed in simplify");
+        }
+        ExprX::BorrowMutPhaseOne(place) => {
+            let place_exp = place_to_exp(ctx, state, place)?;
+
+            let (var_ident, mut_ref_exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::BorrowMut);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+
+            let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
+            let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
+
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+
+            Ok((vec![stm, assume_stm], ReturnValue::Some(mut_ref_exp)))
+        }
+        ExprX::BorrowMutPhaseTwo(place, mut_ref_expr) => {
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::AssignToPlace {
+                    place: place.clone(),
+                    rhs: crate::ast_util::mk_mut_ref_future(&expr.span, mut_ref_expr),
+                    op: None,
+                },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
+        }
+        ExprX::DerefMut(_place) => {
+            panic!("DerefMut should have been removed in simplify");
+        }
+        ExprX::AssumeResolved(e, typ) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = unwrap_or_return_never!(exp, stms);
+            let expx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), exp.clone());
+            let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            stms.push(assume_stm);
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
     }
+}
+
+fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
+    let expr = place_to_expr(place);
+    let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
+    assert!(stms.len() == 0);
+    match exp {
+        ReturnValue::Some(e) => Ok(e),
+        _ => panic!("place_to_exp expected exp"),
+    }
+}
+
+fn place_to_expr(place: &Place) -> Expr {
+    place_to_expr_rec(place, false)
+}
+
+fn place_to_expr_loc(place: &Place) -> Expr {
+    let e = place_to_expr_rec(place, true);
+    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
+}
+
+fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
+    let x = match &place.x {
+        PlaceX::Local(var_ident) => {
+            if loc {
+                ExprX::VarLoc(var_ident.clone())
+            } else {
+                ExprX::Var(var_ident.clone())
+            }
+        }
+        PlaceX::DerefMut(p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::Unary(UnaryOp::MutRefCurrent, e)
+        }
+        PlaceX::Field(opr, p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::Temporary(_) => panic!("Place Temporary should have been simplified out"),
+    };
+    SpannedTyped::new(&place.span, &place.typ, x)
 }
 
 /// In the case that this stmt is a Decl, we also return the following information:

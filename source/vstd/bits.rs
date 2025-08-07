@@ -82,6 +82,7 @@ macro_rules! lemma_shr_is_div {
     };
 }
 
+lemma_shr_is_div!(lemma_u128_shr_is_div, u128);
 lemma_shr_is_div!(lemma_u64_shr_is_div, u64);
 lemma_shr_is_div!(lemma_u32_shr_is_div, u32);
 lemma_shr_is_div!(lemma_u16_shr_is_div, u16);

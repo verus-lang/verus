@@ -178,6 +178,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unsigned_wrapping_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = 255u16.wrapping_mul(253);
+            assert(i == 64515);
+
+            let i = 256u16.wrapping_mul(256);
+            assert(i == 0);
+
+            let i = 257u16.wrapping_mul(259);
+            assert(i == 1027);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] signed_wrapping_mul verus_code! {
         use vstd::*;
 

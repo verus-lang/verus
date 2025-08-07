@@ -249,9 +249,9 @@ macro_rules! assert_by_contradiction {
 #[macro_export]
 macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
-        ::builtin::assert_by($predicate, {
+        ::verus_builtin::assert_by($predicate, {
             if !$predicate {
-                $bblock::builtin::assert_(false);
+                $bblock::verus_builtin::assert_(false);
             }
         });
     };
@@ -377,7 +377,7 @@ macro_rules! assert_by_contradiction_internal {
 /// # Example using a container type (TODO)
 ///
 /// # Macro Expansion (TODO)
-pub use builtin_macros::struct_with_invariants;
+pub use verus_builtin_macros::struct_with_invariants;
 
 verus! {
 

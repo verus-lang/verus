@@ -1129,6 +1129,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
+                        | MutRefCurrent
+                        | MutRefFuture
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -1242,6 +1244,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
+                        | MutRefCurrent
+                        | MutRefFuture
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }
@@ -1301,6 +1305,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
                 CustomErr(_) => Ok(e),
+                HasResolved(_) => Ok(e),
             }
         }
         Binary(op, e1, e2) => {

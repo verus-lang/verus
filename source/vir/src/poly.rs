@@ -155,6 +155,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
         TypX::PointeeMetadata(_) => None,
+        TypX::MutRef(_) => None,
     }
 }
 
@@ -206,6 +207,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => true,
     }
 }
 
@@ -244,6 +246,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => typ.clone(),
     }
 }
 
@@ -266,6 +269,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstInt(_) => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => typ.clone(),
     }
 }
 
@@ -292,7 +296,10 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
                 SpannedTyped::new(&exp.span, typ, expx)
             }
         }
-        TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => exp.clone(),
+        TypX::TypParam(_)
+        | TypX::Projection { .. }
+        | TypX::PointeeMetadata(_)
+        | TypX::MutRef(_) => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
@@ -547,6 +554,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
                 }
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                    let e1 = coerce_exp_to_native(ctx, &e1);
+                    mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                }
             }
         }
         ExpX::UnaryOpr(op, e1) => {
@@ -592,6 +603,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                         coerce_typ_to_native(ctx, &exp.typ)
                     };
                     mk_exp_typ(&typ, exprx)
+                }
+                UnaryOpr::HasResolved(_t) => {
+                    let e = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e.clone()))
                 }
             }
         }
@@ -1046,6 +1061,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
+            | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()

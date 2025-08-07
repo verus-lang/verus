@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_needs_pub_abstract verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
 
             #[derive(PartialEq, Eq)]
             pub struct Car {
@@ -24,7 +24,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_needs_pub_abstract2 verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
 
             #[derive(PartialEq, Eq)]
             pub struct Car {
@@ -42,7 +42,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_needs_pub_abstract3 verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
 
             enum E {
                 C()
@@ -70,7 +70,7 @@ test_verify_one_file! {
 
 const M1: &str = verus_code_str! {
     mod M1 {
-        use builtin::*;
+        use verus_builtin::*;
 
         #[derive(PartialEq, Eq)]
         pub struct Car {
@@ -93,7 +93,7 @@ test_verify_one_file! {
     #[test] test_transparent_struct_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{Car, Bike};
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test_transparent_struct_1() {
                 assert((Bike { hard_tail: true }).hard_tail);
@@ -106,7 +106,7 @@ test_verify_one_file! {
     #[test] test_opaque_struct_1 M1.to_string() + verus_code_str! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test_opaque_struct_1(c: Car)
                 requires
@@ -141,7 +141,7 @@ test_verify_one_file! {
 
 const M1_OPAQUE: &str = verus_code_str! {
     mod M1 {
-        use builtin::*;
+        use verus_builtin::*;
 
         pub struct A {
             field: u64,
@@ -168,7 +168,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_opaque_fn_modules_pass M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test(a: crate::M1::A) {
                 proof {
@@ -183,7 +183,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_opaque_fn_modules_fail M1_OPAQUE.to_string() + verus_code_str! {
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test(a: crate::M1::A) {
                 assert(a.always()); // FAILS

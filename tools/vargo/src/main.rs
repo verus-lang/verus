@@ -1133,9 +1133,9 @@ fn run() -> Result<(), String> {
 
             let packages = &[
                 "rust_verify",
-                "builtin",
-                "builtin_macros",
-                "state_machines_macros",
+                "verus_builtin",
+                "verus_builtin_macros",
+                "verus_state_machines_macros",
                 "vstd_build",
                 "verus",
                 "cargo-verus",
@@ -1198,9 +1198,9 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             use std::fmt::Write;
 
             for from_f_name in [
-                format!("libbuiltin.rlib"),
-                format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
-                format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
+                format!("libverus_builtin.rlib"),
+                format!("{}verus_builtin_macros.{}", LIB_PRE, LIB_DL),
+                format!("{}verus_state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
                 format!("cargo-verus{}", EXE),

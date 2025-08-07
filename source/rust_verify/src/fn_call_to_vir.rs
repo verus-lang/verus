@@ -21,8 +21,9 @@ use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
-use rustc_hir::{Expr, ExprKind, Node, QPath};
+use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -264,7 +265,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     };
 
-    record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
+    record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
@@ -320,7 +321,7 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    record_call(bctx, expr, ResolvedCall::Call(record_trait_fun, autospec_usage));
+    record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
@@ -586,10 +587,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             DirectiveItem::RevealHide => {
                 // {
-                //     ::builtin::reveal_({
+                //     ::verus_builtin::reveal_({
                 //             #[verus::internal(reveal_fn)]
                 //             fn __VERUS_REVEAL_INTERNAL__() {
-                //                 ::builtin::reveal_internal_path_(function::path)
+                //                 ::verus_builtin::reveal_internal_path_(function::path)
                 //             }
                 //             ;
                 //             __VERUS_REVEAL_INTERNAL__
@@ -680,15 +681,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
                         let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
-                            "invalid parameter for builtin::array_index at arg0, arg0 must be self",
+                            "invalid parameter for verus_builtin::array_index at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
+                            .expect("invalid parameter for verus_builtin::array_index at arg1; arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::array_index with two argument but did not receive it"
+                        "Expected a call for verus_builtin::array_index with two argument but did not receive it"
                     ),
                 }
             }
@@ -703,7 +704,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::StrLen, arg0))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_len with one argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_len with one argument but did not receive it"
                     ),
                 }
             }
@@ -713,15 +714,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprKind::Call(_, args) if args.len() == 2 => {
                         let arg0 = args.first().unwrap();
                         let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
-                            "invalid parameter for builtin::strslice_get_char at arg0, arg0 must be self",
+                            "invalid parameter for verus_builtin::strslice_get_char at arg0, arg0 must be self",
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::strslice_get_char at arg1, arg1 must be an integer");
+                            .expect("invalid parameter for verus_builtin::strslice_get_char at arg1, arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::StrGetChar, arg0, arg1))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_get_char with two argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_get_char with two argument but did not receive it"
                     ),
                 }
             }
@@ -736,7 +737,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::StrIsAscii, arg0))
                     }
                     _ => panic!(
-                        "Expected a call for builtin::strslice_is_ascii with one argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_is_ascii with one argument but did not receive it"
                     ),
                 }
             }
@@ -755,8 +756,19 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
+                if !bctx.in_ghost {
+                    if matches!(expr_item, ExprItem::ClosureToFnSpec) {
+                        return err_span(args[0].span, "cannot use spec_fn closure in 'exec' mode");
+                    } else {
+                        return err_span(
+                            args[0].span,
+                            "cannot use proof_fn closure in 'exec' mode",
+                        );
+                    }
+                }
                 if let ExprKind::Closure(..) = &args[0].kind {
                     let is_spec_fn = matches!(expr_item, ExprItem::ClosureToFnSpec);
+
                     let proof_fn_modes = if matches!(expr_item, ExprItem::ClosureToFnProof) {
                         let ty = bctx.types.node_type(expr.hir_id);
                         if let Some((arg_modes, ret_mode)) =
@@ -1445,7 +1457,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
             // REVIEW: should this really be a 'compilable operator'?
-            // Imply is marked as unimplemented! in builtin.
+            // Imply is marked as unimplemented! in verus_builtin.
             record_compilable_operator(bctx, expr, CompilableOperator::Implies);
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
@@ -1586,6 +1598,63 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
+        VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {
+            return err_span(
+                expr.span,
+                format!("this builtin item should not appear in user code",),
+            );
+        }
+        VerusItem::Resolve | VerusItem::HasResolved => {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                unsupported_err!(expr.span, "resolved/resolved without '-V new-mut-ref'", &args);
+            }
+            if matches!(verus_item, VerusItem::Resolve) {
+                record_compilable_operator(bctx, expr, CompilableOperator::Resolve);
+            } else {
+                record_spec_fn_no_proof_args(bctx, expr);
+            }
+            if !bctx.in_ghost {
+                if matches!(verus_item, VerusItem::Resolve) {
+                    return err_span(expr.span, "resolve must be in a 'proof' block");
+                } else {
+                    return err_span(expr.span, "resolved must be in a 'proof' block");
+                }
+            }
+            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
+            let t = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                expr.span,
+                &arg_typ,
+                false,
+            )?;
+            if matches!(verus_item, VerusItem::Resolve) {
+                mk_expr(ExprX::AssumeResolved(exp, t))
+            } else {
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
+            }
+        }
+        VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            record_spec_fn_no_proof_args(bctx, expr);
+            if !bctx.in_ghost {
+                return err_span(
+                    expr.span,
+                    "mut_ref_current/mut_ref_future must be in a 'proof' block",
+                );
+            }
+            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let op = match verus_item {
+                VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
+                VerusItem::MutRefFuture => UnaryOp::MutRefFuture,
+                _ => unreachable!(),
+            };
+            mk_expr(ExprX::Unary(op, exp))
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
@@ -1632,6 +1701,11 @@ fn extract_ensures<'tcx>(
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
@@ -1666,6 +1740,11 @@ fn extract_quant<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(typs.len() == body.params.len());
@@ -1723,6 +1802,11 @@ fn extract_assert_forall_by<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let body = tcx.hir_body(closure.body);
             let typs = closure_param_typs(bctx, expr)?;
             assert!(body.params.len() == typs.len());
@@ -1777,6 +1861,11 @@ fn extract_choose<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(closure) => {
+            bctx.ctxt.push_body_erasure(
+                closure.def_id,
+                BodyErasure { erase_body: true, ret_spec: true },
+            );
+
             let closure_body = tcx.hir_body(closure.body);
             let mut params: Vec<VarBinder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
@@ -1843,7 +1932,7 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
                     rustc_hir::def::Res::Def(_, def_id) => {
                         let verus_item = bctx.ctxt.verus_items.id_to_name.get(&def_id);
                         if verus_item == Some(&VerusItem::Expr(ExprItem::ClosureToFnSpec)) {
-                            return &args_slice[0];
+                            return skip_closure_coercion(bctx, &args_slice[0]);
                         }
                     }
                     _ => {}
@@ -1851,6 +1940,29 @@ fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) ->
             }
             _ => {}
         },
+        ExprKind::Block(
+            Block {
+                stmts,
+                expr: Some(e),
+                hir_id: _,
+                rules: BlockCheckMode::DefaultBlock,
+                span: _,
+                targeted_by_break: false,
+            },
+            None,
+        ) => {
+            if stmts.len() == 1 {
+                match &stmts[0].kind {
+                    StmtKind::Let(rustc_hir::LetStmt { init: Some(init), .. }) => {
+                        if crate::rust_to_vir_expr::is_ignorable_dummy_capture_operation(bctx, init)
+                        {
+                            return skip_closure_coercion(bctx, e);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         _ => {}
     }
 
@@ -1990,10 +2102,11 @@ fn mk_vir_args<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = match raw_param.kind() {
-                TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                _ => false,
-            };
+            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+                && match raw_param.kind() {
+                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
+                    _ => false,
+                };
             if is_mut_ref_param {
                 let expr =
                     expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
@@ -2039,7 +2152,7 @@ fn get_string_lit_arg<'tcx>(
         }
         _ => err_span(
             arg.span,
-            format!("Verus builtin `{fn_name_for_error_msg:}` requires a string literal"),
+            format!("Verus verus_builtin `{fn_name_for_error_msg:}` requires a string literal"),
         ),
     }
 }
@@ -2193,6 +2306,16 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 }
 
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
+    let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
+        (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
+            let (from_path, _to_path, to_spec_path) = &**paths;
+            use vir::traits::rewrite_fun;
+            let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
+            let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
+            ResolvedCall::Call(ufun, rfun, in_ghost)
+        }
+        (resolved_call, _) => resolved_call,
+    };
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
 }

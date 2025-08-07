@@ -2,9 +2,9 @@ use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
-    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, VirErr,
+    ParamX, Params, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
+    TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX,
+    VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -77,6 +77,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     }
 
     fn visit_pattern(&mut self, _pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
+        unreachable!()
+    }
+
+    fn visit_place(&mut self, _place: &Place) -> Result<R::Ret<Place>, Err> {
         unreachable!()
     }
 
@@ -254,6 +258,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             UnaryOpr::HasType(t) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasType(R::get(t)))
+            }
+            UnaryOpr::HasResolved(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
@@ -442,6 +450,17 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
+            ExprX::AssignToPlace { place, rhs, op } => {
+                let place = self.visit_place(place)?;
+                let rhs = self.visit_expr(rhs)?;
+                R::ret(|| {
+                    expr_new(ExprX::AssignToPlace {
+                        place: R::get(place),
+                        rhs: R::get(rhs),
+                        op: *op,
+                    })
+                })
+            }
             ExprX::Header(_) => {
                 // don't descend into Headers
                 R::ret(|| expr_new(expr.x.clone()))
@@ -593,6 +612,28 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::NeverToAny(R::get(e))))
             }
+            ExprX::BorrowMut(p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| expr_new(ExprX::BorrowMut(R::get(p))))
+            }
+            ExprX::BorrowMutPhaseOne(p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| expr_new(ExprX::BorrowMutPhaseOne(R::get(p))))
+            }
+            ExprX::BorrowMutPhaseTwo(p, e) => {
+                let p = self.visit_place(p)?;
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::BorrowMutPhaseTwo(R::get(p), R::get(e))))
+            }
+            ExprX::DerefMut(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::DerefMut(R::get(e))))
+            }
+            ExprX::AssumeResolved(e, t) => {
+                let e = self.visit_expr(e)?;
+                let t = self.visit_typ(t)?;
+                R::ret(|| expr_new(ExprX::AssumeResolved(R::get(e), R::get(t))))
+            }
         }
     }
 
@@ -695,6 +736,26 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn visit_place_rec(&mut self, place: &Place) -> Result<R::Ret<Place>, Err> {
+        let typ = self.visit_typ(&place.typ)?;
+        let place_new = |p: PlaceX| SpannedTyped::new(&place.span, &R::get(typ), p);
+        match &place.x {
+            PlaceX::Field(field_opr, p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::Field(field_opr.clone(), R::get(p))))
+            }
+            PlaceX::Local(_ident) => R::ret(|| place_new(place.x.clone())),
+            PlaceX::DerefMut(p) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::DerefMut(R::get(p))))
+            }
+            PlaceX::Temporary(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| place_new(PlaceX::Temporary(R::get(e))))
+            }
+        }
+    }
+
     fn visit_typs(&mut self, typs: &Vec<Typ>) -> Result<R::Vec<Typ>, Err> {
         R::map_vec(typs, &mut |t| self.visit_typ(t))
     }
@@ -759,6 +820,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             TypX::PointeeMetadata(t) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::PointeeMetadata(R::get(t))))
+            }
+            TypX::MutRef(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::MutRef(R::get(t))))
             }
         }
     }
@@ -965,6 +1030,11 @@ where
         }
     }
 
+    fn visit_place(&mut self, place: &Place) -> Result<(), T> {
+        self.most_specific_span = place.span.clone();
+        self.visit_place_rec(place)
+    }
+
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
         self.most_specific_span = pattern.span.clone();
         match (self.fp)(self.map, pattern) {
@@ -1041,6 +1111,10 @@ where
 
     fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), T> {
         self.visit_stmt_rec(stmt)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<(), T> {
+        self.visit_place_rec(place)
     }
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
@@ -1221,6 +1295,11 @@ where
         let stmt = self.visit_stmt_rec(stmt)?;
         let stmt = (self.fs)(self.env, self.map, &stmt)?;
         Ok(stmt)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<Place, VirErr> {
+        let place = self.visit_place_rec(place)?;
+        Ok(place)
     }
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<Pattern, VirErr> {

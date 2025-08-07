@@ -62,11 +62,11 @@ pub struct LogArgs {
 pub enum Vstd {
     /// The current crate is vstd.
     IsVstd,
-    /// There is no vstd (only builtin). Really only used for testing.
+    /// There is no vstd (only verus_builtin). Really only used for testing.
     NoVstd,
     /// Imports the vstd crate like usual.
     Imported,
-    /// Embed vstd and builtin as modules, necessary for verifying the `core` library.
+    /// Embed vstd and verus_builtin as modules, necessary for verifying the `core` library.
     IsCore,
 }
 
@@ -113,6 +113,7 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
+    pub new_mut_ref: bool,
 }
 
 impl ArgsX {
@@ -159,6 +160,7 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
+            new_mut_ref: Default::default(),
         }
     }
 }
@@ -186,20 +188,20 @@ pub type CargoVerusArgs = Arc<CargoVerusArgsX>;
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
     syntax_macro: bool,
-    erase_ghost: bool,
+    _erase_ghost: bool,
 ) {
     if syntax_macro {
         // REVIEW: syntax macro adds superfluous parentheses and braces
-        for allow in &["unused_parens", "unused_braces"] {
+        for allow in
+            &["unused_parens", "unused_braces", "unconditional_panic", "arithmetic_overflow"]
+        {
             rustc_args.push("-A".to_string());
             rustc_args.push(allow.to_string());
         }
     }
-    if erase_ghost {
-        for allow in &["unused_imports", "unused_mut"] {
-            rustc_args.push("-A".to_string());
-            rustc_args.push(allow.to_string());
-        }
+    for allow in &["unused_imports", "unused_mut"] {
+        rustc_args.push("-A".to_string());
+        rustc_args.push(allow.to_string());
     }
     rustc_args.push("-Zcrate-attr=allow(internal_features)".to_string());
     for feature in &[
@@ -394,6 +396,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
+    const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -421,6 +424,7 @@ pub fn parse_args_with_imports(
             EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
+        (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -803,7 +807,18 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
+        new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
     };
 
+    if args.new_mut_ref {
+        NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
     (Arc::new(args), unmatched)
+}
+
+static NEW_MUT_REF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn new_mut_ref() -> bool {
+    NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)
 }

@@ -18,7 +18,7 @@ use vstd::{pervasive::*, prelude::*, *};
 
 verus! {
 
-use state_machines_macros::tokenized_state_machine;
+use verus_state_machines_macros::tokenized_state_machine;
 
 // ANCHOR: enum_state
 #[is_variant]

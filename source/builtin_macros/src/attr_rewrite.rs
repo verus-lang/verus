@@ -19,7 +19,7 @@
 /// - This approach avoids introducing new syntax into existing Rust executable
 ///   code, allowing verification and non-verification developers to collaborate
 ///   without affecting each other.
-///   Thus, this module uses syn instead of syn_verus in most cases.
+///   Thus, this module uses syn instead of verus_syn in most cases.
 ///   For developers who do not understand verification, they can easily ignore
 ///   verus code via feature/cfg selection and use standard rust tools like
 ///   `rustfmt` and `rust-analyzer`.
@@ -222,7 +222,7 @@ impl VisitMut for ExecReplacer {
         for stmt in &mut block.stmts {
             match stmt {
                 syn::Stmt::Macro(syn::StmtMacro { mac, .. }) if mac.path.is_ident("proof_with") => {
-                    syn_verus::Token![with](mac.span()).to_tokens(&mut with_args);
+                    verus_syn::Token![with](mac.span()).to_tokens(&mut with_args);
                     mac.tokens.to_tokens(&mut with_args);
                 }
                 syn::Stmt::Local(syn::Local { attrs, init: Some(_), .. })
@@ -236,7 +236,7 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    let call_with_spec = syn_verus::parse2(with_args.clone())
+                    let call_with_spec = verus_syn::parse2(with_args.clone())
                         .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
                     rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
                     with_args = TokenStream::new();
@@ -359,51 +359,49 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
         AnyFnOrLoop::Fn(mut fun) => {
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
-            replace_block(erase, fun.block_mut().unwrap());
             let spec_attr =
-                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+                verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
 
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
+
+            let mut new_stream = TokenStream::new();
 
             // Create a copy of unverified function.
             // To avoid misuse of the unverified function,
             // we add `requires false` and thus prevent verified function to use it.
             // Allow unverified code to use the function without changing in/output.
-            let mut new_stream = TokenStream::new();
             if let Some(with) = &spec_attr.spec.with {
-                let unverified_fun = rewrite_unverified_func(&mut fun, with.with.span());
-                unverified_fun.to_tokens(&mut new_stream);
+                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span());
+                extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
             }
-            if fun.sig.constness.is_some() {
-                let mut const_fun = fun.clone();
-                let span = fun.sig.constness.unwrap().span();
-                // It seems that we do not need to erase anything.
-                // But just do it to be safe and consistent with verus macro.
-                replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
-                const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
-                const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
-                const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
-                const_fun.to_tokens(&mut new_stream);
-                fun.sig.ident = syn::Ident::new(
-                    &format!("{VERUS_UNERASED_PROXY}{}", fun.sig.ident),
-                    fun.sig.ident.span(),
-                );
-                fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
-            }
+
+            // Update function signature based on verus_spec.
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig);
+
+            // Create const proxy function if it is a const function.
+            if fun.sig.constness.is_some() {
+                let proxy = rewrite_const_ret_proxy(&mut fun);
+                fun.to_tokens(&mut new_stream);
+                fun = proxy; // Add proof and spec on proxy func.
+            }
+
+            // Add the spec/proof (requires/ensures) to the function body.
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
+
+            // Parse and replace proof_xxx!() inside function and replace panic.
+            replace_block(erase, fun.block_mut().unwrap());
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
         AnyFnOrLoop::Closure(mut closure) => {
             replace_expr(erase, &mut closure.body);
             let mut spec_attr =
-                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+                verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
             if let Some(_) = &spec_attr.spec.with {
                 return quote_spanned! {spec_attr.span() => compile_error!("`with` does not support closure")}.into();
             }
-            if let Some((syn_verus::Pat::Type(pat_ty), ar)) = spec_attr.ret_pat {
+            if let Some((verus_syn::Pat::Type(pat_ty), ar)) = spec_attr.ret_pat {
                 spec_attr.ret_pat = Some((*pat_ty.pat.clone(), ar));
                 closure.output = syn::ReturnType::Type(
                     syn::Token![->](pat_ty.span()),
@@ -428,7 +426,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
             let spec_attr =
-                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+                verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
             let mut new_stream = TokenStream::new();
 
             if let Some(with) = &spec_attr.spec.with {
@@ -452,11 +450,11 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             proc_macro::TokenStream::from(new_stream)
         }
         AnyFnOrLoop::ForLoop(forloop) => {
-            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_attr = verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::LoopSpec);
             syntax::for_loop_spec_attr(erase, spec_attr, forloop).to_token_stream().into()
         }
         AnyFnOrLoop::Loop(mut l) => {
-            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_attr = verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::LoopSpec);
             let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             if erase.keep() {
@@ -465,7 +463,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             l.to_token_stream().into()
         }
         AnyFnOrLoop::While(mut l) => {
-            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_attr = verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::LoopSpec);
             let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             if erase.keep() {
@@ -483,7 +481,7 @@ pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro
         quote! {
             #[verifier::proof_block]
             {
-                #[verus::internal(const_header_wrapper)]||#block;
+                #block;
             }
         }
         .into()
@@ -539,7 +537,7 @@ fn rewrite_verus_spec_on_expr_local(
     attr_input: proc_macro::TokenStream,
     io_target: VerusIOTarget,
 ) -> proc_macro::TokenStream {
-    let call_with_spec = syn_verus::parse_macro_input!(attr_input as syn_verus::WithSpecOnExpr);
+    let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
             let syn::Local { init, .. } = &mut local;
@@ -568,9 +566,9 @@ fn rewrite_verus_spec_on_expr_local(
 fn rewrite_with_expr(
     erase: EraseGhost,
     expr: &mut Expr,
-    call_with_spec: syn_verus::WithSpecOnExpr,
-) -> Vec<syn_verus::Stmt> {
-    let syn_verus::WithSpecOnExpr { inputs, outputs, follows, .. } = call_with_spec;
+    call_with_spec: verus_syn::WithSpecOnExpr,
+) -> Vec<verus_syn::Stmt> {
+    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, .. } = call_with_spec;
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
             syn::Expr::Call(syn::ExprCall { func, .. }) => {
@@ -586,7 +584,7 @@ fn rewrite_with_expr(
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec =
-                    syn_verus::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
+                    verus_syn::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
                 return rewrite_with_expr(erase, expr, call_with_spec);
             }
             _ => {
@@ -612,15 +610,15 @@ fn rewrite_with_expr(
     let x_declares = if let Some((_, extra_pat)) = outputs {
         // The expected pat.
         let tmp_pat =
-            syn_verus::Pat::Verbatim(quote_spanned! {expr.span() => __verus_tmp_expr_var__});
+            verus_syn::Pat::Verbatim(quote_spanned! {expr.span() => __verus_tmp_expr_var__});
         let mut elems =
-            syn_verus::punctuated::Punctuated::<syn_verus::Pat, syn_verus::Token![,]>::new();
+            verus_syn::punctuated::Punctuated::<verus_syn::Pat, verus_syn::Token![,]>::new();
         elems.push(tmp_pat.clone());
         elems.push(extra_pat);
         // The actual pat.
-        let mut pat = syn_verus::Pat::Tuple(syn_verus::PatTuple {
+        let mut pat = verus_syn::Pat::Tuple(verus_syn::PatTuple {
             attrs: vec![],
-            paren_token: syn_verus::token::Paren::default(),
+            paren_token: verus_syn::token::Paren::default(),
             elems,
         });
         let (x_declares, x_assigns) = syntax::rewrite_exe_pat(&mut pat);
@@ -644,15 +642,44 @@ fn rewrite_with_expr(
     x_declares
 }
 
+/// Rewrite the const function and return a proxy function.
+fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
+    // This function is used to rewrite a const function to link it to a proxy function
+    // that can be used to verify code.
+    // It seems that we do not need to erase anything.
+    // But just do it to be safe and consistent with verus macro.
+    let span = const_fun.sig.constness.unwrap().span();
+    let mut proxy_fun = const_fun.clone();
+    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
+    const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
+    const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
+    const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
+
+    proxy_fun.sig.ident = syn::Ident::new(
+        &format!("{VERUS_UNERASED_PROXY}{}", const_fun.sig.ident),
+        const_fun.sig.ident.span(),
+    );
+    proxy_fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
+    proxy_fun
+}
+
 // Create a copy of function with unverified function signature without a
 // function body, to enable seamless use of unverified call to the function in
 // verification.
-fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> syn::ItemFn {
+// If the function is const, it will be rewritten to a proxy function and a verified function.
+fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Vec<syn::ItemFn> {
+    let mut ret = vec![];
     let mut unverified_fun = fun.clone();
+    if fun.sig.constness.is_some() {
+        // Create a proxy function to include requires/ensures.
+        let proxy = rewrite_const_ret_proxy(&mut unverified_fun);
+        ret.push(unverified_fun);
+        unverified_fun = proxy;
+    }
     let stmts = vec![
         syn::Stmt::Expr(
             syn::Expr::Verbatim(
-                quote_spanned_builtin!(builtin, span => #builtin::requires([false])),
+                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
             ),
             Some(syn::token::Semi { spans: [span] }),
         ),
@@ -669,5 +696,6 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> sy
     // change name to verified_{fname}
     let x = &fun.sig.ident;
     fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-    unverified_fun
+    ret.push(unverified_fun);
+    ret
 }

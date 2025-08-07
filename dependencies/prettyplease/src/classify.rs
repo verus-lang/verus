@@ -1,7 +1,7 @@
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use std::ops::ControlFlow;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::{
+use verus_syn::punctuated::Punctuated;
+use verus_syn::{
     Expr, MacroDelimiter, Path, PathArguments, ReturnType, Token, Type, TypeParamBound,
 };
 

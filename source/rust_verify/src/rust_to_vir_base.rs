@@ -1,4 +1,5 @@
 use crate::attributes::get_verifier_attrs;
+use crate::config::new_mut_ref;
 use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -851,6 +852,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
         }
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if new_mut_ref() => {
+            let (t0, ghost) = t_rec(tys)?;
+            (Arc::new(TypX::MutRef(t0.clone())), ghost)
+        }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::Decorate(TypDecoration::MutRef, None, t0.clone())), ghost)
@@ -1556,7 +1561,7 @@ where
                     // bounds, a Trait bound for `F: Fn<A>` and a Projection for `Output=B`.
                     //
                     // Do nothing
-                    // (What Verus actually cares about is the builtin 'FnWithSpecification'
+                    // (What Verus actually cares about is the verus_builtin 'FnWithSpecification'
                     // trait which Fn/FnMut/FnOnce all get automatically.)
                     continue;
                 }

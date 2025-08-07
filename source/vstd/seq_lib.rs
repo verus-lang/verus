@@ -1303,9 +1303,11 @@ impl<A> Seq<A> {
             ),
         decreases self.len(),
     {
-        #[allow(deprecated)]
-        lemma_seq_properties::<A>();  // new broadcast group not working here
-        broadcast use Seq::lemma_remove_duplicates_properties;
+        broadcast use {
+            group_seq_properties,
+            lemma_seq_skip_of_skip,
+            Seq::lemma_remove_duplicates_properties,
+        };
 
         if i == 0 {
         } else if i == self.len() {
@@ -3442,8 +3444,8 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-// TODO: seems like this warning doesn't come up?
-#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
+// #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
+#[deprecated = "Use `broadcast use group_seq_properties` instead"]
 pub proof fn lemma_seq_properties<A>()
     ensures
         forall|s: Seq<A>, x: A|
@@ -3497,13 +3499,7 @@ pub proof fn lemma_seq_properties<A>()
                 > 0,  //from to_multiset_ensures
 {
     broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-    // TODO: for some reason this still needs to be explicitly stated
 
-    assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
-        v,
-    ).contains(x) by {
-        lemma_seq_contains_after_push(s, v, x);
-    }
 }
 
 #[doc(hidden)]
@@ -3559,23 +3555,32 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
-    (::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
@@ -3587,7 +3592,7 @@ macro_rules! assert_seqs_equal_internal {
         $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
             $crate::vstd::prelude::assert_(s1.len() == s2.len());
             $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
-                $crate::vstd::prelude::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::requires($crate::vstd::prelude::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });

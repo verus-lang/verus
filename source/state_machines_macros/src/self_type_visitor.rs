@@ -2,11 +2,11 @@ use crate::ast::{
     MonoidElt, SM, ShardableType, SpecialOp, SplitKind, SubIdx, Transition, TransitionStmt,
 };
 use crate::to_token_stream::get_self_ty_turbofish_path;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::token;
-use syn_verus::visit_mut;
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::{Expr, Ident, Pat, Path, PathSegment, Type};
+use verus_syn::punctuated::Punctuated;
+use verus_syn::token;
+use verus_syn::visit_mut;
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::{Expr, Ident, Pat, Path, PathSegment, Type};
 
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places

@@ -17,12 +17,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-struct Ctxt {
+struct Ctxt<'a> {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
-    pub(crate) krate: Krate,
-    unpruned_krate: Krate,
+    pub(crate) krate: &'a Krate,
+    unpruned_krate: &'a Krate,
     no_cheating: bool,
 }
 
@@ -1174,10 +1174,16 @@ fn check_function(
     }
 
     if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
-        return Err(error(
-            &function.span,
-            "external_body/assume_specification not allowed with --no-cheating",
-        ));
+        match &function.x.owning_module {
+            // Allow external_body/assume_specification inside vstd
+            Some(path) if path.is_vstd_path() => {}
+            _ => {
+                return Err(error(
+                    &function.span,
+                    "external_body/assume_specification not allowed with --no-cheating",
+                ));
+            }
+        }
     }
 
     Ok(())
@@ -1386,7 +1392,7 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
 
 pub fn check_crate(
     krate: &Krate,
-    unpruned_krate: Krate,
+    unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
@@ -1637,7 +1643,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
