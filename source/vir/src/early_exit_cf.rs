@@ -78,7 +78,7 @@ fn expr_get_early_exits_rec(
             | ExprX::BorrowMut(_)
             | ExprX::BorrowMutPhaseOne(_)
             | ExprX::BorrowMutPhaseTwo(..)
-            | ExprX::DerefMut(_)
+            | ExprX::ReadPlace(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

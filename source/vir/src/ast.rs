@@ -803,7 +803,7 @@ pub enum ExprX {
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Dt, Ident, Binders<Expr>, Option<Expr>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<Place>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -902,7 +902,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
-    Match(Expr, Arms),
+    Match(Place, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
@@ -950,10 +950,24 @@ pub enum ExprX {
     /// Phase 2: Update the original place to be equal to the prophecized value.
     /// The Expr argument here is the expression returned by the PhaseOne (of type &mut T)
     BorrowMutPhaseTwo(Place, Expr),
-    DerefMut(Expr),
     AssumeResolved(Expr, Typ),
+    /// Indicates a move or a copy from the given place.
+    /// These over-approximate the actual set of copies/moves.
+    /// (That is, many reads marked Move or Copy should really be marked Spec).
+    /// We don't know for sure if something is a "real" move or copy until mode-checking.
+    ReadPlace(Place, ReadKind),
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ReadKind {
+    Move,
+    Copy,
+    ImmutBor,
+    Spec,
+}
+
+// TODO(mut_refs): add ArrayIndex
+// TODO(mut_refs): add Tracked coercions
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -976,7 +990,7 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr>, els: Option<Expr> },
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
 }
 
 /// Function parameter
