@@ -50,7 +50,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             .enumerate()
             .filter_map(|(index, stmt)| {
                 let hir_id = stmt.hir_id;
-                match stmt.kind {
+                let thir_stmt = match stmt.kind {
                     hir::StmtKind::Expr(expr) | hir::StmtKind::Semi(expr) => {
                         let stmt = Stmt {
                             kind: StmtKind::Expr {
@@ -120,8 +120,16 @@ impl<'tcx> ThirBuildCx<'tcx> {
                         };
                         Some(self.thir.stmts.push(stmt))
                     }
+                };
+
+                match thir_stmt {
+                    None => None,
+                    Some(thir_stmt) => Some(crate::verus_time_travel_prevention::expand_stmt(
+                        self, stmt, thir_stmt, block_id, index,
+                    )),
                 }
             })
+            .flatten()
             .collect()
     }
 }

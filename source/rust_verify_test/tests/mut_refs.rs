@@ -1734,7 +1734,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1748,7 +1748,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
         }
@@ -1759,7 +1759,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             let x_ref_shr: &u64 = x_ref;
             assert(x_ref_shr == 20);
@@ -1774,7 +1774,7 @@ test_verify_one_file_with_options! {
 
             *x_ref = 20;
 
-            assert(x == 20);
+            assert(after_borrow(x) == 20);
 
             foo(x_ref);
             assert(false); // FAILS
@@ -3234,9 +3234,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "For more flexible mutable reference support, disable the backwards-compatability")
 }
 
-// TODO(new_mut_ref): un-ignore after paradox-checking
 test_verify_one_file_with_options! {
-    #[ignore] #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+    #[test] false_two_phase ["new-mut-ref"] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
             ensures *final(a) == b
         {
@@ -3246,20 +3245,13 @@ test_verify_one_file_with_options! {
         fn test() {
             let tracked mut x: Ghost<int> = Ghost(0);
             let tracked x_ref = &mut x;
-            set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
-            assert(x == 1);
-        }
-
-        fn test_fail() {
-            let tracked mut x: Ghost<int> = Ghost(0);
-            let tracked x_ref = &mut x;
             // The x_ref here is two-phase with respect to `Tracked` rather than to
             // the `set_to` call.
             set_to(Tracked(x_ref), Tracked(Ghost(x_ref@ + 1)));
             assert(x == 1);
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `(Verus spec x_ref)` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {

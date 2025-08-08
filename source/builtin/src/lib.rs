@@ -1971,6 +1971,8 @@ pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }
 
+/// Needed for the THIR-based erasure (rustc_mir_build_additional_files)
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::erased_ghost_value"]
 pub fn erased_ghost_value<S, T>(_: S) -> T {
@@ -1995,6 +1997,14 @@ pub fn dummy_capture_new<'a>() -> DummyCapture<'a> {
 pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
+pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+/// Directives and spec functions related to &mut references
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::has_resolved"]

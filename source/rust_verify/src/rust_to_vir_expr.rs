@@ -2411,6 +2411,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let x = PlaceX::Local(pat_to_var(pat)?);
                         let typ = &expr_typ()?;
                         let place = bctx.spanned_typed_new(expr.span, typ, x);
+
+                        //let ids = (id.owner.def_id.local_def_index.as_usize(), id.local_id);
+                        //println!("{:?}", (&name.0, ids));
+
+                        // Does this var need the shadow check?
+                        // (See verus_time_travel_prevention.rs)
+                        let shadow_check =
+                            bctx.new_mut_ref && !(bctx.in_old || bctx.in_explicit_prophecy_node);
+                        if shadow_check {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.shadow_check.push(expr.hir_id);
+                        }
+
                         if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
                                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -2690,6 +2703,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let allow_no_decreases =
                 get_allow_exec_allows_no_decreases_clause_walk_parents(bctx.ctxt.tcx, bctx.fun_id);
             let decrease = if expr_vattrs.auto_decreases && allow_no_decreases {
+                for dec in header.decrease.iter() {
+                    crate::erase::mark_tree_for_erasure(&bctx.ctxt, dec);
+                }
                 Arc::new(vec![])
             } else {
                 header.decrease.clone()

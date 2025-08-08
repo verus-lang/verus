@@ -17,7 +17,7 @@ pub(crate) fn apply_adjustment_post<'tcx>(
         return kind;
     };
 
-    match adjustment.kind {
+    let kind = match adjustment.kind {
         Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
             // Adjust::Deref(None) -> implicit *
             // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
@@ -32,7 +32,8 @@ pub(crate) fn apply_adjustment_post<'tcx>(
             }
         }
         _ => kind,
-    }
+    };
+    crate::verus_time_travel_prevention::expr_post(cx, expr, adjustment.target, kind)
 }
 
 // To avoid edits and conflicts in thir/cx/expr.rs, preprocess some of the work for expr.rs here
@@ -62,7 +63,7 @@ pub(crate) fn mirror_expr_post<'tcx>(
         return kind;
     };
 
-    match expr.kind {
+    let kind = match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
             let call_erasure = handle_call(&cx.verus_ctxt, expr);
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
@@ -82,5 +83,8 @@ pub(crate) fn mirror_expr_post<'tcx>(
             }
         }
         _ => kind,
-    }
+    };
+
+    let ty = cx.typeck_results.expr_ty(expr);
+    crate::verus_time_travel_prevention::expr_post(cx, expr, ty, kind)
 }

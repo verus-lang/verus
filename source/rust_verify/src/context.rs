@@ -24,6 +24,10 @@ pub struct ErasureInfo {
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
+    pub(crate) shadow_check: Vec<HirId>,
+    /// Extra nodes to erase, use this is a VIR tree gets dropped without getting to
+    /// mode-checking.
+    pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -79,6 +83,8 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_postcondition: bool,
     /// Are we inside an "old" node? (new-mut-ref only)
     pub(crate) in_old: bool,
+    /// Are we inside an "after_borrow" or "has_resolved" node? (new-mut-ref only)
+    pub(crate) in_explicit_prophecy_node: bool,
     /// params for the enclosing function and all enclosing non-spec-closures
     pub(crate) params: Rc<Vec<Vec<vir::ast::VarIdent>>>,
     /// unwrapped params encountered so far (inner_name -> outer_name) e.g. (x -> verus_tmp_x)

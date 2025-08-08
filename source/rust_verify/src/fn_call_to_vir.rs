@@ -1958,7 +1958,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 None,
             ));
         }
-        VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {
+        VerusItem::ErasedGhostValue
+        | VerusItem::DummyCapture(_)
+        | VerusItem::MutableReferenceTie => {
             return err_span(
                 expr.span,
                 format!("this builtin item should not appear in user code",),
@@ -1974,7 +1976,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "has_resolved must be in a 'proof' block");
             }
-            let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
+            let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
+            let exp = expr_to_vir_consume(&bctx, &args[0], ExprModifier::REGULAR)?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
             let arg_typ = match item {
                 VerusItem::HasResolved => arg_typ,
@@ -2032,7 +2035,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.in_ghost {
                 return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
             }
-            let p = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
+            let p = expr_to_vir(&bctx, &args[0], ExprModifier::REGULAR)?.to_place();
             if !is_place_ok_for_spec_after_borrow(&p) {
                 return err_span(
                     expr.span,

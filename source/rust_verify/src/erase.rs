@@ -81,11 +81,30 @@ pub struct ErasureHints {
     /// List of function spans ignored by the verifier. These should not be erased
     pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
+    pub(crate) shadow_check: Vec<HirId>,
+    pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
 }
 
-fn mode_to_var_erase(mode: Mode) -> VarErasure {
+/// How to erase the given var usage
+///  - var_mode: mode of the variable (as declared at its binding)
+///  - mode: mode of this particular usage
+///  - shadow_check: could this possibly need a shadow check?
+///
+/// Generally speaking, if the mode is spec, it should be erased.
+/// However, spec uses of a non-spec variable may still need a shadow var.
+/// (If the variable itself is spec, we don't generate any shadow var for it at all.)
+///
+/// The shadow_check is used to exclude cases like vars used in `old` (always non-prophetic)
+/// or `after_borrow` (always prophetic, and thus its propheticness is accounted for by modes.rs).
+fn mode_to_var_erase(var_mode: Mode, mode: Mode, shadow_check: bool) -> VarErasure {
     match mode {
-        Mode::Spec => VarErasure::Erase,
+        Mode::Spec => {
+            if shadow_check && var_mode != Mode::Spec {
+                VarErasure::Shadow
+            } else {
+                VarErasure::Erase
+            }
+        }
         Mode::Exec | Mode::Proof => VarErasure::Keep,
     }
 }
@@ -151,7 +170,27 @@ fn resolved_call_to_call_erase(
     })
 }
 
-pub(crate) fn setup_verus_ctxt_for_thir_erasure(
+fn get_binder_hir_id<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    hir_id: HirId,
+) -> Option<(Span, rustc_span::Ident, HirId)> {
+    let rustc_hir::Node::Expr(expr) = tcx.hir_node(hir_id) else {
+        return None;
+    };
+    let rustc_hir::ExprKind::Path(qpath) = &expr.kind else {
+        return None;
+    };
+    let rustc_hir::QPath::Resolved(_, path) = &qpath else {
+        return None;
+    };
+    let rustc_hir::def::Res::Local(id) = path.res else {
+        return None;
+    };
+    Some((path.span, path.segments[0].ident, id))
+}
+
+pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
     erasure_hints: &ErasureHints,
 ) -> Result<(), VirErr> {
@@ -164,7 +203,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     }
 
     let mut vars = HashMap::<HirId, VarErasure>::new();
-    for (span, mode) in erasure_hints.erasure_modes.var_modes.iter() {
+    for (span, (var_mode, mode)) in erasure_hints.erasure_modes.var_modes.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
             continue;
         }
@@ -177,7 +216,37 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
             ));
         }
         for hir_id in &id_to_hir[&span.id] {
-            vars.insert(*hir_id, mode_to_var_erase(*mode));
+            vars.insert(
+                *hir_id,
+                mode_to_var_erase(*var_mode, *mode, erasure_hints.shadow_check.contains(hir_id)),
+            );
+        }
+    }
+    for span in erasure_hints.extra_erase_ast_ids.iter() {
+        if crate::spans::from_raw_span(&span.raw_span).is_none() {
+            continue;
+        }
+        if !id_to_hir.contains_key(&span.id) {
+            continue;
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            vars.insert(*hir_id, VarErasure::Erase);
+        }
+    }
+
+    for (hir_id, mode) in vars.iter() {
+        if let Some((span, name, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
+            if let Some(binder_mode) = vars.get(&binder_hir_id) {
+                if matches!(binder_mode, VarErasure::Erase) && !matches!(mode, VarErasure::Erase) {
+                    return crate::util::err_span(
+                        span,
+                        format!(
+                            "Verus Internal Error: inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
+                            name.as_str()
+                        ),
+                    );
+                }
+            }
         }
     }
 
@@ -239,10 +308,46 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
             .name_to_id
             .get(&VerusItem::DummyCapture(DummyCaptureItem::Struct))
             .unwrap(),
+        mutable_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::MutableReferenceTie)
+            .unwrap(),
+
+        new_mut_ref: crate::config::new_mut_ref(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 
     Ok(())
+}
+
+/// Set all IDs in this tree to VarErasure::Erase. Useful if a VIR node gets dropped
+/// before it reaches mode-checking.
+pub(crate) fn mark_tree_for_erasure<'tcx>(
+    context: &crate::context::Context<'tcx>,
+    expr: &vir::ast::Expr,
+) {
+    vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        expr,
+        &mut (),
+        &mut |_, _scope_map, expr: &vir::ast::Expr| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, stmt| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, pattern: &vir::ast::Pattern| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, _typ, _span| Ok(()),
+        &mut |_, _scope_map, place| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
+            Ok(())
+        },
+    )
+    .unwrap();
 }
 
 pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
@@ -257,9 +362,14 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 
     let mut s = HashSet::<LocalDefId>::new();
     for item in crate_items.items.iter() {
-        match &item.verif {
-            crate::external::VerifOrExternal::VerusAware { const_directive, .. } => {
-                if !*const_directive {
+        match item.verif {
+            crate::external::VerifOrExternal::VerusAware {
+                const_directive,
+                external_body,
+                external_fn_specification,
+                ..
+            } => {
+                if !const_directive && !external_body && !external_fn_specification {
                     s.insert(item.id.owner_id().def_id);
                 }
             }
