@@ -375,6 +375,7 @@ pub(crate) enum VerusItem {
     External(ExternalItem),
     Resolve,
     HasResolved,
+    HasResolvedUnsized,
     MutRefCurrent,
     MutRefFuture,
     ErasedGhostValue,
@@ -585,6 +586,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
         ("verus::verus_builtin::resolve",          VerusItem::Resolve),
         ("verus::verus_builtin::has_resolved",     VerusItem::HasResolved),
+        ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
     ]
