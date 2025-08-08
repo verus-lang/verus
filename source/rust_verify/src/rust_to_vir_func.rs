@@ -1245,7 +1245,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     "unexpected named return value for function with default return",
                 );
             }
-            (Some((_, typ)), Some((ret_typ, _))) => {
+            (Some((_, Some(typ))), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
@@ -1256,6 +1256,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     );
                 }
             }
+            (Some(_), Some(_)) => {}
         }
     }
 

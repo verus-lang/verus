@@ -3128,7 +3128,7 @@ pub(crate) fn closure_to_vir<'tcx>(
             let ret_typ = closure_ret_typ(bctx, closure_expr)?;
 
             let id = match ensure_id_typ {
-                Some((id, ensures_typ)) => {
+                Some((id, Some(ensures_typ))) => {
                     if !types_equal(&ensures_typ, &ret_typ) {
                         return err_span(
                             closure_expr.span,
@@ -3137,6 +3137,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                     }
                     id
                 }
+                Some((id, None)) => id,
                 None => str_unique_var(
                     vir::def::CLOSURE_RETURN_VALUE_PREFIX,
                     vir::ast::VarIdentDisambiguate::RustcId(body_id.hir_id.local_id.index()),

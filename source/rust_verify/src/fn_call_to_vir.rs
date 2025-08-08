@@ -137,7 +137,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             VerusItem::Vstd(_, _)
             | VerusItem::Marker(_)
             | VerusItem::BuiltinType(_)
-            | VerusItem::External(_) => (),
+            | VerusItem::External(_)
+            | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -1578,6 +1579,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     assert!(args.len() == 3);
                     BuiltinSpecFun::ClosureEns
                 }
+                BuiltinFunctionItem::ConstrainType => unreachable!(),
             };
 
             let vir_args = args
@@ -1660,7 +1662,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::BuiltinType(_)
         | VerusItem::BuiltinTrait(_)
         | VerusItem::External(_)
-        | VerusItem::Global(_) => unreachable!(),
+        | VerusItem::Global(_)
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
     }
 }
 
@@ -1684,6 +1687,21 @@ fn get_impl_paths<'tcx>(
     }
 }
 
+fn check_is_builtin_constrain_typ<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tcx>) -> bool {
+    if let ExprKind::Call(fun, ..) = e.kind {
+        if let ExprKind::Path(QPath::Resolved(_, path)) = fun.kind {
+            if let Some(def_id) = path.res.opt_def_id() {
+                if bctx.ctxt.get_verus_item(def_id)
+                    == Some(&VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType))
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 fn extract_ensures<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &'tcx Expr<'tcx>,
@@ -1692,7 +1710,14 @@ fn extract_ensures<'tcx>(
     let tcx = bctx.ctxt.tcx;
     use vir::ast::Exprs;
     let get_args = |body_value: &'tcx Expr<'tcx>| -> Result<(Exprs, Exprs), VirErr> {
-        let args = vec_map_result(&extract_array(body_value), |e| get_ensures_arg(bctx, e))?;
+        let args = vec_map_result(
+            &extract_array(body_value)
+                .iter()
+                .filter(|e| check_is_builtin_constrain_typ(bctx, **e))
+                .map(|x: &&_| (*x).clone())
+                .collect(),
+            |e| get_ensures_arg(bctx, e),
+        )?;
         let args0 =
             args.iter().filter_map(|(b, e)| if !*b { Some(e.clone()) } else { None }).collect();
         let args1 =
@@ -1714,13 +1739,16 @@ fn extract_ensures<'tcx>(
             }
             let expr = &body.value;
             let args = get_args(expr)?;
-            if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((xs[0].clone(), typs[0].clone()));
+            if typs.len() == 0 && xs.len() == 1 {
+                let id_typ = Some((xs[0].clone(), None));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, args)))
-            } else if typs.len() == 0 && xs.len() == 0 {
+            } else if typs.len() == 1 && xs.len() == 1 {
+                let id_typ = Some((xs[0].clone(), Some(typs[0].clone())));
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ, args)))
+            } else if xs.len() == 0 {
                 Ok(Arc::new(HeaderExprX::Ensures(None, args)))
             } else {
-                err_span(expr.span, "expected 1 parameter in closure")
+                err_span(expr.span, "expected at most 1 parameter in closure")
             }
         }
         _ => {
