@@ -1,29 +1,23 @@
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
 use crate::rustc_index::Idx;
 use crate::thir::cx::ThirBuildCx;
 use hir::HirId;
 use itertools::Itertools;
 use rustc_hir as hir;
-use rustc_hir::BodyId;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
 use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::thir;
 use rustc_middle::thir::{
-    AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, ClosureExpr, Expr, ExprId, ExprKind,
-    LocalVarId, Pat, PatKind, Stmt, StmtId, StmtKind, TempLifetime,
+    AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
+    PatKind, Stmt, StmtId, StmtKind, TempLifetime,
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
-    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVariableKind, CapturedPlace, ConstKind,
-    GenericArg, Mutability, Region, RegionKind, Ty, TyCtxt, TyKind, TypeSuperFoldable,
-    TypeVisitableExt, UpvarCapture,
+    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVariableKind, CapturedPlace, GenericArg,
+    Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
 };
-use rustc_middle::ty::{BoundVarReplacerDelegate, TypeFoldable, TypeFolder, UpvarArgs};
+use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
@@ -188,13 +182,7 @@ pub(crate) struct VerusThirBuildCtxt {
 }
 
 impl VerusThirBuildCtxt {
-    pub(crate) fn new<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
-        /*if ctxt.is_none() {
-            let def_id = local_def_id.to_def_id();
-            let is_const = tcx.is_const_fn(def_id)
-                || matches!(tcx.def_kind(def_id), DefKind::Const | DefKind::AssocConst);
-        }*/
-
+    pub(crate) fn new<'tcx>(_tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
@@ -315,7 +303,7 @@ pub(crate) fn should_erase_var(verus_ctxt: &VerusThirBuildCtxt, var_hir_id: HirI
 pub(crate) fn handle_var<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
-    var_hir_id: HirId,
+    _var_hir_id: HirId,
     spec: bool,
 ) -> Option<ExprKind<'tcx>> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
@@ -784,7 +772,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
                     expr,
                 ));
             }
-            hir::ExprKind::Block(block, _) => {
+            hir::ExprKind::Block(_block, _) => {
                 if let Some(b) = erase_block_for_pattern_checking(
                     self.cx,
                     self.erasure_ctxt,
@@ -859,7 +847,7 @@ fn erase_let_for_pattern_checking<'tcx>(
     let hir::StmtKind::Let(local) = stmt.kind else {
         unreachable!();
     };
-    let rustc_hir::LetStmt { super_: _, pat, ty: _, init, els, hir_id, span, source } = local;
+    let rustc_hir::LetStmt { super_: _, pat, ty: _, init, els, hir_id, span, source: _ } = local;
     if els.is_some() {
         panic!("erase_let_for_pattern_checking: let-else statement not expected in erased code");
     }
@@ -1208,7 +1196,7 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     // with bound variables.
     let mut replacer = ReErasedReplacer::new(tcx);
     let mut output_tys = vec![];
-    for (ty, rust_captured_place) in expected_tys.iter().zip(rust_captured_places.iter()) {
+    for ty in expected_tys.iter() {
         let t = ty.fold_with(&mut replacer);
         output_tys.push(t);
     }
@@ -1310,7 +1298,7 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
         tcx.mk_type_list_from_iter(input_tys.iter().cloned().chain(std::iter::once(output_ty)));
 
     let mut bound_var_kinds = vec![];
-    for i in 0..replacer.current_var {
+    for _i in 0..replacer.current_var {
         bound_var_kinds.push(BoundVariableKind::Region(BoundRegionKind::Anon));
     }
     let bound_var_kinds = tcx.mk_bound_variable_kinds(&bound_var_kinds);
@@ -1388,14 +1376,14 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
     }
 
     let expr = get_closure_expr(&block.expr.unwrap());
-    let rustc_hir::ExprKind::Closure(closure) = &expr.kind else {
+    let rustc_hir::ExprKind::Closure(_closure) = &expr.kind else {
         return None;
     };
 
     let tcx = cx.tcx;
 
     let closure_ty = cx.typeck_results.expr_ty(expr);
-    let (def_id, args, movability) = match *closure_ty.kind() {
+    let (def_id, args, _movability) = match *closure_ty.kind() {
         ty::Closure(def_id, args) => (def_id, UpvarArgs::Closure(args), None),
         ty::Coroutine(def_id, args) => {
             (def_id, UpvarArgs::Coroutine(args), Some(tcx.coroutine_movability(def_id)))
@@ -1509,7 +1497,7 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
 pub(crate) fn get_closure_expr<'tcx>(e: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
     match &e.kind {
         hir::ExprKind::Closure(_) => e,
-        hir::ExprKind::Call(f, args) => get_closure_expr(&args[0]),
+        hir::ExprKind::Call(_f, args) => get_closure_expr(&args[0]),
         _ => panic!("get_closure_expr failed"),
     }
 }
