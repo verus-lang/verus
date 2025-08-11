@@ -199,7 +199,9 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool => {}
+                        TypX::Float(_) => {}
+                        TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::ConstBool(_) => {}

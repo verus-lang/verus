@@ -232,6 +232,8 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
+    /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
+    Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
     SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
@@ -341,6 +343,8 @@ pub enum UnaryOp {
         range: IntRange,
         truncate: bool,
     },
+    /// Return raw bits of a float as an int
+    FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
     CoerceMode {
         op_mode: Mode,
@@ -455,7 +459,9 @@ pub enum ArithOp {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IntegerTypeBitwidth {
+    /// Exact number of bits (e.g. 8 for u8/i8)
     Width(u32),
+    /// usize/isize
     ArchWordSize,
 }
 
@@ -613,6 +619,10 @@ pub enum Constant {
     StrSlice(Arc<String>),
     // Hold unicode values here
     Char(char),
+    /// Rust representation of f32 constant as u32 bits
+    Float32(u32),
+    /// Rust representation of f64 constant as u64 bits
+    Float64(u64),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

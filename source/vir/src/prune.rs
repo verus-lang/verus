@@ -28,6 +28,7 @@ enum ReachedType {
     None,
     Bool,
     Int(crate::ast::IntRange),
+    Float(u32),
     SpecFn(usize),
     Datatype(Dt),
     StrSlice,
@@ -114,6 +115,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
     match &**typ {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
+        TypX::Float(n) => ReachedType::Float(*n),
         TypX::SpecFn(ts, _) => ReachedType::SpecFn(ts.len()),
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(dt, _, _) => ReachedType::Datatype(dt.clone()),
@@ -264,6 +266,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(..)

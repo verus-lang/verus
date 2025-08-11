@@ -253,7 +253,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
-            Ok(PatternX::Expr(lit_to_vir(bctx, span, &lit, negated, pat_typ)?))
+            Ok(PatternX::Expr(lit_to_vir(bctx, span, &lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
@@ -1830,6 +1830,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             lit,
             false,
             &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+            Some(bctx.types.node_type(expr.hir_id)),
         ),
         ExprKind::Cast(source, _) => {
             let source_vir = expr_to_vir(bctx, source, modifier)?;
@@ -1932,6 +1933,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     &arg.kind
                 {
                     mk_lit_int(true, i.get(), typ_of_node(bctx, expr.span, &expr.hir_id, false)?)?
+                } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
+                    &arg.kind
+                {
+                    return lit_to_vir(
+                        bctx,
+                        expr.span,
+                        lit,
+                        true,
+                        &typ_of_node(bctx, expr.span, &arg.hir_id, false)?,
+                        Some(bctx.types.node_type(arg.hir_id)),
+                    );
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
@@ -2481,9 +2493,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 fn lit_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
-    lit: &Lit,
+    lit: &'tcx Lit,
     negated: bool,
     typ: &Typ,
+    ty: Option<rustc_middle::ty::Ty<'tcx>>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mk_expr = move |x: ExprX| Ok(bctx.spanned_typed_new(span, &typ, x));
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: &Typ| {
@@ -2507,6 +2520,29 @@ fn lit_to_vir<'tcx>(
         LitKind::Str(s, _str_style) => {
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
             mk_expr(ExprX::Const(c))
+        }
+        LitKind::Float(..) => {
+            if let Some(ty) = ty {
+                use rustc_middle::mir::interpret::LitToConstInput;
+                let lit_const = LitToConstInput { lit: &lit.node, ty, neg: negated };
+                let c = bctx.ctxt.tcx.lit_to_const(lit_const);
+                if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
+                    if let Some(i) = v.valtree.try_to_scalar_int() {
+                        match i.size().bytes() {
+                            4 => {
+                                let c = vir::ast::Constant::Float32(i.to_u32());
+                                return mk_expr(ExprX::Const(c));
+                            }
+                            8 => {
+                                let c = vir::ast::Constant::Float64(i.to_u64());
+                                return mk_expr(ExprX::Const(c));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            return err_span(span, "Unsupported floating point literal");
         }
         _ => {
             return err_span(span, "Unsupported constant type");

@@ -1338,6 +1338,20 @@ impl_binary_op!(SpecShr, spec_shr, Self, [
 ]);
 
 #[cfg(verus_keep_ghost)]
+#[verifier::spec]
+#[rustc_diagnostic_item = "verus::verus_builtin::f32_to_bits"]
+pub fn f32_to_bits(_f: f32) -> int {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::spec]
+#[rustc_diagnostic_item = "verus::verus_builtin::f64_to_bits"]
+pub fn f64_to_bits(_f: f64) -> int {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::strslice_is_ascii"]
 #[verifier::spec]
 pub fn strslice_is_ascii<A>(_a: A) -> bool {

@@ -1124,6 +1124,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not => bool_new(!b),
                         BitNot(..)
                         | Clip { .. }
+                        | FloatToBits
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
@@ -1241,6 +1242,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         Not
                         | HeightTrigger
                         | Trigger(_)
+                        | FloatToBits
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii

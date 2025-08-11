@@ -76,8 +76,9 @@ pub(crate) fn field_typ_args<A: Default>(num_variants: usize, f: impl Fn() -> A)
 
 fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Int(_) => false,
         TypX::Bool => false,
+        TypX::Int(_) => false,
+        TypX::Float(_) => false,
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
