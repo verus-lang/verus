@@ -5181,6 +5181,7 @@ impl ToTokens for Builtin {
             VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin },
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
         };
         tokens.extend(toks);
     }
@@ -5197,6 +5198,7 @@ impl ToTokens for Vstd {
             VstdKind::NoVstd => quote_spanned! { self.0 => ::vstd },
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::vstd },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::vstd },
         };
         tokens.extend(toks);
     }
