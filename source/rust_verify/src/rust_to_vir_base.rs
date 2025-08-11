@@ -1137,7 +1137,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 TyKind::FnDef(..) => {
                     unsupported_err!(span, "FnDef for opaque types")
                 }
-                TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => {
+                TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
                     unsupported_err!(span, "opaque type for opaque type")
                 }
                 TyKind::Float(..) => {
@@ -2233,7 +2233,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 let substs = pred.projection_term.args;
                                 let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
                                 let assoc_item = ctxt.tcx.associated_item(item_def_id);
-                                let name = Arc::new(assoc_item.name.to_string());
+                                let name = Arc::new(assoc_item.name().to_string());
                                 let generic_bound = check_generic_bound(
                                     ctxt.tcx,
                                     &ctxt.verus_items,
