@@ -3,9 +3,10 @@
 
 ## Motivating Example
 
+Here are two simple functions that increment an atomic variable.
+
 ```rs
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
 
 pub fn increment_bad(var: &AtomicU32) {
     let curr = var.load(SeqCst);
@@ -23,13 +24,35 @@ pub fn increment_good(var: &AtomicU32) {
 }
 ```
 
-Both functions satisfy the same naive specification:
-$$
-\{ v \mapsto n \}\;\;{\tt increment}(v)\;\;\{ v \mapsto n + 1 \}
-$$
-...but clearly the functions are not sematically equivalent!
+In a single-threaded context, both functions are equivalent and work as expected.
+
+However, in a multi-threaded context, `increment_bad` can lead to a data race, whereas `increment_good` is guaranteed to increment the variable exactly once.
+
+### Current State of Verus
+
+The `vstd::atomic` provides wrapper types around atomic integers (e.g. [`PAtomicU32`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PAtomicU32.html)), where access to the atomics is guarded by a tracked permission type (e.g. [`PermissionU32`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PermissionU32.html)).
+
+The `load`, `store` and `compare_exchange` operations have the following signatures (slighly simplified here):
+
+```rs
+fn load(&self, perm: Tracked<&PermissionU32>) -> u32
+fn store(&self, perm: Tracked<&mut PermissionU32>, v: u32)
+fn compare_exchange(&self, perm: Tracked<&mut PermissionU32>, old: u32, new: u32) -> Result<u32, u32>
+```
+
+So, to be able to load an atomic variable, we must provide proof that we have shared permission (`Tracked<&PermissionU32>`) to access the variable, and for store and compare-exchange, we must prove that we have exclusive permission (`Tracked<&mut PermissionU32>`) for the variable.
+
+The current system allows us to prove that both functions work as expected if no other thread accesses the atomic variable, though not much more.
 
 ## Resources/Related Work
+
+We did not invent logical atomicity, here are some publications that talk about it:
+
+- [Later Credits: Resourceful Reasoning for the Later Modality](https://plv.mpi-sws.org/later-credits/paper-later-credits.pdf)
+- [The Future is Ours: Prophecy Variables in Separation Logic](https://plv.mpi-sws.org/prophecies/paper.pdf)
+- [Iris: Monoids and Invariants as an Orthogonal Basis for Concurrent Reasoning](https://dl.acm.org/doi/10.1145/2676726.2676980)
+- [Logical Atomicity in Iris: the Good, the Bad, and the Ugly](https://research.ralfj.de/iris/talk-iris2019.pdf)
+- [TaDA: A Logic for Time and Data Abstraction](https://link.springer.com/chapter/10.1007/978-3-662-44202-9_9)
 
 Some of the constructs needed for this project already exist in verus/vstd:
 
@@ -111,21 +134,25 @@ fn function(args: Args) -> (res: R)
 The atomic pre- and post-condition, specified in the `atomic_spec` block, desugars to an additional *tracked* function argument `atomic_update: AtomicUpdate`, as follows:
 
 ```rs
-struct FunctionPred {}
+struct FunctionPredicate {
+    data: Args,
+}
 
-impl UpdatePredicate<(Args, OldPerm), NewPerm> for FunctionPred {
-    spec fn req((args, old_perm): (Args, OldPerm)) -> bool {
+impl UpdatePredicate<OldPerm, NewPerm> for FunctionPred {
+    spec fn req(self, old_perm: OldPerm) -> bool {
+        let args = self.data;
         atomic_pre_condition(args, old_perm)
     }
 
-    spec fn ens((args, old_perm): (Args, OldPerm), (new_perm): (NewPerm)) -> bool {
+    spec fn ens(self, old_perm: OldPerm, new_perm: NewPerm) -> bool {
+        let args = self.data;
         atomic_post_condition(args, old_perm, new_perm)
     }
 }
 
 fn function(
     args: Args,
-    tracked atomic_update: AtomicUpdate<(Args, OldPerm), NewPerm, FunctionPred>
+    tracked atomic_update: AtomicUpdate<OldPerm, NewPerm, FunctionPred>
 ) -> (res: R)
     requires pre_condition(args),
     ensures post_condition(args, res),
@@ -136,9 +163,7 @@ fn function(
 
 ### Design Questions
 
-- Is the atomic post-condition allowed to talk about the return value of the function?
-- Is the predicate type we generate always empty?
-- Should `req` and `ens` have a separate argument for the function arguments, so that the types `X` and `Y` strictly correspond to the old and new permissions?
+- We would like users to be able to use the automatically generated `FunctionPredicate` type directly. This means the name of the type either has to be exteremely predicatble and stable, or we allow users to specify the name themselves. What would be a good syntax for this? I'm thinking about adding an optional `as Ident` or `type Ident` somewhere to the atomically block.
 
 ## The Atomic Function Call
 
@@ -154,84 +179,69 @@ function(args) atomically |update| {
 }
 ```
 
-<details>
-<summary>Desugaring</summary>
-
-Ideally, this language feature would desugar to something like this:
-
-```rs
-function(args, ::builtin::atomically(move |update| {
-    // ...
-    // assert atomic pre `function`
-    let new_perm = update(old_perm);
-    // assume atomic post `function`
-    // ...
-}))
-```
-
-...but this requires the `atomically` function to have the following signature:
-
-```rs
-fn atomically<X, Y, Pred>(f: impl FnOnce(impl FnOnce(X) -> Y)) -> AtomicUpdate<X, Y, Pred>
-
-// with `impl Trait` expanded
-
-fn atomically<X, Y, Pred, F>(f: F) -> AtomicUpdate<X, Y, Pred>
-where
-    F: for<U: FnOnce(X) -> Y> FnOnce(U),
-```
-
-...which is a higher-kinded function and sadly not supported in Rust.
-
-After some experimentation, I (Aaron) ended up with this desugaring:
-
-```rs
-#[doc(hidden)]
-pub struct UpdateTypeInject<X, Y, P> {
-    _dummy: core::marker::PhantomData<(spec_fn(X) -> Y, P)>,
-}
-
-#[doc(hidden)]
-#[cfg(verus_keep_ghost)]
-#[verifier::external_body]
-pub proof fn update_internal<X, Y, Pred: UpdatePredicate<X, Y>>(
-    _update_type_inject: UpdateTypeInject<X, Y, Pred>,
-    x: X,
-) -> (y: Y)
-    requires Pred::req(x),
-    ensures Pred::ens(x, y),
-{
-    arbitrary()
-}
-
-#[doc(hidden)]
-#[cfg(verus_keep_ghost)]
-#[verifier::external_body]
-pub fn atomically<X, Y, P>(
-    _f: impl FnOnce(UpdateTypeInject<X, Y, P>)
-) -> AtomicUpdate<X, Y, P> {
-    arbitrary()
-}
-
-// --- 8< --- snip --- >8 ---
-
-function(args, ::vstd::atomic::atomically(move |upd_ty_inj| {
-    let update = move |x| ::vstd::atomic::update_internal(upd_ty_inj, x);
-    // ...
-    let new_perm = update(old_perm);
-    // ...
-}))
-```
-
-Note that with this encoding, we do not need to name the types of `X`, `Y` and `Pred` at call sight, the `atomically` function infers it from the callee through its return type, `upd_ty_inj` infers it from the `atomically` function, and `update_internal` gets it from `upd_ty_inj`.
-
-</details>
-
 Here, `update` is an uninterpreted function that takes ownership of `old_perm` and produces `new_perm`.
 This function must be called exactly once within the `atomically |update| { ... }` block.
 
 It has the atomic pre- and post-conditions of the function we're calling as its (private) pre- and post-conditions.
 Since the function is uninterpreted, it is up to the post-condition the uniquely determine the value of `new_pred`, otherwise the value is non-deterministic.
+
+For the desugaring, we have defined an auxilary function called `atomically` in the `vstd::atomic` module.
+It has with the following definition:
+
+```rs
+#[doc(hidden)]
+pub fn atomically<X, Y, P>(_f: impl FnOnce(fn(X) -> Y)) -> AtomicUpdate<X, Y, P> {
+    arbitrary()
+}
+```
+
+The desugaring done by the `verus!` macro looks like this:
+
+```rs
+function(args, ::vstd::atomic::atomically(move |update| {
+    let _args = (args);
+    // ...
+    let new_perm = update(old_perm);
+    // ...
+}))
+```
+
+The declaration of `_args` is used to construct the update predicate type later on.
+
+### Design Questions
+
+- Is an `atomically` block "just" the constructor for the `AtomicUpdate` type?
+    Should we allow users to construct atomic updates directly like this?
+
+    ```rs
+    let tracked au: AtomicUpdate<X, Y, Pred> = atomically |update| { ... };
+    tunction(args, au);
+    ```
+
+    In this case, we could use `atomically` and `open_atomic_update` to "map" one `AtomicUpdate` into another:
+
+    ```rs
+    impl <X, Y, P: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, P> {
+        pub fn map<A, B, Q: UpdatePredicate<X, Y>>(
+            self,
+            lem1: impl ProofFn(A) -> X,
+            lem2: impl ProofFn(Y) -> B,
+        ) -> AtomicUpdate<A, B, Q> {
+            atomically |update| {
+                open_atomic_update!(self => perm => {
+                    let perm = lem1(perm);
+                    let perm = update(perm);
+                    let perm = lem2(perm);
+                    return perm;
+                });
+            }
+        }
+    }
+    ```
+
+    **Travis commented:** This is problematic because the `atomically` block might mutate resources around the function call, so moving the block away from the call could quickly lead to unsoundness.
+
+    We might be able to fix this by implementing the `atomically` block as a `move` closure, allowing it to capture outside resources, but defering their use until the function call.
 
 ## Open atomic update
 
@@ -268,40 +278,6 @@ function(args) atomically |update| {
 
 This combination is effectively used to transform (or "map") one atomic update into another.
 
-### Design Questions
-
-- Is an `atomically` block "just" the constructor for the `AtomicUpdate` type?
-
-    ```rs
-    let tracked au: AtomicUpdate<X, Y, Pred> = atomically |update| { ... };
-    tunction(args, au);
-    ```
-
-    In this case, we could use `atomically` and `open_atomic_update` to "map" one `AtomicUpdate` into another:
-
-    ```rs
-    impl <X, Y, P: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, P> {
-        pub fn map<A, B, Q: UpdatePredicate<X, Y>>(
-            self,
-            lem1: impl ProofFn(A) -> X,
-            lem2: impl ProofFn(Y) -> B,
-        ) -> AtomicUpdate<A, B, Q> {
-            atomically |update| {
-                open_atomic_update!(self => perm => {
-                    let perm = lem1(perm);
-                    let perm = update(perm);
-                    let perm = lem2(perm);
-                    return perm;
-                });
-            }
-        }
-    }
-    ```
-
-    **Travis commented:** This is problematic because the `atomically` block might mutate resources around the function call, so moving the block away from the call could quickly lead to unsoundness.
-
-    We might be able to fix this by implementing the `atomically` block as a `move` closure, allowing it to capture outside resources, but defering their use until the function call.
-
 ## Open atomic invariant
 
 ```rs
@@ -318,18 +294,12 @@ The `open_atomic_invariant` macro is already implemented in vstd, and the `atomi
 
 ## Provide full permissions
 
-```rs
-function(args) with (&mut perm);        // original syntax
-function(args) atomically (&mut perm);  // proposed syntax
-```
-
-This is a shorthand for the special case that we have full permission for the atomic we want to access.
-It is equivalent to the following:
+For cases where we have full permission for the atomic we want to access, it would be nice to have a shorthand syntax like this:
 
 ```rs
-function(args) atomically |update| { perm = update(perm); };
+function(args) atomically (&mut perm);
 ```
 
 ### Design Question:
-- Do we really need this?
-- Should we allow the user to construct an `AtomicUpdate` object directly from a premission?
+
+- This syntax was proposed very early on in the design process, it is unclear if this is still consistent with the current proposal.
