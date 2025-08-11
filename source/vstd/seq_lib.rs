@@ -3444,8 +3444,7 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-// #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
-#[deprecated = "Use `broadcast use group_seq_properties` instead"]
+#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
 pub proof fn lemma_seq_properties<A>()
     ensures
         forall|s: Seq<A>, x: A|
