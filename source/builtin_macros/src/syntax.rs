@@ -504,6 +504,26 @@ impl Visitor {
         }
     }
 
+    fn check_tokens_opaque(token_stream: TokenStream) -> bool {
+        for token in token_stream {
+            match token {
+                TokenTree::Group(group) => {
+                    if Self::check_tokens_opaque(group.stream()) {
+                        return true;
+                    }
+                }
+                TokenTree::Ident(ident) => {
+                    if ident.to_string() == "impl" {
+                        return true;
+                    }
+                }
+                TokenTree::Punct(_) => {}
+                TokenTree::Literal(_) => {}
+            }
+        }
+        false
+    }
+
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
@@ -613,6 +633,17 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
+                        // // for now, we disable function that returns opaque type and has an ensure clasue
+                        // // this will be supported in the future updates
+
+                        // if Self::check_tokens_opaque(ty.to_token_stream()) {
+                        //     let err =
+                        //         "function with opaque type does not yet support ensure clause";
+                        //     let expr =
+                        //         Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                        //     spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
+                        // }
+
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
                                 *expr = Expr::Verbatim(

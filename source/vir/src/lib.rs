@@ -53,6 +53,7 @@ mod loop_inference;
 pub mod messages;
 pub mod modes;
 mod patterns;
+pub mod opaque_type_to_air;
 pub mod poly;
 pub mod prelude;
 pub mod printer;

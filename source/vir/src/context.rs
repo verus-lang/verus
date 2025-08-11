@@ -201,6 +201,7 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
+                        TypX::Opaque { .. } => {}
                         TypX::Bool => {}
                         TypX::Float(_) => {}
                         TypX::AnonymousClosure(..) => {}

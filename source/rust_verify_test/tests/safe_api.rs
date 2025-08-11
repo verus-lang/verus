@@ -199,7 +199,7 @@ test_verify_one_file_with_options! {
             f
         }
     //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: opaque type")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: Closure for opaque types")
 }
 
 test_verify_one_file_with_options! {
@@ -213,7 +213,7 @@ test_verify_one_file_with_options! {
             test2
         }
     //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: opaque type")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: FnDef for opaque types")
 }
 
 test_verify_one_file_with_options! {

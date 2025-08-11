@@ -23,8 +23,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
-    Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaquetypeX, Path,
+    PathX, Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -56,6 +56,11 @@ fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Pa
             }
             DefPathData::ForeignMod => {
                 // this segment can be ignored
+            }
+            DefPathData::OpaqueTy => {
+                segments.push(Arc::new(
+                    vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string(),
+                ));
             }
             _ => return None,
         }
@@ -1108,8 +1113,107 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 }
             }
         }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => {
-            unsupported_err!(span, "opaque type")
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
+            // first check the normalized types to make sure we support the actual type
+            // behind the opaque type.
+            let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
+            let normalized_ty = tcx.normalize_erasing_regions(typing_env, *ty);
+            match normalized_ty.kind() {
+                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
+                    unsupported_err!(span, "&mut types, except in special cases for opaque types")
+                }
+                TyKind::Alias(rustc_middle::ty::AliasTyKind::Projection, _) => {
+                    unsupported_err!(span, "type Alias Projection for opaque types")
+                }
+                TyKind::Alias(rustc_middle::ty::AliasTyKind::Inherent, _) => {
+                    unsupported_err!(span, "type Alias Inherent for opaque types")
+                }
+                TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => {
+                    crate::internal_err!(span, "opaque type normalized to another opaque ty")
+                }
+                TyKind::Closure(..) => {
+                    unsupported_err!(span, "Closure for opaque types")
+                }
+                TyKind::FnDef(..) => {
+                    unsupported_err!(span, "FnDef for opaque types")
+                }
+                TyKind::Alias(rustc_middle::ty::AliasTyKind::Weak, _) => {
+                    unsupported_err!(span, "opaque type for opaque type")
+                }
+                TyKind::Float(..) => {
+                    unsupported_err!(span, "floating point types for opaque types")
+                }
+                TyKind::Foreign(..) => unsupported_err!(span, "foreign types for opaque types"),
+                TyKind::FnPtr(..) => {
+                    unsupported_err!(span, "function pointer types for opaque types")
+                }
+                TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types for opaque types"),
+                TyKind::Coroutine(..) => unsupported_err!(span, "generator types for opaque types"),
+                TyKind::CoroutineWitness(..) => {
+                    unsupported_err!(span, "generator witness types for opaque types")
+                }
+                TyKind::Bound(..) => unsupported_err!(span, "for<'a> types for opaque types"),
+                TyKind::Placeholder(..) => {
+                    unsupported_err!(span, "type inference Placeholder types for opaque types")
+                }
+                TyKind::Infer(..) => {
+                    unsupported_err!(span, "type inference Infer types for opaque types")
+                }
+                TyKind::Error(..) => {
+                    unsupported_err!(span, "type inference error types for opaque types")
+                }
+                TyKind::CoroutineClosure(_, _) => {
+                    unsupported_err!(span, "coroutine closure types for opaque types")
+                }
+                TyKind::Pat(_, _) => unsupported_err!(span, "pattern types for opaque types"),
+                TyKind::UnsafeBinder(_) => {
+                    unsupported_err!(span, "unsafe binder types for opaque types")
+                }
+                TyKind::Bool
+                | TyKind::Uint(_)
+                | TyKind::Int(_)
+                | TyKind::Char
+                | TyKind::Ref(..)
+                | TyKind::Param(_)
+                | TyKind::Never
+                | TyKind::Tuple(_)
+                | TyKind::Slice(_)
+                | TyKind::Str
+                | TyKind::RawPtr(..)
+                | TyKind::Array(..)
+                | TyKind::Adt(..) => { /* These types are supported */ }
+            }
+
+            let mut args = Vec::new();
+            for arg in al_ty.args {
+                match arg.unpack() {
+                    rustc_type_ir::GenericArgKind::Lifetime(_) => {}
+                    rustc_type_ir::GenericArgKind::Type(ty) => {
+                        args.push(mid_ty_to_vir(
+                            tcx,
+                            verus_items,
+                            param_env_src,
+                            span,
+                            &ty,
+                            false,
+                        )?);
+                    }
+                    rustc_type_ir::GenericArgKind::Const(cnst) => {
+                        args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                            tcx,
+                            Some(span),
+                            &cnst,
+                        )?);
+                    }
+                }
+            }
+            (
+                Arc::new(TypX::Opaque {
+                    def_path: def_id_to_vir_path(tcx, verus_items, al_ty.def_id),
+                    args: Arc::new(args),
+                }),
+                false,
+            )
         }
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
             unsupported_err!(span, "opaque type")
@@ -2037,4 +2141,157 @@ pub(crate) fn ty_remove_references<'tcx>(
         TyKind::Ref(_, t, Mutability::Not) => ty_remove_references(&t),
         _ => ty,
     }
+}
+
+pub(crate) fn opaque_def_to_vir<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut vir::ast::KrateX,
+    opaque_ty: &rustc_hir::OpaqueTy,
+) -> Result<(), VirErr> {
+    let mut trait_bounds = Vec::new();
+    let mut args = Vec::new();
+    match opaque_ty.origin {
+        rustc_hir::OpaqueTyOrigin::FnReturn { parent, .. } => {
+            let mode = crate::attributes::get_mode(
+                Mode::Exec,
+                ctxt.tcx.get_attrs_unchecked(parent.into()),
+            );
+            if mode != Mode::Exec {
+                return err_span(
+                    opaque_ty.span,
+                    format!("Opaque type is not supported in {} mode", mode),
+                );
+            }
+
+            match ctxt.tcx.fn_sig(parent).skip_binder().output().skip_binder().kind() {
+                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
+                    for arg in al_ty.args {
+                        match arg.unpack() {
+                            rustc_type_ir::GenericArgKind::Lifetime(_) => {}
+                            rustc_type_ir::GenericArgKind::Type(ty) => {
+                                args.push(mid_ty_to_vir(
+                                    ctxt.tcx,
+                                    &ctxt.verus_items,
+                                    opaque_ty.def_id.into(),
+                                    opaque_ty.span,
+                                    &ty,
+                                    false,
+                                )?);
+                            }
+                            rustc_type_ir::GenericArgKind::Const(cnst) => {
+                                args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                                    ctxt.tcx,
+                                    Some(opaque_ty.span),
+                                    &cnst,
+                                )?);
+                            }
+                        }
+                    }
+
+                    let instantiated_bounds =
+                        ctxt.tcx.item_bounds(opaque_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
+                    for bound in instantiated_bounds {
+                        match bound.kind().skip_binder() {
+                            ClauseKind::Trait(TraitPredicate {
+                                trait_ref,
+                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                            }) => {
+                                let substs = trait_ref.args;
+                                let trait_def_id = trait_ref.def_id;
+                                let generic_bound = check_generic_bound(
+                                    ctxt.tcx,
+                                    &ctxt.verus_items,
+                                    al_ty.def_id,
+                                    opaque_ty.span,
+                                    trait_def_id,
+                                    substs,
+                                )?
+                                .unwrap();
+                                trait_bounds.push(generic_bound);
+                            }
+                            ClauseKind::Projection(pred) => {
+                                let item_def_id = pred.projection_term.def_id;
+
+                                if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
+                                    continue;
+                                }
+                                let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                                    mid_ty_to_vir(
+                                        ctxt.tcx,
+                                        &ctxt.verus_items,
+                                        opaque_ty.def_id.into(),
+                                        opaque_ty.span,
+                                        &ty,
+                                        false,
+                                    )?
+                                } else {
+                                    return err_span(
+                                        opaque_ty.span,
+                                        "Verus does not yet support this type of bound",
+                                    );
+                                };
+                                let substs = pred.projection_term.args;
+                                let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
+                                let assoc_item = ctxt.tcx.associated_item(item_def_id);
+                                let name = Arc::new(assoc_item.name.to_string());
+                                let generic_bound = check_generic_bound(
+                                    ctxt.tcx,
+                                    &ctxt.verus_items,
+                                    opaque_ty.def_id.into(),
+                                    opaque_ty.span,
+                                    trait_def_id,
+                                    substs,
+                                )?;
+                                if let Some(generic_bound) = generic_bound {
+                                    if let GenericBoundX::Trait(TraitId::Path(path), typs) =
+                                        &*generic_bound
+                                    {
+                                        let bound = GenericBoundX::TypEquality(
+                                            path.clone(),
+                                            typs.clone(),
+                                            name.clone(),
+                                            typ.clone(),
+                                        );
+                                        trait_bounds.push(Arc::new(bound));
+                                    } else {
+                                        return err_span(
+                                            opaque_ty.span,
+                                            "Verus does not yet support this type of bound",
+                                        );
+                                    }
+                                } else {
+                                    panic!(
+                                        "internal error: generic_bound should return GenericBoundX::Trait"
+                                    )
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {
+                    return err_span(
+                        opaque_ty.span,
+                        "`external_type_specification` attribute not supported here",
+                    );
+                }
+            }
+        }
+        _ => {
+            return err_span(
+                opaque_ty.span,
+                "Verus only support opaque types defined by function returns now",
+            );
+        }
+    }
+
+    vir.opaque_types.push(ctxt.spanned_new(
+        opaque_ty.span,
+        OpaquetypeX {
+            name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into()),
+            typ_params: Arc::new(args),
+            typ_bounds: Arc::new(trait_bounds),
+        },
+    ));
+    Ok(())
 }
