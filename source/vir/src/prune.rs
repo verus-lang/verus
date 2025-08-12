@@ -4,8 +4,8 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
+    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, Place, RevealGroup,
+    Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -481,9 +481,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 Ok(e.clone())
             };
             let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
+            let fp = |_: &mut State, _: &mut VisitorScopeMap, p: &Place| Ok(p.clone());
             let mut map: VisitorScopeMap = ScopeMap::new();
-            crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
-                .unwrap();
+            crate::ast_visitor::map_function_visitor_env(
+                &function, &mut map, state, &fe, &fs, &ft, &fp,
+            )
+            .unwrap();
             let methods = reached_methods(
                 ctxt,
                 state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
