@@ -449,7 +449,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     mut remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
-    let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
+    let typing_env = TypingEnv::non_body_analysis(tcx, param_env_src);
 
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
@@ -1116,76 +1116,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
         }
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
-            // first check the normalized types to make sure we support the actual type
-            // behind the opaque type.
-            let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
-            let normalized_ty = tcx.normalize_erasing_regions(typing_env, *ty);
-            match normalized_ty.kind() {
-                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
-                    unsupported_err!(span, "&mut types, except in special cases for opaque types")
-                }
-                TyKind::Alias(rustc_middle::ty::AliasTyKind::Projection, _) => {
-                    unsupported_err!(span, "type Alias Projection for opaque types")
-                }
-                TyKind::Alias(rustc_middle::ty::AliasTyKind::Inherent, _) => {
-                    unsupported_err!(span, "type Alias Inherent for opaque types")
-                }
-                TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => {
-                    crate::internal_err!(span, "opaque type normalized to another opaque ty")
-                }
-                TyKind::Closure(..) => {
-                    unsupported_err!(span, "Closure for opaque types")
-                }
-                TyKind::FnDef(..) => {
-                    unsupported_err!(span, "FnDef for opaque types")
-                }
-                TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => {
-                    unsupported_err!(span, "opaque type for opaque type")
-                }
-                TyKind::Float(..) => {
-                    unsupported_err!(span, "floating point types for opaque types")
-                }
-                TyKind::Foreign(..) => unsupported_err!(span, "foreign types for opaque types"),
-                TyKind::FnPtr(..) => {
-                    unsupported_err!(span, "function pointer types for opaque types")
-                }
-                TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types for opaque types"),
-                TyKind::Coroutine(..) => unsupported_err!(span, "generator types for opaque types"),
-                TyKind::CoroutineWitness(..) => {
-                    unsupported_err!(span, "generator witness types for opaque types")
-                }
-                TyKind::Bound(..) => unsupported_err!(span, "for<'a> types for opaque types"),
-                TyKind::Placeholder(..) => {
-                    unsupported_err!(span, "type inference Placeholder types for opaque types")
-                }
-                TyKind::Infer(..) => {
-                    unsupported_err!(span, "type inference Infer types for opaque types")
-                }
-                TyKind::Error(..) => {
-                    unsupported_err!(span, "type inference error types for opaque types")
-                }
-                TyKind::CoroutineClosure(_, _) => {
-                    unsupported_err!(span, "coroutine closure types for opaque types")
-                }
-                TyKind::Pat(_, _) => unsupported_err!(span, "pattern types for opaque types"),
-                TyKind::UnsafeBinder(_) => {
-                    unsupported_err!(span, "unsafe binder types for opaque types")
-                }
-                TyKind::Bool
-                | TyKind::Uint(_)
-                | TyKind::Int(_)
-                | TyKind::Char
-                | TyKind::Ref(..)
-                | TyKind::Param(_)
-                | TyKind::Never
-                | TyKind::Tuple(_)
-                | TyKind::Slice(_)
-                | TyKind::Str
-                | TyKind::RawPtr(..)
-                | TyKind::Array(..)
-                | TyKind::Adt(..) => { /* These types are supported */ }
-            }
-
             let mut args = Vec::new();
             for arg in al_ty.args {
                 match arg.unpack() {
@@ -2152,6 +2082,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 ) -> Result<(), VirErr> {
     let mut trait_bounds = Vec::new();
     let mut args = Vec::new();
+
     match opaque_ty.origin {
         rustc_hir::OpaqueTyOrigin::FnReturn { parent, .. } => {
             let mode = crate::attributes::get_mode(
@@ -2165,7 +2096,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 );
             }
 
-            match ctxt.tcx.fn_sig(parent).skip_binder().output().skip_binder().kind() {
+            let ty = ctxt.tcx.fn_sig(parent).skip_binder().output().skip_binder();
+            match ty.kind() {
                 rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
                     for arg in al_ty.args {
                         match arg.unpack() {
@@ -2287,13 +2219,15 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         }
     }
 
-    vir.opaque_types.push(ctxt.spanned_new(
+    let opaque_ty_vir = ctxt.spanned_new(
         opaque_ty.span,
         OpaquetypeX {
             name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into()),
             typ_params: Arc::new(args),
             typ_bounds: Arc::new(trait_bounds),
         },
-    ));
+    );
+    
+    vir.opaque_types.push(opaque_ty_vir);
     Ok(())
 }

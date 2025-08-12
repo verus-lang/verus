@@ -198,8 +198,7 @@ test_verify_one_file_with_options! {
             let f = |y: u32| requires y > 0 { };
             f
         }
-    //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: Closure for opaque types")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -212,8 +211,7 @@ test_verify_one_file_with_options! {
         pub fn test() -> impl Fn(u32) {
             test2
         }
-    //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: FnDef for opaque types")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

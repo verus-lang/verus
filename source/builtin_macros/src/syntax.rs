@@ -503,27 +503,7 @@ impl Visitor {
             visit_spec(&mut exprs.exprs);
         }
     }
-
-    fn check_tokens_opaque(token_stream: TokenStream) -> bool {
-        for token in token_stream {
-            match token {
-                TokenTree::Group(group) => {
-                    if Self::check_tokens_opaque(group.stream()) {
-                        return true;
-                    }
-                }
-                TokenTree::Ident(ident) => {
-                    if ident.to_string() == "impl" {
-                        return true;
-                    }
-                }
-                TokenTree::Punct(_) => {}
-                TokenTree::Literal(_) => {}
-            }
-        }
-        false
-    }
-
+    
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
