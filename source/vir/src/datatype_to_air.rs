@@ -828,6 +828,8 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let resolve_axiom_commands = crate::resolve_axioms::resolve_axioms(ctx);
+
     let mut commands: Vec<Command> = Vec::new();
     commands.extend(pointee_metadata_commands);
     commands.append(&mut opaque_sort_commands);
@@ -840,5 +842,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut axiom_commands);
     commands.extend(array_commands);
     commands.extend(strslice_commands);
+    commands.extend(resolve_axiom_commands);
     Arc::new(commands)
 }

@@ -1941,15 +1941,22 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types) =
-            vir::prune::prune_krate_for_module_or_krate(
-                &krate,
-                &Arc::new(self.crate_name.clone().expect("crate_name")),
-                None,
-                Some(bucket_id.module().clone()),
-                bucket_id.function(),
-                true,
-            );
+        let (
+            pruned_krate,
+            mono_abstract_datatypes,
+            spec_fn_types,
+            used_builtins,
+            fndef_types,
+            resolved_typs,
+        ) = vir::prune::prune_krate_for_module_or_krate(
+            &krate,
+            &Arc::new(self.crate_name.clone().expect("crate_name")),
+            None,
+            Some(bucket_id.module().clone()),
+            bucket_id.function(),
+            true,
+            true,
+        );
         let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
@@ -1965,6 +1972,7 @@ impl Verifier {
             spec_fn_types,
             used_builtins,
             fndef_types,
+            resolved_typs.unwrap(),
             self.args.debugger,
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
@@ -2754,12 +2762,13 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),
             None,
             None,
+            false,
             false,
         );
         let vir_crate =
