@@ -4,10 +4,12 @@ use super::prelude::*;
 verus! {
 
 pub trait FloatBitsProperties {
-    spec fn to_bits_spec(&self) -> int;
+    type Bits;
+
+    spec fn to_bits_spec(&self) -> Self::Bits;
 
     // All bits except sign bit
-    spec fn to_bits_abs_spec(&self) -> int;
+    spec fn to_bits_abs_spec(&self) -> Self::Bits;
 
     // Sign bit is true (may apply to zero, subnormal, normal, infinite, NaN)
     spec fn is_sign_negative_spec(&self) -> bool;
@@ -23,14 +25,16 @@ pub trait FloatBitsProperties {
 }
 
 impl FloatBitsProperties for f32 {
-    open spec fn to_bits_spec(&self) -> int {
+    type Bits = u32;
+
+    open spec fn to_bits_spec(&self) -> u32 {
         f32_to_bits(*self)
     }
 
-    open spec fn to_bits_abs_spec(&self) -> int {
+    open spec fn to_bits_abs_spec(&self) -> u32 {
         let bits = self.to_bits_spec();
         if bits >= 0x8000_0000 {
-            bits - 0x8000_0000
+            (bits - 0x8000_0000) as u32
         } else {
             bits
         }
@@ -55,14 +59,16 @@ impl FloatBitsProperties for f32 {
 }
 
 impl FloatBitsProperties for f64 {
-    open spec fn to_bits_spec(&self) -> int {
+    type Bits = u64;
+
+    open spec fn to_bits_spec(&self) -> u64 {
         f64_to_bits(*self)
     }
 
-    open spec fn to_bits_abs_spec(&self) -> int {
+    open spec fn to_bits_abs_spec(&self) -> u64 {
         let bits = self.to_bits_spec();
         if bits >= 0x8000_0000_0000_0000 {
-            bits - 0x8000_0000_0000_0000
+            (bits - 0x8000_0000_0000_0000) as u64
         } else {
             bits
         }
