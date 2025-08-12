@@ -2227,7 +2227,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             typ_bounds: Arc::new(trait_bounds),
         },
     );
-    
+
     vir.opaque_types.push(opaque_ty_vir);
     Ok(())
 }

@@ -262,9 +262,11 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             { if eattrs.external { VerifState::External } else { VerifState::Verify } };
 
         let verif = if state_for_this_item == VerifState::Verify {
-            VerifOrExternal::VerusAware { module_path: self.module_path.clone() ,
+            VerifOrExternal::VerusAware {
+                module_path: self.module_path.clone(),
                 const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
-                external_body: eattrs.external_body}
+                external_body: eattrs.external_body,
+            }
         } else {
             let path_opt = def_id_to_vir_path_option(
                 self.ctxt.tcx,

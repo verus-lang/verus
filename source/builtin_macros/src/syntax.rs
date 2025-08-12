@@ -503,7 +503,7 @@ impl Visitor {
             visit_spec(&mut exprs.exprs);
         }
     }
-    
+
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
