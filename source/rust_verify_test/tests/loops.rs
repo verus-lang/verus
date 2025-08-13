@@ -1500,23 +1500,24 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
-    #[test] recursive_call_in_loop2 ["exec_allows_no_decreases_clause"] => verus_code! {
+test_verify_one_file! {
+    #[test] recursive_call_in_loop2 verus_code! {
         fn test1 (x:usize)
             decreases x,
         {
             if x == 0 {
                 return;
             }
-            let mut i = 0;
+            let mut i:usize = 0;
             while i < 10
                 invariant x >= 1,
+                decreases 10 - i,
             {
                 test1(x - 1);
-                let mut j = 0;
+                let mut j:usize = 0;
                 while j * 2 < 5
-                    invariant x >= 1, j <= 3,
-                    decreases 5 - j * 2,
+                    invariant x >= 1, j <= 4,
+                    decreases 4 - j,
                 {
                     test1(x - 1);
                     j = j + 1;
@@ -1525,29 +1526,33 @@ test_verify_one_file_with_options! {
             }
             
         }
+} => Ok(())
+}
 
+test_verify_one_file! {
+    #[test] recursive_call_in_loop3 verus_code! {
         #[verifier::loop_isolation(false)]
-        fn test2 (x:usize)
+        fn test1 (x:usize)
             decreases x,
         {
             if x == 0 {
                 return;
             }
-            let mut i = 0;
+            let mut i:usize = 0;
             while i < 10
+                decreases 10 - i,
             {
-                test2(x - 1);
-                let mut j = 0;
+                test1(x - 1);
+                let mut j:usize = 0;
                 while j * 2 < 5
-                    invariant j <= 3,
-                    decreases 5 - j * 2,
+                    invariant j <= 4,
+                    decreases 4 - j,
                 {
-                    test2(x - 1);
+                    test1(x - 1);
                     j = j + 1;
                 }
                 i = i + 1;
             }
         }
-
 } => Ok(())
 }

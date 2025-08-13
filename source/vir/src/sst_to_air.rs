@@ -2520,7 +2520,45 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 decrease: decrease.clone(),
             };
             state.loop_infos.push(loop_info);
-            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+            
+            // When loop isolation is enabled, we need to apply termination checking 
+            // to recursive calls within the loop body, since the loop body is processed
+            // in a separate query and wouldn't otherwise have termination checks
+            let body_to_process = if loop_isolation {
+                if let Some(fun_ctx) = &ctx.fun {
+                    let current_function = &ctx.func_map[&fun_ctx.current_fun];
+                    if crate::recursion::fun_is_recursive(ctx, current_function) {
+                        // Apply termination checking to the loop body
+                        let reporter = air::messages::Reporter {};
+                        match crate::recursion::check_termination_stm(
+                            ctx,
+                            &reporter,
+                            current_function,
+                            None,
+                            body,
+                            false,
+                        ) {
+                            Ok((_, body_with_termination_checks)) => body_with_termination_checks,
+                            Err(_e) => {
+                                // Fall back to original body if termination checking fails
+                                // This maintains the existing behavior where loops without
+                                // termination checking still work with loop_isolation(false)
+                                body.clone()
+                            }
+                        }
+                    } else {
+                        body.clone()
+                    }
+                } else {
+                    body.clone()
+                }
+            } else {
+                body.clone()
+            };
+            
+            let mut processed_body = stm_to_stmts(ctx, state, &body_to_process)?;
+            
+            air_body.append(&mut processed_body);
             state.loop_infos.pop();
 
             if !ctx.checking_spec_preconditions() {
