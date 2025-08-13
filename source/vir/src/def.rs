@@ -865,6 +865,13 @@ pub fn set_type_path(vstd_crate_name: &Ident) -> Path {
     })
 }
 
+pub fn set_finite_type_path(vstd_crate_name: &Ident) -> Path {
+    Arc::new(PathX {
+        krate: Some(vstd_crate_name.clone()),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Finite".to_string())]),
+    })
+}
+
 pub fn fn_set_empty_name(vstd_crate_name: &Ident) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
