@@ -4,6 +4,7 @@ verus! {
 
 pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
     atomically (atom_upd) {
+        type FunctionPred,
         (z: i32) -> (w: i32),
         requires z == 5,
         ensures w == 7,

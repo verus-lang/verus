@@ -593,8 +593,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::NeverToAny(R::get(e))))
             }
-            ExprX::Atomically(_exp) => todo!(),
-            ExprX::Update(_exp) => todo!(),
+            ExprX::Atomically(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Atomically(R::get(e))))
+            }
+            ExprX::Update(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Update(R::get(e))))
+            }
         }
     }
 

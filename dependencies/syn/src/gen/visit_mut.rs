@@ -1349,6 +1349,11 @@ where
     skip!(node.paren_token);
     v.visit_ident_mut(&mut node.atomic_update);
     skip!(node.block_token);
+    if let Some(it) = &mut node.pred_type {
+        skip!((it).0);
+        v.visit_ident_mut(&mut (it).1);
+        skip!((it).2);
+    }
     v.visit_perm_tuple_mut(&mut node.old_perms);
     skip!(node.arrow_token);
     v.visit_perm_tuple_mut(&mut node.new_perms);

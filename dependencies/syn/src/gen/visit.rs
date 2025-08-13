@@ -1345,6 +1345,11 @@ where
     skip!(node.paren_token);
     v.visit_ident(&node.atomic_update);
     skip!(node.block_token);
+    if let Some(it) = &node.pred_type {
+        skip!((it).0);
+        v.visit_ident(&(it).1);
+        skip!((it).2);
+    }
     v.visit_perm_tuple(&node.old_perms);
     skip!(node.arrow_token);
     v.visit_perm_tuple(&node.new_perms);

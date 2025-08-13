@@ -380,6 +380,21 @@
         "block_token": {
           "group": "Brace"
         },
+        "pred_type": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Type"
+              },
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "Comma"
+              }
+            ]
+          }
+        },
         "old_perms": {
           "syn": "PermTuple"
         },

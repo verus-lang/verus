@@ -144,6 +144,7 @@ impl Debug for crate::AtomicSpec {
         formatter.field("paren_token", &self.paren_token);
         formatter.field("atomic_update", &self.atomic_update);
         formatter.field("block_token", &self.block_token);
+        formatter.field("pred_type", &self.pred_type);
         formatter.field("old_perms", &self.old_perms);
         formatter.field("arrow_token", &self.arrow_token);
         formatter.field("new_perms", &self.new_perms);

@@ -321,6 +321,20 @@ impl Debug for Lite<syn::AtomicSpec> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicSpec");
         formatter.field("atomic_update", Lite(&self.value.atomic_update));
+        if let Some(val) = &self.value.pred_type {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Type, proc_macro2::Ident, syn::token::Comma));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("pred_type", Print::ref_cast(val));
+        }
         formatter.field("old_perms", Lite(&self.value.old_perms));
         formatter.field("new_perms", Lite(&self.value.new_perms));
         if self.value.comma1_token.is_some() {

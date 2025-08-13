@@ -1,9 +1,7 @@
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
 use convert_case::{Case, Casing};
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use proc_macro2::TokenTree;
+use proc_macro2::{Group, Span, TokenStream, TokenTree};
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
@@ -14,9 +12,14 @@ use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
 use syn_verus::ExprMethodCall;
+use syn_verus::GenericParam;
+use syn_verus::Generics;
+use syn_verus::Lifetime;
+use syn_verus::LifetimeParam;
+use syn_verus::Receiver;
+use syn_verus::TypeReference;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
-use syn_verus::punctuated::Pair;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
@@ -96,10 +99,11 @@ pub(crate) struct Visitor {
     inside_arith: InsideArith,
     // assign_to == true means we're an expression being assigned to by Assign
     assign_to: bool,
-
     // Add extra verus signature information to the docstring
     pub(crate) rustdoc: bool,
-
+    // The currently `Self` type taken from the surrounding impl block
+    inside_impl: Option<Box<(Generics, Box<Type>)>>,
+    // A place to put items that are emitted while visiting
     additional_items: Vec<Item>,
 }
 
@@ -133,7 +137,7 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
 }
 
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
-    let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
+    let mut group = Group::new(proc_macro2::Delimiter::None, TokenStream::new());
     group.set_span(span);
     group.delim_span()
 }
@@ -508,16 +512,87 @@ impl Visitor {
         }
     }
 
+    fn resolve_receiver(&self, receiver: &Receiver, name: &Ident) -> (PatType, Option<Lifetime>) {
+        match &receiver.colon_token {
+            None => {
+                let (_generics, mut ty) = self
+                    .inside_impl
+                    .as_deref()
+                    .expect("cannot resolve self type outside of impl block")
+                    .clone();
+
+                let mut rec_mut = receiver.mutability.clone();
+                let mut opt_lt = None;
+
+                if let Some((and_token, mut lifetime)) = receiver.reference.clone() {
+                    if lifetime.is_none() {
+                        let fresh_lt = Lifetime::new("'this", and_token.span());
+                        lifetime = Some(fresh_lt);
+                        opt_lt = lifetime.clone();
+                    }
+
+                    ty = Box::new(Type::Reference(TypeReference {
+                        and_token,
+                        lifetime,
+                        mutability: rec_mut.take(),
+                        elem: ty,
+                    }));
+                }
+
+                let pat_ident = syn_verus::PatIdent {
+                    attrs: Vec::new(),
+                    by_ref: None,
+                    mutability: rec_mut,
+                    ident: name.clone(),
+                    subpat: None,
+                };
+
+                let pat_type = PatType {
+                    attrs: receiver.attrs.clone(),
+                    pat: Box::new(Pat::Ident(pat_ident)),
+                    colon_token: Default::default(),
+                    ty,
+                };
+
+                (pat_type, opt_lt)
+            }
+
+            Some(_colon) => todo!(),
+        }
+    }
+
     #[allow(unused)]
     fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) {
         let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else { return };
         let full_span = atomic_spec.span();
+
+        fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
+            stream
+                .into_iter()
+                .map(|tt| match tt {
+                    TokenTree::Ident(curr) if curr.to_string() == "self" => {
+                        let mut ident = ident.clone();
+                        ident.set_span(curr.span());
+                        TokenTree::Ident(ident)
+                    }
+
+                    TokenTree::Group(group) => {
+                        let inner = replace_self_with_ident(group.stream(), ident);
+                        let group = Group::new(group.delimiter(), inner);
+                        TokenTree::Group(group)
+                    }
+
+                    token => token,
+                })
+                .collect()
+        }
 
         let AtomicSpec {
             atomically_token,
             paren_token,
             atomic_update,
             block_token,
+            pred_type,
             old_perms,
             arrow_token,
             new_perms,
@@ -532,14 +607,39 @@ impl Visitor {
         old_perms.to_type_tokens(&mut old_ty);
         new_perms.to_type_tokens(&mut new_ty);
 
-        let mut pred_name = sig.ident.to_string().to_case(Case::Pascal);
-        pred_name.push_str("AtomicUpdatePredicate");
-        let pred_ident: Ident = Ident::new(&pred_name, sig.ident.span());
+        let pred_ident = match pred_type {
+            Some((_type, ident, _comma)) => ident,
+            None => {
+                let mut pred_name = sig.ident.to_string().to_case(Case::Pascal);
+                pred_name.push_str("AtomicUpdatePredicate");
+                Ident::new(&pred_name, sig.ident.span())
+            }
+        };
 
         let mut args_ty_tokens = TokenStream::new();
         let mut args_pat_tokens = TokenStream::new();
-        for (fn_arg, comma) in sig.inputs.pairs().map(Pair::into_tuple) {
-            let FnArgKind::Typed(pat_type) = &fn_arg.kind else { todo!() };
+        let mut self_ident = None;
+        let mut self_lifetime = None;
+
+        for pair in sig.inputs.pairs() {
+            let (fn_arg, comma) = pair.into_tuple();
+            let temp;
+
+            let pat_type = match &fn_arg.kind {
+                FnArgKind::Typed(pat_type) => pat_type,
+                FnArgKind::Receiver(receiver) => {
+                    // dbg!(receiver);
+                    // dbg!(&self.inside_impl);
+
+                    let ident = Ident::new("this", receiver.self_token.span());
+                    let (pat_type, lifetime) = self.resolve_receiver(receiver, &ident);
+                    self_ident = Some(ident);
+                    self_lifetime = lifetime;
+
+                    temp = pat_type;
+                    &temp
+                }
+            };
 
             pat_type.pat.to_tokens(&mut args_pat_tokens);
             pat_type.ty.to_tokens(&mut args_ty_tokens);
@@ -552,14 +652,28 @@ impl Visitor {
         let generics = &sig.generics;
         let where_clause = &generics.where_clause;
 
+        let mut generics_extra_lt = generics.clone();
+        if let Some(lifetime) = self_lifetime {
+            generics_extra_lt.params.insert(
+                0,
+                GenericParam::Lifetime(LifetimeParam {
+                    attrs: Vec::new(),
+                    lifetime,
+                    colon_token: None,
+                    bounds: Punctuated::new(),
+                }),
+            );
+        }
+
         self.additional_items.push(parse_quote_spanned!(full_span =>
-            #vis struct #pred_ident #generics #where_clause {
+            #vis struct #pred_ident #generics_extra_lt #where_clause {
                 #vis ghost data: ( #args_ty_tokens ),
             }
         ));
 
         let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
-            tracked #atomic_update: #vstd::atomic::AtomicUpdate<#old_ty, #new_ty, #pred_ident #generics>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate
+                < #old_ty, #new_ty, #pred_ident #generics >
         );
 
         let mut old_val = TokenStream::new();
@@ -568,13 +682,20 @@ impl Visitor {
         new_perms.to_value_tokens(&mut new_val);
 
         let mut atomic_req = TokenStream::new();
+        let mut atomic_ens = TokenStream::new();
+
         for req in &requires.exprs.exprs {
             quote!(&&& #req).to_tokens(&mut atomic_req);
         }
 
-        let mut atomic_ens = TokenStream::new();
         for ens in &ensures.exprs.exprs {
             quote!(&&& #ens).to_tokens(&mut atomic_ens);
+        }
+
+        if let Some(ident) = &self_ident {
+            args_pat_tokens = replace_self_with_ident(args_pat_tokens, ident);
+            atomic_req = replace_self_with_ident(atomic_req, ident);
+            atomic_ens = replace_self_with_ident(atomic_ens, ident);
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
@@ -4247,10 +4368,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
+        let impl_info = (imp.generics.clone(), imp.self_ty.clone());
+        let outer_impl = self.inside_impl.replace(Box::new(impl_info));
         imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
         syn_verus::visit_mut::visit_item_impl_mut(self, imp);
+        self.inside_impl = outer_impl;
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
@@ -4560,6 +4684,7 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     visitor.visit_items_prefilter(&mut items.items);
@@ -4571,15 +4696,15 @@ pub(crate) fn rewrite_items(
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
 
-        // if !visitor.additional_items.is_empty() {
-        //     let msg = "debug print";
-        //     dbg!(msg);
+        if !visitor.additional_items.is_empty() {
+            let msg = "debug print";
+            dbg!(msg);
 
-        //     for item in visitor.additional_items.iter().chain(Some(&*item)) {
-        //         let s = item.to_token_stream().to_string();
-        //         eprintln!("\n{s}\n");
-        //     }
-        // }
+            for item in visitor.additional_items.iter().chain(Some(&*item)) {
+                let s = item.to_token_stream().to_string();
+                eprintln!("\n{s}\n");
+            }
+        }
 
         items.items.append(&mut visitor.additional_items);
         //while !visitor.additional_items.is_empty() {
@@ -4616,6 +4741,7 @@ pub(crate) fn rewrite_impl_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
@@ -4650,6 +4776,7 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(&mut expr);
@@ -4682,6 +4809,7 @@ pub(crate) fn rewrite_proof_decl(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     for mut ss in stmts {
@@ -4736,6 +4864,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(expr);
@@ -4833,6 +4962,7 @@ pub(crate) fn sig_specs_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     let sig_span = sig.span().clone();
@@ -4854,6 +4984,7 @@ pub(crate) fn while_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
@@ -4887,6 +5018,7 @@ pub(crate) fn for_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
@@ -5053,6 +5185,7 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     visitor.visit_block_mut(&mut invoke);
@@ -5078,6 +5211,7 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
@@ -5108,6 +5242,7 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
@@ -5144,6 +5279,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
         additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {

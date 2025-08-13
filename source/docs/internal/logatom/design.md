@@ -123,7 +123,7 @@ fn function(args: Args) -> (res: R)
         (old_perm: OldPerm) -> (new_perm: NewPerm),
         requires atomic_pre_condition(args, old_perm),
         ensures atomic_post_condition(args, old_perm, new_perm),
-    }
+    },
     requires pre_condition(args),
     ensures post_condition(args, res),
 {

@@ -137,6 +137,7 @@ impl Clone for crate::AtomicSpec {
             paren_token: self.paren_token.clone(),
             atomic_update: self.atomic_update.clone(),
             block_token: self.block_token.clone(),
+            pred_type: self.pred_type.clone(),
             old_perms: self.old_perms.clone(),
             arrow_token: self.arrow_token.clone(),
             new_perms: self.new_perms.clone(),

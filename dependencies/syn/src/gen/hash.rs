@@ -128,6 +128,7 @@ impl Hash for crate::AtomicSpec {
         H: Hasher,
     {
         self.atomic_update.hash(state);
+        self.pred_type.hash(state);
         self.old_perms.hash(state);
         self.new_perms.hash(state);
         self.comma1_token.hash(state);

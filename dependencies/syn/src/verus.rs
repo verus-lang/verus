@@ -619,6 +619,7 @@ ast_struct! {
         pub paren_token: token::Paren,
         pub atomic_update: Ident,
         pub block_token: token::Brace,
+        pub pred_type: Option<(Token![type], Ident, Token![,])>,
         pub old_perms: PermTuple,
         pub arrow_token: Token![->],
         pub new_perms: PermTuple,
@@ -1687,6 +1688,14 @@ pub mod parsing {
                 paren_token: parenthesized!(parens in input),
                 atomic_update: parens.parse()?,
                 block_token: braced!(curlys in input),
+                pred_type: if curlys.peek(Token![type]) {
+                    let colon = curlys.parse()?;
+                    let ident = curlys.parse()?;
+                    let comma = curlys.parse()?;
+                    Some((colon, ident, comma))
+                } else {
+                    None
+                },
                 old_perms: curlys.parse()?,
                 arrow_token: curlys.parse()?,
                 new_perms: curlys.parse()?,

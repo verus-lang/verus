@@ -104,8 +104,8 @@ impl Eq for crate::AtomicSpec {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::AtomicSpec {
     fn eq(&self, other: &Self) -> bool {
-        self.atomic_update == other.atomic_update && self.old_perms == other.old_perms
-            && self.new_perms == other.new_perms
+        self.atomic_update == other.atomic_update && self.pred_type == other.pred_type
+            && self.old_perms == other.old_perms && self.new_perms == other.new_perms
             && self.comma1_token == other.comma1_token && self.requires == other.requires
             && self.ensures == other.ensures && self.comma2_token == other.comma2_token
     }

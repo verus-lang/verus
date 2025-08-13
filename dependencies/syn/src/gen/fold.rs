@@ -1451,6 +1451,7 @@ where
         paren_token: node.paren_token,
         atomic_update: f.fold_ident(node.atomic_update),
         block_token: node.block_token,
+        pred_type: (node.pred_type).map(|it| ((it).0, f.fold_ident((it).1), (it).2)),
         old_perms: f.fold_perm_tuple(node.old_perms),
         arrow_token: node.arrow_token,
         new_perms: f.fold_perm_tuple(node.new_perms),
