@@ -2,6 +2,7 @@ use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
     PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    ReadKind,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -128,12 +129,15 @@ pub(crate) struct TypeInvInfo {
     pub field_loc_needs_check: HashMap<crate::messages::AstId, bool>,
 }
 
+pub type ReadKindFinals = HashMap<u64, ReadKind>;
+
 // Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
     // Modes of InferSpecForLoopIter
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
     type_inv_info: TypeInvInfo,
+    read_kind_finals: ReadKindFinals,
 }
 
 #[derive(Debug)]
@@ -2010,7 +2014,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -2039,7 +2043,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
-    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None, type_inv_info };
+    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None, type_inv_info, read_kind_finals: HashMap::new() };
     let mut state = State {
         vars: ScopeMap::new(),
         in_forall_stmt: false,
@@ -2062,5 +2066,5 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
             check_function(&ctxt, &mut record, &mut typing, function)?;
         }
     }
-    Ok((Arc::new(kratex), record.erasure_modes))
+    Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
 }

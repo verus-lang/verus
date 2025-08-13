@@ -955,7 +955,13 @@ pub enum ExprX {
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
-    ReadPlace(Place, ReadKind),
+    ReadPlace(Place, UnfinalizedReadKind),
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub struct UnfinalizedReadKind {
+    pub preliminary_kind: ReadKind,
+    pub id: u64
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

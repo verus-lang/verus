@@ -44,7 +44,7 @@ use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
     FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
     PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder,
-    VarBinderX, VarIdent, VariantCheck, VirErr,
+    VarBinderX, VarIdent, VariantCheck, VirErr, UnfinalizedReadKind,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -89,16 +89,24 @@ impl ExprOrPlace {
                 } else {
                     vir::ast::ReadKind::Move
                 };
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id()
+                };
                 SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
 
-    pub(crate) fn immut_bor(&self) -> vir::ast::Expr {
+    pub(crate) fn immut_bor<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => add_vir_ref_decoration(e.clone()),
             ExprOrPlace::Place(p) => {
                 let rk = vir::ast::ReadKind::ImmutBor;
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id(),
+                };
                 let typ =
                     Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
                 SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
@@ -106,11 +114,15 @@ impl ExprOrPlace {
         }
     }
 
-    pub(crate) fn to_spec_expr<'tcx>(&self) -> vir::ast::Expr {
+    pub(crate) fn to_spec_expr<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
             ExprOrPlace::Place(p) => {
                 let rk = vir::ast::ReadKind::Spec;
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id()
+                };
                 SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
@@ -321,12 +333,12 @@ pub(crate) fn expr_to_vir<'tcx>(
     let mut vir_expr_or_place = expr_to_vir_inner(bctx, expr, modifier)?;
     let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr();
+        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     for err_msg in get_custom_err_annotations(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr();
+        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr
             .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
@@ -1125,7 +1137,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?
-            .immut_bor();
+            .immut_bor(bctx);
             Ok(ExprOrPlace::Expr(new_expr))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
@@ -1973,7 +1985,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?.immut_bor();
+            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?.immut_bor(bctx);
             Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
@@ -3510,7 +3522,7 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
 
 pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
     let x = match &expr.x {
-        ExprX::ReadPlace(p, vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy) => {
+        ExprX::ReadPlace(p, UnfinalizedReadKind { preliminary_kind: vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy, id: _ }) => {
             return place_to_loc(p);
         }
         ExprX::Unary(
