@@ -1,6 +1,9 @@
+#![allow(unused_variables)] // TODO remove
+#![allow(dead_code)]
+
 use crate::modes::ReadKindFinals;
-use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind};
-use std::collections::VecDeque;
+use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX};
+use std::collections::{VecDeque, HashMap};
 
 enum PlaceTree {
     Leaf(Typ),
@@ -18,11 +21,19 @@ struct LocalCollection {
     ident_to_idx: HashMap<VarIdent, usize>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Projection {
     StructField(usize),
-    MutRefDeref,
+    MutDeref,
 }
 
+struct FlattenedPlaceInformation {
+    local: VarIdent,
+    typ: Typ,
+    projections: Vec<Projection>,
+}
+
+#[derive(Clone)]
 struct SimplePlace {
     local: usize,
     projections: Vec<Projection>,
@@ -54,24 +65,26 @@ struct CFG {
     locals: LocalCollection,
 }
 
-pub(crate) fn infer_resolution(params: &Params, expr: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
-    let cfg = new_cfg(params, expr);
+pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
+    let _cfg = new_cfg(params, body, read_kind_finals);
 
     /*
     let safe_to_resolve = analysis_safe_to_resolve(&cfg);
     let initialization = analysis_initialization(&cfg);
 
     let resolutions = get_resolutions(&cfg, &safe_to_resolve, &initialization);
-    apply_resolutions(expr, &resolutions)
+    apply_resolutions(body, &resolutions)
     */
     todo!()
 }
 
 ////// CFG builder
 
-struct Builder {
+struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
     loops: Vec<LoopEntry>,
+    locals: LocalCollection,
+    read_kind_finals: &'a ReadKindFinals,
 }
 
 struct LoopEntry {
@@ -80,25 +93,34 @@ struct LoopEntry {
     continue_bb: BBIndex,
 }
 
-fn new_cfg(params: &Params, e: &Expr) -> CFG {
-    let mut builder = Builder { basic_blocks: vec![], loops: vec![] };
+fn new_cfg(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> CFG {
+    let mut builder = Builder {
+        basic_blocks: vec![],
+        loops: vec![],
+        locals: LocalCollection {
+            locals: vec![],
+            ident_to_idx: HashMap::new(),
+        },
+        read_kind_finals,
+    };
     let start_bb = builder.new_bb(true);
 
     for param in params.iter() {
         let place = builder.place_from_param(param);
         builder.push_instruction(start_bb, Instruction::Overwrite(place));
     }
-    let end_bb = builder.build(e, start_bb);
+    let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
 
     builder.compute_predecessors();
 
     CFG {
-        basic_blocks: builder.basic_blocks
+        basic_blocks: builder.basic_blocks,
+        locals: builder.locals,
     }
 }
 
-impl Builder {
+impl<'a> Builder<'a> {
     fn compute_predecessors(&mut self) {
         for bb1 in 0 .. self.basic_blocks.len() {
             for j in 0 .. self.basic_blocks[bb1].successors.len() {
@@ -137,14 +159,14 @@ impl Builder {
         self.basic_blocks[bb].instructions.push(instr);
     }
 
-    fn get_loop<'a>(&'a self, loop_label: &Option<String>) -> &'a LoopEntry {
+    fn get_loop<'b: 'a>(&'b self, loop_label: &Option<String>) -> &'b LoopEntry {
         match loop_label {
             None => &self.loops[self.loops.len() - 1],
             Some(label) => {
                 for l in self.loops.iter().rev() {
                     match &l.label {
                         Some(label2) if label == label2 => { return l; }
-                        None => { }
+                        _ => { }
                     }
                 }
                 panic!("Could not find label {:}", label);
@@ -183,7 +205,7 @@ impl Builder {
              => {
                 Ok(bb)
             }
-            ExprX::Call(ct, es) => {
+            ExprX::Call(_ct, es) => {
                 // can skip the expression in ct, it can only be for FnSpec which is always
                 // a pure spec expression
                 for e in es.iter() {
@@ -200,35 +222,18 @@ impl Builder {
                 }
                 Ok(bb)
             }
-            ExprX::NullaryOpr(_) => {
-                Ok(bb)
-            }
-            ExprX::Unary(_, e) | ExprX::UnaryOpr(_, e) => {
-                bb = self.build(e, bb)?;
-                Ok(bb)
-            }
             ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
-                todo!();
-            }
-            ExprX::Binary(_, e1, e2) | ExprX::BinaryOpr(_, e1, e2) => {
                 bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
-                Ok(bb)
-            }
-            ExprX::Multi(_, es) => {
-                for e in es.iter() {
-                    bb = self.build(e, bb)?;
-                }
-                Ok(bb)
-            }
-            ExprX::NonSpecClosure { .. } => {
-                todo!()
-            }
-            ExprX::ArrayLiteral(es) => {
-                for e in es.iter() {
-                    bb = self.build(e, bb)?;
-                }
-                Ok(bb)
+
+                let snd_block = self.new_bb(false);
+                self.basic_blocks[bb].successors.push(snd_block);
+
+                let snd_bb_end = self.build(e2, snd_block);
+
+                let join_block = self.new_bb(false);
+                self.basic_blocks[bb].successors.push(join_block);
+                self.optionally_push_successor(snd_bb_end, join_block);
+                Ok(join_block)
             }
             ExprX::If(cond, thn, els) => {
                 bb = self.build(cond, bb)?;
@@ -253,6 +258,33 @@ impl Builder {
                 } else {
                     Err(())
                 }
+            }
+            ExprX::NullaryOpr(_) => {
+                Ok(bb)
+            }
+            ExprX::Unary(_, e) | ExprX::UnaryOpr(_, e) => {
+                bb = self.build(e, bb)?;
+                Ok(bb)
+            }
+            ExprX::Binary(_, e1, e2) | ExprX::BinaryOpr(_, e1, e2) => {
+                bb = self.build(e1, bb)?;
+                bb = self.build(e2, bb)?;
+                Ok(bb)
+            }
+            ExprX::Multi(_, es) => {
+                for e in es.iter() {
+                    bb = self.build(e, bb)?;
+                }
+                Ok(bb)
+            }
+            ExprX::NonSpecClosure { .. } => {
+                todo!()
+            }
+            ExprX::ArrayLiteral(es) => {
+                for e in es.iter() {
+                    bb = self.build(e, bb)?;
+                }
+                Ok(bb)
             }
             ExprX::Match(place, arms) => {
                 todo!()
@@ -287,30 +319,32 @@ impl Builder {
                 Err(())
             }
             ExprX::AssignToPlace { place, rhs, op: None } => {
-                let (p, bb) = self.build_place(place)?;
-                let bb = self.build(rhs)?;
-                self.push_instruction(bb, Instruction::Overwrite(p));
+                let (p, bb) = self.build_place(place, bb)?;
+                let bb = self.build(rhs, bb)?;
+                if let Some(p) = p {
+                    self.push_instruction(bb, Instruction::Overwrite(p));
+                }
                 Ok(bb)
+            }
+            ExprX::AssignToPlace { place, rhs, op: Some(_) } => {
+                todo!()
             }
             ExprX::BorrowMut(p) => {
                 let (p, bb) = self.build_place(p, bb)?;
-                self.push_instruction(bb, Instruction::BorrowMut(p));
+                if let Some(p) = p {
+                    self.push_instruction(bb, Instruction::Mutate(p));
+                }
                 Ok(bb)
             }
-            ExprX::BorrowMutPhaseOne(p) => {
-                let (p, bb) = self.build_place(p, bb)?;
-                Ok(bb)
+            ExprX::BorrowMutPhaseOne(..) | ExprX::BorrowMutPhaseTwo(..) => {
+                panic!("BorrowMutPhaseOne/BorrowMutPhaseTwo shouldn't be created yet");
             }
-            ExprX::BorrowMutPhaseTwo(p, e) => {
+            ExprX::ReadPlace(p, unfinal_read_kind) => {
                 let (p, bb) = self.build_place(p, bb)?;
-                let bb = self.build(e, bb)?;
-                self.push_instruction(bb, Instruction::BorrowMut(p));
-                Ok(bb)
-            }
-            ExprX::ReadPlace(p, urk) => {
-                let (p, bb) = self.build_place(p, bb)?;
-                if matches!(self.get_read_kind(urk), ReadKind::Move) {
-                    self.push_instruction(bb, Instruction::MoveFrom(p));
+                if let Some(p) = p {
+                    if matches!(self.get_read_kind(unfinal_read_kind), ReadKind::Move) {
+                        self.push_instruction(bb, Instruction::MoveFrom(p));
+                    }
                 }
                 Ok(bb)
             }
@@ -319,27 +353,46 @@ impl Builder {
                     bb = self.build_stmt(s, bb)?;
                 }
                 if let Some(e) = e_opt {
-                    bb = self.build(bb)?;
+                    bb = self.build(e, bb)?;
                 }
                 Ok(bb)
             }
         }
     }
 
-    fn build_place(place: &Place, bb: BBIndex) -> Result<(Option<SimplePlace>, BBIndex), ()> {
-        match build_place_rec(place, bb) {
-            Ok((Some(r),
-            Ok((None, x))
+    fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
+        match &stmt.x {
+            StmtX::Expr(e) => {
+                self.build(e, bb)
+            }
+            StmtX::Decl { pattern: _, mode: _, init: _, els: _ } => {
+                todo!()
+            }
         }
     }
 
-    fn build_place_rec(place: &Place, bb: BBIndex) -> Result<(Option<SimplePlace>, BBIndex), ()> {
-        match &p.x {
+    fn build_place(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<SimplePlace>, BBIndex), ()> {
+        let r = self.build_place_rec(place, bb);
+        match r {
+            Ok((Some(fpi), bb)) => {
+                let sp = self.locals.add_place(fpi);
+                Ok((Some(sp), bb))
+            }
+            Ok((None, bb)) => Ok((None, bb)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn build_place_rec(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceInformation>, BBIndex), ()> {
+        match &place.x {
             PlaceX::Field(field_opr, p) => {
+                todo!()
             }
             PlaceX::DerefMut(p) => {
+                todo!()
             }
             PlaceX::Local(var) => {
+                todo!()
             }
             PlaceX::Temporary(e) => {
                 let b = self.build(e, bb)?;
@@ -351,19 +404,25 @@ impl Builder {
     fn place_from_param(&mut self, param: &Param) -> SimplePlace {
         todo!();
     }
+
+    fn get_read_kind(&self, unfinal_read_kind: &UnfinalizedReadKind) -> ReadKind {
+        todo!()
+    }
 }
 
 ////// Place trees
 
 impl LocalCollection {
-    fn add_place(&mut self, local: VarIdent, typ: Typ, projections: Vec<Projection>) -> SimplePlace {
-        if !self.ident_to_idx.contains(local) {
-            self.locals.push(Local { name: local, tree: PlaceTree::Leaf(typ.clone()) });
-            self.ident_to_idx.insert(local, self.locals.len() - 1);
+    fn add_place(&mut self, p: FlattenedPlaceInformation) -> SimplePlace {
+        if !self.ident_to_idx.contains_key(&p.local) {
+            self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()) });
+            self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
         }
-        let idx = self.ident_to_idx[local];
+        let idx = self.ident_to_idx[&p.local];
 
-        Self::extend_tree(&mut self.locals[idx].tree, &projections);
+        Self::extend_tree(&mut self.locals[idx].tree, &p.projections);
+
+        SimplePlace { local: idx, projections: p.projections }
     }
 
     fn extend_tree(tree: &mut PlaceTree, projections: &[Projection]) {
@@ -371,7 +430,7 @@ impl LocalCollection {
             return;
         }
 
-        if matches!(tree, PlaceTree::Leaf) {
+        if matches!(tree, PlaceTree::Leaf(_)) {
             todo!();
         }
 
@@ -380,29 +439,102 @@ impl LocalCollection {
                 match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
                     PlaceTree::Struct(_, subtrees) => {
-                        Self::extend_tree(&mut subtrees[field_idx], &projections[1..]);
+                        Self::extend_tree(&mut subtrees[*field_idx], &projections[1..]);
                     }
                     PlaceTree::MutRef(..) => {
                         panic!("Verus internal error: extend_tree failed, conflicting projection type");
                     }
                 }
             }
-            Projection::MutRefDeref => {
+            Projection::MutDeref => {
                 match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
                     PlaceTree::Struct(..) => {
                         panic!("Verus internal error: extend_tree failed, conflicting projection type");
                     }
-                    PlaceTree::MutRef(inner) => {
-                        Self::extend_tree(&mut inner, &projections[1..]);
+                    PlaceTree::MutRef(_, inner) => {
+                        Self::extend_tree(&mut *inner, &projections[1..]);
                     }
                 }
             }
         }
     }
 
-    fn leaf_places() -> Vec<SimplePlace> {
-        
+    fn places_skip_insides_of_mut_refs(&self) -> Vec<SimplePlace> {
+        self.traverse_get_places(false)
+    }
+
+    fn places_including_insides_of_mut_refs(&self) -> Vec<SimplePlace> {
+        self.traverse_get_places(true)
+    }
+
+    fn traverse_get_places(&self, go_inside_muts: bool) -> Vec<SimplePlace> {
+        let mut v = vec![];
+        for (i, local) in self.locals.iter().enumerate() {
+            let mut sp = SimplePlace { local: i, projections: vec![] };
+            Self::traverse_rec(&local.tree, &mut sp, &mut v, go_inside_muts);
+        }
+        v
+    }
+
+    fn traverse_rec(tree: &PlaceTree, cur: &mut SimplePlace, output: &mut Vec<SimplePlace>,
+        go_inside_muts: bool)
+    {
+        match tree {
+            PlaceTree::Leaf(_t) => {
+                output.push(cur.clone());
+            }
+            PlaceTree::Struct(_t, children) => {
+                for (f, child) in children.iter().enumerate() {
+                    cur.projections.push(Projection::StructField(f));
+                    Self::traverse_rec(child, cur, output, go_inside_muts);
+                    cur.projections.pop();
+                }
+            }
+            PlaceTree::MutRef(_t, child) => {
+                output.push(cur.clone());
+                if go_inside_muts {
+                    cur.projections.push(Projection::MutDeref);
+                    Self::traverse_rec(child, cur, output, go_inside_muts);
+                    cur.projections.pop();
+                }
+            }
+        }
+    }
+}
+
+impl SimplePlace {
+    fn intersects(&self, other: &Self) -> bool {
+        if self.local == other.local {
+            let m = std::cmp::min(self.projections.len(), other.projections.len());
+            (0 .. m).all(|i| self.projections[i] == other.projections[i])
+        } else {
+            false
+        }
+    }
+
+    fn contains(&self, other: &Self) -> bool {
+        self.local == other.local
+            && self.projections.len() <= other.projections.len()
+            && (0 .. self.projections.len()).all(|i| self.projections[i] == other.projections[i])
+    }
+
+    fn contains_and_not_separated_by_deref(&self, other: &Self) -> bool {
+        self.contains(other)
+            && (self.projections.len() .. other.projections.len())
+                .all(|i| !matches!(other.projections[i], Projection::MutDeref))
+    }
+
+    fn has_deref(&self) -> bool {
+        self.projections.iter().any(|p| matches!(p, Projection::MutDeref))
+    }
+
+    fn value_may_change(&self, instr: &Instruction) -> bool {
+        match instr {
+            Instruction::MoveFrom(_) => false,
+            Instruction::Overwrite(sp) => self.intersects(sp),
+            Instruction::Mutate(sp) => self.intersects(sp),
+        }
     }
 }
 
@@ -422,7 +554,7 @@ struct DataflowOutput<D> {
     output: Vec<Vec<D>>,
 }
 
-pub(crate) fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit: D, dir: Direction)
+fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit: D, dir: Direction)
     -> DataflowOutput<D>
 {
     let mut output = DataflowOutput { output: vec![] };
@@ -435,16 +567,16 @@ pub(crate) fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, en
     }
 
     let mut worklist = VecDeque::<BBIndex>::new();
-    let mut in_worklist = Vec::<bool>::fill(false, cfg.basic_blocks.len());
+    let mut in_worklist = vec![false; cfg.basic_blocks.len()];
 
     match dir {
         Direction::Forward => {
-            output.output[0][0] = entry_or_exit;
+            output.output[0][0] = entry_or_exit.clone();
             worklist.push_back(0);
             in_worklist[0] = true;
 
-            while worklist.len() > 0 {
-                let bb = worklist.pop_front();
+            loop {
+                let Some(bb) = worklist.pop_front() else { break; };
                 in_worklist[bb] = false;
 
                 let new_value = join_predecessors(&output, &cfg, bb, &empty, &entry_or_exit);
@@ -452,12 +584,12 @@ pub(crate) fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, en
 
                 if *slot != new_value {
                     *slot = new_value;
-                    transfer_forward(&mut output.output[bb], &cfg.basic_blocks[bb]);
+                    transfer_forward(&mut output.output[bb], &cfg.basic_blocks[bb].instructions);
                 }
-                for bb in cfg.basic_blocks.successors.iter() {
-                    if !in_worklist[bb] {
-                        worklist.push_back(bb);
-                        in_worklist[bb] = true;
+                for bb1 in cfg.basic_blocks[bb].successors.iter() {
+                    if !in_worklist[*bb1] {
+                        worklist.push_back(*bb1);
+                        in_worklist[*bb1] = true;
                     }
                 }
             }
@@ -465,27 +597,27 @@ pub(crate) fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, en
         Direction::Reverse => {
             for i in 0 .. cfg.basic_blocks.len() {
                 if cfg.basic_blocks[i].is_exit {
-                    output.output[i][output.output[i].len() - 1] = entry_or_exit;
+                    *output.output[i].last_mut().unwrap() = entry_or_exit.clone();
                     worklist.push_back(i);
                     in_worklist[i] = true;
                 }
             }
 
             while worklist.len() > 0 {
-                let bb = worklist.pop_front();
+                let Some(bb) = worklist.pop_front() else { break; };
                 in_worklist[bb] = false;
 
                 let new_value = join_successors(&output, &cfg, bb, &empty, &entry_or_exit);
-                let slot = &mut output.output[bb][output.output[bb].len() - 1];
+                let slot = output.output[bb].last_mut().unwrap();
 
                 if *slot != new_value {
                     *slot = new_value;
-                    transfer_reverse(&mut output.output[bb], &cfg.basic_blocks[bb]);
+                    transfer_reverse(&mut output.output[bb], &cfg.basic_blocks[bb].instructions);
                 }
-                for bb in cfg.basic_blocks.predecessors.iter() {
-                    if !in_worklist[bb] {
-                        worklist.push_back(bb);
-                        in_worklist[bb] = true;
+                for bb1 in cfg.basic_blocks[bb].predecessors.iter() {
+                    if !in_worklist[*bb1] {
+                        worklist.push_back(*bb1);
+                        in_worklist[*bb1] = true;
                     }
                 }
             }
@@ -495,53 +627,53 @@ pub(crate) fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, en
     output
 }
 
-fn join_predecessors<D: DataflowState>(
+fn join_predecessors<D: DataflowState + Clone>(
     output: &DataflowOutput<D>,
     cfg: &CFG,
     bb: BBIndex,
     empty: &D,
     entry: &D,
-) {
+) -> D {
     if bb == 0 {
         let mut res = entry.clone();
-        for pred in cfg.basic_blocks[bb].predecessors.iter() {
-            res.join(output[pred][output[pred].len() - 1]);
+        for pred in cfg.basic_blocks[bb].predecessors.iter().cloned() {
+            res.join(&output.output[pred][output.output[pred].len() - 1]);
         }
         res
     } else if cfg.basic_blocks[bb].predecessors.len() > 0 {
         let pred0 = cfg.basic_blocks[bb].predecessors[0];
-        let mut res = output[pred0][output[pred0].len() - 1].clone();
-        for pred in cfg.basic_blocks[bb].predecessors.iter().skip(1) {
-            res.join(output[pred][output[pred].len() - 1]);
+        let mut res = output.output[pred0][output.output[pred0].len() - 1].clone();
+        for pred in cfg.basic_blocks[bb].predecessors.iter().skip(1).cloned() {
+            res.join(&output.output[pred][output.output[pred].len() - 1]);
         }
         res
     } else {
-        empty
+        empty.clone()
     }
 }
 
-fn join_successors<D: DataflowState>(
+fn join_successors<D: DataflowState + Clone>(
     output: &DataflowOutput<D>,
     cfg: &CFG,
     bb: BBIndex,
     empty: &D,
     exit: &D,
-) {
+) -> D {
     if cfg.basic_blocks[bb].is_exit {
-        let mut res = entry.clone();
-        for succ in cfg.basic_blocks[bb].successors.iter() {
-            res.join(output[succ][0]);
+        let mut res = exit.clone();
+        for succ in cfg.basic_blocks[bb].successors.iter().cloned() {
+            res.join(&output.output[succ][0]);
         }
         res
     } else if cfg.basic_blocks[bb].successors.len() > 0 {
         let succ0 = cfg.basic_blocks[bb].successors[0];
-        let mut res = output[succ0][0].clone();
-        for succ in cfg.basic_blocks[bb].successors.iter().skip(1) {
-            res.join(output[succ][0]);
+        let mut res = output.output[succ0][0].clone();
+        for succ in cfg.basic_blocks[bb].successors.iter().skip(1).cloned() {
+            res.join(&output.output[succ][0]);
         }
         res
     } else {
-        empty
+        empty.clone()
     }
 }
 
@@ -560,7 +692,7 @@ fn transfer_reverse<D: DataflowState>(
     output: &mut Vec<D>,
     instructions: &[Instruction],
 ) {
-    for i in (0 .. instructions.len()).reverse() {
+    for i in (0 .. instructions.len()).rev() {
         //output[i+1].transfer(&instructions[i], &mut output[i]);
         let (a, b) = output.split_at_mut(i+1);
         b[0].transfer(&instructions[i], &mut a[i]);
@@ -620,11 +752,12 @@ impl DataflowState for InitializationPossibilities {
 
 trait DataflowStatePerPlace {
     fn join(&mut self, b: &Self);
-    fn transfer(&self, instr: &Instruction, out: &mut Self, place: &SimplePlace);
+    fn transfer(&self, instr: &Instruction, place: &SimplePlace) -> Self;
 }
 
 ////// Analysis: Initialization
 
+#[derive(Clone, Copy)]
 struct InitializationPossibilities {
     can_be_uninit: bool,
     can_be_init: bool,
@@ -686,6 +819,7 @@ impl InitializationPossibilities {
 
 ////// Analysis: Resolve
 
+#[derive(Clone, Copy)]
 struct ResolveSafety {
     can_resolve: bool,
 }
@@ -732,7 +866,61 @@ impl ResolveSafety {
         ResolveSafety { can_resolve: true }
     }
 
-    fn exit(place: &Place) -> Self {
+    fn exit(place: &SimplePlace) -> Self {
         ResolveSafety { can_resolve: !place.has_deref() }
+    }
+}
+
+////// Use the results of the analysis to determine where resolutions should go
+
+fn get_resolutions(
+    cfg: &CFG,
+    initialization_places: &Vec<SimplePlace>,
+    initialization_analyses: &Vec<DataflowOutput<InitializationPossibilities>>,
+    resolve_places: &Vec<SimplePlace>,
+    resolve_analyses: &Vec<DataflowOutput<ResolveSafety>>,
+) {
+    let mut i_idx = 0;
+    for r_idx in 0 .. resolve_places.len() {
+        while !initialization_places[i_idx].contains(&resolve_places[i_idx]) {
+            i_idx += 1;
+        }
+
+        // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
+        // TODO(new_mut_ref): need to account for drops
+
+        get_resolutions_for_place( 
+            cfg,
+            &resolve_places[r_idx],
+            &initialization_analyses[i_idx],
+            &resolve_analyses[r_idx],
+        );
+    }
+}
+
+fn get_resolutions_for_place(
+    cfg: &CFG,
+    place: &SimplePlace,
+    initialization_analysis: &DataflowOutput<InitializationPossibilities>,
+    resolve_analysis: &DataflowOutput<ResolveSafety>,
+) {
+    for bb in 0 .. cfg.basic_blocks.len() {
+        for i in 0 .. cfg.basic_blocks[bb].instructions.len() + 1 {
+            let can_assume_has_resolved =
+                resolve_analysis.output[bb][i].can_resolve
+                  && !initialization_analysis.output[bb][i].can_be_uninit;
+            if can_assume_has_resolved {
+                let should_assume_has_resolved =
+                    (i == 0 && cfg.basic_blocks[bb].always_add_resolution_at_start)
+                    || (i == 0 && cfg.basic_blocks[bb].predecessors.iter().any(|pred|
+                        !resolve_analysis.output[*pred].last().unwrap().can_resolve
+                    ))
+                    || (i > 0 && !resolve_analysis.output[bb][i-1].can_resolve)
+                    || (i > 0 && place.value_may_change(&cfg.basic_blocks[bb].instructions[i-1]));
+                if should_assume_has_resolved {
+                    todo!();
+                }
+            }
+        }
     }
 }
