@@ -68,15 +68,20 @@ fn expr_get_early_exits_rec(
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
             | ExprX::Assign { .. }
+            | ExprX::AssignToPlace { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
             | ExprX::ProofInSpec(..)
             | ExprX::NeverToAny { .. }
             | ExprX::Nondeterministic { .. }
-            | ExprX::Block(..)
             | ExprX::Atomically(..)
-            | ExprX::Update(..) => VisitorControlFlow::Recurse,
+            | ExprX::Update(..)
+            | ExprX::BorrowMut(_)
+            | ExprX::BorrowMutPhaseOne(_)
+            | ExprX::BorrowMutPhaseTwo(..)
+            | ExprX::ReadPlace(..)
+            | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::NonSpecClosure { .. }
@@ -89,6 +94,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
+            | ExprX::AssumeResolved(..)
             | ExprX::RevealString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,

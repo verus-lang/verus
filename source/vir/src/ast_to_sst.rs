@@ -1,12 +1,14 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -15,7 +17,10 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
+use crate::sst_util::{
+    sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_unit_value,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -1075,6 +1080,15 @@ pub(crate) fn expr_to_stm_opt(
             let (stms, e0) = expr_to_stm_opt(ctx, state, expr1)?;
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
+        }
+        ExprX::AssignToPlace { place, rhs, op } => {
+            let loc = place_to_expr_loc(place);
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: *op },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
@@ -2393,8 +2407,60 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
+        ExprX::BorrowMut(_place) => {
+            panic!("BorrowMut should have been removed in simplify");
+        }
+        ExprX::BorrowMutPhaseOne(place) => {
+            let place_exp = place_to_exp(ctx, state, place)?;
+
+            let (var_ident, mut_ref_exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::BorrowMut);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+
+            let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
+            let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
+
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+
+            Ok((vec![stm, assume_stm], ReturnValue::Some(mut_ref_exp)))
+        }
+        ExprX::BorrowMutPhaseTwo(place, mut_ref_expr) => {
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::AssignToPlace {
+                    place: place.clone(),
+                    rhs: crate::ast_util::mk_mut_ref_future(&expr.span, mut_ref_expr),
+                    op: None,
+                },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
+        }
+        ExprX::AssumeResolved(e, typ) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = unwrap_or_return_never!(exp, stms);
+            let expx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), exp.clone());
+            let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            stms.push(assume_stm);
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::ReadPlace(place, _read_type) => {
+            let expr = place_to_expr(place);
+            expr_to_stm_opt(ctx, state, &expr)
+        }
         ExprX::Atomically(_exp) => todo!(),
         ExprX::Update(_exp) => todo!(),
+    }
+}
+
+fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
+    let expr = place_to_expr(place);
+    let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
+    assert!(stms.len() == 0);
+    match exp {
+        ReturnValue::Some(e) => Ok(e),
+        _ => panic!("place_to_exp expected exp"),
     }
 }
 
@@ -2437,9 +2503,11 @@ fn stmt_to_stm(
                 kind: LocalDeclKind::StmtLet { mutable: *mutable },
             });
 
+            let init = init.as_ref().map(|init| place_to_expr(init));
+
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
-            if let Some(init) = init {
+            if let Some(init) = &init {
                 match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
@@ -2486,7 +2554,7 @@ fn stmt_to_stm(
             }
 
             // Otherwise, translate the initializer to an Exp.
-            let (mut stms, exp) = match init {
+            let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
                     let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;

@@ -2,10 +2,10 @@ use crate::ast::{
     ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
     ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
-    Visibility,
+    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Place,
+    PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
+    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
+    Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -136,6 +136,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
+        (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
@@ -185,9 +186,11 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
         (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
+        (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
+        (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
@@ -202,6 +205,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
         (TypX::PointeeMetadata(..), _) => false,
+        (TypX::MutRef(..), _) => false,
     }
 }
 
@@ -616,6 +620,23 @@ pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
 }
 
+pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
+    let typ = match &expr {
+        Some(e) => e.typ.clone(),
+        None => unit_typ(),
+    };
+    SpannedTyped::new(span, &typ, ExprX::Block(Arc::new(stmts), expr))
+}
+
+pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
+    let t = match &*expr.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefFuture;
+    SpannedTyped::new(span, &t, ExprX::Unary(op, expr.clone()))
+}
+
 pub fn if_then_else(span: &Span, cond: &Expr, thn: &Expr, els: &Expr) -> Expr {
     SpannedTyped::new(span, &thn.typ, ExprX::If(cond.clone(), thn.clone(), Some(els.clone())))
 }
@@ -721,21 +742,34 @@ impl DatatypeX {
 }
 
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
-    let mut vars: HashSet<VarIdent> = HashSet::new();
-    crate::ast_visitor::expr_visitor_dfs::<(), _>(
+    let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
+    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
         &mut |_, e| {
             match &e.x {
                 ExprX::Var(x) | ExprX::VarLoc(x) => {
-                    vars.insert(x.clone());
+                    vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
             }
-            crate::sst_visitor::VisitorControlFlow::Recurse
+            Ok(())
         },
-    );
-    vars
+        &mut |_, _| Ok(()),
+        &mut |_, _| Ok(()),
+        &mut |_, _, _| Ok(()),
+        &mut |_, p| {
+            match &p.x {
+                PlaceX::Local(x) => {
+                    vars.borrow_mut().insert(x.clone());
+                }
+                _ => (),
+            }
+            Ok(())
+        },
+    )
+    .expect("referenced_vars_expr");
+    vars.into_inner()
 }
 
 pub fn mk_tuple_typ(typs: &Typs) -> Typ {
@@ -761,16 +795,15 @@ pub fn mk_tuple_x(exprs: &Exprs) -> ExprX {
     ExprX::Ctor(Dt::Tuple(arity), crate::def::prefix_tuple_variant(arity), binders, None)
 }
 
-pub fn mk_tuple_field_x(expr: &Expr, arity: usize, idx: usize) -> ExprX {
+pub fn mk_tuple_field_opr(arity: usize, idx: usize) -> FieldOpr {
     assert!(arity > idx);
-    let field_opr = UnaryOpr::Field(FieldOpr {
+    FieldOpr {
         datatype: Dt::Tuple(arity),
         variant: crate::def::prefix_tuple_variant(arity),
         field: crate::def::positional_field_ident(idx),
         get_variant: false,
         check: crate::ast::VariantCheck::None,
-    });
-    ExprX::UnaryOpr(field_opr, expr.clone())
+    }
 }
 
 /// Unpack the tuple-style ctor (i.e., a Ctor with binders "0" .. "n-1") or None
@@ -829,6 +862,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::Char) => "char".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Float(n) => format!("f{n}"),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
@@ -927,6 +961,10 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::PointeeMetadata(t) => {
             let t = typ_to_diagnostic_str(t);
             format!("<{} as Pointee>::Metadata", t)
+        }
+        TypX::MutRef(t) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("&mut {}", t)
         }
     }
 }
@@ -1138,13 +1176,24 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
             } else {
                 let mut es = vec![];
                 for e in ensure.iter() {
-                    let e1 = crate::ast_visitor::map_expr_visitor(e, &|expr| match &expr.x {
-                        ExprX::Var(ident) if ident == &ret.x.name => {
-                            assert!(is_unit(&undecorate_typ(&expr.typ)));
-                            Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
-                        }
-                        _ => Ok(expr.clone()),
-                    })
+                    let e1 = crate::ast_visitor::map_expr_place_visitor(
+                        e,
+                        &|expr| match &expr.x {
+                            ExprX::Var(ident) if ident == &ret.x.name => {
+                                assert!(is_unit(&undecorate_typ(&expr.typ)));
+                                Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
+                            }
+                            _ => Ok(expr.clone()),
+                        },
+                        &|place| match &place.x {
+                            PlaceX::Local(ident) if ident == &ret.x.name => {
+                                assert!(is_unit(&undecorate_typ(&place.typ)));
+                                let e = mk_tuple(&place.span, &Arc::new(vec![]));
+                                Ok(PlaceX::temporary(e))
+                            }
+                            _ => Ok(place.clone()),
+                        },
+                    )
                     .unwrap();
                     es.push(e1);
                 }
@@ -1250,4 +1299,47 @@ impl Opaqueness {
             f
         }
     }
+}
+
+impl PlaceX {
+    pub fn temporary(e: Expr) -> Place {
+        SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
+    }
+}
+
+pub fn place_to_expr(place: &Place) -> Expr {
+    place_to_expr_rec(place, false)
+}
+
+pub fn place_to_expr_loc(place: &Place) -> Expr {
+    let e = place_to_expr_rec(place, true);
+    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
+}
+
+fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
+    let x = match &place.x {
+        PlaceX::Local(var_ident) => {
+            if loc {
+                ExprX::VarLoc(var_ident.clone())
+            } else {
+                ExprX::Var(var_ident.clone())
+            }
+        }
+        PlaceX::DerefMut(p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::Unary(UnaryOp::MutRefCurrent, e)
+        }
+        PlaceX::Field(opr, p) => {
+            let e = place_to_expr_rec(p, loc);
+            ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::Temporary(e) => {
+            if loc {
+                panic!("Place Temporary should have been simplified out")
+            } else {
+                return e.clone();
+            }
+        }
+    };
+    SpannedTyped::new(&place.span, &place.typ, x)
 }

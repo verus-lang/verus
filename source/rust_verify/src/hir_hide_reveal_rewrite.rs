@@ -57,14 +57,14 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                     // In fact, we can't even use 'is_diagnostic_item'; I have observed
                                     // that trying to call 'is_diagnostic_item' here for an item
                                     // *in the current crate* causes rustc to hang indefinitely.
-                                    // (Furthermore, when embedding 'builtin' as a module rather than
+                                    // (Furthermore, when embedding 'verus_builtin' as a module rather than
                                     // a crate, it is *expected* that the item is in the current crate.)
 
                                     // REVIEW What should we replace this check with?
 
                                     /*if !tcx.is_diagnostic_item(
                                         rustc_span::symbol::Symbol::intern(
-                                            "verus::builtin::reveal_hide_internal_path",
+                                            "verus::verus_builtin::reveal_hide_internal_path",
                                         ),
                                         callee_res_path.res.def_id(),
                                     ) {

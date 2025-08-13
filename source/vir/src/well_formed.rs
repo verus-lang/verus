@@ -1,8 +1,8 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
-    Visibility,
+    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
+    VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -17,12 +17,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-struct Ctxt {
+struct Ctxt<'a> {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
-    pub(crate) krate: Krate,
-    unpruned_krate: Krate,
+    pub(crate) krate: &'a Krate,
+    unpruned_krate: &'a Krate,
     no_cheating: bool,
 }
 
@@ -306,25 +306,12 @@ fn check_one_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
-    place: Place,
+    area: Area,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
-            if let Place::PreState(clause_name) = place {
-                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-                    if *x == param.x.name {
-                        return Err(error(
-                            &expr.span,
-                            format!(
-                                "in {}, use `old({})` to refer to the pre-state of an &mut variable",
-                                clause_name,
-                                crate::def::user_local_name(&param.x.name)
-                            ),
-                        ));
-                    }
-                }
-            }
+            check_var(function, &expr.span, area, x)?;
         }
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
@@ -454,27 +441,33 @@ fn check_one_expr(
                 referenced.extend(referenced_vars_expr(r).into_iter());
             }
 
-            use crate::visitor::VisitorControlFlow;
-
-            match crate::ast_visitor::expr_visitor_dfs(
+            crate::ast_visitor::ast_visitor_check_with_scope_map(
                 proof,
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
                 &mut |scope_map, e| match &e.x {
                     ExprX::Var(x) | ExprX::VarLoc(x)
                         if !scope_map.contains_key(&x) && !referenced.contains(x) =>
                     {
-                        VisitorControlFlow::Stop(error(
+                        Err(error(
                             &e.span,
                             format!("variable {} not mentioned in requires/ensures", x).as_str(),
                         ))
                     }
-                    _ => VisitorControlFlow::Recurse,
+                    _ => Ok(()),
                 },
-            ) {
-                VisitorControlFlow::Recurse => Ok(()),
-                VisitorControlFlow::Return => unreachable!(),
-                VisitorControlFlow::Stop(e) => Err(e),
-            }?;
+                &mut |_, _| Ok(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |scope_map, p| match &p.x {
+                    PlaceX::Local(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
+                        Err(error(
+                            &p.span,
+                            format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                        ))
+                    }
+                    _ => Ok(()),
+                },
+            )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
             if ctxt.no_cheating && *is_assume {
@@ -554,8 +547,8 @@ fn check_one_expr(
             // but they are not ready yet since ast_to_sst doesn't generate,
             // for example, assertions for "assert" for recommends.
             // (see https://github.com/verus-lang/verus/issues/692 )
-            match (place, function.x.mode, function.x.decrease.len()) {
-                (Place::Body, Mode::Spec, dec) if dec > 0 => {}
+            match (area, function.x.mode, function.x.decrease.len()) {
+                (Area::Body, Mode::Spec, dec) if dec > 0 => {}
                 _ => {
                     return Err(error(
                         &expr.span,
@@ -574,6 +567,53 @@ fn check_one_expr(
             ));
         }
         _ => {}
+    }
+    Ok(())
+}
+
+fn check_one_place(
+    ctxt: &Ctxt,
+    function: &Function,
+    place: &Place,
+    disallow_private_access: Option<(&Visibility, &str)>,
+    area: Area,
+) -> Result<(), VirErr> {
+    match &place.x {
+        PlaceX::Local(x) => {
+            check_var(function, &place.span, area, x)?;
+        }
+        PlaceX::Field(
+            FieldOpr { datatype: Dt::Path(path), variant: _, field: _, get_variant: _, check: _ },
+            _,
+        ) => {
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &place.span,
+                "field expression",
+            )?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Result<(), VirErr> {
+    if let Area::PreState(clause_name) = area {
+        for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+            if *x == param.x.name {
+                return Err(error(
+                    span,
+                    format!(
+                        "in {}, use `old({})` to refer to the pre-state of an &mut variable",
+                        clause_name,
+                        crate::def::user_local_name(&param.x.name)
+                    ),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -601,7 +641,7 @@ fn check_one_pattern(
 }
 
 #[derive(Clone, Copy)]
-enum Place {
+enum Area {
     PreState(&'static str),
     PostState,
     Body,
@@ -612,19 +652,22 @@ fn check_expr(
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
-    place: Place,
+    area: Area,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::ast_visitor_check(
         expr,
         &mut |_scope_map, expr| {
-            check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
+            check_one_expr(ctxt, function, expr, disallow_private_access, area, diags)
         },
         &mut |_scope_map, _stmt| Ok(()),
         &mut |_scope_map, pattern| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access)
         },
         &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
+        &mut |_scope_map, place| {
+            check_one_place(ctxt, function, place, disallow_private_access, area)
+        },
     )
 }
 
@@ -1004,14 +1047,14 @@ fn check_function(
             function,
             req,
             disallow_private_access,
-            Place::PreState("requires"),
+            Area::PreState("requires"),
             diags,
         )?;
     }
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::PostState, diags)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -1031,7 +1074,7 @@ fn check_function(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
+        check_expr(ctxt, function, r, disallow_private_access, Area::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -1044,7 +1087,7 @@ fn check_function(
                     function,
                     expr,
                     disallow_private_access,
-                    Place::PreState("opens_invariants clause"),
+                    Area::PreState("opens_invariants clause"),
                     diags,
                 )?;
             }
@@ -1057,7 +1100,7 @@ fn check_function(
                 function,
                 expr,
                 disallow_private_access,
-                Place::PreState("opens_invariants clause"),
+                Area::PreState("opens_invariants clause"),
                 diags,
             )?
         }
@@ -1072,7 +1115,7 @@ fn check_function(
                 function,
                 expr,
                 disallow_private_access,
-                Place::PreState("opens_invariants clause"),
+                Area::PreState("opens_invariants clause"),
                 diags,
             )?;
         }
@@ -1085,7 +1128,7 @@ fn check_function(
             function,
             expr,
             disallow_private_access,
-            Place::PreState("decreases clause"),
+            Area::PreState("decreases clause"),
             diags,
         )?;
     }
@@ -1109,7 +1152,7 @@ fn check_function(
             function,
             expr,
             disallow_private_access,
-            Place::PreState("when clause"),
+            Area::PreState("when clause"),
             diags,
         )?;
     }
@@ -1135,7 +1178,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::Body, diags)?;
+        check_expr(ctxt, function, body, disallow_private_access, Area::Body, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1392,7 +1435,7 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
 
 pub fn check_crate(
     krate: &Krate,
-    unpruned_krate: Krate,
+    unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
     no_cheating: bool,
@@ -1643,7 +1686,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;

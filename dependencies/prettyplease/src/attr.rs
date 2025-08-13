@@ -3,7 +3,7 @@ use crate::fixup::FixupContext;
 use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
-use syn_verus::{AttrStyle, Attribute, Expr, Lit, MacroDelimiter, Meta, MetaList, MetaNameValue};
+use verus_syn::{AttrStyle, Attribute, Expr, Lit, MacroDelimiter, Meta, MetaList, MetaNameValue};
 
 impl Printer {
     pub fn outer_attrs(&mut self, attrs: &[Attribute]) {

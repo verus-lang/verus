@@ -1203,7 +1203,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] tracked_consume_nested ["vstd"] => verus_code! {
+    #[test] tracked_consume_nested_fn ["vstd"] => verus_code! {
         tracked struct X { }
 
         proof fn consume_x(tracked x: X) { }
@@ -1220,7 +1220,32 @@ test_verify_one_file_with_options! {
 
             consume_x(x);
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "use of moved value: `x`")
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot move out of `x`, a captured variable in an `Fn` closure",
+        "cannot move out of `x`, a captured variable in an `Fn` closure",
+        "use of moved value: `x`"
+    ])
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_consume_nested_fn_once ["vstd"] => verus_code! {
+        tracked struct X { }
+
+        proof fn consume_x(tracked x: X) { }
+
+        proof fn test() {
+            let tracked x = X { };
+
+            let tracked clos = move proof_fn[Once]|| {
+                let tracked clos2 = move proof_fn[Once]|| {
+                    let tracked y = x;
+                    consume_x(y);
+                };
+            };
+
+            consume_x(x);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `x`")
 }
 
 test_verify_one_file_with_options! {
@@ -1261,7 +1286,7 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked f: proof_fn<'a>(u64) -> u64) {
             p(f);
         }
-    } => Err(err) => assert_vir_error_msg(err, "borrowed data escapes outside of function")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file_with_options! {
@@ -1281,9 +1306,9 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked x: &'a S) {
             p(proof_fn|| -> tracked &'a S { x });
         }
-    } => Err(err) => assert_vir_error_msgs(err, &[
+    } => Err(err) => assert_rust_error_msgs(err, &[
         "borrowed data escapes outside of function",
-        "closure may outlive the current function, but it borrows `x`",
+        "`x` does not live long enough",
     ])
 }
 
@@ -1294,7 +1319,7 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked x: &'a S) {
             p(proof_fn|| -> tracked &'a S { x });
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file_with_options! {
@@ -1304,7 +1329,7 @@ test_verify_one_file_with_options! {
         proof fn q<'a>(tracked x: &'a S) {
             p(proof_fn|| -> tracked &'static S { x });
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file_with_options! {
@@ -1313,7 +1338,7 @@ test_verify_one_file_with_options! {
         proof fn q(tracked f: proof_fn() -> u8) {
             p(f, f);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `f`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `f`")
 }
 
 test_verify_one_file_with_options! {
@@ -1462,7 +1487,7 @@ test_verify_one_file_with_options! {
             let u = f();
             let u = f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `f`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `f`")
 }
 
 test_verify_one_file_with_options! {
@@ -1529,7 +1554,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Once]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnMut` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFnMut` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
@@ -1539,7 +1564,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Once]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFn` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFn` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
@@ -1549,7 +1574,7 @@ test_verify_one_file_with_options! {
         proof fn p() {
             q(proof_fn[Mut]|| -> u8 { 5 });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFn` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "verus_builtin::ProofFn` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
@@ -1742,7 +1767,7 @@ test_verify_one_file_with_options! {
             let tracked x = f(s, y);
             x
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "use of moved value: `s`")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `s`")
 }
 
 test_verify_one_file_with_options! {

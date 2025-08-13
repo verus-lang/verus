@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs ignore --- incomplete feature
 use vstd::prelude::*;
 
 verus! {

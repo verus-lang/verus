@@ -1,7 +1,8 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped,
-    Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
+    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place,
+    SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility,
+    WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -226,6 +227,7 @@ pub fn demote_external_traits(
             },
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
+            &|_state, _, place| Ok(place.clone()),
         )?;
     }
 
@@ -233,19 +235,23 @@ pub fn demote_external_traits(
 }
 
 fn rewrite_path(from_path: &Path, to_path: &Path, path: &Path) -> Path {
-    let suffix = path.segments[from_path.segments.len()..].to_vec();
-    to_path.push_segments(suffix)
+    if path.matches_prefix(from_path) {
+        let suffix = path.segments[from_path.segments.len()..].to_vec();
+        to_path.push_segments(suffix)
+    } else {
+        path.clone()
+    }
 }
 
-fn rewrite_fun_path(from_path: &Path, to_path: &Path, path: &Path) -> Fun {
-    let path = rewrite_path(from_path, to_path, path);
+pub fn rewrite_fun(from_path: &Path, to_path: &Path, fun: &Fun) -> Fun {
+    let path = rewrite_path(from_path, to_path, &fun.path);
     Arc::new(crate::ast::FunX { path })
 }
 
 pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
     match &**typ {
         TypX::FnDef(fun, typs, None) if fun.path.matches_prefix(from_path) => {
-            let fun = rewrite_fun_path(from_path, to_path, &fun.path);
+            let fun = rewrite_fun(from_path, to_path, fun);
             Arc::new(TypX::FnDef(fun, typs.clone(), None))
         }
         TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
@@ -267,15 +273,30 @@ pub fn rewrite_one_external_expr(
 ) -> Expr {
     match (&expr.x, to_spec_path) {
         (ExprX::ExecFnByName(fun), _) if fun.path.matches_prefix(from_path) => {
-            let fun = rewrite_fun_path(from_path, to_path, &fun.path);
+            let fun = rewrite_fun(from_path, to_path, fun);
             expr.new_x(ExprX::ExecFnByName(fun))
         }
-        (ExprX::Call(CallTarget::Fun(kind, fun, typs, impl_paths, auto), args), Some(to_spec))
-            if fun.path.matches_prefix(from_path) =>
-        {
-            let fun = rewrite_fun_path(from_path, to_spec, &fun.path);
+        (ExprX::Call(CallTarget::Fun(kind, fun, typs, impl_paths, auto), args), Some(to_spec)) => {
+            let fun = rewrite_fun(from_path, to_spec, fun);
+            let kind = match kind {
+                CallTargetKind::Static
+                | CallTargetKind::ProofFn(..)
+                | CallTargetKind::Dynamic
+                | CallTargetKind::ExternalTraitDefault => kind.clone(),
+                CallTargetKind::DynamicResolved {
+                    resolved,
+                    typs,
+                    impl_paths,
+                    is_trait_default,
+                } => CallTargetKind::DynamicResolved {
+                    resolved: rewrite_fun(from_path, to_spec, resolved),
+                    typs: typs.clone(),
+                    impl_paths: impl_paths.clone(),
+                    is_trait_default: *is_trait_default,
+                },
+            };
             expr.new_x(ExprX::Call(
-                CallTarget::Fun(kind.clone(), fun, typs.clone(), impl_paths.clone(), *auto),
+                CallTarget::Fun(kind, fun, typs.clone(), impl_paths.clone(), *auto),
                 args.clone(),
             ))
         }
@@ -320,6 +341,7 @@ pub fn rewrite_external_function(
         &|_, _, e| Ok(rewrite_one_external_expr(from_path, to_path, to_spec_path, e)),
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
+        &|_, _, p: &Place| Ok(p.clone()),
     )
     .expect("rewrite_external_function")
 }

@@ -19,7 +19,7 @@ use super::super::prelude::*;
 
 macro_rules! def_un_ops_spec {
     ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             #[verifier::external_trait_specification]
             #[verifier::external_trait_extension($spec_trait via $impl_trait)]
             pub trait $extrait {
@@ -47,7 +47,7 @@ macro_rules! def_un_ops_spec {
 
 macro_rules! def_bin_ops_spec {
     ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             #[verifier::external_trait_specification]
             #[verifier::external_trait_extension($spec_trait via $impl_trait)]
             pub trait $extrait<Rhs = Self> {
@@ -207,7 +207,7 @@ def_bin_ops_spec!(
 
 macro_rules! def_uop_impls {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             $(
                 impl $impl_trait for $typ {
                     open spec fn $obeys() -> bool {
@@ -231,7 +231,7 @@ macro_rules! def_uop_impls {
 
 macro_rules! def_bop_impls {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             $(
                 impl $impl_trait for $typ {
                     open spec fn $obeys() -> bool {
@@ -255,7 +255,7 @@ macro_rules! def_bop_impls {
 
 macro_rules! def_uop_impls_no_check {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
                 $(
                     (
@@ -271,7 +271,7 @@ macro_rules! def_uop_impls_no_check {
 
 macro_rules! def_uop_impls_check_overflow {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_uop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, [
                 $(
                     (
@@ -287,7 +287,7 @@ macro_rules! def_uop_impls_check_overflow {
 
 macro_rules! def_bop_impls_no_check {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -303,7 +303,7 @@ macro_rules! def_bop_impls_no_check {
 
 macro_rules! def_bop_impls_check_overflow {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -319,7 +319,7 @@ macro_rules! def_bop_impls_check_overflow {
 
 macro_rules! def_bop_impls_unsigned_div_rem {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -338,7 +338,7 @@ macro_rules! def_bop_impls_unsigned_div_rem {
 // - express truncating div, rem in terms of euclidean /, %
 macro_rules! def_bop_impls_signed_div_rem {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -360,7 +360,7 @@ macro_rules! def_bop_impls_signed_div_rem {
 // such as (Self = u8, Rhs = u64)
 macro_rules! def_bop_impls_shift {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
-        builtin_macros::verus! {
+        $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
@@ -440,3 +440,75 @@ def_bop_impls_shift!(core::ops::Shr, ShrSpecImpl, shr, obeys_shr_spec, shr_req, 
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+verus! {
+
+#[verusfmt::skip]
+// Note: we do not assume that floating point types have obeys_*_spec() == true
+// because Rust floating point operations are not guaranteed to be deterministic.
+// (See https://github.com/rust-lang/rfcs/blob/master/text/3514-float-semantics.md )
+// Instead, we ensure an uninterpreted function about the result,
+// which can be used to trigger user-supplied axioms.
+#[verusfmt::skip]
+
+pub uninterp spec fn neg_ensures<A>(x: A, o: A) -> bool;
+
+pub uninterp spec fn add_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn sub_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn mul_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn div_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub assume_specification[ <f32 as core::ops::Neg>::neg ](x: f32) -> (o: f32)
+    ensures
+        neg_ensures::<f32>(x, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Add>::add ](x: f32, y: f32) -> (o: f32)
+    ensures
+        add_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Sub>::sub ](x: f32, y: f32) -> (o: f32)
+    ensures
+        sub_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Mul>::mul ](x: f32, y: f32) -> (o: f32)
+    ensures
+        mul_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Div>::div ](x: f32, y: f32) -> (o: f32)
+    ensures
+        div_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Neg>::neg ](x: f64) -> (o: f64)
+    ensures
+        neg_ensures::<f64>(x, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Add>::add ](x: f64, y: f64) -> (o: f64)
+    ensures
+        add_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Sub>::sub ](x: f64, y: f64) -> (o: f64)
+    ensures
+        sub_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Mul>::mul ](x: f64, y: f64) -> (o: f64)
+    ensures
+        mul_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Div>::div ](x: f64, y: f64) -> (o: f64)
+    ensures
+        div_ensures::<f64>(x, y, o),
+;
+
+} // verus!

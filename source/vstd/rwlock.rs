@@ -10,7 +10,7 @@ use super::multiset::*;
 use super::prelude::*;
 use super::set::*;
 use core::marker::PhantomData;
-use state_machines_macros::tokenized_state_machine_vstd;
+use verus_state_machines_macros::tokenized_state_machine_vstd;
 
 tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
@@ -259,7 +259,7 @@ impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>
     }
 }
 
-struct_with_invariants_vstd!{
+struct_with_invariants!{
     /** A verified implementation of a reader-writer lock,
     implemented using atomics and a reference count.
 

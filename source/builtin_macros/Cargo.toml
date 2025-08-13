@@ -1,7 +1,14 @@
 [package]
-name = "builtin_macros"
+name = "verus_builtin_macros"
 version = "0.1.0"
 edition = "2018"
+license = "MIT"
+description = "Verus Builtin Macros: Various macros used by Verus"
+homepage = "https://github.com/verus-lang/verus"
+repository = "https://github.com/verus-lang/verus"
+readme = "../../README.md"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
 
 [lib]
 proc-macro = true
@@ -11,8 +18,8 @@ proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = { git = "https://github.com/mystor/synstructure.git", rev = "1079497eb2bea252433dac53afe41291d8779641" }
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
-syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-prettyplease_verus = { path="../../dependencies/prettyplease" }
+verus_syn = { version = "2.0.96", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "0.2.29", path="../../dependencies/prettyplease" }
 convert_case = "0.4"
 
 [package.metadata.verus]

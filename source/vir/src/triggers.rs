@@ -109,10 +109,13 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
+            | UnaryOp::FloatToBits { .. }
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
+            | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefFuture
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
@@ -125,6 +128,7 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
             | UnaryOpr::HasType(_) => {}
+            UnaryOpr::HasResolved(_) => {}
         },
         _ => {}
     }
@@ -179,6 +183,7 @@ fn check_trigger_expr(
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
+        ExpX::UnaryOpr(UnaryOpr::HasResolved(_), _) => {}
         _ => {
             return Err(error(
                 &exp.span,
@@ -238,11 +243,15 @@ fn check_trigger_expr(
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }
             ExpX::Unary(op, arg) => match op {
-                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot(_) => {
+                UnaryOp::StrLen
+                | UnaryOp::StrIsAscii
+                | UnaryOp::BitNot(_)
+                | UnaryOp::MutRefCurrent
+                | UnaryOp::MutRefFuture => {
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } => {
+                UnaryOp::Clip { .. } | UnaryOp::FloatToBits => {
                     check_trigger_expr_arg(state, false, arg);
                     Ok(())
                 }
@@ -269,6 +278,10 @@ fn check_trigger_expr(
                     Ok(())
                 }
                 UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
+                UnaryOpr::HasResolved(_t) => {
+                    check_trigger_expr_arg(state, true, arg);
+                    Ok(())
+                }
             },
             ExpX::Binary(op, arg1, arg2) => {
                 use BinaryOp::*;

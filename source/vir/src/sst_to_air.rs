@@ -125,6 +125,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
+        MonoTypX::Float(n) => Arc::new(format!("f{}", n)),
         MonoTypX::Datatype(dt, typs) => {
             return crate::def::monotyp_apply(
                 &encode_dt_as_path(dt),
@@ -152,8 +153,9 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
-        TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
+        TypX::Int(_) => int_typ(),
+        TypX::Float(_) => int_typ(),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
@@ -190,6 +192,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
+        TypX::MutRef(_) => str_typ(POLY),
     }
 }
 
@@ -232,6 +235,10 @@ pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id_sized(range_to_id(range)),
+        MonoTypX::Float(n) => {
+            let bits = Constant::Nat(Arc::new(n.to_string()));
+            mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
+        }
         MonoTypX::Datatype(dt, typs) => {
             let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
@@ -324,6 +331,10 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id_sized(range_to_id(range)),
+        TypX::Float(n) => {
+            let bits = Constant::Nat(Arc::new(n.to_string()));
+            mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
+        }
         TypX::SpecFn(typs, typ) => mk_id_sized(fun_id(ctx, typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -341,6 +352,11 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
             mk_id(primitive_id(ctx, &name, typs), base)
+        }
+        TypX::MutRef(typ) => {
+            let f_name = str_ident(crate::def::TYPE_ID_MUT_REF);
+            let args = typ_to_ids(ctx, typ);
+            mk_id_sized(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
         }
         TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(ctx, typ);
@@ -495,6 +511,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
+        TypX::Float(range) => {
+            Some(apply_range_fun(&crate::def::U_INV, &IntRange::U(*range), vec![expr.clone()]))
+        }
         TypX::SpecFn(..) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
@@ -544,6 +563,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             None
         }
         TypX::FnDef(..) => None,
+        TypX::MutRef(_) => Some(expr_has_typ(ctx, expr, typ)),
     }
 }
 
@@ -577,6 +597,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Float(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
@@ -598,6 +619,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -610,6 +632,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Float(_) => Some(str_ident(crate::def::UNBOX_INT)),
         TypX::Datatype(dt, _, _) => {
             if ctx.datatype_is_transparent[dt] {
                 Some(prefix_unbox(&encode_dt_as_path(dt)))
@@ -631,6 +654,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -692,6 +716,8 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
         }
+        crate::ast::Constant::Float32(c) => mk_nat(c),
+        crate::ast::Constant::Float64(c) => mk_nat(c),
     }
 }
 
@@ -764,9 +790,10 @@ fn check_bitwidth_typ_matches(typ: &Typ, w: IntegerTypeBitwidth, signed: bool) -
 
 // Generate a unique quantifier ID and map it to the quantifier's span
 pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
-    let fun_name = fun_as_friendly_rust_name(
-        &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
-    );
+    let fun_name = match &ctx.fun {
+        Some(f) => fun_as_friendly_rust_name(&f.current_fun),
+        None => "no_function".to_string(),
+    };
     let qcount = ctx.quantifier_count.get();
     let qid = new_user_qid_name(&fun_name, qcount);
     ctx.quantifier_count.set(qcount + 1);
@@ -785,16 +812,16 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
-    let bnd_info = BndInfo {
-        fun: ctx
-            .fun
-            .as_ref()
-            .expect("expressions are expected to be within a function")
-            .current_fun
-            .clone(),
-        user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
-    };
-    ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    match &ctx.fun {
+        Some(f) => {
+            let bnd_info = BndInfo {
+                fun: f.current_fun.clone(),
+                user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
+            };
+            ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+        }
+        None => {}
+    }
     Some(Arc::new(qid))
 }
 
@@ -983,6 +1010,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
+            UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }
@@ -996,6 +1024,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
+            }
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let exprs = vec![expr];
+                let ident = match op {
+                    UnaryOp::MutRefCurrent => crate::def::MUT_REF_CURRENT,
+                    UnaryOp::MutRefFuture => crate::def::MUT_REF_FUTURE,
+                    _ => unreachable!(),
+                };
+                let ident = Arc::new(ident.to_string());
+                Arc::new(ExprX::Apply(ident, Arc::new(exprs)))
             }
         },
         ExpX::UnaryOpr(op, exp) => match op {
@@ -1066,6 +1105,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // be useful in the 'normal' case too, but right now, we just
                 // ignore it here.
                 return exp_to_expr(ctx, exp, expr_ctxt);
+            }
+            UnaryOpr::HasResolved(t) => {
+                let mut exprs: Vec<Expr> = typ_to_ids(t);
+                exprs.push(exp_to_expr(ctx, exp, expr_ctxt)?);
+                Arc::new(ExprX::Apply(str_ident(crate::def::HAS_RESOLVED), Arc::new(exprs)))
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -1453,8 +1497,23 @@ fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
     })
 }
 
+enum FieldUpdateDatumOpr {
+    Field(FieldOpr),
+    MutRefCurrent,
+}
+
+impl FieldUpdateDatumOpr {
+    // Useful for old-mut-ref code that doesn't use the MutRefCurrent projection
+    fn expect_field(&self) -> &FieldOpr {
+        match self {
+            FieldUpdateDatumOpr::Field(opr) => opr,
+            _ => panic!("FieldUpdateDatumOpr::expect_field failed"),
+        }
+    }
+}
+
 struct FieldUpdateDatum {
-    opr: FieldOpr,
+    opr: FieldUpdateDatumOpr,
     field_typ: Typ,
     base_exp: Exp,
 }
@@ -1475,7 +1534,15 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
             }
             ExpX::UnaryOpr(UnaryOpr::Field(opr), ee) => {
                 fields.push(FieldUpdateDatum {
-                    opr: opr.clone(),
+                    opr: FieldUpdateDatumOpr::Field(opr.clone()),
+                    field_typ: e.typ.clone(),
+                    base_exp: var_locs_to_bare_vars(ee),
+                });
+                e = ee;
+            }
+            ExpX::Unary(UnaryOp::MutRefCurrent, ee) => {
+                fields.push(FieldUpdateDatum {
+                    opr: FieldUpdateDatumOpr::MutRefCurrent,
                     field_typ: e.typ.clone(),
                     base_exp: var_locs_to_bare_vars(ee),
                 });
@@ -1775,7 +1842,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .entry(base_var)
                         .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
                         .a
-                        .push(fields.iter().map(|o| o.opr.clone()).collect());
+                        .push(fields.iter().map(|o| o.opr.expect_field().clone()).collect());
                     let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
@@ -2088,19 +2155,28 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 loc_to_field_update_data(&dest);
 
             for FieldUpdateDatum { opr, field_typ, base_exp } in fields.iter().rev() {
-                let acc = variant_field_ident_internal(
-                    &encode_dt_as_path(&opr.datatype),
-                    &opr.variant,
-                    &opr.field,
-                    true,
-                );
-                let bop = air::ast::BinaryOp::FieldUpdate(acc);
                 // TODO(andrea) move this to poly.rs once we have general support for mutable references
                 if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
                     value = try_box(ctx, value, &value_typ).expect("box field update");
                 }
                 let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
-                value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                match opr {
+                    FieldUpdateDatumOpr::Field(opr) => {
+                        let acc = variant_field_ident_internal(
+                            &encode_dt_as_path(&opr.datatype),
+                            &opr.variant,
+                            &opr.field,
+                            true,
+                        );
+                        let bop = air::ast::BinaryOp::FieldUpdate(acc);
+                        value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                    }
+                    FieldUpdateDatumOpr::MutRefCurrent => {
+                        let ident = Arc::new(crate::def::MUT_REF_UPDATE_CURRENT.to_string());
+                        let exprs = vec![base_expr, value];
+                        value = Arc::new(ExprX::Apply(ident, Arc::new(exprs)));
+                    }
+                }
                 value_typ = base_exp.typ.clone();
             }
 

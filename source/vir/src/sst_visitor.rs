@@ -275,6 +275,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasType(R::get(t)))
                     }
+                    UnaryOpr::HasResolved(t) => {
+                        let t = self.visit_typ(t)?;
+                        R::ret(|| UnaryOpr::HasResolved(R::get(t)))
+                    }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)

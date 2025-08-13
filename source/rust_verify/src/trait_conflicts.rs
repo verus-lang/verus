@@ -71,7 +71,7 @@ fn gen_num_typ(n: TypNum, ts: Vec<Typ>) -> Typ {
 // Rust's complex conventions for Sized.
 fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
     match &**typ {
-        vir::ast::TypX::Bool | vir::ast::TypX::Int(..) => {
+        vir::ast::TypX::Bool | vir::ast::TypX::Int(..) | vir::ast::TypX::Float(..) => {
             Box::new(TypX::Primitive(vir::ast_util::typ_to_diagnostic_str(typ)))
         }
         vir::ast::TypX::Datatype(Dt::Tuple(_), ts, _) => {
@@ -161,6 +161,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
+        vir::ast::TypX::MutRef(_) => todo!(),
     }
 }
 
@@ -229,8 +230,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     vir_crate: &vir::ast::Krate,
     state: &mut State,
 ) {
-    state.restart_names();
-
     for d in &vir_crate.datatypes {
         let Dt::Path(path) = &d.x.name else {
             panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");

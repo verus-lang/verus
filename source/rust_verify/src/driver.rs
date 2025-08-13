@@ -95,7 +95,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(tcx);
+            crate::lifetime::check(tcx, true);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
@@ -123,8 +123,10 @@ pub(crate) fn run_with_erase_macro_compile(
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
-    if vstd == Vstd::IsCore {
+    if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    } else if vstd == Vstd::NoVstd {
+        rustc_args.extend(["--cfg", "verus_no_vstd"].map(|s| s.to_string()));
     }
     let allow = &[
         "unused_imports",
@@ -186,7 +188,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                         Some(VerusRoot { path, in_vargo: false })
                     } else {
                         // TODO suppress warning when building verus itself
-                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the verus_builtin and vstd crates are likely missing");
                         None
                     }
                 })
@@ -210,7 +212,7 @@ pub fn run(
             let externs = VerusExterns {
                 verus_root: verusroot.clone(),
                 has_vstd: verifier.args.vstd == Vstd::Imported,
-                has_builtin: verifier.args.vstd != Vstd::IsCore,
+                has_builtin: !matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore),
             };
             rustc_args.extend(externs.to_args());
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
@@ -228,7 +230,7 @@ pub fn run(
     let mut rustc_args_verify = rustc_args.clone();
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
-    if verifier.args.vstd == Vstd::IsCore {
+    if matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args_verify.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     }
     // Build VIR and run verification
@@ -240,6 +242,7 @@ pub fn run(
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         verus_externs,
+        spans: None,
     };
     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {

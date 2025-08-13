@@ -284,7 +284,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "borrow of moved value: `u`")
+    } => Err(err) => assert_rust_error_msg(err, "borrow of moved value: `u`")
 }
 
 test_verify_one_file! {

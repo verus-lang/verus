@@ -28,4 +28,4 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 [workspace]
 [patch.crates-io]
-syn_verus = { path = ".." }
+verus_syn = { path = ".." }
