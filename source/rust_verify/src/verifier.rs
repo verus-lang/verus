@@ -2700,6 +2700,7 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
+            next_read_kind_id: std::rc::Rc::new(std::cell::Cell::new(0)),
         });
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
@@ -2826,8 +2827,9 @@ impl Verifier {
         check_crate_result1.map_err(|e| (e, Vec::new()))?;
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (vir_crate, erasure_modes, _read_kind_finals) =
+            vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
+                .map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);

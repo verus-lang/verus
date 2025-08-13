@@ -58,6 +58,7 @@ pub mod printer;
 pub mod prune;
 pub mod recursion;
 pub mod recursive_types;
+mod resolution_inference;
 mod resolve_axioms;
 pub mod safe_api;
 mod scc;
