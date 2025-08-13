@@ -1524,7 +1524,7 @@ test_verify_one_file! {
                 }
                 i = i + 1;
             }
-            
+
         }
 } => Ok(())
 }
@@ -1555,4 +1555,30 @@ test_verify_one_file! {
             }
         }
 } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_call_in_loop4 ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1 (x:usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i:usize = 0;
+            while i < 10
+            {
+                test1(x - 1);
+                let mut j:usize = 0;
+                while j * 2 < 5
+                    invariant j <= 4,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+} => Ok(_err) => {/* allow decreases checks warnings */ }
 }
