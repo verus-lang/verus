@@ -13,6 +13,7 @@ enum PlaceTree {
 
 struct Local {
     name: VarIdent,
+    is_param: bool,
     tree: PlaceTree,
 }
 
@@ -39,7 +40,18 @@ struct FlattenedPlace {
     projections: Vec<Projection>,
 }
 
-enum Instruction {
+#[derive(Clone, Copy)]
+enum AstPosition {
+    Before(crate::messages::AstId),
+    After(crate::messages::AstId),
+}
+
+struct Instruction {
+    kind: InstructionKind,
+    position: AstPosition,
+}
+
+enum InstructionKind {
     /// Move from the place; must previously be initialized, becomes uninitialized.
     MoveFrom(FlattenedPlace),
     /// Overwrite the place; it previously may be initialized, uninitialized,
@@ -57,6 +69,7 @@ struct BasicBlock {
     is_exit: bool,
 
     always_add_resolution_at_start: bool,
+    position_of_start: AstPosition,
 }
 
 struct CFG {
@@ -66,21 +79,13 @@ struct CFG {
 
 struct ResolutionToInsert {
     place: FlattenedPlace,
-    position: PositionInExpr,
+    position: AstPosition,
 }
 
 pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
     let cfg = new_cfg(params, body, read_kind_finals);
-    let _resolutions = get_resolutions(&cfg);
-
-    /*
-    let safe_to_resolve = analysis_safe_to_resolve(&cfg);
-    let initialization = analysis_initialization(&cfg);
-
-    let resolutions = get_resolutions(&cfg, &safe_to_resolve, &initialization);
-    apply_resolutions(body, &resolutions)
-    */
-    todo!()
+    let resolutions = get_resolutions(&cfg);
+    apply_resolutions(body, resolutions)
 }
 
 ////// CFG builder
@@ -108,11 +113,10 @@ fn new_cfg(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> C
         },
         read_kind_finals,
     };
-    let start_bb = builder.new_bb(true);
+    let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
     for param in params.iter() {
-        let place = builder.place_from_param(param);
-        builder.push_instruction(start_bb, Instruction::Overwrite(place));
+        builder.locals.add_param(param);
     }
     let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
@@ -135,13 +139,14 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn new_bb(&mut self, always_add_resolution_at_start: bool) -> BBIndex {
+    fn new_bb(&mut self, start_position: AstPosition, always_add_resolution_at_start: bool) -> BBIndex {
         self.basic_blocks.push(BasicBlock {
             instructions: vec![],
             predecessors: vec![],
             successors: vec![],
             is_exit: false,
             always_add_resolution_at_start,
+            position_of_start: start_position,
         });
         self.basic_blocks.len() - 1
     }
@@ -160,8 +165,11 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn push_instruction(&mut self, bb: BBIndex, instr: Instruction) {
-        self.basic_blocks[bb].instructions.push(instr);
+    fn push_instruction(&mut self, bb: BBIndex, pos: AstPosition, instr: InstructionKind) {
+        self.basic_blocks[bb].instructions.push(Instruction {
+            kind: instr,
+            position: pos
+        });
     }
 
     fn get_loop<'b: 'a>(&'b self, loop_label: &Option<String>) -> &'b LoopEntry {
@@ -179,9 +187,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build(&mut self, e: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+    fn build(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+        let span_id = expr.span.id;
         let mut bb = bb;
-        match &e.x {
+        match &expr.x {
             ExprX::Const(_)
              | ExprX::Var(_)
              | ExprX::VarLoc(_)
@@ -230,21 +239,28 @@ impl<'a> Builder<'a> {
             ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
                 bb = self.build(e1, bb)?;
 
-                let snd_block = self.new_bb(false);
+                let snd_block = self.new_bb(AstPosition::Before(e2.span.id), false);
                 self.basic_blocks[bb].successors.push(snd_block);
 
                 let snd_bb_end = self.build(e2, snd_block);
 
-                let join_block = self.new_bb(false);
+                let join_block = self.new_bb(AstPosition::After(span_id), false);
                 self.basic_blocks[bb].successors.push(join_block);
                 self.optionally_push_successor(snd_bb_end, join_block);
                 Ok(join_block)
             }
             ExprX::If(cond, thn, els) => {
+                let thn_position = AstPosition::Before(thn.span.id);
+                let els_position = match els {
+                    Some(els) => AstPosition::Before(els.span.id),
+                    None => AstPosition::After(span_id),
+                };
+                let join_position = AstPosition::After(span_id);
+
                 bb = self.build(cond, bb)?;
 
-                let thn_block = self.new_bb(false);
-                let els_block = self.new_bb(false);
+                let thn_block = self.new_bb(thn_position, false);
+                let els_block = self.new_bb(els_position, false);
                 self.basic_blocks[bb].successors.push(thn_block);
                 self.basic_blocks[bb].successors.push(els_block);
 
@@ -256,7 +272,7 @@ impl<'a> Builder<'a> {
                 };
 
                 if thn_bb_end.is_ok() || els_bb_end.is_ok() {
-                    let join_block = self.new_bb(false);
+                    let join_block = self.new_bb(join_position, false);
                     self.optionally_push_successor(thn_bb_end, join_block);
                     self.optionally_push_successor(els_bb_end, join_block);
                     Ok(join_block)
@@ -327,7 +343,9 @@ impl<'a> Builder<'a> {
                 let (p, bb) = self.build_place(place, bb)?;
                 let bb = self.build(rhs, bb)?;
                 if let Some(p) = p {
-                    self.push_instruction(bb, Instruction::Overwrite(p));
+                    self.push_instruction(bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::Overwrite(p));
                 }
                 Ok(bb)
             }
@@ -337,7 +355,9 @@ impl<'a> Builder<'a> {
             ExprX::BorrowMut(p) => {
                 let (p, bb) = self.build_place(p, bb)?;
                 if let Some(p) = p {
-                    self.push_instruction(bb, Instruction::Mutate(p));
+                    self.push_instruction(bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::Mutate(p));
                 }
                 Ok(bb)
             }
@@ -348,7 +368,9 @@ impl<'a> Builder<'a> {
                 let (p, bb) = self.build_place(p, bb)?;
                 if let Some(p) = p {
                     if matches!(self.get_read_kind(unfinal_read_kind), ReadKind::Move) {
-                        self.push_instruction(bb, Instruction::MoveFrom(p));
+                        self.push_instruction(bb,
+                            AstPosition::After(span_id),
+                            InstructionKind::MoveFrom(p));
                     }
                 }
                 Ok(bb)
@@ -380,7 +402,7 @@ impl<'a> Builder<'a> {
         let r = self.build_place_rec(place, bb);
         match r {
             Ok((Some(fpi), bb)) => {
-                let sp = self.locals.add_place(fpi);
+                let sp = self.locals.add_place(fpi, false);
                 Ok((Some(sp), bb))
             }
             Ok((None, bb)) => Ok((None, bb)),
@@ -406,10 +428,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn place_from_param(&mut self, param: &Param) -> FlattenedPlace {
-        todo!();
-    }
-
     fn get_read_kind(&self, unfinal_read_kind: &UnfinalizedReadKind) -> ReadKind {
         todo!()
     }
@@ -418,9 +436,13 @@ impl<'a> Builder<'a> {
 ////// Place trees
 
 impl LocalCollection {
-    fn add_place(&mut self, p: FlattenedPlaceTyped) -> FlattenedPlace {
+    fn add_param(&mut self, p: &Param) {
+        todo!();
+    }
+
+    fn add_place(&mut self, p: FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
-            self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()) });
+            self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()), is_param });
             self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
         }
         let idx = self.ident_to_idx[&p.local];
@@ -535,10 +557,10 @@ impl FlattenedPlace {
     }
 
     fn value_may_change(&self, instr: &Instruction) -> bool {
-        match instr {
-            Instruction::MoveFrom(_) => false,
-            Instruction::Overwrite(sp) => self.intersects(sp),
-            Instruction::Mutate(sp) => self.intersects(sp),
+        match &instr.kind {
+            InstructionKind::MoveFrom(_) => false,
+            InstructionKind::Overwrite(sp) => self.intersects(sp),
+            InstructionKind::Mutate(sp) => self.intersects(sp),
         }
     }
 }
@@ -773,8 +795,8 @@ impl DataflowState for InitializationPossibilities {
 
     // forward transfer
     fn transfer(&self, instr: &Instruction, place: &FlattenedPlace) -> Self {
-        match instr {
-            Instruction::MoveFrom(sp) => {
+        match &instr.kind {
+            InstructionKind::MoveFrom(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities {
                         can_be_uninit: self.can_be_init || self.can_be_uninit,
@@ -784,7 +806,7 @@ impl DataflowState for InitializationPossibilities {
                     *self
                 }
             }
-            Instruction::Overwrite(sp) => {
+            InstructionKind::Overwrite(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities {
                         can_be_uninit: false,
@@ -794,7 +816,7 @@ impl DataflowState for InitializationPossibilities {
                     *self
                 }
             }
-            Instruction::Mutate(sp) => {
+            InstructionKind::Mutate(sp) => {
                 *self
             }
         }
@@ -809,10 +831,10 @@ impl InitializationPossibilities {
         }
     }
 
-    fn entry() -> Self {
+    fn entry(local: &Local) -> Self {
         InitializationPossibilities {
-            can_be_uninit: true,
-            can_be_init: false,
+            can_be_uninit: !local.is_param,
+            can_be_init: local.is_param,
         }
     }
 }
@@ -835,15 +857,15 @@ impl DataflowState for ResolveSafety {
 
     // backward transfer
     fn transfer(&self, instr: &Instruction, place: &FlattenedPlace) -> Self {
-        match instr {
-            Instruction::MoveFrom(sp) => {
+        match &instr.kind {
+            InstructionKind::MoveFrom(sp) => {
                 if sp.intersects(place) {
                     ResolveSafety { can_resolve: false }
                 } else {
                     *self
                 }
             }
-            Instruction::Overwrite(sp) => {
+            InstructionKind::Overwrite(sp) => {
                 if sp.contains_and_not_separated_by_deref(place) {
                     ResolveSafety { can_resolve: true }
                 } else if sp.intersects(place) {
@@ -852,7 +874,7 @@ impl DataflowState for ResolveSafety {
                     *self
                 }
             }
-            Instruction::Mutate(sp) => {
+            InstructionKind::Mutate(sp) => {
                 if sp.intersects(place) {
                     ResolveSafety { can_resolve: false }
                 } else {
@@ -875,13 +897,13 @@ impl ResolveSafety {
 
 ////// Use the results of the analysis to determine where resolutions should go
 
-fn get_resolutions(cfg: &CFG) {
+fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
     let initialization_places = cfg.locals.places_skip_insides_of_mut_refs();
     let initialization_analyses: Vec<DataflowOutput<InitializationPossibilities>>
       = initialization_places.iter().map(|place| {
         do_dataflow::<InitializationPossibilities>(cfg,
             InitializationPossibilities::empty(),
-            InitializationPossibilities::entry(),
+            InitializationPossibilities::entry(&cfg.locals.locals[place.local]),
             place,
             Direction::Forward)
     }).collect();
@@ -895,6 +917,8 @@ fn get_resolutions(cfg: &CFG) {
             place,
             Direction::Reverse)
     }).collect();
+
+    let mut output = vec![];
 
     let mut i_idx = 0;
     for r_idx in 0 .. resolve_places.len() {
@@ -910,8 +934,11 @@ fn get_resolutions(cfg: &CFG) {
             &resolve_places[r_idx],
             &initialization_analyses[i_idx],
             &resolve_analyses[r_idx],
+            &mut output,
         );
     }
+
+    output
 }
 
 fn get_resolutions_for_place(
@@ -919,6 +946,7 @@ fn get_resolutions_for_place(
     place: &FlattenedPlace,
     initialization_analysis: &DataflowOutput<InitializationPossibilities>,
     resolve_analysis: &DataflowOutput<ResolveSafety>,
+    output: &mut Vec<ResolutionToInsert>,
 ) {
     for bb in 0 .. cfg.basic_blocks.len() {
         for i in 0 .. cfg.basic_blocks[bb].instructions.len() + 1 {
@@ -934,9 +962,21 @@ fn get_resolutions_for_place(
                     || (i > 0 && !resolve_analysis.output[bb][i-1].can_resolve)
                     || (i > 0 && place.value_may_change(&cfg.basic_blocks[bb].instructions[i-1]));
                 if should_assume_has_resolved {
-                    todo!();
+                    output.push(ResolutionToInsert {
+                        place: place.clone(),
+                        position: if i == 0 {
+                            cfg.basic_blocks[bb].position_of_start
+                        } else {
+                            cfg.basic_blocks[bb].instructions[i - 1].position
+                        }
+                    });
                 }
             }
         }
     }
 }
+
+////// Modify the AST Expr with the new resolutions
+
+fn apply_resolutions();
+
