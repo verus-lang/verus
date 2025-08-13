@@ -2598,7 +2598,7 @@ impl Verifier {
                 (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),\n  \
                 (3) accept the automatically chosen trigger using #![auto]\n      \
                 (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))\n  \
-                (4) use the --triggers-silent command-line option to suppress all printing of triggers.\n\
+                (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.\n\
                 (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
