@@ -27,27 +27,26 @@ enum Projection {
     MutDeref,
 }
 
-struct FlattenedPlaceInformation {
+struct FlattenedPlaceTyped {
     local: VarIdent,
     typ: Typ,
     projections: Vec<Projection>,
 }
 
 #[derive(Clone)]
-struct SimplePlace {
+struct FlattenedPlace {
     local: usize,
     projections: Vec<Projection>,
 }
 
-
 enum Instruction {
     /// Move from the place; must previously be initialized, becomes uninitialized.
-    MoveFrom(SimplePlace),
+    MoveFrom(FlattenedPlace),
     /// Overwrite the place; it previously may be initialized, uninitialized,
     /// or partially initialized. Whatever was there before gets dropped.
-    Overwrite(SimplePlace),
+    Overwrite(FlattenedPlace),
     /// Mutate the value at the place, which must previously be initialized and remains initialized
-    Mutate(SimplePlace),
+    Mutate(FlattenedPlace),
 }
 
 type BBIndex = usize;
@@ -65,8 +64,14 @@ struct CFG {
     locals: LocalCollection,
 }
 
+struct ResolutionToInsert {
+    place: FlattenedPlace,
+    position: PositionInExpr,
+}
+
 pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
-    let _cfg = new_cfg(params, body, read_kind_finals);
+    let cfg = new_cfg(params, body, read_kind_finals);
+    let _resolutions = get_resolutions(&cfg);
 
     /*
     let safe_to_resolve = analysis_safe_to_resolve(&cfg);
@@ -371,7 +376,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build_place(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<SimplePlace>, BBIndex), ()> {
+    fn build_place(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlace>, BBIndex), ()> {
         let r = self.build_place_rec(place, bb);
         match r {
             Ok((Some(fpi), bb)) => {
@@ -383,7 +388,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build_place_rec(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceInformation>, BBIndex), ()> {
+    fn build_place_rec(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceTyped>, BBIndex), ()> {
         match &place.x {
             PlaceX::Field(field_opr, p) => {
                 todo!()
@@ -401,7 +406,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn place_from_param(&mut self, param: &Param) -> SimplePlace {
+    fn place_from_param(&mut self, param: &Param) -> FlattenedPlace {
         todo!();
     }
 
@@ -413,7 +418,7 @@ impl<'a> Builder<'a> {
 ////// Place trees
 
 impl LocalCollection {
-    fn add_place(&mut self, p: FlattenedPlaceInformation) -> SimplePlace {
+    fn add_place(&mut self, p: FlattenedPlaceTyped) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
             self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()) });
             self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
@@ -422,7 +427,7 @@ impl LocalCollection {
 
         Self::extend_tree(&mut self.locals[idx].tree, &p.projections);
 
-        SimplePlace { local: idx, projections: p.projections }
+        FlattenedPlace { local: idx, projections: p.projections }
     }
 
     fn extend_tree(tree: &mut PlaceTree, projections: &[Projection]) {
@@ -460,24 +465,24 @@ impl LocalCollection {
         }
     }
 
-    fn places_skip_insides_of_mut_refs(&self) -> Vec<SimplePlace> {
+    fn places_skip_insides_of_mut_refs(&self) -> Vec<FlattenedPlace> {
         self.traverse_get_places(false)
     }
 
-    fn places_including_insides_of_mut_refs(&self) -> Vec<SimplePlace> {
+    fn places_including_insides_of_mut_refs(&self) -> Vec<FlattenedPlace> {
         self.traverse_get_places(true)
     }
 
-    fn traverse_get_places(&self, go_inside_muts: bool) -> Vec<SimplePlace> {
+    fn traverse_get_places(&self, go_inside_muts: bool) -> Vec<FlattenedPlace> {
         let mut v = vec![];
         for (i, local) in self.locals.iter().enumerate() {
-            let mut sp = SimplePlace { local: i, projections: vec![] };
+            let mut sp = FlattenedPlace { local: i, projections: vec![] };
             Self::traverse_rec(&local.tree, &mut sp, &mut v, go_inside_muts);
         }
         v
     }
 
-    fn traverse_rec(tree: &PlaceTree, cur: &mut SimplePlace, output: &mut Vec<SimplePlace>,
+    fn traverse_rec(tree: &PlaceTree, cur: &mut FlattenedPlace, output: &mut Vec<FlattenedPlace>,
         go_inside_muts: bool)
     {
         match tree {
@@ -503,7 +508,7 @@ impl LocalCollection {
     }
 }
 
-impl SimplePlace {
+impl FlattenedPlace {
     fn intersects(&self, other: &Self) -> bool {
         if self.local == other.local {
             let m = std::cmp::min(self.projections.len(), other.projections.len());
@@ -538,11 +543,13 @@ impl SimplePlace {
     }
 }
 
-////// CFG analysis
+////// CFG dataflow analysis
 
 trait DataflowState {
+    type Const;
+
     fn join(&mut self, b: &Self);
-    fn transfer(&self, instr: &Instruction, out: &mut Self);
+    fn transfer(&self, instr: &Instruction, c: &Self::Const) -> Self;
 }
 
 enum Direction {
@@ -554,7 +561,7 @@ struct DataflowOutput<D> {
     output: Vec<Vec<D>>,
 }
 
-fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit: D, dir: Direction)
+fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit: D, c: &D::Const, dir: Direction)
     -> DataflowOutput<D>
 {
     let mut output = DataflowOutput { output: vec![] };
@@ -584,7 +591,7 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
 
                 if *slot != new_value {
                     *slot = new_value;
-                    transfer_forward(&mut output.output[bb], &cfg.basic_blocks[bb].instructions);
+                    transfer_forward(&mut output.output[bb], &cfg.basic_blocks[bb].instructions, c);
                 }
                 for bb1 in cfg.basic_blocks[bb].successors.iter() {
                     if !in_worklist[*bb1] {
@@ -612,7 +619,7 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
 
                 if *slot != new_value {
                     *slot = new_value;
-                    transfer_reverse(&mut output.output[bb], &cfg.basic_blocks[bb].instructions);
+                    transfer_reverse(&mut output.output[bb], &cfg.basic_blocks[bb].instructions, c);
                 }
                 for bb1 in cfg.basic_blocks[bb].predecessors.iter() {
                     if !in_worklist[*bb1] {
@@ -680,22 +687,20 @@ fn join_successors<D: DataflowState + Clone>(
 fn transfer_forward<D: DataflowState>(
     output: &mut Vec<D>,
     instructions: &[Instruction],
+    c: &D::Const,
 ) {
     for i in 0 .. instructions.len() {
-        //output[i].transfer(&instructions[i], &mut output[i+1]);
-        let (a, b) = output.split_at_mut(i+1);
-        a[i].transfer(&instructions[i], &mut b[0]);
+        output[i+1] = output[i].transfer(&instructions[i], c);
     }
 }
 
 fn transfer_reverse<D: DataflowState>(
     output: &mut Vec<D>,
     instructions: &[Instruction],
+    c: &D::Const,
 ) {
     for i in (0 .. instructions.len()).rev() {
-        //output[i+1].transfer(&instructions[i], &mut output[i]);
-        let (a, b) = output.split_at_mut(i+1);
-        b[0].transfer(&instructions[i], &mut a[i]);
+        output[i] = output[i+1].transfer(&instructions[i], c);
     }
 }
 
@@ -746,24 +751,19 @@ impl DataflowState for InitializationPossibilities {
         }
     }
 }
-
-////// Analysis: Safe to resolve?
 */
-
-trait DataflowStatePerPlace {
-    fn join(&mut self, b: &Self);
-    fn transfer(&self, instr: &Instruction, place: &SimplePlace) -> Self;
-}
 
 ////// Analysis: Initialization
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct InitializationPossibilities {
     can_be_uninit: bool,
     can_be_init: bool,
 }
 
-impl DataflowStatePerPlace for InitializationPossibilities {
+impl DataflowState for InitializationPossibilities {
+    type Const = FlattenedPlace;
+
     fn join(&mut self, b: &Self) {
         *self = InitializationPossibilities {
             can_be_uninit: self.can_be_uninit || b.can_be_uninit,
@@ -772,7 +772,7 @@ impl DataflowStatePerPlace for InitializationPossibilities {
     }
 
     // forward transfer
-    fn transfer(&self, instr: &Instruction, place: &SimplePlace) -> Self {
+    fn transfer(&self, instr: &Instruction, place: &FlattenedPlace) -> Self {
         match instr {
             Instruction::MoveFrom(sp) => {
                 if sp.contains(place) {
@@ -819,12 +819,14 @@ impl InitializationPossibilities {
 
 ////// Analysis: Resolve
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct ResolveSafety {
     can_resolve: bool,
 }
 
-impl DataflowStatePerPlace for ResolveSafety {
+impl DataflowState for ResolveSafety {
+    type Const = FlattenedPlace;
+
     fn join(&mut self, b: &Self) {
         *self = ResolveSafety {
             can_resolve: self.can_resolve && b.can_resolve,
@@ -832,7 +834,7 @@ impl DataflowStatePerPlace for ResolveSafety {
     }
 
     // backward transfer
-    fn transfer(&self, instr: &Instruction, place: &SimplePlace) -> Self {
+    fn transfer(&self, instr: &Instruction, place: &FlattenedPlace) -> Self {
         match instr {
             Instruction::MoveFrom(sp) => {
                 if sp.intersects(place) {
@@ -866,20 +868,34 @@ impl ResolveSafety {
         ResolveSafety { can_resolve: true }
     }
 
-    fn exit(place: &SimplePlace) -> Self {
+    fn exit(place: &FlattenedPlace) -> Self {
         ResolveSafety { can_resolve: !place.has_deref() }
     }
 }
 
 ////// Use the results of the analysis to determine where resolutions should go
 
-fn get_resolutions(
-    cfg: &CFG,
-    initialization_places: &Vec<SimplePlace>,
-    initialization_analyses: &Vec<DataflowOutput<InitializationPossibilities>>,
-    resolve_places: &Vec<SimplePlace>,
-    resolve_analyses: &Vec<DataflowOutput<ResolveSafety>>,
-) {
+fn get_resolutions(cfg: &CFG) {
+    let initialization_places = cfg.locals.places_skip_insides_of_mut_refs();
+    let initialization_analyses: Vec<DataflowOutput<InitializationPossibilities>>
+      = initialization_places.iter().map(|place| {
+        do_dataflow::<InitializationPossibilities>(cfg,
+            InitializationPossibilities::empty(),
+            InitializationPossibilities::entry(),
+            place,
+            Direction::Forward)
+    }).collect();
+
+    let resolve_places = cfg.locals.places_including_insides_of_mut_refs();
+    let resolve_analyses: Vec<DataflowOutput<ResolveSafety>>
+      = resolve_places.iter().map(|place| {
+        do_dataflow::<ResolveSafety>(cfg,
+            ResolveSafety::empty(),
+            ResolveSafety::exit(place),
+            place,
+            Direction::Reverse)
+    }).collect();
+
     let mut i_idx = 0;
     for r_idx in 0 .. resolve_places.len() {
         while !initialization_places[i_idx].contains(&resolve_places[i_idx]) {
@@ -900,7 +916,7 @@ fn get_resolutions(
 
 fn get_resolutions_for_place(
     cfg: &CFG,
-    place: &SimplePlace,
+    place: &FlattenedPlace,
     initialization_analysis: &DataflowOutput<InitializationPossibilities>,
     resolve_analysis: &DataflowOutput<ResolveSafety>,
 ) {
