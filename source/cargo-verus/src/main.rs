@@ -103,8 +103,6 @@ edition = "2021"
 
 [dependencies]
 vstd = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
-builtin = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
-builtin_macros = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
 
 [package.metadata.verus]
 verify = true

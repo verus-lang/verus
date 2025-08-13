@@ -790,9 +790,10 @@ fn check_bitwidth_typ_matches(typ: &Typ, w: IntegerTypeBitwidth, signed: bool) -
 
 // Generate a unique quantifier ID and map it to the quantifier's span
 pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
-    let fun_name = fun_as_friendly_rust_name(
-        &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
-    );
+    let fun_name = match &ctx.fun {
+        Some(f) => fun_as_friendly_rust_name(&f.current_fun),
+        None => "no_function".to_string(),
+    };
     let qcount = ctx.quantifier_count.get();
     let qid = new_user_qid_name(&fun_name, qcount);
     ctx.quantifier_count.set(qcount + 1);
@@ -811,16 +812,16 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
             exp.x
         ),
     };
-    let bnd_info = BndInfo {
-        fun: ctx
-            .fun
-            .as_ref()
-            .expect("expressions are expected to be within a function")
-            .current_fun
-            .clone(),
-        user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
-    };
-    ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    match &ctx.fun {
+        Some(f) => {
+            let bnd_info = BndInfo {
+                fun: f.current_fun.clone(),
+                user: Some(BndInfoUser { span: exp.span.clone(), trigs: trigs.clone() }),
+            };
+            ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+        }
+        None => {}
+    }
     Some(Arc::new(qid))
 }
 

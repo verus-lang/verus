@@ -1,7 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent,
-    VirErr,
+    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
+    VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
@@ -458,18 +458,29 @@ pub(crate) fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<ExprX>>,
     param_renames: &HashMap<VarIdent, VarIdent>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Message> {
-    ast_visitor::map_expr_visitor(e, &|expr| {
-        Ok(match &expr.x {
-            ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
-            ExprX::VarLoc(i) => {
-                expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
-            }
-            ExprX::VarAt(i, at) => {
-                expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
-            }
-            _ => expr.clone(),
-        })
-    })
+    ast_visitor::map_expr_place_visitor(
+        e,
+        &|expr| {
+            Ok(match &expr.x {
+                ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|place| {
+            Ok(match &place.x {
+                PlaceX::Local(i) => {
+                    place.new_x(PlaceX::Local(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                _ => place.clone(),
+            })
+        },
+    )
 }
 
 struct InheritanceSubstitutions {

@@ -7,10 +7,12 @@ use proc_macro2::TokenTree;
 use quote::ToTokens;
 use quote::format_ident;
 use quote::{quote, quote_spanned};
+use syn::token::Comma;
 use verus_syn::BroadcastUse;
 use verus_syn::DefaultEnsures;
 use verus_syn::ExprBlock;
 use verus_syn::ExprForLoop;
+use verus_syn::Generics;
 use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::parse_quote_spanned;
 use verus_syn::punctuated::Punctuated;
@@ -508,6 +510,11 @@ impl Visitor {
         ret_pat: Option<(Pat, TType)>,
         final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
         _span: Span,
+        is_impl_fn: bool,     // is the function a ImplItemFn or TraitImplFn
+        is_closure: bool,     // some closures also use this function to handle
+        ident: impl ToTokens, // function name.
+        generics: Option<impl ToTokens>,
+        inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -517,6 +524,8 @@ impl Visitor {
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+
+        let (self_token_op, args) = inputs;
 
         let ensures = merge_default_ensures(ensures, default_ensures);
 
@@ -611,12 +620,46 @@ impl Visitor {
                                 )
                             }
                         }
-                        spec_stmts.push(Stmt::Expr(
-                            Expr::Verbatim(
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])),
-                            ),
-                            Some(Semi { spans: [token.span] }),
-                        ));
+                        if is_closure {
+                            // closures cannot return impl xxx so it's safe to
+                            spec_stmts.push(Stmt::Expr(
+                                Expr::Verbatim(
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])),
+                                ),
+                                Some(Semi { spans: [token.span] }),
+                            ));
+                        } else {
+                            let constrain_type = {
+                                let generics_token = {
+                                    match generics {
+                                        Some(generics) => {
+                                            Some(quote_spanned!(token.span => ::#generics))
+                                        }
+                                        None => None,
+                                    }
+                                };
+                                let receiver_token = {
+                                    match (is_impl_fn, self_token_op) {
+                                        (true, None) => Some(quote_spanned!(token.span => Self::)),
+                                        (true, Some(self_token)) => {
+                                            Some(quote_spanned!(token.span => #self_token.))
+                                        }
+                                        (false, None) => None,
+                                        (false, Some(self_token)) => {
+                                            Some(quote_spanned!(token.span => #self_token.))
+                                        }
+                                    }
+                                };
+                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                            };
+                            let contrain_typ_expr = Expr::Verbatim(constrain_type);
+                            spec_stmts.push(Stmt::Expr(
+                                    Expr::Verbatim(
+                                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p| [#contrain_typ_expr, #exprs])),
+                                    ),
+                                    Some(Semi { spans: [token.span] }),
+                                ));
+                        }
                     } else {
                         spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
@@ -746,6 +789,7 @@ impl Visitor {
         sig: &mut Signature,
         semi_token: Option<Token![;]>,
         is_trait: bool,
+        is_impl_fn: bool,
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
@@ -931,7 +975,24 @@ impl Visitor {
         self.inside_ghost += 1; // for requires, ensures, etc.
 
         let sig_span = sig.span().clone();
-        let spec_stmts = self.take_sig_specs(&mut sig.spec, ret_pat, None, sig_span);
+
+        if let Some((p, _)) = &ret_pat {
+            if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
+                stmts.push(err_stmt);
+            }
+        }
+
+        let spec_stmts = self.take_sig_specs(
+            &mut sig.spec,
+            ret_pat,
+            None,
+            sig_span,
+            is_impl_fn,
+            false,
+            sig.ident.clone(),
+            verus_generic_to_tokens(&sig.generics),
+            verus_inputs_to_tokens(&sig.inputs),
+        );
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -1623,6 +1684,7 @@ impl Visitor {
             Some(&item_fn.vis),
             &mut item_fn.sig,
             Some(semi),
+            false,
             false,
         );
 
@@ -3795,8 +3857,14 @@ impl VisitMut for Visitor {
         if self.rustdoc {
             crate::rustdoc::process_item_fn(fun);
         }
-        let stmts =
-            self.visit_fn(&mut fun.attrs, Some(&fun.vis), &mut fun.sig, fun.semi_token, false);
+        let stmts = self.visit_fn(
+            &mut fun.attrs,
+            Some(&fun.vis),
+            &mut fun.sig,
+            fun.semi_token,
+            false,
+            false,
+        );
         fun.block.stmts.splice(0..0, stmts);
         fun.semi_token = None;
         let is_external_code = has_external_code(&fun.attrs);
@@ -3820,6 +3888,7 @@ impl VisitMut for Visitor {
             &mut method.sig,
             method.semi_token,
             false,
+            true,
         );
         method.block.stmts.splice(0..0, stmts);
         method.semi_token = None;
@@ -3836,7 +3905,7 @@ impl VisitMut for Visitor {
     fn visit_trait_item_fn_mut(&mut self, method: &mut TraitItemFn) {
         let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
-            self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
+            self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true, true);
         if let Some(block) = &mut method.default {
             block.stmts.splice(0..0, stmts);
         } else if self.erase_ghost.keep() && is_spec_method {
@@ -4658,10 +4727,115 @@ fn take_sig_with_spec(
     };
     spec_stmts
 }
+
+pub(crate) fn verus_inputs_to_tokens(
+    inputs: &Punctuated<FnArg, Token![,]>,
+) -> (Option<TokenStream>, TokenStream) {
+    let mut arg_tokens = TokenStream::new();
+    let mut args: Punctuated<verus_syn::Expr, Comma> = Punctuated::new();
+    let mut self_token = None;
+    for input in inputs.iter() {
+        match (&input.tracked, &input.kind) {
+            (_, FnArgKind::Receiver(receiver)) => {
+                self_token = Some(receiver.self_token.clone().to_token_stream());
+            }
+            (_, FnArgKind::Typed(pat_type)) => match &*pat_type.pat {
+                Pat::Ident(pat_ident) => {
+                    args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
+                }
+                _ => {
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                }
+            },
+        }
+    }
+    args.to_tokens(&mut arg_tokens);
+    (self_token, arg_tokens)
+}
+
+pub(crate) fn inputs_to_tokens(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> (Option<TokenStream>, TokenStream) {
+    let mut ret = TokenStream::new();
+    let mut args: Punctuated<verus_syn::Expr, Comma> = Punctuated::new();
+    let mut self_token = None;
+    for input in inputs.iter() {
+        match input {
+            syn::FnArg::Receiver(receiver) => {
+                self_token = Some(receiver.self_token.clone().to_token_stream());
+            }
+            syn::FnArg::Typed(pat_type) => match &*pat_type.pat {
+                syn::Pat::Ident(pat_ident) => {
+                    args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
+                }
+                _ => {
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                            compile_error!("verus! macro error: input of the function is not an Ident"))));
+                }
+            },
+        }
+    }
+    args.to_tokens(&mut ret);
+    (self_token, ret)
+}
+
+pub(crate) fn verus_generic_to_tokens(generic: &Generics) -> Option<TokenStream> {
+    if generic.lt_token.is_none() {
+        return None;
+    }
+    let mut ret = TokenStream::new();
+    generic.lt_token.to_tokens(&mut ret);
+    let mut params: Punctuated<verus_syn::GenericArgument, Comma> = Punctuated::new();
+    for gen_arg in generic.params.iter() {
+        match gen_arg {
+            verus_syn::GenericParam::Lifetime(_) => {}
+            verus_syn::GenericParam::Type(type_param) => {
+                params.push(verus_syn::GenericArgument::Type(Type::Verbatim(
+                    type_param.ident.to_token_stream(),
+                )));
+            }
+            verus_syn::GenericParam::Const(const_param) => {
+                params.push(verus_syn::GenericArgument::Const(Expr::Verbatim(
+                    const_param.ident.to_token_stream(),
+                )));
+            }
+        }
+    }
+    params.to_tokens(&mut ret);
+    generic.gt_token.to_tokens(&mut ret);
+    Some(ret)
+}
+
+pub(crate) fn generic_to_tokens(generic: &syn::Generics) -> Option<TokenStream> {
+    if generic.lt_token.is_none() {
+        return None;
+    }
+    let mut ret = TokenStream::new();
+    generic.lt_token.to_tokens(&mut ret);
+    let mut params: Punctuated<Ident, Comma> = Punctuated::new();
+    for gen_args in generic.params.iter() {
+        match gen_args {
+            syn::GenericParam::Lifetime(_) => {}
+            syn::GenericParam::Type(type_param) => {
+                params.push(type_param.ident.clone());
+            }
+            syn::GenericParam::Const(const_param) => {
+                params.push(const_param.ident.clone());
+            }
+        }
+    }
+    params.to_tokens(&mut ret);
+    generic.gt_token.to_tokens(&mut ret);
+    Some(ret)
+}
+
 pub(crate) fn sig_specs_attr(
     erase_ghost: EraseGhost,
     spec_attr: SignatureSpecAttr,
     sig: &mut syn::Signature,
+    is_impl_fn: bool,
+    is_closure: bool,
 ) -> Vec<Stmt> {
     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
     let mut spec_stmts = vec![];
@@ -4697,8 +4871,25 @@ pub(crate) fn sig_specs_attr(
         assign_to: false,
         rustdoc: env_rustdoc(),
     };
+
+    if let Some((p, _)) = &ret_pat {
+        if let Some(err_stmt) = check_return_ident(p, &sig.inputs) {
+            spec_stmts.push(err_stmt);
+        }
+    }
+
     let sig_span = sig.span().clone();
-    spec_stmts.extend(visitor.take_sig_specs(&mut spec, ret_pat, final_ret_pat, sig_span));
+    spec_stmts.extend(visitor.take_sig_specs(
+        &mut spec,
+        ret_pat,
+        final_ret_pat,
+        sig_span,
+        is_impl_fn,
+        is_closure,
+        sig.ident.clone(),
+        generic_to_tokens(&sig.generics),
+        inputs_to_tokens(&sig.inputs),
+    ));
     spec_stmts
 }
 
@@ -5181,6 +5372,7 @@ impl ToTokens for Builtin {
             VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin },
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
         };
         tokens.extend(toks);
     }
@@ -5197,6 +5389,7 @@ impl ToTokens for Vstd {
             VstdKind::NoVstd => quote_spanned! { self.0 => ::vstd },
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::vstd },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::vstd },
         };
         tokens.extend(toks);
     }
@@ -5224,4 +5417,44 @@ fn get_ex_ident_mangle_path(qself: &Option<verus_syn::QSelf>, path: &Path) -> Id
     }
 
     return Ident::new(&s, path.span());
+}
+
+/// In VIR there's the same check, but Rustc will complain first, and throw out
+/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// Instead we give an early error with nice error msg here.
+fn check_return_ident(
+    ret_pat: &Pat,
+    input_args: &syn::punctuated::Punctuated<syn::FnArg, Comma>,
+) -> Option<Stmt> {
+    for input in input_args {
+        if let syn::FnArg::Typed(pt) = &input {
+            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+                return Some(stmt_with_semi!(
+                    input.span() =>
+                    compile_error!("parameter name cannot be the same as the return value name")
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// In VIR there's the same check, but Rustc will complain first, and throw out
+/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// Instead we give an early error with nice error msg here.
+fn check_verus_return_ident(
+    ret_pat: &Pat,
+    input_args: &Punctuated<FnArg, verus_syn::token::Comma>,
+) -> Option<Stmt> {
+    for input in input_args {
+        if let FnArgKind::Typed(pt) = &input.kind {
+            if pt.pat.to_token_stream().to_string() == ret_pat.to_token_stream().to_string() {
+                return Some(stmt_with_semi!(
+                    input.span() =>
+                    compile_error!("parameter name cannot be the same as the return value name")
+                ));
+            }
+        }
+    }
+    None
 }
