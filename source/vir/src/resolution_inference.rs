@@ -2,8 +2,12 @@
 #![allow(dead_code)]
 
 use crate::modes::ReadKindFinals;
-use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX};
+use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped};
 use std::collections::{VecDeque, HashMap};
+use crate::messages::AstId;
+use crate::ast_visitor::VisitorScopeMap;
+use crate::def::Spanned;
+use std::sync::Arc;
 
 enum PlaceTree {
     Leaf(Typ),
@@ -42,8 +46,8 @@ struct FlattenedPlace {
 
 #[derive(Clone, Copy)]
 enum AstPosition {
-    Before(crate::messages::AstId),
-    After(crate::messages::AstId),
+    Before(AstId),
+    After(AstId),
 }
 
 struct Instruction {
@@ -85,7 +89,7 @@ struct ResolutionToInsert {
 pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
     let cfg = new_cfg(params, body, read_kind_finals);
     let resolutions = get_resolutions(&cfg);
-    apply_resolutions(body, resolutions)
+    apply_resolutions(&cfg, body, resolutions)
 }
 
 ////// CFG builder
@@ -978,5 +982,84 @@ fn get_resolutions_for_place(
 
 ////// Modify the AST Expr with the new resolutions
 
-fn apply_resolutions();
+fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert>) -> Expr {
+    let mut id_map = HashMap::<AstId, (Vec<FlattenedPlace>, Vec<FlattenedPlace>, bool)>::new();
+    for r in resolutions.into_iter() {
+        let ast_id = match r.position {
+            AstPosition::Before(ast_id) => ast_id,
+            AstPosition::After(ast_id) => ast_id,
+        };
+        if !id_map.contains_key(&ast_id) {
+            id_map.insert(ast_id, (vec![], vec![], false));
+        }
 
+        let entry = id_map.get_mut(&ast_id).unwrap();
+
+        match r.position {
+            AstPosition::Before(ast_id) => { entry.0.push(r.place); }
+            AstPosition::After(ast_id) => { entry.1.push(r.place); }
+        };
+    }
+
+    crate::ast_visitor::map_expr_visitor_env(
+        body,
+        &mut VisitorScopeMap::new(),
+        &mut id_map,
+        &|id_map, scope_map, expr: &Expr| {
+            if let Some((befores, afters, seen_yet)) = id_map.get_mut(&expr.span.id) {
+                if *seen_yet {
+                    panic!("Verus internal error: duplicate AstId");
+                }
+                *seen_yet = true;
+
+                let befores_exprs = filter_and_make_assumes(cfg, scope_map, befores);
+                let afters_exprs = filter_and_make_assumes(cfg, scope_map, afters);
+
+                let mut e = expr.clone();
+                e = apply_before_exprs(e, befores_exprs);
+                e = apply_after_exprs(e, afters_exprs);
+                Ok(e)
+            } else {
+                Ok(expr.clone())
+            }
+        },
+        &|_, _, s| Ok(vec![s.clone()]),
+        &|_, t| Ok(t.clone()),
+        &|_, _, p| Ok(p.clone()),
+    ).unwrap()
+}
+
+fn filter_and_make_assumes(cfg: &CFG, scope_map: &VisitorScopeMap, v: &Vec<FlattenedPlace>)
+    -> Vec<Expr>
+{
+    v.iter().filter_map(|fp| {
+        let name = &cfg.locals.locals[fp.local].name;
+        if scope_map.contains_key(name) {
+            Some(make_assume(cfg, fp))
+        } else {
+            None
+        }
+    }).collect()
+}
+
+fn make_assume(cfg: &CFG, fp: &FlattenedPlace) -> Expr {
+    todo!()
+}
+
+fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {
+    if before_exprs.len() == 0 {
+        return expr;
+    }
+    let mut stmts = vec![];
+    for e in before_exprs.into_iter() {
+        stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+    }
+    SpannedTyped::new(
+        &expr.span,
+        &expr.typ,
+        ExprX::Block(Arc::new(stmts), Some(expr.clone())))
+}
+
+fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
+    todo!()
+}
