@@ -1480,3 +1480,22 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file!{
+    #[test] recursive_call_in_loop verus_code! {
+        use vstd::prelude::*;
+        
+        fn test1(x: usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            for i in 0..1
+                invariant x >= 1,
+            {
+                test1(x - 1);
+            }
+        }
+    } => Ok(())
+}
