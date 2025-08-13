@@ -440,3 +440,75 @@ def_bop_impls_shift!(core::ops::Shr, ShrSpecImpl, shr, obeys_shr_spec, shr_req, 
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+verus! {
+
+#[verusfmt::skip]
+// Note: we do not assume that floating point types have obeys_*_spec() == true
+// because Rust floating point operations are not guaranteed to be deterministic.
+// (See https://github.com/rust-lang/rfcs/blob/master/text/3514-float-semantics.md )
+// Instead, we ensure an uninterpreted function about the result,
+// which can be used to trigger user-supplied axioms.
+#[verusfmt::skip]
+
+pub uninterp spec fn neg_ensures<A>(x: A, o: A) -> bool;
+
+pub uninterp spec fn add_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn sub_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn mul_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub uninterp spec fn div_ensures<A>(x: A, y: A, o: A) -> bool;
+
+pub assume_specification[ <f32 as core::ops::Neg>::neg ](x: f32) -> (o: f32)
+    ensures
+        neg_ensures::<f32>(x, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Add>::add ](x: f32, y: f32) -> (o: f32)
+    ensures
+        add_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Sub>::sub ](x: f32, y: f32) -> (o: f32)
+    ensures
+        sub_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Mul>::mul ](x: f32, y: f32) -> (o: f32)
+    ensures
+        mul_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f32 as core::ops::Div>::div ](x: f32, y: f32) -> (o: f32)
+    ensures
+        div_ensures::<f32>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Neg>::neg ](x: f64) -> (o: f64)
+    ensures
+        neg_ensures::<f64>(x, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Add>::add ](x: f64, y: f64) -> (o: f64)
+    ensures
+        add_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Sub>::sub ](x: f64, y: f64) -> (o: f64)
+    ensures
+        sub_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Mul>::mul ](x: f64, y: f64) -> (o: f64)
+    ensures
+        mul_ensures::<f64>(x, y, o),
+;
+
+pub assume_specification[ <f64 as core::ops::Div>::div ](x: f64, y: f64) -> (o: f64)
+    ensures
+        div_ensures::<f64>(x, y, o),
+;
+
+} // verus!

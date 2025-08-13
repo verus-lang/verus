@@ -125,6 +125,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
+        MonoTypX::Float(n) => Arc::new(format!("f{}", n)),
         MonoTypX::Datatype(dt, typs) => {
             return crate::def::monotyp_apply(
                 &encode_dt_as_path(dt),
@@ -152,8 +153,9 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
-        TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
+        TypX::Int(_) => int_typ(),
+        TypX::Float(_) => int_typ(),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
@@ -233,6 +235,10 @@ pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id_sized(range_to_id(range)),
+        MonoTypX::Float(n) => {
+            let bits = Constant::Nat(Arc::new(n.to_string()));
+            mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
+        }
         MonoTypX::Datatype(dt, typs) => {
             let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
@@ -325,6 +331,10 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id_sized(range_to_id(range)),
+        TypX::Float(n) => {
+            let bits = Constant::Nat(Arc::new(n.to_string()));
+            mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
+        }
         TypX::SpecFn(typs, typ) => mk_id_sized(fun_id(ctx, typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -501,6 +511,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
+        TypX::Float(range) => {
+            Some(apply_range_fun(&crate::def::U_INV, &IntRange::U(*range), vec![expr.clone()]))
+        }
         TypX::SpecFn(..) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
@@ -584,6 +597,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Float(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
@@ -618,6 +632,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Float(_) => Some(str_ident(crate::def::UNBOX_INT)),
         TypX::Datatype(dt, _, _) => {
             if ctx.datatype_is_transparent[dt] {
                 Some(prefix_unbox(&encode_dt_as_path(dt)))
@@ -701,6 +716,8 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
         }
+        crate::ast::Constant::Float32(c) => mk_nat(c),
+        crate::ast::Constant::Float64(c) => mk_nat(c),
     }
 }
 
@@ -993,6 +1010,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
+            UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }

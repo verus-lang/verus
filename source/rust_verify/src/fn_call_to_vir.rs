@@ -698,6 +698,36 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ),
                 }
             }
+            ExprItem::F32ToBits => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                match &expr.kind {
+                    ExprKind::Call(_, args) => {
+                        assert!(args.len() == 1);
+                        let arg0 = args.first().unwrap();
+                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
+                            .expect("internal compiler error");
+                        mk_expr(ExprX::Unary(UnaryOp::FloatToBits, arg0))
+                    }
+                    _ => panic!(
+                        "Expected a call for verus_builtin::f32_to_bits with one argument but did not receive it"
+                    ),
+                }
+            }
+            ExprItem::F64ToBits => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                match &expr.kind {
+                    ExprKind::Call(_, args) => {
+                        assert!(args.len() == 1);
+                        let arg0 = args.first().unwrap();
+                        let arg0 = expr_to_vir_consume(bctx, arg0, ExprModifier::REGULAR)
+                            .expect("internal compiler error");
+                        mk_expr(ExprX::Unary(UnaryOp::FloatToBits, arg0))
+                    }
+                    _ => panic!(
+                        "Expected a call for verus_builtin::f64_to_bits with one argument but did not receive it"
+                    ),
+                }
+            }
             ExprItem::StrSliceLen => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 match &expr.kind {

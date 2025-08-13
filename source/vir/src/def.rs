@@ -161,6 +161,7 @@ pub const TYPE_ID_USIZE: &str = "USIZE";
 pub const TYPE_ID_ISIZE: &str = "ISIZE";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
+pub const TYPE_ID_FLOAT: &str = "FLOAT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";

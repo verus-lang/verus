@@ -136,6 +136,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
+        (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
@@ -189,6 +190,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
+        (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
@@ -860,6 +862,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::Char) => "char".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Float(n) => format!("f{n}"),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),

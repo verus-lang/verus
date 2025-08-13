@@ -371,6 +371,8 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
+                Constant::Float32(c) => (format!("'{}'", c), 99),
+                Constant::Float64(c) => (format!("'{}'", c), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
@@ -431,6 +433,9 @@ impl ExpX {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
+                UnaryOp::FloatToBits => {
+                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
