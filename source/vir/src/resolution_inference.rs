@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::modes::ReadKindFinals;
-use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped};
+use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern};
 use std::collections::{VecDeque, HashMap};
 use crate::messages::AstId;
 use crate::ast_visitor::VisitorScopeMap;
@@ -398,13 +398,41 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
         match &stmt.x {
             StmtX::Expr(e) => {
-                self.build(e, bb)
+                self.build(e, bb)?;
+                Ok(bb)
             }
             StmtX::Decl { pattern: _, mode: _, init: None, els: None } => {
                 // do nothing
+                Ok(bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: _, els: _ } => {
-                let bb = self.build(
+            StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
+                let (fp, bb) = self.build_place(init, bb)?;
+                if let Some(fp) = fp {
+                    let moved_places = moves_for_place_being_matched(pattern, &fp);
+                    for fpt in moved_places.into_iter() {
+                        let fp = self.locals.add_place(fpt, false);
+                        self.push_instruction(bb, 
+                            AstPosition::After(init.span.id),
+                            InstructionKind::MoveFrom(fp),
+                        );
+                    }
+                }
+                for (name, typ) in all_var_idents_bound_in_pattern(pattern).into_iter() {
+                    let fpt = FlattenedPlaceTyped {
+                        local: name,
+                        typ: typ,
+                        projections: vec![],
+                    };
+                    let fp = self.locals.add_place(fpt, false);
+                    self.push_instruction(
+                        bb,
+                        AstPosition::After(stmt.span.id),
+                        InstructionKind::Overwrite(fp)
+                    );
+                }
+                Ok(bb)
+            }
+            StmtX::Decl { pattern: _, mode: _, init: _, els: Some(_) } => {
                 todo!()
             }
         }
@@ -444,6 +472,18 @@ impl<'a> Builder<'a> {
         todo!()
     }
 }
+
+////// Patterns
+
+fn moves_for_place_being_matched(pattern: &Pattern, fp: &FlattenedPlace) -> Vec<FlattenedPlaceTyped>
+{
+    todo!()
+}
+
+fn all_var_idents_bound_in_pattern(pattern: &Pattern) -> Vec<(VarIdent, Typ)> {
+    todo!()
+}
+
 
 ////// Place trees
 
@@ -1014,6 +1054,7 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         &mut VisitorScopeMap::new(),
         &mut id_map,
         &|id_map, scope_map, expr: &Expr| {
+            // TODO(new_mut_ref) handle statements
             if let Some((befores, afters, seen_yet)) = id_map.get_mut(&expr.span.id) {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
