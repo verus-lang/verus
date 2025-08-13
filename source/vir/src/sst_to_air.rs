@@ -2530,13 +2530,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let fun_ctx = ctx.fun.as_ref().unwrap();
                 let current_function = &ctx.func_map[&fun_ctx.current_fun];
                 let reporter = air::messages::Reporter {};
+                let exec_with_no_termination_check = current_function.x.mode
+                    == crate::ast::Mode::Exec
+                    && (current_function.x.attrs.exec_allows_no_decreases_clause
+                        || current_function.x.attrs.exec_assume_termination);
+
                 match crate::recursion::check_termination_stm(
                     ctx,
                     &reporter,
                     current_function,
                     None,
                     body,
-                    false,
+                    exec_with_no_termination_check,
                 ) {
                     Ok((_, body_with_termination_checks)) => body_with_termination_checks,
                     Err(_e) => body.clone(),
