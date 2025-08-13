@@ -1748,6 +1748,9 @@ fn check_expr_handle_mut_arg(
         ExprX::ReadPlace(place, _read_type) => {
             Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
         }
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
+            panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+        }
     };
     Ok((mode?, None))
 }
@@ -1817,6 +1820,7 @@ fn check_function(
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
+    new_mut_ref: bool,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
     record.type_inv_info =
@@ -2000,12 +2004,21 @@ fn check_function(
         record.infer_spec_for_loop_iter_modes = None;
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+            let functionx = &mut Arc::make_mut(&mut *function).x;
             crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                &mut Arc::make_mut(&mut *function).x,
+                functionx,
                 &record.type_inv_info,
                 &ctxt.funs,
                 &ctxt.datatypes,
             )?;
+            if new_mut_ref {
+                if functionx.body.is_some() {
+                    functionx.body = Some(crate::resolution_inference::infer_resolution(
+                        &functionx.params,
+                        functionx.body.as_ref().unwrap(),
+                        &record.read_kind_finals));
+                }
+            }
         }
     }
     drop(fun_typing);
@@ -2014,7 +2027,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
+pub fn check_crate(krate: &Krate, new_mut_ref: bool) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -2060,10 +2073,10 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
         ctxt.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
             typing.atomic_insts.as_ref().expect("atomic_insts").validate(&function.span, true)?;
         } else {
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
         }
     }
     Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))

@@ -9,6 +9,12 @@ use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use std::sync::Arc;
 
+pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
+    let cfg = new_cfg(params, body, read_kind_finals);
+    let resolutions = get_resolutions(&cfg);
+    apply_resolutions(&cfg, body, resolutions)
+}
+
 enum PlaceTree {
     Leaf(Typ),
     Struct(Typ, Vec<PlaceTree>),
@@ -84,12 +90,6 @@ struct CFG {
 struct ResolutionToInsert {
     place: FlattenedPlace,
     position: AstPosition,
-}
-
-pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
-    let cfg = new_cfg(params, body, read_kind_finals);
-    let resolutions = get_resolutions(&cfg);
-    apply_resolutions(&cfg, body, resolutions)
 }
 
 ////// CFG builder
@@ -315,6 +315,7 @@ impl<'a> Builder<'a> {
                 todo!()
             }
             ExprX::Loop { loop_isolation: _, is_for_loop: _, label, cond, body, invs: _, decrease: _ } => {
+                // TODO the loop should uninitialize everything scoped inside the loop block
                 todo!()
             }
             ExprX::OpenInvariant(e1, _, e2, _) => {
@@ -388,6 +389,9 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
+            ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
+                panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
+            }
         }
     }
 
@@ -396,7 +400,11 @@ impl<'a> Builder<'a> {
             StmtX::Expr(e) => {
                 self.build(e, bb)
             }
+            StmtX::Decl { pattern: _, mode: _, init: None, els: None } => {
+                // do nothing
+            }
             StmtX::Decl { pattern: _, mode: _, init: _, els: _ } => {
+                let bb = self.build(
                 todo!()
             }
         }
@@ -1061,5 +1069,23 @@ fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {
 }
 
 fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
-    todo!()
+    if after_exprs.len() == 0 {
+        return expr;
+    }
+    let e = if after_exprs.len() == 1 {
+        after_exprs[0].clone()
+    } else {
+        let mut stmts = vec![];
+        for e in after_exprs.into_iter() {
+            stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+        }
+        SpannedTyped::new(
+            &expr.span,
+            &crate::ast_util::unit_typ(),
+            ExprX::Block(Arc::new(stmts), None))
+    };
+    SpannedTyped::new(
+        &expr.span,
+        &expr.typ,
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(expr.clone(), e))
 }

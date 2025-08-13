@@ -2449,6 +2449,16 @@ pub(crate) fn expr_to_stm_opt(
             let expr = place_to_expr(place);
             expr_to_stm_opt(ctx, state, &expr)
         }
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+            let (mut stms, exp1) = expr_to_stm_opt(ctx, state, e1)?;
+            let exp1 = unwrap_or_return_never!(exp1, stms);
+
+            let (mut stms2, exp2) = expr_to_stm_opt(ctx, state, e2)?;
+            let _exp2 = unwrap_or_return_never!(exp2, stms);
+
+            stms.append(&mut stms2);
+            Ok((stms, ReturnValue::Some(exp1)))
+        }
     }
 }
 
