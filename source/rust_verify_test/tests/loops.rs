@@ -1480,3 +1480,21 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop_spec_fn_decrease verus_code! {
+        spec fn f(x: u32) -> u32 { x }
+
+        fn test(x: u32)
+            decreases f(x)
+        {
+            let mut y = x;
+            while x > 0 && y > 0
+                decreases y,
+            {
+                test(x - 1);
+                y = y - 1;
+            }
+        }
+    } => Ok(())
+}
