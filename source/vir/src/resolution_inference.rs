@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use crate::modes::ReadKindFinals;
-use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern, TypX, FieldOpr, Dt, Path, Datatype};
+use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern, TypX, FieldOpr, Dt, Path, Datatype, PatternX};
 use crate::ast_util::pattern_all_bound_vars;
 use crate::sst_util::subst_typ_for_datatype;
 use std::collections::{VecDeque, HashMap};
@@ -41,25 +41,26 @@ enum ProjectionTyped {
     DerefMut(Typ),
 }
 
+#[derive(Clone)]
 struct FlattenedPlaceTyped {
     local: VarIdent,
     typ: Typ,
     projections: Vec<ProjectionTyped>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Projection {
     StructField(usize),
     DerefMut,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FlattenedPlace {
     local: usize,
     projections: Vec<Projection>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum AstPosition {
     Before(AstId),
     After(AstId),
@@ -96,6 +97,7 @@ struct CFG<'a> {
     locals: LocalCollection<'a>,
 }
 
+#[derive(Debug)]
 struct ResolutionToInsert {
     place: FlattenedPlace,
     position: AstPosition,
@@ -421,7 +423,7 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
-                let (fp, bb) = self.build_place(init, bb)?;
+                let (fp, bb) = self.build_place_typed(init, bb)?;
                 if let Some(fp) = fp {
                     let moved_places = moves_for_place_being_matched(pattern, &fp);
                     for fpt in moved_places.into_iter() {
@@ -454,7 +456,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_place(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlace>, BBIndex), ()> {
-        let r = self.build_place_rec(place, bb);
+        let r = self.build_place_typed(place, bb);
         match r {
             Ok((Some(fpi), bb)) => {
                 let sp = self.locals.add_place(fpi, false);
@@ -465,10 +467,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build_place_rec(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceTyped>, BBIndex), ()> {
+    fn build_place_typed(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceTyped>, BBIndex), ()> {
         match &place.x {
             PlaceX::Field(field_opr, p) => {
-                match self.build_place_rec(p, bb) {
+                match self.build_place_typed(p, bb) {
                     Ok((Some(mut fpt), bb)) => {
                         fpt.projections.push(ProjectionTyped::StructField(field_opr.clone(), place.typ.clone()));
                         Ok((Some(fpt), bb))
@@ -478,7 +480,7 @@ impl<'a> Builder<'a> {
                 }
             }
             PlaceX::DerefMut(p) => {
-                match self.build_place_rec(p, bb) {
+                match self.build_place_typed(p, bb) {
                     Ok((Some(mut fpt), bb)) => {
                         fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
                         Ok((Some(fpt), bb))
@@ -509,9 +511,43 @@ impl<'a> Builder<'a> {
 
 ////// Patterns
 
-fn moves_for_place_being_matched(pattern: &Pattern, fp: &FlattenedPlace) -> Vec<FlattenedPlaceTyped>
-{
-    todo!()
+fn moves_for_place_being_matched(pattern: &Pattern, fpt: &FlattenedPlaceTyped) -> Vec<FlattenedPlaceTyped> {
+    // TODO(new_mut_ref) need to account for pattern-ergonomics
+    let mut res: Vec<FlattenedPlaceTyped> = vec![];
+    for mut projs in moves_for_pattern(pattern).into_iter() {
+        let mut f = fpt.clone();
+        f.projections.append(&mut projs);
+        res.push(f);
+    }
+    res
+}
+
+fn moves_for_pattern(pattern: &Pattern) -> Vec<Vec<ProjectionTyped>> {
+    fn moves_for_pattern_rec(
+        pattern: &Pattern,
+        projs: &mut Vec<ProjectionTyped>,
+        out: &mut Vec<Vec<ProjectionTyped>>)
+    {
+        match &pattern.x {
+            PatternX::Wildcard(_) => {}
+            PatternX::Var { name: _, mutable: _ } => {
+                out.push(projs.clone());
+            }
+            PatternX::Binding { name, mutable, sub_pat: _ } => {
+                out.push(projs.clone());
+                // no need to descend, already moving the whole thing
+            }
+            PatternX::Constructor(dt, variant, patterns) => {
+                todo!();
+            }
+            PatternX::Or(_, _) => todo!(),
+            PatternX::Expr(..) | PatternX::Range(..) => { }
+        }
+    }
+
+    let mut out = vec![];
+    moves_for_pattern_rec(pattern, &mut vec![], &mut out);
+    out
 }
 
 ////// Place trees
@@ -1198,7 +1234,6 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         &mut VisitorScopeMap::new(),
         &mut id_map,
         &|id_map, scope_map, expr: &Expr| {
-            // TODO(new_mut_ref) handle statements
             if let Some((befores, afters, seen_yet)) = id_map.get_mut(&expr.span.id) {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
@@ -1216,7 +1251,35 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 Ok(expr.clone())
             }
         },
-        &|_, _, s| Ok(vec![s.clone()]),
+        &|id_map, scope_map, stmt| {
+            if let Some((befores, afters, seen_yet)) = id_map.get_mut(&stmt.span.id) {
+                if *seen_yet {
+                    panic!("Verus internal error: duplicate AstId");
+                }
+                *seen_yet = true;
+
+                let befores_exprs = filter_and_make_assumes(cfg, &stmt.span, scope_map, befores);
+
+                scope_map.push_scope(true);
+                match &stmt.x {
+                    StmtX::Expr(_) => {}
+                    StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                        use crate::ast_visitor::Scoper;
+                        scope_map.insert_pattern_bindings(pattern, init.is_some());
+                    }
+                }
+                let afters_exprs = filter_and_make_assumes(cfg, &stmt.span, scope_map, afters);
+                scope_map.pop_scope();
+
+                let mut v = exprs_to_stmts(befores_exprs);
+                v.push(stmt.clone());
+                v.append(&mut exprs_to_stmts(afters_exprs));
+
+                Ok(v)
+            } else {
+                Ok(vec![stmt.clone()])
+            }
+        },
         &|_, t| Ok(t.clone()),
         &|_, _, p| Ok(p.clone()),
     ).unwrap()
@@ -1239,6 +1302,12 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
     let e = SpannedTyped::new(&ast_place.span, &ast_place.typ, ExprX::ReadPlace(ast_place.clone(), UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX }));
     SpannedTyped::new(&ast_place.span, &crate::ast_util::unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
+}
+
+fn exprs_to_stmts(exprs: Vec<Expr>) -> Vec<Stmt> {
+    exprs.into_iter().map(|e| {
+        Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))
+    }).collect()
 }
 
 fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {
