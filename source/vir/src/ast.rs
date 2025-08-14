@@ -982,6 +982,7 @@ pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
+    /// TODO(mut_refs): Decide: is this only for single-variant structs?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),

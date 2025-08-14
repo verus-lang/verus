@@ -2,22 +2,24 @@
 #![allow(dead_code)]
 
 use crate::modes::ReadKindFinals;
-use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern};
+use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern, TypX, FieldOpr, Dt, Path, Datatype};
+use crate::ast_util::pattern_all_bound_vars;
+use crate::sst_util::subst_typ_for_datatype;
 use std::collections::{VecDeque, HashMap};
-use crate::messages::AstId;
+use crate::messages::{Span, AstId};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use std::sync::Arc;
 
-pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> Expr {
-    let cfg = new_cfg(params, body, read_kind_finals);
+pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals, datatypes: &HashMap<Path, Datatype>) -> Expr {
+    let cfg = new_cfg(params, body, read_kind_finals, datatypes);
     let resolutions = get_resolutions(&cfg);
     apply_resolutions(&cfg, body, resolutions)
 }
 
 enum PlaceTree {
     Leaf(Typ),
-    Struct(Typ, Vec<PlaceTree>),
+    Struct(Typ, Dt, Vec<PlaceTree>),
     MutRef(Typ, Box<PlaceTree>),
 }
 
@@ -27,21 +29,28 @@ struct Local {
     tree: PlaceTree,
 }
 
-struct LocalCollection {
+struct LocalCollection<'a> {
     locals: Vec<Local>,
     ident_to_idx: HashMap<VarIdent, usize>,
+    datatypes: &'a HashMap<Path, Datatype>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Projection {
-    StructField(usize),
-    MutDeref,
+#[derive(Clone)]
+enum ProjectionTyped {
+    StructField(FieldOpr, Typ),
+    DerefMut(Typ),
 }
 
 struct FlattenedPlaceTyped {
     local: VarIdent,
     typ: Typ,
-    projections: Vec<Projection>,
+    projections: Vec<ProjectionTyped>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Projection {
+    StructField(usize),
+    DerefMut,
 }
 
 #[derive(Clone)]
@@ -58,7 +67,7 @@ enum AstPosition {
 
 struct Instruction {
     kind: InstructionKind,
-    position: AstPosition,
+    post_instruction_position: AstPosition,
 }
 
 enum InstructionKind {
@@ -82,9 +91,9 @@ struct BasicBlock {
     position_of_start: AstPosition,
 }
 
-struct CFG {
+struct CFG<'a> {
     basic_blocks: Vec<BasicBlock>,
-    locals: LocalCollection,
+    locals: LocalCollection<'a>,
 }
 
 struct ResolutionToInsert {
@@ -97,8 +106,9 @@ struct ResolutionToInsert {
 struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
     loops: Vec<LoopEntry>,
-    locals: LocalCollection,
+    locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
+    datatypes: &'a HashMap<Path, Datatype>,
 }
 
 struct LoopEntry {
@@ -107,15 +117,17 @@ struct LoopEntry {
     continue_bb: BBIndex,
 }
 
-fn new_cfg(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals) -> CFG {
+fn new_cfg<'a>(params: &Params, body: &Expr, read_kind_finals: &'a ReadKindFinals, datatypes: &'a HashMap<Path, Datatype>) -> CFG<'a> {
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
+            datatypes,
         },
         read_kind_finals,
+        datatypes,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
@@ -169,10 +181,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn push_instruction(&mut self, bb: BBIndex, pos: AstPosition, instr: InstructionKind) {
+    fn push_instruction(&mut self, bb: BBIndex, post_instruction_position: AstPosition, instr: InstructionKind) {
         self.basic_blocks[bb].instructions.push(Instruction {
             kind: instr,
-            position: pos
+            post_instruction_position,
         });
     }
 
@@ -224,6 +236,8 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             ExprX::Call(_ct, es) => {
+                // TODO(new_mut_ref): do we need to consider unwinding? (I think so)
+              
                 // can skip the expression in ct, it can only be for FnSpec which is always
                 // a pure spec expression
                 for e in es.iter() {
@@ -291,6 +305,7 @@ impl<'a> Builder<'a> {
                 bb = self.build(e, bb)?;
                 Ok(bb)
             }
+            // TODO(new_mut_ref) list out the binary ops explicitly
             ExprX::Binary(_, e1, e2) | ExprX::BinaryOpr(_, e1, e2) => {
                 bb = self.build(e1, bb)?;
                 bb = self.build(e2, bb)?;
@@ -417,10 +432,10 @@ impl<'a> Builder<'a> {
                         );
                     }
                 }
-                for (name, typ) in all_var_idents_bound_in_pattern(pattern).into_iter() {
+                for bound_var in pattern_all_bound_vars(pattern).into_iter() {
                     let fpt = FlattenedPlaceTyped {
-                        local: name,
-                        typ: typ,
+                        local: bound_var.name,
+                        typ: bound_var.typ,
                         projections: vec![],
                     };
                     let fp = self.locals.add_place(fpt, false);
@@ -453,17 +468,36 @@ impl<'a> Builder<'a> {
     fn build_place_rec(&mut self, place: &Place, bb: BBIndex) -> Result<(Option<FlattenedPlaceTyped>, BBIndex), ()> {
         match &place.x {
             PlaceX::Field(field_opr, p) => {
-                todo!()
+                match self.build_place_rec(p, bb) {
+                    Ok((Some(mut fpt), bb)) => {
+                        fpt.projections.push(ProjectionTyped::StructField(field_opr.clone(), place.typ.clone()));
+                        Ok((Some(fpt), bb))
+                    }
+                    Ok((None, bb)) => Ok((None, bb)),
+                    Err(()) => Err(()),
+                }
             }
             PlaceX::DerefMut(p) => {
-                todo!()
+                match self.build_place_rec(p, bb) {
+                    Ok((Some(mut fpt), bb)) => {
+                        fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
+                        Ok((Some(fpt), bb))
+                    }
+                    Ok((None, bb)) => Ok((None, bb)),
+                    Err(()) => Err(()),
+                }
             }
             PlaceX::Local(var) => {
-                todo!()
+                let fpt = FlattenedPlaceTyped {
+                    local: var.clone(),
+                    typ: place.typ.clone(),
+                    projections: vec![],
+                };
+                Ok((Some(fpt), bb))
             }
             PlaceX::Temporary(e) => {
-                let b = self.build(e, bb)?;
-                Ok((None, b))
+                let bb = self.build(e, bb)?;
+                Ok((None, bb))
             }
         }
     }
@@ -480,14 +514,9 @@ fn moves_for_place_being_matched(pattern: &Pattern, fp: &FlattenedPlace) -> Vec<
     todo!()
 }
 
-fn all_var_idents_bound_in_pattern(pattern: &Pattern) -> Vec<(VarIdent, Typ)> {
-    todo!()
-}
-
-
 ////// Place trees
 
-impl LocalCollection {
+impl<'a> LocalCollection<'a> {
     fn add_param(&mut self, p: &Param) {
         todo!();
     }
@@ -499,44 +528,132 @@ impl LocalCollection {
         }
         let idx = self.ident_to_idx[&p.local];
 
-        Self::extend_tree(&mut self.locals[idx].tree, &p.projections);
+        let projections = Self::extend_tree(&mut self.locals[idx].tree, &p.projections, &self.datatypes);
 
-        FlattenedPlace { local: idx, projections: p.projections }
+        FlattenedPlace { local: idx, projections: projections }
     }
 
-    fn extend_tree(tree: &mut PlaceTree, projections: &[Projection]) {
-        if projections.len() == 0 {
-            return;
-        }
-
-        if matches!(tree, PlaceTree::Leaf(_)) {
-            todo!();
-        }
-
-        match &projections[0] {
-            Projection::StructField(field_idx) => {
-                match tree {
-                    PlaceTree::Leaf(_) => unreachable!(),
-                    PlaceTree::Struct(_, subtrees) => {
-                        Self::extend_tree(&mut subtrees[*field_idx], &projections[1..]);
+    fn extend_tree(tree: &mut PlaceTree, projections: &[ProjectionTyped], datatypes: &HashMap<Path, Datatype>) -> Vec<Projection> {
+        let mut tree: &mut PlaceTree = tree;
+        let mut output_projections: Vec<Projection> = vec![];
+        for projection_typed in projections.iter() {
+            if let PlaceTree::Leaf(typ) = tree {
+                // TODO(new_mut_ref) need to strip off Box decorations
+                match &**typ {
+                    TypX::MutRef(inner_typ) => {
+                        *tree = PlaceTree::MutRef(typ.clone(), Box::new(PlaceTree::Leaf(inner_typ.clone())));
                     }
-                    PlaceTree::MutRef(..) => {
-                        panic!("Verus internal error: extend_tree failed, conflicting projection type");
+                    TypX::Datatype(dt, typ_args, _) => {
+                        match dt {
+                            Dt::Tuple(n) => {
+                                *tree = PlaceTree::Struct(
+                                    typ.clone(),
+                                    dt.clone(),
+                                    (0 .. *n).map(|i| PlaceTree::Leaf(typ_args[i].clone())).collect()
+                                );
+                            }
+                            Dt::Path(path) => {
+                                let datatype = &datatypes[path];
+                                assert!(datatype.x.variants.len() == 1);
+                                let variant = &datatype.x.variants[0];
+                                let fields = variant.fields.iter().map(|f| {
+                                    PlaceTree::Leaf(subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &f.a.0))
+                                }).collect();
+                                *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
+                            }
+                        }
+                    }
+                    _ => todo!(),
+                }
+            }
+
+            let projection = match projection_typed {
+                ProjectionTyped::StructField(field_opr, typ) => {
+                    Projection::StructField(field_opr_to_index(field_opr, datatypes))
+                }
+                ProjectionTyped::DerefMut(_typ) => {
+                    Projection::DerefMut
+                }
+            };
+            output_projections.push(projection);
+
+            match &projection {
+                Projection::StructField(field_idx) => {
+                    match tree {
+                        PlaceTree::Leaf(_) => unreachable!(),
+                        PlaceTree::Struct(_, _, subtrees) => {
+                            tree = &mut subtrees[*field_idx];
+                        }
+                        PlaceTree::MutRef(..) => {
+                            panic!("Verus internal error: extend_tree failed, conflicting projection type");
+                        }
+                    }
+                }
+                Projection::DerefMut => {
+                    match tree {
+                        PlaceTree::Leaf(_) => unreachable!(),
+                        PlaceTree::Struct(..) => {
+                            panic!("Verus internal error: extend_tree failed, conflicting projection type");
+                        }
+                        PlaceTree::MutRef(_, inner) => {
+                            tree = &mut *inner;
+                        }
                     }
                 }
             }
-            Projection::MutDeref => {
-                match tree {
-                    PlaceTree::Leaf(_) => unreachable!(),
-                    PlaceTree::Struct(..) => {
-                        panic!("Verus internal error: extend_tree failed, conflicting projection type");
-                    }
-                    PlaceTree::MutRef(_, inner) => {
-                        Self::extend_tree(&mut *inner, &projections[1..]);
-                    }
+        }
+        output_projections
+    }
+
+    fn to_ast_place(&self, span: &Span, fp: &FlattenedPlace) -> Place {
+        let mut ast_place = SpannedTyped::new(
+            span,
+            self.locals[fp.local].tree.typ(),
+            PlaceX::Local(self.locals[fp.local].name.clone()),
+        );
+        let mut tree = &self.locals[fp.local].tree;
+        for projection in fp.projections.iter() {
+            match projection {
+                Projection::StructField(idx) => {
+                    let (dt, inner_trees) = match tree {
+                        PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
+                        _ => unreachable!(),
+                    };
+                    let inner_tree = &inner_trees[*idx];
+                    let field_opr = match dt {
+                        Dt::Tuple(n) => crate::ast_util::mk_tuple_field_opr(*n, *idx),
+                        Dt::Path(path) => {
+                            let datatype = &self.datatypes[path];
+                            assert!(datatype.x.variants.len() == 1);
+                            let variant = &datatype.x.variants[0];
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.name.clone(),
+                                field: variant.fields[*idx].name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            }
+                        }
+                    };
+                    ast_place = SpannedTyped::new(
+                        span,
+                        inner_tree.typ(),
+                        PlaceX::Field(field_opr, ast_place));
+                }
+                Projection::DerefMut => {
+                    let inner_tree = match tree {
+                        PlaceTree::MutRef(ty, tr) => tr,
+                        _ => unreachable!(),
+                    };
+                    ast_place = SpannedTyped::new(
+                        span,
+                        inner_tree.typ(),
+                        PlaceX::DerefMut(ast_place));
+                    tree = &inner_tree;
                 }
             }
         }
+        ast_place
     }
 
     fn places_skip_insides_of_mut_refs(&self) -> Vec<FlattenedPlace> {
@@ -563,7 +680,7 @@ impl LocalCollection {
             PlaceTree::Leaf(_t) => {
                 output.push(cur.clone());
             }
-            PlaceTree::Struct(_t, children) => {
+            PlaceTree::Struct(_t, _, children) => {
                 for (f, child) in children.iter().enumerate() {
                     cur.projections.push(Projection::StructField(f));
                     Self::traverse_rec(child, cur, output, go_inside_muts);
@@ -573,11 +690,38 @@ impl LocalCollection {
             PlaceTree::MutRef(_t, child) => {
                 output.push(cur.clone());
                 if go_inside_muts {
-                    cur.projections.push(Projection::MutDeref);
+                    cur.projections.push(Projection::DerefMut);
                     Self::traverse_rec(child, cur, output, go_inside_muts);
                     cur.projections.pop();
                 }
             }
+        }
+    }
+
+}
+
+fn field_opr_to_index(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> usize {
+    match &field_opr.datatype {
+        Dt::Tuple(n) => {
+            let p = field_opr.field.parse::<usize>().unwrap();
+            assert!(p < *n);
+            p
+        }
+        Dt::Path(path) => {
+            let datatype = &datatypes[path];
+            assert!(datatype.x.variants.len() == 1);
+            let variant = &datatype.x.variants[0];
+            variant.fields.iter().position(|f| f.name == field_opr.field).unwrap()
+        }
+    }
+}
+
+impl PlaceTree {
+    fn typ(&self) -> &Typ {
+        match self {
+            PlaceTree::Leaf(t) => t,
+            PlaceTree::Struct(t, _, _) => t,
+            PlaceTree::MutRef(t, _) => t,
         }
     }
 }
@@ -601,11 +745,11 @@ impl FlattenedPlace {
     fn contains_and_not_separated_by_deref(&self, other: &Self) -> bool {
         self.contains(other)
             && (self.projections.len() .. other.projections.len())
-                .all(|i| !matches!(other.projections[i], Projection::MutDeref))
+                .all(|i| !matches!(other.projections[i], Projection::DerefMut))
     }
 
     fn has_deref(&self) -> bool {
-        self.projections.iter().any(|p| matches!(p, Projection::MutDeref))
+        self.projections.iter().any(|p| matches!(p, Projection::DerefMut))
     }
 
     fn value_may_change(&self, instr: &Instruction) -> bool {
@@ -1019,7 +1163,7 @@ fn get_resolutions_for_place(
                         position: if i == 0 {
                             cfg.basic_blocks[bb].position_of_start
                         } else {
-                            cfg.basic_blocks[bb].instructions[i - 1].position
+                            cfg.basic_blocks[bb].instructions[i - 1].post_instruction_position
                         }
                     });
                 }
@@ -1061,8 +1205,8 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 }
                 *seen_yet = true;
 
-                let befores_exprs = filter_and_make_assumes(cfg, scope_map, befores);
-                let afters_exprs = filter_and_make_assumes(cfg, scope_map, afters);
+                let befores_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, befores);
+                let afters_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, afters);
 
                 let mut e = expr.clone();
                 e = apply_before_exprs(e, befores_exprs);
@@ -1078,21 +1222,23 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
     ).unwrap()
 }
 
-fn filter_and_make_assumes(cfg: &CFG, scope_map: &VisitorScopeMap, v: &Vec<FlattenedPlace>)
+fn filter_and_make_assumes(cfg: &CFG, span: &Span, scope_map: &VisitorScopeMap, v: &Vec<FlattenedPlace>)
     -> Vec<Expr>
 {
     v.iter().filter_map(|fp| {
         let name = &cfg.locals.locals[fp.local].name;
         if scope_map.contains_key(name) {
-            Some(make_assume(cfg, fp))
+            Some(make_assume(cfg, span, fp))
         } else {
             None
         }
     }).collect()
 }
 
-fn make_assume(cfg: &CFG, fp: &FlattenedPlace) -> Expr {
-    todo!()
+fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
+    let ast_place = cfg.locals.to_ast_place(span, fp);
+    let e = SpannedTyped::new(&ast_place.span, &ast_place.typ, ExprX::ReadPlace(ast_place.clone(), UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX }));
+    SpannedTyped::new(&ast_place.span, &crate::ast_util::unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
 }
 
 fn apply_before_exprs(expr: Expr, before_exprs: Vec<Expr>) -> Expr {

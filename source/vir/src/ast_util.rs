@@ -6,6 +6,7 @@ use crate::ast::{
     PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
     TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
     Variant, Variants, Visibility,
+    Pattern, PatternX,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1339,4 +1340,42 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
+}
+
+pub struct PatternBoundVar {
+    pub name: VarIdent,
+    pub mutable: bool,
+    pub typ: Typ,
+}
+
+pub fn pattern_all_bound_vars(pattern: &Pattern) -> Vec<PatternBoundVar> {
+    fn pattern_all_bound_vars_rec(pattern: &Pattern, out: &mut Vec<PatternBoundVar>) {
+        match &pattern.x {
+            PatternX::Wildcard(_) => {}
+            PatternX::Var { name, mutable } | PatternX::Binding { name, mutable, sub_pat: _ } => {
+                out.push(PatternBoundVar { name: name.clone(), mutable: *mutable, typ: pattern.typ.clone() });
+
+                match &pattern.x {
+                    PatternX::Binding { sub_pat, .. } => {
+                        pattern_all_bound_vars_rec(sub_pat, out);
+                    }
+                    _ => {}
+                }
+            }
+            PatternX::Constructor(_path, _variant, patterns) => {
+                for binder in patterns.iter() {
+                    pattern_all_bound_vars_rec(&binder.a, out);
+                }
+            }
+            PatternX::Or(pat1, _pat2) => {
+                pattern_all_bound_vars_rec(&pat1, out);
+            }
+            PatternX::Expr(_) => {}
+            PatternX::Range(_, _) => {}
+        }
+    }
+
+    let mut v = vec![];
+    pattern_all_bound_vars_rec(pattern, &mut v);
+    v
 }

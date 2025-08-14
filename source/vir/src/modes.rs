@@ -2016,7 +2016,9 @@ fn check_function(
                     functionx.body = Some(crate::resolution_inference::infer_resolution(
                         &functionx.params,
                         functionx.body.as_ref().unwrap(),
-                        &record.read_kind_finals));
+                        &record.read_kind_finals,
+                        &ctxt.datatypes,
+                        ));
                 }
             }
         }
