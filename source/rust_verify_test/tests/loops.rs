@@ -1498,3 +1498,105 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop1 verus_code! {
+        use vstd::prelude::*;
+
+        fn test1(x: usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            for i in 0..1
+                invariant x >= 1,
+            {
+                test1(x - 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop2 verus_code! {
+        fn test1 (x:usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i:usize = 0;
+            while i < 10
+                invariant x >= 1,
+                decreases 10 - i,
+            {
+                test1(x - 1);
+                let mut j:usize = 0;
+                while j * 2 < 5
+                    invariant x >= 1, j <= 4,
+                    decreases 4 - j,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop3 verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1 (x:usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i:usize = 0;
+            while i < 10
+                decreases 10 - i,
+            {
+                test1(x - 1);
+                let mut j:usize = 0;
+                while j * 2 < 5
+                    invariant j <= 4,
+                    decreases 4 - j,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_call_in_loop4 ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
+        fn test1 (x:usize)
+            decreases x,
+        {
+            if x == 0 {
+                return;
+            }
+            let mut i:usize = 0;
+            while i < 10
+            {
+                test1(x - 1);
+                let mut j:usize = 0;
+                while j * 2 < 5
+                    invariant j <= 4,
+                {
+                    test1(x - 1);
+                    j = j + 1;
+                }
+                i = i + 1;
+            }
+        }
+    } => Ok(_err) => {/* allow decreases checks warnings */ }
+}
