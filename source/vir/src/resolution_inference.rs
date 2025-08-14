@@ -1,5 +1,5 @@
 #![allow(unused_variables)] // TODO remove
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO remove
 
 use crate::modes::ReadKindFinals;
 use crate::ast::{Expr, Place, Params, Param, ExprX, ReadKind, Typ, VarIdent, BinaryOp, PlaceX, UnfinalizedReadKind, Stmt, StmtX, SpannedTyped, Pattern, TypX, FieldOpr, Dt, Path, Datatype, PatternX};
@@ -13,16 +13,19 @@ use std::sync::Arc;
 
 pub(crate) fn infer_resolution(params: &Params, body: &Expr, read_kind_finals: &ReadKindFinals, datatypes: &HashMap<Path, Datatype>) -> Expr {
     let cfg = new_cfg(params, body, read_kind_finals, datatypes);
+    //println!("{:}", pretty_cfg(&cfg));
     let resolutions = get_resolutions(&cfg);
     apply_resolutions(&cfg, body, resolutions)
 }
 
+#[derive(Debug)]
 enum PlaceTree {
     Leaf(Typ),
     Struct(Typ, Dt, Vec<PlaceTree>),
     MutRef(Typ, Box<PlaceTree>),
 }
 
+#[derive(Debug)]
 struct Local {
     name: VarIdent,
     is_param: bool,
@@ -110,7 +113,6 @@ struct Builder<'a> {
     loops: Vec<LoopEntry>,
     locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
-    datatypes: &'a HashMap<Path, Datatype>,
 }
 
 struct LoopEntry {
@@ -129,7 +131,6 @@ fn new_cfg<'a>(params: &Params, body: &Expr, read_kind_finals: &'a ReadKindFinal
             datatypes,
         },
         read_kind_finals,
-        datatypes,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
@@ -389,7 +390,7 @@ impl<'a> Builder<'a> {
             ExprX::ReadPlace(p, unfinal_read_kind) => {
                 let (p, bb) = self.build_place(p, bb)?;
                 if let Some(p) = p {
-                    if matches!(self.get_read_kind(unfinal_read_kind), ReadKind::Move) {
+                    if self.is_move(unfinal_read_kind) {
                         self.push_instruction(bb,
                             AstPosition::After(span_id),
                             InstructionKind::MoveFrom(p));
@@ -504,8 +505,13 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_read_kind(&self, unfinal_read_kind: &UnfinalizedReadKind) -> ReadKind {
-        todo!()
+    fn is_move(&self, unfinal_read_kind: &UnfinalizedReadKind) -> bool {
+        match &unfinal_read_kind.preliminary_kind {
+            ReadKind::Move => {
+                matches!(self.read_kind_finals[&unfinal_read_kind.id], ReadKind::Move)
+            }
+            _ => false
+        }
     }
 }
 
@@ -675,6 +681,7 @@ impl<'a> LocalCollection<'a> {
                         span,
                         inner_tree.typ(),
                         PlaceX::Field(field_opr, ast_place));
+                    tree = &inner_tree;
                 }
                 Projection::DerefMut => {
                     let inner_tree = match tree {
@@ -829,12 +836,16 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
 
     let mut worklist = VecDeque::<BBIndex>::new();
     let mut in_worklist = vec![false; cfg.basic_blocks.len()];
+    let mut has_run_yet = vec![false; cfg.basic_blocks.len()];
 
     match dir {
         Direction::Forward => {
             output.output[0][0] = entry_or_exit.clone();
-            worklist.push_back(0);
-            in_worklist[0] = true;
+
+            for i in 0 .. cfg.basic_blocks.len() {
+                worklist.push_back(i);
+                in_worklist[i] = true;
+            }
 
             loop {
                 let Some(bb) = worklist.pop_front() else { break; };
@@ -843,10 +854,11 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
                 let new_value = join_predecessors(&output, &cfg, bb, &empty, &entry_or_exit);
                 let slot = &mut output.output[bb][0];
 
-                if *slot != new_value {
+                if !has_run_yet[bb] || *slot != new_value {
                     *slot = new_value;
                     transfer_forward(&mut output.output[bb], &cfg.basic_blocks[bb].instructions, c);
                 }
+                has_run_yet[bb] = true;
                 for bb1 in cfg.basic_blocks[bb].successors.iter() {
                     if !in_worklist[*bb1] {
                         worklist.push_back(*bb1);
@@ -856,12 +868,12 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
             }
         }
         Direction::Reverse => {
-            for i in 0 .. cfg.basic_blocks.len() {
+            for i in (0 .. cfg.basic_blocks.len()).rev() {
                 if cfg.basic_blocks[i].is_exit {
                     *output.output[i].last_mut().unwrap() = entry_or_exit.clone();
-                    worklist.push_back(i);
-                    in_worklist[i] = true;
                 }
+                worklist.push_back(i);
+                in_worklist[i] = true;
             }
 
             while worklist.len() > 0 {
@@ -871,10 +883,11 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(cfg: &CFG, empty: D, entry_or_exit
                 let new_value = join_successors(&output, &cfg, bb, &empty, &entry_or_exit);
                 let slot = output.output[bb].last_mut().unwrap();
 
-                if *slot != new_value {
+                if !has_run_yet[bb] || *slot != new_value {
                     *slot = new_value;
                     transfer_reverse(&mut output.output[bb], &cfg.basic_blocks[bb].instructions, c);
                 }
+                has_run_yet[bb] = true;
                 for bb1 in cfg.basic_blocks[bb].predecessors.iter() {
                     if !in_worklist[*bb1] {
                         worklist.push_back(*bb1);
@@ -958,58 +971,102 @@ fn transfer_reverse<D: DataflowState>(
     }
 }
 
+////// CFG debugging
 
+fn pretty_cfg(cfg: &CFG) -> String {
+    format!("Locals:\n{:}\nCFG:\n{:}",
+        pretty_locals(&cfg.locals),
+        pretty_basic_blocks(&cfg, |_, _| None),
+    )
+}
 
-/*
-impl<D: DataflowState> DataflowState for Rc<Vec<D>> {
-    fn join(&self, b: &Self) -> Self {
-        Rc::new(self.iter().zip(b.iter()).map(|(a, b)| a.join(b)).collect::<Vec<_>>())
+fn pretty_locals(locals: &LocalCollection) -> String {
+    format!("{:#?}", &locals.locals)
+}
+
+fn pretty_basics_blocks_with_dataflow<D: std::fmt::Debug>(cfg: &CFG, output: &DataflowOutput<D>) -> String {
+    pretty_basic_blocks(cfg, |i, j| Some(format!("{:?}", output.output[i][j])))
+}
+
+fn pretty_basics_blocks_with_dataflow2<D: std::fmt::Debug, E: std::fmt::Debug>(cfg: &CFG, output: &DataflowOutput<D>, output2: &DataflowOutput<E>) -> String {
+    pretty_basic_blocks(cfg, |i, j| Some(format!("{:?}; {:?}", output.output[i][j], output2.output[i][j])))
+}
+
+fn pretty_basic_blocks(cfg: &CFG, intersperse_fn: impl Fn(BBIndex, usize) -> Option<String>) -> String {
+    let mut v = vec![];
+    for (i, bb) in cfg.basic_blocks.iter().enumerate() {
+        v.push(format!("BasicBlock {:}:\n", i));
+        v.push(format!("    Predecessors: {:?}\n", &pretty_bb_list(&bb.predecessors)));
+        v.push(format!("    (always_add_resolution_at_start = {:?})\n", bb.always_add_resolution_at_start));
+        v.push("    ----\n".to_string());
+        for (j, instr) in bb.instructions.iter().enumerate() {
+            match intersperse_fn(i, j) {
+                Some(s) => { v.push(format!("    // {:}\n", s)); }
+                None => { }
+            }
+            v.push(format!("    {:}\n", pretty_instr(&cfg.locals, instr)));
+        }
+        match intersperse_fn(i, bb.instructions.len()) {
+            Some(s) => { v.push(format!("    // {:}\n", s)); }
+            None => { }
+        }
+        v.push("    ----\n".to_string());
+        v.push(format!("    Successors: {:?}\n", &pretty_bb_list(&bb.successors)));
+        v.push(format!("    is_exit = {:}\n", bb.is_exit));
+        v.push("\n".to_string());
     }
+    v.join("")
+}
 
-    fn transfer(&self, instr: &Instruction) -> Self {
-        let idx = match instr {
-            Instruction::MoveFrom(p) => p.local,
-            Instruction::AssignTo(p) => p.local,
+fn pretty_bb_list(l: &Vec<BBIndex>) -> String {
+    l.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ")
+}
+
+fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
+    use InstructionKind::*;
+    match &instr.kind {
+        MoveFrom(fp) => format!("MoveFrom({:})", pretty_flattened_place(locals, fp)),
+        Overwrite(fp) => format!("Overwrite({:})", pretty_flattened_place(locals, fp)),
+        Mutate(fp) => format!("Mutate({:})", pretty_flattened_place(locals, fp)),
+    }
+}
+
+fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> String {
+    let mut s: String = (*locals.locals[fp.local].name.0).clone();
+    let mut tree: &PlaceTree = &locals.locals[fp.local].tree;
+    for proj in fp.projections.iter() {
+        let (x, t) = match proj {
+            Projection::DerefMut => {
+                let inner_tree: &PlaceTree = match tree {
+                    PlaceTree::MutRef(_, t) => &**t,
+                    _ => unreachable!(),
+                };
+                (".*".to_string(), inner_tree)
+            }
+            Projection::StructField(idx) => {
+                let (dt, inner_tree) = match tree {
+                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*idx]),
+                    _ => unreachable!()
+                };
+                let x = match dt {
+                    Dt::Tuple(_) => { format!(".{:}", idx) }
+                    Dt::Path(p) => {
+                        let datatype = &locals.datatypes[p];
+                        format!(".{:}", datatype.x.variants[0].fields[*idx].name)
+                    }
+                };
+                (x, inner_tree)
+            }
         };
-        let v: Vec<D> = (**self).clone();
-        v[idx] = v[idx].transfer(instr);
-        Rc::new(v)
+        s += &x;
+        tree = t;
     }
+    s
 }
 
 ////// Analysis: Initialization
 
-struct InitializationPossibilities {
-    can_be_uninit: bool,
-    can_be_init: bool,
-}
-
-impl DataflowState for InitializationPossibilities {
-    fn join(&self, b: &Self) -> Self {
-        InitializationPossibilities {
-            can_be_uninit: self.can_be_uninit || b.can_be_uninit,
-            can_be_init: self.can_be_init || b.can_be_init,
-        }
-    }
-
-    fn transfer(&self, instr: &Instruction) -> Self {
-        match instr {
-            Instruction::MoveFrom(p) => {
-                InitializationPossibilities {
-                    can_be_init: false,
-                    can_be_uninit: 
-                }
-            }
-            Instruction::AssignTo(p) => {
-            }
-        }
-    }
-}
-*/
-
-////// Analysis: Initialization
-
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct InitializationPossibilities {
     can_be_uninit: bool,
     can_be_init: bool,
@@ -1073,7 +1130,7 @@ impl InitializationPossibilities {
 
 ////// Analysis: Resolve
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct ResolveSafety {
     can_resolve: bool,
 }
@@ -1157,6 +1214,9 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         while !initialization_places[i_idx].contains(&resolve_places[i_idx]) {
             i_idx += 1;
         }
+
+        //println!("{:}\n", pretty_flattened_place(&cfg.locals, &resolve_places[r_idx]));
+        //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
         // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
         // TODO(new_mut_ref): need to account for drops
