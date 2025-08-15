@@ -1,3 +1,46 @@
+/*!
+This is the algorithm for computing the "resolution points" for mutable references,
+i.e., the points where we resolve the prophecy ("future") variable in a mutable reference
+to equal the "current" value.
+
+The first important thing to understand about resolution is that it has nothing to do with
+the *lifetimes*. Resolution is safe for any value *as long as that value will never be
+mutated again*. In fact, it is crucial that this can happen before the end of a lifetime.
+Consider:
+
+fn example<'a>(pair: &'a mut (u64, u64) -> &'a mut u64 {
+    &mut (*pair).0
+}
+
+Note that the lifetime clearly extends beyond the end of the function, but we will
+always resolve `pair` at the end of the function. This might be surprising because
+we are returning a mutable reference that is derived (via reborrow) from the input reference.
+However, it remains the case that this is a DIFFERENT value. The input reference `pair`
+is still resolved at the end of the function.
+
+We effectively elaborate this example to look like this:
+
+fn example<'a>(pair: &'a mut (u64, u64) -> &'a mut u64 {
+    let return_value = &mut (*pair).0;    // mutates `pair`
+    // resolve `pair` here
+    return return_value;                  // moves `return_value`
+}
+
+We can resolve `pair` at line 2 because `pair` is never moved or mutated after that point.
+The `return_value` however, IS moved at the end, so we don't resolve that one.
+
+Furthermore, if we had a postcondition like
+`ensures mut_ref_future(return_value) == mut_ref_future(pair).0`
+then the resolution would be key to proving this property.
+
+So again: we can determine the resolve points of a given owned value by looking at
+that value in isolation, without considering global lifetime analysis.
+
+### The analysis
+
+
+*/
+
 #![allow(unused_variables)] // TODO remove
 #![allow(dead_code)] // TODO remove
 
