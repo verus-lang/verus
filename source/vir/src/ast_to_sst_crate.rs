@@ -59,6 +59,7 @@ pub fn ast_to_sst_krate(
     let krate_sst = Arc::new(KrateSstX {
         functions,
         datatypes: krate.datatypes.clone(),
+        opaque_types: krate.opaque_types.clone(),
         traits: krate.traits.clone(),
         trait_impls: krate.trait_impls.clone(),
         assoc_type_impls: krate.assoc_type_impls.clone(),

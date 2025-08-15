@@ -335,6 +335,18 @@ pub(crate) fn translate_trait<'tcx>(
             TraitItemKind::Fn(sig, fun) => {
                 // putting param_names here ensures that Vec in TraitFn::Required case below lives long enough
                 let param_names;
+                // for now disable opaque types in traits
+                if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
+                    match ty.kind {
+                        rustc_hir::TyKind::OpaqueDef(..) => {
+                            return err_span(
+                                *span,
+                                format!("Verus does not yet support Opaque types in trait def"),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
                 let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(

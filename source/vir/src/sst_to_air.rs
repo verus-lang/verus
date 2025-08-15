@@ -193,6 +193,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
         TypX::MutRef(_) => str_typ(POLY),
+        TypX::Opaque { .. } => str_typ(POLY),
     }
 }
 
@@ -410,6 +411,21 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
         )),
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::Opaque { def_path, args } => {
+            if args.len() != 0 {
+                let mut e_args = Vec::new();
+                for arg in args.iter() {
+                    e_args.extend(typ_to_ids(ctx, arg));
+                }
+                let self_dcr = ident_apply(&crate::def::prefix_dcr_id(def_path), &e_args);
+                let self_type = ident_apply(&crate::def::prefix_type_id(def_path), &e_args);
+                vec![self_dcr, self_type]
+            } else {
+                let self_dcr = str_var(&crate::def::prefix_dcr_id(def_path));
+                let self_type = str_var(&crate::def::prefix_type_id(def_path));
+                vec![self_dcr, self_type]
+            }
+        }
     }
 }
 
@@ -563,6 +579,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             None
         }
         TypX::FnDef(..) => None,
+        TypX::Opaque { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::MutRef(_) => Some(expr_has_typ(ctx, expr, typ)),
     }
 }
@@ -619,6 +636,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
         TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -654,6 +672,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
         TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -1995,9 +2014,48 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // Set `dest_id` variable to the returned expression.
 
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
-                    let ret_exp =
-                        ret_exp.as_ref().expect("if dest is provided, expr must be provided");
-                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
+                    let (is_in_opaque_func, ret_op) = ctx
+                        .fun
+                        .as_ref()
+                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
+                        .map_or((false, None), |fun| {
+                            (
+                                matches!(fun.x.ret.x.typ.as_ref(), TypX::Opaque { .. }),
+                                Some(fun.x.ret.clone()),
+                            )
+                        });
+
+                    let ret_exp = if is_in_opaque_func {
+                        &crate::poly::coerce_exp_to_poly(
+                            ctx,
+                            ret_exp.as_ref().expect("if dest is provided, expr must be provided"),
+                        )
+                    } else {
+                        ret_exp.as_ref().expect("if dest is provided, expr must be provided")
+                    };
+
+                    let mut stmts =
+                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
+                    if is_in_opaque_func {
+                        let ret = ret_op.as_ref().expect("opaque function has no return type");
+                        let ret_expr_typs = typ_to_ids(&ret_exp.typ);
+                        let ret_value_typs = typ_to_ids(&ret.x.typ);
+                        let decr = ExprX::Binary(
+                            air::ast::BinaryOp::Eq,
+                            ret_expr_typs[0].clone(),
+                            ret_value_typs[0].clone(),
+                        );
+                        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
+                        let typ = ExprX::Binary(
+                            air::ast::BinaryOp::Eq,
+                            ret_expr_typs[1].clone(),
+                            ret_value_typs[1].clone(),
+                        );
+                        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
+                        stmts.push(assume_decr);
+                        stmts.push(assume_typ);
+                    }
+                    stmts
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that
