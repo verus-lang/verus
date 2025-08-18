@@ -613,17 +613,6 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
-                        // // for now, we disable function that returns opaque type and has an ensure clasue
-                        // // this will be supported in the future updates
-
-                        // if Self::check_tokens_opaque(ty.to_token_stream()) {
-                        //     let err =
-                        //         "function with opaque type does not yet support ensure clause";
-                        //     let expr =
-                        //         Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                        //     spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
-                        // }
-
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
                                 *expr = Expr::Verbatim(

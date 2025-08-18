@@ -4,7 +4,7 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Opaquetype, Path,
+    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Opaquetype, Path, Place,
     RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
