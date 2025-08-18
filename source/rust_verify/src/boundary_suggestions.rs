@@ -309,6 +309,10 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     Ok((ctxt.spanned_new(ctxt.tcx.def_span(external_def_id), function_x), suggestion_text))
 }
 
+/// A called external item may have anonymous early-bound lifetimes.
+/// These must be made explicit for the assume_specification/other declaration.
+/// The RegionRenamer generates fresh lifetime names for anonymous early bound regions
+/// and implements TypeFoldable in order to make the mapping and apply it.
 fn build_region_renamer<'tcx>(
     ctxt: &Arc<crate::context::ContextX<'tcx>>,
     external_def_id: DefId,
@@ -338,7 +342,6 @@ fn build_where_clauses<'tcx>(
     inst_predicates: InstantiatedPredicates<'tcx>,
     mut unsized_type_params: BTreeSet<rustc_span::Symbol>,
 ) -> Result<Vec<String>, VirErr> {
-    // let type_param_predicate_map: BTreeMap<rustc_span::Symbol, Vec<String>> = BTreeMap::new();
     let mut where_clauses: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let string_clauses = inst_predicates.iter().filter_map(|(pred_clause, _)| {
         match pred_clause.kind().skip_binder() {
@@ -354,6 +357,7 @@ fn build_where_clauses<'tcx>(
                         .expect("Arg of Sized should be a type");
                     match arg.kind() {
                         rustc_type_ir::TyKind::Param(param_ty) => {
+                            // If we have a Sized bound for a type param, we do not need a ?Sized bound.
                             unsized_type_params.remove(&param_ty.name);
                             None
                         }
@@ -368,7 +372,6 @@ fn build_where_clauses<'tcx>(
                         }
                     }
                 } else {
-                    // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                     // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                     let trait_ref = trait_predicate.trait_ref;
                     if ctxt.tcx.is_fn_trait(trait_ref.def_id) {
@@ -403,15 +406,15 @@ fn build_where_clauses<'tcx>(
                 None // Some((outlives_predicate.0.to_string(), outlives_predicate.1.to_string()))
             }
             rustc_type_ir::ClauseKind::Projection(projection_predicate) => {
-                // println!("Projection {:?}", projection_predicate);
                 let (trait_ref, proj_term_args) =
                     projection_predicate.projection_term.trait_ref_and_own_args(ctxt.tcx);
                 let projected_item_id = projection_predicate.projection_term.def_id;
                 // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                 // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                 if ctxt.tcx.is_fn_trait(trait_ref.def_id) {
+                    // The args of a Fn trait are implicitly wrapped in a Tuple
                     let mut args_tuple_ty_str = trait_ref.args[1].to_string().split_off(1);
-                    args_tuple_ty_str.pop(); // remove trailing paren
+                    args_tuple_ty_str.pop(); // remove starting paren (above) and trailing paren
                     Some((
                         projection_predicate.self_ty().to_string(),
                         format!(
