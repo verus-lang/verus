@@ -536,7 +536,7 @@ where
                     }
                     _ => Ok(()),
                 },
-                &mut |(_, _)| (),
+                &mut |_| (),
             )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {

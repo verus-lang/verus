@@ -12,6 +12,7 @@ use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::scope_map::ScopeMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub(crate) trait Scoper {
@@ -1021,7 +1022,7 @@ where
     ast_visitor_check_with_scope_map(expr, &mut scope_map, fe, fs, fp, ft, fpl, emit_diag)
 }
 
-struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit> {
+struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit, Diag> {
     fe: &'a mut FE,
     fs: &'a mut FS,
     fp: &'a mut FP,
@@ -1031,17 +1032,18 @@ struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit> {
     // Since types don't have spans, keep track of the best span as we descend
     most_specific_span: Span,
     emit_diag: &'a mut Emit,
+    _diag_marker: PhantomData<Diag>,
 }
 
-impl<'a, FE, FS, FP, FT, FPL, T, Emit> AstVisitor<Walk, T, VisitorScopeMap>
-    for WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit>
+impl<'a, FE, FS, FP, FT, FPL, T, Emit, Diag> AstVisitor<Walk, T, VisitorScopeMap>
+    for WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit, Diag>
 where
     FE: FnMut(&mut VisitorScopeMap, &Expr, &mut Emit) -> VisitorControlFlow<T>,
     FS: FnMut(&mut VisitorScopeMap, &Stmt, &mut Emit) -> VisitorControlFlow<T>,
     FP: FnMut(&mut VisitorScopeMap, &Pattern, &mut Emit) -> VisitorControlFlow<T>,
     FT: FnMut(&mut VisitorScopeMap, &Typ, &Span, &mut Emit) -> VisitorControlFlow<T>,
     FPL: FnMut(&mut VisitorScopeMap, &Place, &mut Emit) -> VisitorControlFlow<T>,
-    Emit: FnMut((Option<String>, crate::ast::VirErrAs)) -> (),
+    Emit: FnMut(Diag) -> (),
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
         match (self.ft)(self.map, typ, &self.most_specific_span, &mut self.emit_diag) {
@@ -1092,7 +1094,7 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL, Emit>(
+pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL, Emit, Diag>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     fe: &mut FE,
@@ -1108,7 +1110,7 @@ where
     FP: FnMut(&mut VisitorScopeMap, &Pattern, &mut Emit) -> VisitorControlFlow<T>,
     FT: FnMut(&mut VisitorScopeMap, &Typ, &Span, &mut Emit) -> VisitorControlFlow<T>,
     FPL: FnMut(&mut VisitorScopeMap, &Place, &mut Emit) -> VisitorControlFlow<T>,
-    Emit: FnMut((Option<String>, crate::ast::VirErrAs)) -> (),
+    Emit: FnMut(Diag) -> (),
 {
     let mut vis = WalkAstVisitor {
         fe,
@@ -1119,6 +1121,7 @@ where
         map,
         most_specific_span: expr.span.clone(),
         emit_diag,
+        _diag_marker: PhantomData,
     };
     match vis.visit_expr(expr) {
         Ok(()) => VisitorControlFlow::Recurse,

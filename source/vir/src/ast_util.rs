@@ -767,7 +767,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
             }
             Ok(())
         },
-        &mut |(_, _)| (),
+        &mut |_| (),
     )
     .expect("referenced_vars_expr");
     vars.into_inner()
