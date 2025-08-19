@@ -125,9 +125,13 @@ pub trait Iter where Self: Sized {
     // History of calls to next/next_back made so far
     spec fn events(&self) -> Events<Self::Item>;
 
+    // Allows an iterator to declare that it has completed
+    spec fn done(&self) -> bool;
+
     spec fn inv(&self) -> bool;
 
     spec fn reaches(&self, dest: Self) -> bool;
+
 
     proof fn reaches_reflexive(&self)
         requires
@@ -160,6 +164,9 @@ pub trait Iter where Self: Sized {
         ensures
             self.inv(),
             old(self).reaches(*self),
+            // This is weaker than might be expected, since some iterators can still
+            // return Some after returning None
+            r.is_none() ==> self.done(),
             self.events() == old(self).events().push(Event::new(Operation::Next, r)),
             self.events().last().v == r,    // REVIEW: Derivable from prev. line, but helps triggering by introducing spec_index on self.events()
         ;
@@ -176,6 +183,7 @@ pub trait DoubleEndedIter: Iter {
         ensures
             self.inv(),
             old(self).reaches(*self),
+            r.is_none() ==> self.done(),
             self.events() == old(self).events().push(Event::new(Operation::NextBack, r)),
             self.events().last().v == r,    // REVIEW: Derivable from prev. line, but helps triggering by introducing spec_index on self.events()
         ;
@@ -284,6 +292,10 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         self.events@
     }
 
+    open spec fn done(&self) -> bool {
+        self.pos == self.pos_back
+    }
+
     open spec fn inv(&self) -> bool {
         // The two positions are in bounds and don't pass each other
         &&& 0 <= self.pos <= self.pos_back <= self.vec@.len()
@@ -320,6 +332,9 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
             ||| self.events().next_back_count() == self.vec@.len() - self.pos_back && self.pos < self.pos_back
             ||| self.events().next_back_count() >= self.vec@.len() - self.pos_back && self.pos == self.pos_back
         }
+        // Implications of done()
+        //&&& self.done() ==> self.events().len() >= self.vec@.len() + 1
+        &&& self.events().len() >= self.pos + (self.vec@.len() - self.pos_back) == self.vec@.len()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -409,6 +424,10 @@ impl<T: Iter> Iter for Take3<T> {
         )
     }
 
+    open spec fn done(&self) -> bool {
+        self.count >= 3 || self.inner.done()
+    }
+
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
         &&& 0 <= self.start_pos@
@@ -486,6 +505,10 @@ impl<T: Iter> Iter for Skip3<T> {
             Events::empty()
         }
     }
+    
+    open spec fn done(&self) -> bool {
+        self.inner.done()
+    }
 
     open spec fn inv(&self) -> bool {
         &&& self.inner.inv()
@@ -557,6 +580,10 @@ impl<T: DoubleEndedIter> Iter for Rev<T> {
             };
             Event::new(op, e.v)
         })
+    }
+
+    open spec fn done(&self) -> bool {
+        self.inner.done()
     }
 
     open spec fn inv(&self) -> bool {
@@ -942,27 +969,41 @@ fn all_true_simpler<I: Iter<Item=bool>>(iter: &mut I) -> (r: bool)
         iter.events().all_next(),
         old(iter).reaches(*iter),   // Need this so we learn that: iter.vec@ == v@
         ({
-            &&& iter.events().last().v is None
-            &&& r == forall |i| 0 <= i < iter.events().len() - 1 ==> (#[trigger]iter.events().output(i) matches Some(b) && b)
+            //&&& iter.events().last().v is None
+            &&& iter.done()
+            &&& r == (forall |i| 0 <= i < iter.events().len() - 1 ==> (#[trigger]iter.events().output(i) matches Some(b) && b))
+            &&& forall |i| 0 <= i < iter.events().len() - 1 ==> (#[trigger]iter.events()[i].op is Next)
         }),
 {
     // TODO
     assume(false);
     true
 }
-/*
+
 fn all_true_simpler_caller(v: &MyVec<bool>)
 {
     let mut iter = v.iter();
+    assert(iter.pos_back - iter.pos == v@.len());
     let b = all_true_simpler(&mut iter);
     proof {
-        assert(iter.events().len() == v@.len() + 1);
+        assert(iter.pos == iter.pos_back);
+        assert(iter.pos_back == v@.len());
+        assert(iter.events().next_back_count() == 0);
+        assert(iter.events().next_count() >= v@.len());
+
+        //assert(iter.pos_back - iter.pos == v@.len());
+        assert(iter.events().len() >= v@.len());
+        assert(iter.events().len() - 1 >= v@.len() - 1);
+        assert(v@.len() - 1 <= iter.events().len() - 1);
+        //assert(iter.events().len() == v@.len());
         if b {
-            assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
+            assert forall |i| 0 <= i < v@.len() implies v@[i] by {
+                assert(i < iter.events().len() - 1 ==> (iter.events().output(i) matches Some(b) && b));
+                assert(i < v@.len() ==> (iter.events().output(i) matches Some(b) && b));
+            };
         }
     }
 }
-*/
 
 fn test_rev_next_seq(v: &MyVec<u8>)
     requires
