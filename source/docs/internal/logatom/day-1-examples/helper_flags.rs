@@ -37,6 +37,7 @@ impl FlagTracker {
                     continue;
                 } else {
                     self.channel.store(0, Ordering::SeqCst);
+                    return;
                 }
             }
         }

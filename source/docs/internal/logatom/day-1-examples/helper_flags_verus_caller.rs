@@ -1,6 +1,6 @@
 use vstd::prelude::*;
 
-verus!{
+verus! {
 
 //// Specification of FlagTracker as atomic operations
 
@@ -11,7 +11,7 @@ ghost struct FlagTrackerAbstractState {
 impl FlagTrackerAbstractState {
     spec fn new() -> FlagTrackerAbstractState {
         FlagTrackerAbstractState {
-            flag: false,
+            flag: false
         }
     }
 
@@ -19,16 +19,12 @@ impl FlagTrackerAbstractState {
         self.flag
     }
 
-    spec fn flip(self) -> FlagTrackerAbstractState
-    {
+    spec fn flip(self) -> FlagTrackerAbstractState {
         FlagTrackerAbstractState {
             flag: !self.flag,
         }
     }
 }
-
-}
-
 
 pub struct FlagTracker { /* ... */ }
 
@@ -37,9 +33,9 @@ pub tracked struct FlagToken { /* ... */ }
 impl FlagTracker {
     pub fn new() -> (res: (Self, FlagToken))
        ensures ({
-          let (flag_tracker, token) = res;
-              flag_tracker.id() == token.id()
-              && token.state() == FlagTrackerAbstractState::new(),
+            let (flag_tracker, token) = res;
+            &&& flag_tracker.id() == token.id()
+            &&& token.state() == FlagTrackerAbstractState::new(),
        });
 
     pub fn get(&self) -> (f: bool)
@@ -56,14 +52,12 @@ impl FlagTracker {
             ensures tok.id() == self.id(),
                 tok.state() == old(tok).state().flip()
         };
-
+}
 
 fn thread(flag: FlagTracker, ai: FlagAtomicInvariant) {
-
     open_atomic_invariant!(ai => flagt => {
         flag.flip() with (&mut flagt);
     })
-
 }
 
 fn main() {
@@ -80,8 +74,6 @@ fn main() {
     b.join();
 
     let y = flag.get() with (&flagt); // return false
-
 }
 
-
-
+} // verus!

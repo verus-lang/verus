@@ -678,6 +678,7 @@ pub struct AtomicUpdate<X, Y, Pred> {
 
 pub trait UpdatePredicate<X, Y> {
     spec fn req(self, x: X) -> bool;
+
     spec fn ens(self, x: X, y: Y) -> bool;
 }
 
@@ -695,7 +696,7 @@ impl<X, Y> UpdatePredicate<X, Y> for () {
 #[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
 #[doc(hidden)]
 #[verifier::external_body]
-pub fn atomically<X, Y, P>(_f: impl FnOnce(fn(X) -> Y)) -> AtomicUpdate<X, Y, P> {
+pub fn atomically<X, Y, P>(_f: impl FnOnce(fn (X) -> Y)) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }
 
