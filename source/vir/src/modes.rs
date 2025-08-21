@@ -1507,7 +1507,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(final_mode)
         }
-        ExprX::Loop { cond, body, invs, .. } => {
+        ExprX::Loop { cond, body, invs, decrease, loop_isolation: _, is_for_loop: _, label: _ } => {
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
@@ -1524,6 +1524,11 @@ fn check_expr_handle_mut_arg(
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 let mut typing = typing.push_allow_prophecy_dependence(true);
                 check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, &inv.inv, Mode::Spec)?;
+            }
+            for dec in decrease.iter() {
+                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_allow_prophecy_dependence(false);
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, dec, Mode::Spec)?;
             }
             Ok(Mode::Exec)
         }
@@ -1907,7 +1912,7 @@ fn check_function(
 
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
-        let mut dec_typing = dec_typing.push_allow_prophecy_dependence(true);
+        let mut dec_typing = dec_typing.push_allow_prophecy_dependence(false);
         check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     if let Some(mask_spec) = &function.x.mask_spec {
