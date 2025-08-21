@@ -67,7 +67,6 @@ fn check_item<'tcx>(
 
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
         let def_id = body_id.hir_id.owner.to_def_id();
-        let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
         }
@@ -150,8 +149,7 @@ fn check_item<'tcx>(
 
             return Ok(());
         }
-        if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
-        {
+        if vattrs.structural_const_wrapper {
             ctxt.erasure_info
                 .borrow_mut()
                 .ignored_functions
