@@ -612,14 +612,16 @@ pub(crate) fn handle_external_fn<'tcx>(
     Ok((external_path, external_item_visibility, kind, has_self_parameter, safety))
 }
 
-fn get_substs_early<'tcx>(
+pub(crate) fn get_substs_early<'tcx>(
     ty: rustc_middle::ty::Ty<'tcx>,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
     match ty.kind() {
-        rustc_middle::ty::FnDef(_, substs) => Ok(substs),
+        // The following TyKind Variants have a I::GenericArgs of early-bound generic arguments:
+        // Adt, FnDef, Coroutine, Closure, CoroutineClosure, CoroutineWitness
+        rustc_middle::ty::Adt(_, substs) | rustc_middle::ty::FnDef(_, substs) => Ok(substs),
         _ => {
-            crate::internal_err!(span, "expected FnDef")
+            crate::internal_err!(span, "expected Adt or FnDef")
         }
     }
 }
@@ -1861,7 +1863,6 @@ pub(crate) fn predicates_match<'tcx>(
     // So they have to be equal.
     //
     // Regardless, it makes sense to keep this as a sanity check.
-
     let preds1 = preds1.iter().map(|p| tcx.anonymize_bound_vars(p.kind()));
     let mut preds2: Vec<_> = preds2.iter().map(|p| tcx.anonymize_bound_vars(p.kind())).collect();
 

@@ -6,6 +6,10 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::boundary_suggestions::{
+    build_const_assume_specification_suggestion, build_fn_assume_specification_suggestion,
+    build_proxy_declaration,
+};
 use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
@@ -487,38 +491,79 @@ pub fn crate_to_vir<'a, 'tcx>(
             }
             VerifOrExternal::External { path: Some(my_path), path_string: _, explicit: _ } => {
                 // If possible, track this item in the VIR Krate for diagnostic purposes
-                let (is_fn, is_datatype) = match crate_item.id {
+                // If a suggestion for a proxy can be built, store that,
+                // Otherwise store the error message.
+                let (fn_suggestion, dt_suggestion) = match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let i = ctxt.tcx.hir_item(item_id);
                         match i.kind {
-                            ItemKind::Fn { .. } | ItemKind::Const(..) => (true, false),
-                            ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..) => {
-                                (false, true)
+                            ItemKind::Fn { .. } => (
+                                Some(build_fn_assume_specification_suggestion(
+                                    ctxt,
+                                    i.hir_id().expect_owner().to_def_id(),
+                                    my_path.clone(),
+                                )),
+                                None,
+                            ),
+                            ItemKind::Const(ident, _ty, generics, ..) => (
+                                Some(build_const_assume_specification_suggestion(
+                                    ctxt,
+                                    i.hir_id().expect_owner().to_def_id(),
+                                    ident,
+                                    my_path.clone(),
+                                    generics,
+                                )),
+                                None,
+                            ),
+                            ItemKind::Struct(_id, _, generics)
+                            | ItemKind::Enum(_id, _, generics)
+                            | ItemKind::Union(_id, _, generics) => {
+                                let suggestion = build_proxy_declaration(
+                                    ctxt,
+                                    my_path,
+                                    i.hir_id().expect_owner().to_def_id(),
+                                    generics,
+                                );
+                                (None, Some(suggestion))
                             }
-                            _ => (false, false),
+                            _ => (None, None),
                         }
                     }
                     GeneralItemId::ForeignItemId(foreign_item_id) => {
                         let i = ctxt.tcx.hir_foreign_item(foreign_item_id);
                         match i.kind {
-                            ForeignItemKind::Fn(..) => (true, false),
-                            _ => (false, false),
+                            ForeignItemKind::Fn(..) => (
+                                Some(build_fn_assume_specification_suggestion(
+                                    ctxt,
+                                    i.hir_id().expect_owner().to_def_id(),
+                                    my_path.clone(),
+                                )),
+                                None,
+                            ),
+                            _ => (None, None),
                         }
                     }
                     GeneralItemId::ImplItemId(impl_item_id) => {
                         let i = ctxt.tcx.hir_impl_item(impl_item_id);
                         match i.kind {
-                            ImplItemKind::Fn(..) => (true, false),
-                            _ => (false, false),
+                            ImplItemKind::Fn(..) => (
+                                Some(build_fn_assume_specification_suggestion(
+                                    ctxt,
+                                    i.hir_id().expect_owner().to_def_id(),
+                                    my_path.clone(),
+                                )),
+                                None,
+                            ),
+                            _ => (None, None),
                         }
                     }
-                    GeneralItemId::TraitItemId(_trait_item_id) => (false, false),
+                    GeneralItemId::TraitItemId(_trait_item_id) => (None, None),
                 };
-                if is_fn {
-                    vir.external_fns.push(Arc::new(FunX { path: my_path.clone() }));
-                }
-                if is_datatype {
-                    vir.external_types.push(my_path.clone());
+                if let Some(fn_suggestion_res) = fn_suggestion {
+                    vir.external_fns
+                        .push((Arc::new(FunX { path: my_path.clone() }), fn_suggestion_res));
+                } else if let Some(dt_suggestion) = dt_suggestion {
+                    vir.external_types.push((my_path.clone(), dt_suggestion));
                 }
             }
             VerifOrExternal::External { path: None, path_string: _, explicit: _ } => {}
@@ -536,5 +581,27 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
 
+    // This iterates through every resolved call in the crate and checks if the call is to
+    // an external fn that has no suggestion.
+    // Ideally we would check in vir creation walk whether we need a suggestion.
+    for (_, _, call) in &ctxt.erasure_info.borrow().resolved_calls {
+        match call {
+            crate::erase::ResolvedCall::Call(_, resolved_name, target_did, _) => {
+                if vir.functions.iter().find(|f| f.x.name == *resolved_name).is_none()
+                    && vir.external_fns.iter().find(|f| f.0 == *resolved_name).is_none()
+                {
+                    vir.external_fns.push((
+                        resolved_name.clone(),
+                        build_fn_assume_specification_suggestion(
+                            ctxt,
+                            *target_did,
+                            resolved_name.path.clone(),
+                        ),
+                    ));
+                }
+            }
+            _ => {}
+        };
+    }
     Ok(Arc::new(vir))
 }

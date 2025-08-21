@@ -2812,9 +2812,22 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-
+        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
+            Some(e)
+        } else if let Err(e) = check_crate_result {
+            Some(e)
+        } else {
+            None
+        };
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
+                vir::ast::VirErrAs::NonBlockingError(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err.clone().into())
+                    } else {
+                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+                    }
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2823,8 +2836,10 @@ impl Verifier {
                 }
             }
         }
-        check_crate_result1.map_err(|e| (e, Vec::new()))?;
-        check_crate_result.map_err(|e| (e, Vec::new()))?;
+        if let Some(first_error) = first_error {
+            return Err((first_error, Vec::new()));
+        }
+
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
         let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
@@ -3085,6 +3100,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         }
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
+                        }
+                        vir::ast::VirErrAs::NonBlockingError(err) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
                 }

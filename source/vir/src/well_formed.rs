@@ -1,6 +1,6 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, PathX,
     Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
     VirErr, VirErrAs, Visibility,
 };
@@ -27,16 +27,24 @@ struct Ctxt<'a> {
 }
 
 #[warn(unused_must_use)]
-fn check_one_typ(ctxt: &Ctxt, typ: &Typ, span: &crate::messages::Span) -> Result<(), VirErr> {
+fn check_one_typ<Emit>(
+    ctxt: &Ctxt,
+    typ: &Typ,
+    span: &crate::messages::Span,
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     match &**typ {
         TypX::Datatype(Dt::Path(path), _, _) => {
-            check_path_and_get_datatype(ctxt, path, span)?;
+            check_path_and_get_datatype(ctxt, path, span, emit)?;
             Ok(())
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
-            check_path_and_get_function(ctxt, fun, None, span)?;
+            check_path_and_get_function(ctxt, fun, None, span, emit)?;
             if let Some(res_fun) = opt_res_fun {
-                check_path_and_get_function(ctxt, res_fun, None, span)?;
+                check_path_and_get_function(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
         }
@@ -45,16 +53,28 @@ fn check_one_typ(ctxt: &Ctxt, typ: &Typ, span: &crate::messages::Span) -> Result
 }
 
 #[warn(unused_must_use)]
-fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &crate::messages::Span) -> Result<(), VirErr> {
-    crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span))
+fn check_typ<Emit>(
+    ctxt: &Ctxt,
+    typ: &Arc<TypX>,
+    span: &crate::messages::Span,
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
+    crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span, emit))
 }
 
 #[warn(unused_must_use)]
-fn check_path_and_get_datatype<'a>(
+fn check_path_and_get_datatype<'a, Emit>(
     ctxt: &'a Ctxt,
     path: &Path,
     span: &crate::messages::Span,
-) -> Result<&'a Datatype, VirErr> {
+    emit: &mut Emit,
+) -> Result<&'a Datatype, VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
         for dt in &ctxt.unpruned_krate.datatypes {
             match &dt.x.proxy {
@@ -69,8 +89,11 @@ fn check_path_and_get_datatype<'a>(
         return None;
     }
 
-    fn is_external(ctxt: &Ctxt, path: &Path) -> bool {
-        ctxt.krate.external_types.contains(path)
+    fn get_external_maybe<'a>(
+        ctxt: &'a Ctxt,
+        path: &Path,
+    ) -> Option<&'a (Arc<PathX>, Result<(Datatype, String), VirErr>)> {
+        ctxt.krate.external_types.iter().find(|(p, _)| p == path)
     }
 
     match ctxt.dts.get(path) {
@@ -85,14 +108,32 @@ fn check_path_and_get_datatype<'a>(
                         dt_as_friendly_rust_name(actual_path),
                     ),
                 ));
-            } else if is_external(ctxt, path) {
-                return Err(error(
-                    span,
-                    &format!(
-                        "cannot use type `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
-                        path_as_friendly_rust_name(path),
-                    ),
-                ));
+            } else if let Some((_, suggestion)) = get_external_maybe(ctxt, path) {
+                let path_string = path_as_friendly_rust_name(path);
+
+                match suggestion {
+                    Ok((dummy_dt, suggestion)) => {
+                        let err = VirErrAs::NonBlockingError(error(
+                            span,
+                            &format!(
+                                "cannot use type `{:}` which is ignored because it is declared outside the verus! macro.{}",
+                                path_string, suggestion
+                            ),
+                        ));
+                        emit((Some(path_string), err));
+                        // Return a dummy datatype so we can accumulate a full set of errors.
+                        return Ok(dummy_dt);
+                    }
+                    Err(e) => {
+                        return Err(error(
+                            span,
+                            format!(
+                                "\nAn external_type_specification is needed to use {} from verified code, suggestion construction failed:\n{}",
+                                path_string, e.note
+                            ),
+                        ));
+                    }
+                };
             } else {
                 let rpath = path_as_friendly_rust_name(path);
                 return Err(error(
@@ -111,12 +152,16 @@ fn check_path_and_get_datatype<'a>(
     }
 }
 
-fn check_path_and_get_function<'a>(
+fn check_path_and_get_function<'a, Emit>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
-) -> Result<&'a Function, VirErr> {
+    emit: &mut Emit,
+) -> Result<&'a Function, VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
         for function in &ctxt.unpruned_krate.functions {
@@ -132,10 +177,6 @@ fn check_path_and_get_function<'a>(
         return None;
     }
 
-    fn is_external(ctxt: &Ctxt, fun: &Fun) -> bool {
-        ctxt.krate.external_fns.contains(fun)
-    }
-
     let f = match ctxt.funs.get(x) {
         Some(f) => f,
         None => {
@@ -148,14 +189,31 @@ fn check_path_and_get_function<'a>(
                         path_as_friendly_rust_name(actual_path),
                     ),
                 ));
-            } else if is_external(ctxt, &x) {
-                return Err(error(
-                    span,
-                    &format!(
-                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+            } else if let Some((_, suggestion)) =
+                ctxt.krate.external_fns.iter().find(|info| info.0 == *x)
+            {
+                if let Ok((dummy_fn, suggestion_text)) = suggestion {
+                    let err_str = format!(
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`\n{}{}",
                         path_as_friendly_rust_name(&x.path),
-                    ),
-                ));
+                        "The following declaration may allow use of this function from verified code:\n",
+                        suggestion_text
+                    );
+                    emit((
+                        Some(path_as_friendly_rust_name(&x.path)),
+                        VirErrAs::NonBlockingError(error(span, &err_str)),
+                    ));
+                    return Ok(dummy_fn);
+                } else {
+                    return Err(error(
+                        span,
+                        &format!(
+                            "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.\n  No suggestion available: {:?}",
+                            path_as_friendly_rust_name(&x.path),
+                            suggestion.as_ref().unwrap_err().note
+                        ),
+                    ));
+                }
             } else {
                 let path = path_as_friendly_rust_name(&x.path);
                 return Err(error(
@@ -184,15 +242,19 @@ fn check_path_and_get_function<'a>(
     Ok(f)
 }
 
-fn check_datatype_access(
+fn check_datatype_access<Emit>(
     ctxt: &Ctxt,
     path: &Path,
     disallow_private_access: Option<(&Visibility, &str)>,
     my_module: &Option<Path>,
     span: &Span,
     access_type: &str,
-) -> Result<(), VirErr> {
-    let dt = check_path_and_get_datatype(ctxt, path, span)?;
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
+    let dt = check_path_and_get_datatype(ctxt, path, span, emit)?;
     match &dt.x.transparency {
         DatatypeTransparency::Never => {
             // This can only happen if the datatype is 'external_body'
@@ -301,23 +363,27 @@ fn check_datatype_access(
     Ok(())
 }
 
-fn check_one_expr(
+fn check_one_expr<Emit>(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    diags: &mut Vec<VirErrAs>,
-) -> Result<(), VirErr> {
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     match &expr.x {
         ExprX::Var(x) => {
             check_var(function, &expr.span, area, x)?;
         }
         ExprX::ConstVar(x, _) => {
-            check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
+            check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args) => {
-            let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
+            let f =
+                check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
             match kind {
                 CallTargetKind::Static => {}
                 CallTargetKind::ProofFn(..) => {}
@@ -328,6 +394,7 @@ fn check_one_expr(
                         resolved_fun,
                         disallow_private_access,
                         &expr.span,
+                        emit,
                     )?;
                 }
                 CallTargetKind::ExternalTraitDefault => {}
@@ -385,6 +452,7 @@ fn check_one_expr(
                 &function.x.owning_module,
                 &expr.span,
                 "constructor",
+                emit,
             )?;
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
@@ -412,6 +480,7 @@ fn check_one_expr(
                 &function.x.owning_module,
                 &expr.span,
                 "field expression",
+                emit,
             )?;
         }
         ExprX::Multi(MultiOp::Chained(ops), _) => {
@@ -444,7 +513,7 @@ fn check_one_expr(
             crate::ast_visitor::ast_visitor_check_with_scope_map(
                 proof,
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
-                &mut |scope_map, e| match &e.x {
+                &mut |scope_map, e, _| match &e.x {
                     ExprX::Var(x) | ExprX::VarLoc(x)
                         if !scope_map.contains_key(&x) && !referenced.contains(x) =>
                     {
@@ -455,10 +524,10 @@ fn check_one_expr(
                     }
                     _ => Ok(()),
                 },
-                &mut |_, _| Ok(()),
-                &mut |_, _| Ok(()),
                 &mut |_, _, _| Ok(()),
-                &mut |scope_map, p| match &p.x {
+                &mut |_, _, _| Ok(()),
+                &mut |_, _, _, _| Ok(()),
+                &mut |scope_map, p, _| match &p.x {
                     PlaceX::Local(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &p.span,
@@ -467,6 +536,7 @@ fn check_one_expr(
                     }
                     _ => Ok(()),
                 },
+                &mut |_| (),
             )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
@@ -477,10 +547,10 @@ fn check_one_expr(
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
                 if !vars.is_empty() {
-                    diags.push(VirErrAs::Warning(
+                    emit((None, VirErrAs::Warning(
                         error(&expr.span, "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`")
                             .help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication")
-                    ));
+                    )));
                 }
             }
             _ => {}
@@ -492,7 +562,7 @@ fn check_one_expr(
             if ctxt.reveal_groups.contains(f) && *fuel == 1 {
                 return Ok(());
             }
-            let f = check_path_and_get_function(ctxt, f, None, &expr.span)?;
+            let f = check_path_and_get_function(ctxt, f, None, &expr.span, emit)?;
             if *is_broadcast_use {
                 if !f.x.attrs.broadcast_forall {
                     return Err(error(
@@ -530,7 +600,8 @@ fn check_one_expr(
             }
         }
         ExprX::ExecFnByName(fun) => {
-            let func = check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span)?;
+            let func =
+                check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span, emit)?;
             for param in func.x.params.iter() {
                 if param.x.is_mut {
                     return Err(error(
@@ -571,13 +642,17 @@ fn check_one_expr(
     Ok(())
 }
 
-fn check_one_place(
+fn check_one_place<Emit>(
     ctxt: &Ctxt,
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-) -> Result<(), VirErr> {
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     match &place.x {
         PlaceX::Local(x) => {
             check_var(function, &place.span, area, x)?;
@@ -593,6 +668,7 @@ fn check_one_place(
                 &function.x.owning_module,
                 &place.span,
                 "field expression",
+                emit,
             )?;
         }
         _ => {}
@@ -618,12 +694,16 @@ fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Resu
     Ok(())
 }
 
-fn check_one_pattern(
+fn check_one_pattern<Emit>(
     ctxt: &Ctxt,
     function: &Function,
     pattern: &Pattern,
     disallow_private_access: Option<(&Visibility, &str)>,
-) -> Result<(), VirErr> {
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     match &pattern.x {
         PatternX::Constructor(Dt::Path(path), _id, _binders) => {
             check_datatype_access(
@@ -633,6 +713,7 @@ fn check_one_pattern(
                 &function.x.owning_module,
                 &pattern.span,
                 "pattern constructor",
+                emit,
             )?;
             Ok(())
         }
@@ -647,36 +728,45 @@ enum Area {
     Body,
 }
 
-fn check_expr(
+fn check_expr<Emit>(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    diags: &mut Vec<VirErrAs>,
-) -> Result<(), VirErr> {
-    crate::ast_visitor::ast_visitor_check(
+    emit: &mut Emit,
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
+    let check_result = crate::ast_visitor::ast_visitor_check(
         expr,
-        &mut |_scope_map, expr| {
-            check_one_expr(ctxt, function, expr, disallow_private_access, area, diags)
+        &mut |_scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>, emit| {
+            check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_scope_map, _stmt| Ok(()),
-        &mut |_scope_map, pattern| {
-            check_one_pattern(ctxt, function, pattern, disallow_private_access)
+        &mut |_scope_map, _stmt, _emit| Ok(()),
+        &mut |_scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>, emit| {
+            check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },
-        &mut |_scope_map, typ, span| check_one_typ(ctxt, typ, span),
-        &mut |_scope_map, place| {
-            check_one_place(ctxt, function, place, disallow_private_access, area)
+        &mut |_scope_map, typ, span, emit| check_one_typ(ctxt, typ, span, emit),
+        &mut |_scope_map, place, emit| {
+            check_one_place(ctxt, function, place, disallow_private_access, area, emit)
         },
-    )
+        emit,
+    );
+
+    check_result
 }
 
-fn check_function(
+fn check_function<Emit>(
     ctxt: &Ctxt,
     function: &Function,
-    diags: &mut Vec<VirErrAs>,
+    emit: &mut Emit,
     _no_verify: bool,
-) -> Result<(), VirErr> {
+) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -780,7 +870,7 @@ fn check_function(
 
     let ret_name = user_local_name(&function.x.ret.x.name);
     for p in function.x.params.iter() {
-        check_typ(ctxt, &p.x.typ, &p.span)?;
+        check_typ(ctxt, &p.x.typ, &p.span, emit)?;
         if user_local_name(&p.x.name) == ret_name {
             return Err(error(
                 &p.span,
@@ -788,7 +878,7 @@ fn check_function(
             ));
         }
     }
-    check_typ(ctxt, &function.x.ret.x.typ, &function.x.ret.span)?;
+    check_typ(ctxt, &function.x.ret.x.typ, &function.x.ret.span, emit)?;
 
     if function.x.attrs.inline {
         if function.x.mode != Mode::Spec {
@@ -1042,19 +1132,12 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(
-            ctxt,
-            function,
-            req,
-            disallow_private_access,
-            Area::PreState("requires"),
-            diags,
-        )?;
+        check_expr(ctxt, function, req, disallow_private_access, Area::PreState("requires"), emit)?;
     }
     for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, diags)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, emit)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -1074,7 +1157,7 @@ fn check_function(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
-        check_expr(ctxt, function, r, disallow_private_access, Area::PreState("returns"), diags)?;
+        check_expr(ctxt, function, r, disallow_private_access, Area::PreState("returns"), emit)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -1088,7 +1171,7 @@ fn check_function(
                     expr,
                     disallow_private_access,
                     Area::PreState("opens_invariants clause"),
-                    diags,
+                    emit,
                 )?;
             }
         }
@@ -1101,7 +1184,7 @@ fn check_function(
                 expr,
                 disallow_private_access,
                 Area::PreState("opens_invariants clause"),
-                diags,
+                emit,
             )?
         }
     }
@@ -1116,7 +1199,7 @@ fn check_function(
                 expr,
                 disallow_private_access,
                 Area::PreState("opens_invariants clause"),
-                diags,
+                emit,
             )?;
         }
     }
@@ -1129,7 +1212,7 @@ fn check_function(
             expr,
             disallow_private_access,
             Area::PreState("decreases clause"),
-            diags,
+            emit,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -1153,7 +1236,7 @@ fn check_function(
             expr,
             disallow_private_access,
             Area::PreState("when clause"),
-            diags,
+            emit,
         )?;
     }
 
@@ -1162,8 +1245,12 @@ fn check_function(
         && (function.x.attrs.exec_assume_termination
             || function.x.attrs.exec_allows_no_decreases_clause)
     {
-        diags.push(VirErrAs::Warning(
-            error(&function.span, "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops"),
+        emit((
+            None,
+            VirErrAs::Warning(error(
+                &function.span,
+                "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
+            )),
         ));
     }
 
@@ -1178,7 +1265,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Area::Body, diags)?;
+        check_expr(ctxt, function, body, disallow_private_access, Area::Body, emit)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1232,11 +1319,14 @@ fn check_function(
     Ok(())
 }
 
-fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
+fn check_datatype<Emit>(ctxt: &Ctxt, dt: &Datatype, emit: &mut Emit) -> Result<(), VirErr>
+where
+    Emit: FnMut((Option<String>, VirErrAs)) -> (),
+{
     for variant in dt.x.variants.iter() {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
-            check_typ(ctxt, typ, &dt.span)?;
+            check_typ(ctxt, typ, &dt.span, emit)?;
         }
     }
 
@@ -1264,7 +1354,7 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
     // signature is well-formed (i.e., Verus recognizes all trait bounds, etc.)
     // See the notes in `get_sized_constraint` in rust_to_vir_adts.rs.
     if let Some(sized_constraint) = &dt.x.sized_constraint {
-        match check_typ(ctxt, sized_constraint, &dt.span) {
+        match check_typ(ctxt, sized_constraint, &dt.span, emit) {
             Ok(()) => {}
             Err(e) => {
                 let typ_args = Arc::new(
@@ -1686,13 +1776,23 @@ pub fn check_crate(
         }
     }
 
+    let mut diag_set: HashSet<String> = HashSet::new();
+    let mut emit = |(k, v)| match k {
+        Some(k) => {
+            if !diag_set.contains(&k) {
+                diag_set.insert(k);
+                diags.push(v);
+            }
+        }
+        None => diags.push(v),
+    };
     let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
-        check_function(&ctxt, function, diags, no_verify)?;
+        check_function(&ctxt, function, &mut emit, no_verify)?;
     }
     for dt in krate.datatypes.iter() {
-        check_datatype(&ctxt, dt)?;
+        check_datatype(&ctxt, dt, &mut emit)?;
     }
     crate::recursive_types::check_recursive_types(krate)?;
     Ok(())

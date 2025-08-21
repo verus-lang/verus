@@ -7,7 +7,7 @@ use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
-use rustc_hir::def_id::LocalDefId;
+use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, ExpectSpec, ExpectSpecArgs, NodeErase, VarErasure, VerusErasureCtxt,
     set_verus_aware_def_ids, set_verus_erasure_ctxt,
@@ -50,7 +50,7 @@ pub enum ResolvedCall {
     /// The call is to a function, and we record the name of the function here
     /// (both unresolved and resolved), as well as an in_ghost flag.
     /// This is replaced by CallModes as soon as the modes are available.
-    Call(Fun, Fun, bool),
+    Call(Fun, Fun, DefId, bool),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
     /// Path and variant of datatype constructor. Used for ExprKind::Struct nodes.
@@ -105,7 +105,7 @@ fn resolved_call_to_call_erase(
         ResolvedCall::SpecAllowProofArgs => {
             CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
         }
-        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+        ResolvedCall::Call(ufun, rfun, _, in_ghost) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
             // without a corresponding external trait declaration.
