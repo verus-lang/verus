@@ -1460,3 +1460,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] generic_fn_value_issue1763 verus_code! {
+        pub trait Tr {
+            fn trait_func(&self) -> bool;
+        }
+
+        pub trait Sr {
+            fn trait_func_s(&self) -> bool;
+        }
+
+        impl<T: Tr + ?Sized> Sr for T {
+            fn trait_func_s(&self) -> (r: bool)
+                ensures r == true,
+            {
+                true
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T, b: bool) {
+            let the_fn = T::trait_func_s;
+            assert(call_ensures(the_fn, (t,), b) ==> b);
+        }
+    } => Ok(())
+}
