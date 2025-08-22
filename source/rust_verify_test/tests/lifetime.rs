@@ -1507,3 +1507,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] use_arc_as_receiver_issue1311 verus_code! {
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        pub struct Foo {
+        }
+
+        impl Foo {
+            pub fn get(&self, args: &u8) -> (out: u8) { 0 }
+        }
+
+        fn main() {
+            let foo = Foo { };
+            let shared_foo = Arc::new(foo);
+            let v = shared_foo.get(&20);
+        }
+    } => Ok(())
+}
