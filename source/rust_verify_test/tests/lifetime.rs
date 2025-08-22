@@ -1527,3 +1527,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] trait_depending_on_view_issue966 verus_code! {
+        use vstd::prelude::*;
+
+        trait VerusClone: View + Sized {
+            fn verus_clone(&self) -> (r: Self)
+                ensures self@ == r@;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn vec_filter<V: VerusClone>(v: Vec<V>, f: impl Fn(&V)->bool, f_spec: spec_fn(V)->bool) -> (r: Vec<V>)
+            requires forall|v: V| #[trigger] f.requires((&v,)), forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+        {
+            let mut r = Vec::new();
+            let mut i = 0;
+            while i < v.len()
+                invariant
+                    forall|v: V| #[trigger] f.requires((&v,)),
+                    i <= v.len(),
+                    forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+            {
+                let ghost pre_r = r@.to_multiset();
+                assert(
+                    v@.subrange(0, i as int + 1)
+                    =~=
+                    v@.subrange(0, i as int).push(v@[i as int]));
+                if f(&v[i]) {
+                    r.push(v[i].verus_clone());
+                }
+
+                i += 1;
+            }
+            r
+        }
+    } => Ok(())
+}
