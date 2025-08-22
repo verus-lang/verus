@@ -102,19 +102,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
+vstd = "=0.0.0-2025-08-12-1837"
 
 [package.metadata.verus]
 verify = true
 "#
-    .replace("NAME", name)
-    .replace(
-        "BUILDREV",
-        match option_env!("VARGO_BUILD_SHA") {
-            None => unimplemented!(),
-            Some(rev) => rev,
-        },
-    );
+    .replace("NAME", name);
 
     let project_dir = PathBuf::from(name);
     if project_dir.exists() {
