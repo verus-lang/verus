@@ -127,6 +127,31 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] mut_ref_not_extensional ["new-mut-ref"] => verus_code! {
+        // &mut T doesn't have extensionality because that would cause (==) to be
+        // a prophetic operator
+
+        fn test1(a: &mut u64, b: &mut u64) {
+            assume(mut_ref_current(a) == mut_ref_current(b)
+                && mut_ref_future(a) == mut_ref_future(b));
+            assert(a == b); // FAILS
+        }
+
+        fn test2(a: &mut u64, b: &mut u64) {
+            assume(mut_ref_current(a) == mut_ref_current(b)
+                && mut_ref_future(a) == mut_ref_future(b));
+            assert(a =~= b); // FAILS
+        }
+
+        fn test3(a: &mut u64, b: &mut u64) {
+            assume(mut_ref_current(a) == mut_ref_current(b)
+                && mut_ref_future(a) == mut_ref_future(b));
+            assert(a =~~= b); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
     #[test] test_resolved_axioms ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
