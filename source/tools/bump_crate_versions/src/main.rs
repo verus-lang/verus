@@ -1,4 +1,4 @@
-use std::{fs, path::Path, process::Stdio};
+use std::{fs, path::Path, process::Stdio, sync::LazyLock};
 use toml_edit::DocumentMut;
 use regex::Regex;
 
@@ -12,7 +12,25 @@ use regex::Regex;
  * Usage: Run this tool from the root of the Verus repository.
  */
 
+// Path to cargo-verus's main file, where we have a static string
+// indicating which version of vstd to use
 const CARGO_VERUS_MAIN: &str = "source/cargo-verus/src/main.rs";
+
+// Generates a fresh version string of the form "0.0.0-year-month-day-time",
+// which we'll assign to any updated crate.  Using a const + LazyLock ensures
+// we only compute this once and then use it consistently throughout.
+static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
+    use chrono::{Datelike,Timelike,Utc};
+
+    let now = Utc::now();
+    format!(
+        "0.0.0-{}-{:02}-{:02}-{:04}",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour() * 100 + now.minute()
+    )
+});
 
 #[derive(Clone)]
 struct Crate {
@@ -63,22 +81,7 @@ fn src_modified(dir: &Path, commit: &str) -> bool {
     !status.success()   // A successful exit code of 0 means no changes
 }
 
-// Generates a fresh version string of the form "0.0.0-year-month-day-time"
-// IMPORTANT: This should only ever be called once, so that each crate gets the same version
-fn generate_new_version() -> String {
-    use chrono::{Datelike,Timelike,Utc};
-
-    let now = Utc::now();
-    format!(
-        "0.0.0-{}-{:02}-{:02}-{:04}",
-        now.year(),
-        now.month(),
-        now.day(),
-        now.hour() * 100 + now.minute()
-    )
-}
-
-fn update_toml_version(dir: &Path, new_version: &str) {
+fn update_toml_version(dir: &Path) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
@@ -86,14 +89,14 @@ fn update_toml_version(dir: &Path, new_version: &str) {
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Replace the version line
-    doc["package"]["version"] = new_version.into();
+    doc["package"]["version"] = (*NEW_VERSION).clone().into();
 
     // Write the updated content back to Cargo.toml
     let content = doc.to_string();
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
-fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>, new_version: &str) {
+fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
@@ -103,7 +106,7 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>, new_version: 
     // Update dependencies with the new version
     for krate in dependencies {
         if doc.contains_key("dependencies") && doc["dependencies"].get(&krate.name).is_some() {
-            doc["dependencies"][&krate.name] = toml_edit::value(format!("={}", new_version));
+            doc["dependencies"][&krate.name] = toml_edit::value(format!("={}", *NEW_VERSION));
         }
     }
 
@@ -112,13 +115,13 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>, new_version: 
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
-fn update_cargo_verus_template(new_version: &str) {
+fn update_cargo_verus_template() {
     let main = Path::new(CARGO_VERUS_MAIN);
     let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
 
     // Replace the version in the template
     let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
-    let updated_content = re.replace(&content, format!("vstd = \"={}\"", new_version).as_str());
+    let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
     println!("Updated cargo-verus main.rs:\n{}", updated_content);
 
     // Write the updated content back to the file
@@ -154,18 +157,15 @@ fn main() {
         },
     ];
 
-    // IMPORTANT: This is the only place this routine should be called
-    let new_version = generate_new_version();
-
     let mut modified_crates = Vec::new();
     for krate in &crates {
         if let Some(commit) = last_commit(&Path::new(&krate.path)) {
             if src_modified(&Path::new(&krate.path), &commit) {
-                println!("\t{}:\n\t\thas been modified since commit {}.\n\t\tUpdating version to {}", krate.name, commit, new_version);
-                update_toml_version(&Path::new(&krate.path), &new_version);
+                println!("\t{}:\n\t\thas been modified since commit {}.\n\t\tUpdating version to {}", krate.name, commit, *NEW_VERSION);
+                update_toml_version(&Path::new(&krate.path));
                 modified_crates.push(krate.clone());
                 if krate.name == "vstd" {
-                    update_cargo_verus_template(&new_version);
+                    update_cargo_verus_template();
                 }
             } else {
                 println!("\t{}:\n\t\t has not been modified since commit {}", krate.name, commit);
@@ -178,7 +178,7 @@ fn main() {
     if !modified_crates.is_empty() {
         for krate in &crates{
             println!("Updating dependencies for {}", krate.name);
-            update_toml_dependencies(&Path::new(&krate.path), &modified_crates, &new_version);
+            update_toml_dependencies(&Path::new(&krate.path), &modified_crates);
         }
     }
 }
