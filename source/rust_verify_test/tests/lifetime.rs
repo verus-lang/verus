@@ -1485,3 +1485,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] array_as_field_and_receiver_issue1604 verus_code! {
+        use vstd::prelude::*;
+
+        struct X {
+            arr: [u8; 10]
+        }
+
+        pub fn test_arr(arr: &mut [u8; 10], order: usize) -> Result<u8, ()>  {
+            let val = *arr.get(order).ok_or(())?;
+            Ok(val)
+        }
+
+        impl X {
+            pub fn test(&mut self, order: usize) -> Result<u8, ()>  {
+                let val = *self.arr.get(order).ok_or(())?;
+                Ok(val)
+            }
+        }
+    } => Ok(())
+}
