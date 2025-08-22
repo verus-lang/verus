@@ -87,6 +87,7 @@ pub struct Ctx {
     pub(crate) spec_fn_types: Vec<usize>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
+    pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
@@ -199,7 +200,9 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool => {}
+                        TypX::Float(_) => {}
+                        TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::ConstBool(_) => {}
@@ -713,6 +716,7 @@ impl Ctx {
         spec_fn_types: Vec<usize>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
+        resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -758,6 +762,7 @@ impl Ctx {
             spec_fn_types,
             used_builtins,
             fndef_types,
+            resolved_typs,
             fndef_type_set,
             functions,
             func_map,

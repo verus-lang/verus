@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir, pat_to_mut_var};
+use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
@@ -229,7 +229,7 @@ fn body_to_vir<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
     };
-    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+    let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
     if external_body {
         match &e.x {
@@ -329,10 +329,10 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::Uint(_), _) => ty1 == ty2,
         (TyKind::Int(_), _) => ty1 == ty2,
         (TyKind::Char, _) => ty1 == ty2,
+        (TyKind::Float(_), _) => ty1 == ty2,
         (TyKind::Closure(..), _) => ty1 == ty2,
         (TyKind::Str, _) => ty1 == ty2,
         (TyKind::Never, _) => ty1 == ty2,
-        (TyKind::Float(..), _) => ty1 == ty2,
         (TyKind::Param(_), _) => ty1 == ty2,
         (TyKind::Ref(_, t1, m1), TyKind::Ref(_, t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Tuple(_), TyKind::Tuple(_)) => check_ts(ty1.tuple_fields(), ty2.tuple_fields()),
@@ -1138,7 +1138,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 vir::ast::PatternX::Var { name: name.clone(), mutable: true },
             );
             let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
+                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
             if let Some(hir_id) = hir_id {
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));

@@ -198,3 +198,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] decreases_clause_proof_fn_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        proof fn test()
+            decreases foo()
+        {
+            test();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] decreases_clause_exec_fn_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        fn test()
+            decreases foo()
+        {
+            test();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] decreases_clause_loop_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        fn test()
+        {
+            loop
+                decreases foo()
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}

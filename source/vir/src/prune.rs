@@ -4,8 +4,8 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitId, TraitX, Typ, TypX,
+    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, Place, RevealGroup,
+    Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -15,6 +15,7 @@ use crate::def::{
     fn_set_full_name, fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name,
 };
 use crate::poly::MonoTyp;
+use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -28,6 +29,7 @@ enum ReachedType {
     None,
     Bool,
     Int(crate::ast::IntRange),
+    Float(u32),
     SpecFn(usize),
     Datatype(Dt),
     StrSlice,
@@ -107,6 +109,7 @@ struct State {
     // broadcast functions that are also defined or called normally
     // (not just used for the broadcast)
     broadcast_functions_fully_reached: HashSet<Fun>,
+    resolve_typs: Option<ResolvedTypeCollection>,
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
@@ -114,6 +117,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
     match &**typ {
         TypX::Bool => ReachedType::Bool,
         TypX::Int(range) => ReachedType::Int(*range),
+        TypX::Float(n) => ReachedType::Float(*n),
         TypX::SpecFn(ts, _) => ReachedType::SpecFn(ts.len()),
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(dt, _, _) => ReachedType::Datatype(dt.clone()),
@@ -264,6 +268,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(..)
@@ -468,14 +473,23 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::ArrayLiteral(..) if ctxt.assert_by_compute => {
                         reach_seq_funs(ctxt, state);
                     }
+                    ExprX::UnaryOpr(UnaryOpr::HasResolved(typ), _)
+                    | ExprX::AssumeResolved(_, typ) => {
+                        if let Some(res) = &mut state.resolve_typs {
+                            res.visit_type(typ);
+                        }
+                    }
                     _ => {}
                 }
                 Ok(e.clone())
             };
             let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
+            let fp = |_: &mut State, _: &mut VisitorScopeMap, p: &Place| Ok(p.clone());
             let mut map: VisitorScopeMap = ScopeMap::new();
-            crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
-                .unwrap();
+            crate::ast_visitor::map_function_visitor_env(
+                &function, &mut map, state, &fe, &fs, &ft, &fp,
+            )
+            .unwrap();
             let methods = reached_methods(
                 ctxt,
                 state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
@@ -732,7 +746,9 @@ pub fn prune_krate_for_module_or_krate(
     module: Option<Path>,
     fun: Option<&Fun>,
     collect_monotyps: bool,
-) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, UsedBuiltins, Vec<Fun>) {
+    collect_resolve_typs: bool,
+) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, UsedBuiltins, Vec<Fun>, Option<Vec<ResolvableType>>)
+{
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -767,6 +783,9 @@ pub fn prune_krate_for_module_or_krate(
     let mut state: State = Default::default();
     if collect_monotyps {
         state.mono_abstract_datatypes = Some(HashSet::new());
+    }
+    if collect_resolve_typs {
+        state.resolve_typs = Some(ResolvedTypeCollection::new(module.as_ref().unwrap(), &krate));
     }
     if let Some(current_crate) = current_crate {
         // Make sure we keep all of current_crate,
@@ -1159,9 +1178,13 @@ pub fn prune_krate_for_module_or_krate(
         }
         _ => None,
     };
+    let res_typs = match state.resolve_typs {
+        Some(r) => Some(r.finish()),
+        _ => None,
+    };
     let used_builtins = UsedBuiltins {
         uses_array: state.uses_array,
         uses_pointee_metadata: state.uses_pointee_metadata,
     };
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types)
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types, res_typs)
 }
