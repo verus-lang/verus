@@ -106,7 +106,7 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>) {
     // Update dependencies with the new version
     for krate in dependencies {
         if doc.contains_key("dependencies") && doc["dependencies"].get(&krate.name).is_some() {
-            doc["dependencies"][&krate.name] = toml_edit::value(format!("={}", *NEW_VERSION));
+            doc["dependencies"][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
         }
     }
 
