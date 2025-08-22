@@ -121,6 +121,10 @@ fn update_cargo_verus_template() {
 
     // Replace the version in the template
     let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
+    let count = re.find_iter(&content).count();
+    if count != 1 {
+        panic!("Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.", CARGO_VERUS_MAIN, count);
+    }
     let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
     println!("Updated cargo-verus main.rs:\n{}", updated_content);
 
