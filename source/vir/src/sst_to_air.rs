@@ -2025,14 +2025,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             )
                         });
 
-                    let ret_exp = if is_in_opaque_func {
-                        &crate::poly::coerce_exp_to_poly(
-                            ctx,
-                            ret_exp.as_ref().expect("if dest is provided, expr must be provided"),
-                        )
-                    } else {
-                        ret_exp.as_ref().expect("if dest is provided, expr must be provided")
-                    };
+                    let ret_exp =
+                        ret_exp.as_ref().expect("if dest is provided, expr must be provided");
 
                     let mut stmts =
                         stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;

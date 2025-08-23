@@ -2722,6 +2722,9 @@ impl Verifier {
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+
+        check_no_opaque_types_in_trait(&ctxt, &crate_items).map_err(map_err_diagnostics)?;
+
         if !self.args.no_lifetime {
             crate::erase::setup_verus_aware_ids(&crate_items);
         }
@@ -2962,6 +2965,39 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             return Err(error(format!("{} exists and is not a directory", dir.display())));
         }
     })
+}
+
+/// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.  
+/// We disallow opaque types in trait for now.
+fn check_no_opaque_types_in_trait<'tcx>(
+    ctxt: &Arc<ContextX<'tcx>>,
+    crate_items: &crate::external::CrateItems,
+) -> Result<(), VirErr> {
+    for item in crate_items.items.iter() {
+        if matches!(item.verif, VerifOrExternal::External { .. }) {
+            continue;
+        }
+        match item.id {
+            crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
+                match ctxt.tcx.hir_trait_item(trait_item_id).kind {
+                    rustc_hir::TraitItemKind::Fn(sig, _) => {
+                        if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
+                            if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
+                                crate::unsupported_err!(
+                                    ty.span,
+                                    "Verus does not yet support Opaque types in trait def"
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 // TODO: move the callbacks into a different file, like driver.rs

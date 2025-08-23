@@ -413,6 +413,9 @@ pub(crate) fn translate_impl<'tcx>(
                         } else {
                             FunctionKind::Static
                         };
+
+                        crate::rust_to_vir_base::check_fn_opaque_ty(ctxt, vir, &sig.decl.output)?;
+
                         check_item_fn(
                             ctxt,
                             &mut vir.functions,

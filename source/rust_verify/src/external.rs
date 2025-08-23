@@ -44,7 +44,7 @@ use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
     ForeignItem, ForeignItemId, HirId, ImplItem, ImplItemId, ImplItemKind, Item, ItemId, ItemKind,
-    OpaqueTy, OwnerId, TraitItem, TraitItemId, TraitItemKind,
+    OwnerId, TraitItem, TraitItemId, TraitItemKind,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -58,8 +58,6 @@ pub struct CrateItems {
     pub items: Vec<CrateItem>,
     /// Same information, indexed by OwnerId
     pub map: HashMap<OwnerId, VerifOrExternal>,
-    /// Vector of all opaque types
-    pub opaque_tys: Vec<OpaqueDef>,
 }
 
 /// Categorizes a single item-thing as VerusAware of External.
@@ -149,7 +147,6 @@ pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<C
         module_path: Some(root_module_path),
         errors: vec![],
         in_impl: None,
-        opaque_tys: vec![],
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
     visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
@@ -165,7 +162,7 @@ pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<C
         assert!(old.is_none());
     }
 
-    Ok(CrateItems { items: visitor.items, map, opaque_tys: visitor.opaque_tys })
+    Ok(CrateItems { items: visitor.items, map })
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -195,7 +192,6 @@ struct VisitMod<'a, 'tcx> {
     state: VerifState,
     module_path: Option<Path>,
     in_impl: Option<InsideImpl>,
-    opaque_tys: Vec<OpaqueDef>,
 }
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
@@ -221,10 +217,6 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
     fn maybe_tcx(&mut self) -> rustc_middle::ty::TyCtxt<'tcx> {
         self.ctxt.tcx
     }
-
-    fn visit_opaque_ty(&mut self, opaque: &'tcx OpaqueTy<'tcx>) {
-        self.visit_opaque(opaque);
-    }
 }
 
 fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
@@ -239,49 +231,6 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
 }
 
 impl<'a, 'tcx> VisitMod<'a, 'tcx> {
-    fn visit_opaque(&mut self, opaque: &'tcx OpaqueTy<'tcx>) {
-        rustc_hir::intravisit::walk_opaque_ty(self, opaque);
-        let parent_def_id = {
-            match opaque.origin {
-                rustc_hir::OpaqueTyOrigin::FnReturn { parent, .. } => parent,
-                rustc_hir::OpaqueTyOrigin::AsyncFn { parent, .. } => parent,
-                rustc_hir::OpaqueTyOrigin::TyAlias { parent, .. } => parent,
-            }
-        };
-
-        let attrs = self.ctxt.tcx.get_attrs_unchecked(parent_def_id.into());
-        let eattrs = match self.ctxt.get_external_attrs(attrs) {
-            Ok(eattrs) => eattrs,
-            Err(err) => {
-                self.errors.push(err);
-                return;
-            }
-        };
-
-        let state_for_this_item =
-            { if eattrs.external { VerifState::External } else { VerifState::Verify } };
-
-        let verif = if state_for_this_item == VerifState::Verify {
-            VerifOrExternal::VerusAware {
-                module_path: self.module_path.clone(),
-                const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
-                external_body: eattrs.external_body,
-            }
-        } else {
-            let path_opt = def_id_to_vir_path_option(
-                self.ctxt.tcx,
-                Some(&self.ctxt.verus_items),
-                opaque.def_id.into(),
-            );
-            let path_string = match &path_opt {
-                Some(path) => vir::ast_util::path_as_friendly_rust_name(&path),
-                None => format!("{:?}", opaque.def_id,),
-            };
-            VerifOrExternal::External { path: path_opt, path_string, explicit: false }
-        };
-
-        self.opaque_tys.push(OpaqueDef { id: opaque.def_id, verif: verif });
-    }
     fn visit_general(&mut self, general_item: GeneralItem<'tcx>, hir_id: HirId, span: Span) {
         let attrs = self.ctxt.tcx.hir_attrs(hir_id);
 

@@ -802,7 +802,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
             TypX::ConstBool(_) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
-            TypX::Opaque { .. } => R::ret(|| typ.clone()),
+            TypX::Opaque { def_path, args } => {
+                let args = self.visit_typs(args)?;
+                R::ret(|| {
+                    Arc::new(TypX::Opaque { def_path: def_path.clone(), args: R::get_vec_a(args) })
+                })
+            }
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;

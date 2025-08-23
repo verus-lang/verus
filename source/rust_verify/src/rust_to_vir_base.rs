@@ -23,7 +23,7 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaquetypeX, Path,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueTypeX, Path,
     PathX, Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
@@ -2075,6 +2075,24 @@ pub(crate) fn ty_remove_references<'tcx>(
     }
 }
 
+/// Add the OpaqueDef to vir if the function returns an opaque type.
+pub(crate) fn check_fn_opaque_ty<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut vir::ast::KrateX,
+    fn_ret_ty: &rustc_hir::FnRetTy,
+) -> Result<(), VirErr> {
+    if let rustc_hir::FnRetTy::Return(ty) = fn_ret_ty {
+        match ty.kind {
+            rustc_hir::TyKind::OpaqueDef(opaque_ty) => {
+                let opaque_ty = ctxt.tcx.hir_expect_opaque_ty(opaque_ty.def_id);
+                crate::rust_to_vir_base::opaque_def_to_vir(ctxt, vir, opaque_ty)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn opaque_def_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut vir::ast::KrateX,
@@ -2221,7 +2239,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
     let opaque_ty_vir = ctxt.spanned_new(
         opaque_ty.span,
-        OpaquetypeX {
+        OpaqueTypeX {
             name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into()),
             typ_params: Arc::new(args),
             typ_bounds: Arc::new(trait_bounds),

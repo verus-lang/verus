@@ -198,7 +198,7 @@ test_verify_one_file_with_options! {
             let f = |y: u32| requires y > 0 { };
             f
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {
@@ -211,7 +211,7 @@ test_verify_one_file_with_options! {
         pub fn test() -> impl Fn(u32) {
             test2
         }
-    } => Ok(())
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not support opaque types together with the check-api-safety flag:")
 }
 
 test_verify_one_file_with_options! {

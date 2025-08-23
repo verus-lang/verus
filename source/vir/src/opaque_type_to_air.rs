@@ -1,4 +1,4 @@
-use crate::ast::{GenericBoundX, Opaquetype, TypX};
+use crate::ast::{GenericBoundX, OpaqueType, TypX};
 use crate::ast_util::LowerUniqueVar;
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::check_ast_flavor::ident_binder;
@@ -14,19 +14,27 @@ use air::ast_util::{ident_apply, mk_bind_expr, mk_unnamed_axiom, str_typ};
 use core::panic;
 use std::sync::Arc;
 
-pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<Opaquetype>) -> Commands {
+/// Each OpaqueType is named using its VIR path (generated from DefId)
+/// For each OpaqueType (definition of opaque type), we generate the following air commands:
+/// First, we define two functions: DCR%path and TYPE%path:
+/// They can take arguments and return the decoration and type of the opaque type.
+/// Second, we define a range of axioms to encode the trait bounds and the associate types.
+pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<OpaqueType>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for opaque_type in opaque_types {
+        // The arguments needed to instantiate the OpaqueType
         let mut args_typ = Vec::new();
         for _ in opaque_type.x.typ_params.iter() {
             args_typ.extend(crate::def::types().iter().map(|s| str_typ(s)));
         }
 
+        // DCR%path function
         let decl_dcr_id = Arc::new(DeclX::fun_or_const(
             crate::def::prefix_dcr_id(&opaque_type.x.name),
             Arc::new(args_typ.clone()),
             str_typ(crate::def::DECORATION),
         ));
+        // TYPE%path function
         let decl_type_id = Arc::new(DeclX::fun_or_const(
             prefix_type_id(&opaque_type.x.name),
             Arc::new(args_typ.clone()),
@@ -47,7 +55,9 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<Opaquetype>) -> Command
             }
         }
 
+        // Axioms for trait bounds and associate types
         if opaque_type.x.typ_params.len() != 0 {
+            // The OpaqueType takes no argument to instantiate. Use const instead of functions
             let self_dcr = ident_apply(&crate::def::prefix_dcr_id(&opaque_type.x.name), &args);
             let self_type = ident_apply(&crate::def::prefix_type_id(&opaque_type.x.name), &args);
 
@@ -64,27 +74,11 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<Opaquetype>) -> Command
                         binders.push(ident_binder(&x.lower(), &str_typ(t)));
                     }
                 }
-                // for param in params.iter() {
-                //     let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
-                //         prefix_pre_var(&param.x.name.lower())
-                //     } else {
-                //         param.x.name.lower()
-                //     };
-                //     binders.push(ident_binder(&name, &typ_to_air(ctx, &param.x.typ)));
-                // }
                 let triggers: Triggers =
                     Arc::new(vec![Arc::new(vec![self_dcr]), Arc::new(vec![self_type])]);
                 let qid = new_internal_qid(ctx, name);
                 Arc::new(BindX::Quant(air::ast::Quant::Forall, Arc::new(binders), triggers, qid))
             };
-            // crate::sst_to_air_func::func_bind_trig(
-            //     ctx,
-            //     name,
-            //     &Arc::new(type_params),
-            //     &Arc::new(vec![]),
-            //     &vec![self_dcr, self_type],
-            //     false,
-            // );
             let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
             for bound in opaque_type.x.typ_bounds.iter() {
                 match &**bound {

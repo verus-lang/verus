@@ -4,7 +4,7 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Opaquetype, Path, Place,
+    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place,
     RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
@@ -68,7 +68,7 @@ struct Ctxt {
     function_map: HashMap<Fun, Function>,
     reveal_group_map: HashMap<Fun, RevealGroup>,
     datatype_map: HashMap<Dt, Datatype>,
-    opaque_ty_map: HashMap<OpaqueTyName, Opaquetype>,
+    opaque_ty_map: HashMap<OpaqueTyName, OpaqueType>,
     trait_map: HashMap<Path, Trait>,
     // For an impl "bounds ==> trait T(...t...)", point T to impl:
     trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>>,
@@ -925,7 +925,7 @@ pub fn prune_krate_for_module_or_krate(
     let mut functions: Vec<Function> = Vec::new();
     let mut reveal_groups: Vec<RevealGroup> = Vec::new();
     let mut datatypes: Vec<Datatype> = Vec::new();
-    let mut opaque_types: Vec<Opaquetype> = Vec::new();
+    let mut opaque_types: Vec<OpaqueType> = Vec::new();
     let mut traits: Vec<Trait> = Vec::new();
     for f in &krate.reveal_groups {
         if is_visible_to_or_true(&f.x.visibility, &module) {
@@ -998,7 +998,7 @@ pub fn prune_krate_for_module_or_krate(
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut reveal_group_map: HashMap<Fun, RevealGroup> = HashMap::new();
     let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
-    let mut opaque_ty_map: HashMap<OpaqueTyName, Opaquetype> = HashMap::new();
+    let mut opaque_ty_map: HashMap<OpaqueTyName, OpaqueType> = HashMap::new();
     let mut trait_map: HashMap<Path, Trait> = HashMap::new();
     let mut assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>> = HashMap::new();
     let mut trait_to_trait_impls: HashMap<TraitName, Vec<ImplName>> = HashMap::new();

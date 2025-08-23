@@ -113,6 +113,8 @@ struct State {
     temp_types: HashMap<VarIdent, Typ>,
     is_trait: bool,
     in_exec_closure: bool,
+    // is the function return type an opaque type?
+    is_ret_opaque: bool,
 }
 
 fn monotyps_as_mono(typs: &Typs) -> Option<Vec<MonoTyp>> {
@@ -763,6 +765,7 @@ pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
         temp_types: HashMap::new(),
         is_trait: false,
         in_exec_closure: false,
+        is_ret_opaque: false,
     };
     visit_exp_native(ctx, &mut state, exp)
 }
@@ -893,10 +896,17 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 } else {
                     visit_exp_native(ctx, state, e1)
                 };
-                Some(e1)
+
+                // opaque type has to be poly
+                if state.is_ret_opaque {
+                    Some(crate::poly::coerce_exp_to_poly(ctx, &e1))
+                } else {
+                    Some(e1)
+                }
             } else {
                 None
             };
+
             mk_stm(StmX::Return {
                 assert_id: assert_id.clone(),
                 base_error: base_error.clone(),
@@ -1127,6 +1137,7 @@ fn visit_func_check_sst(
     state.types.pop_scope();
 
     let body = visit_stm(ctx, state, body);
+
     let local_decls_decreases_init = visit_stms(ctx, state, local_decls_decreases_init);
 
     update_temp_locals(state, &mut locals, &mut updated_temps);
@@ -1187,6 +1198,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         is_trait,
         in_exec_closure: false,
         remaining_temps: HashSet::new(),
+        is_ret_opaque: matches!(*ret.x.typ, TypX::Opaque { .. }),
     };
 
     let decl = Arc::new(visit_func_decl_sst(ctx, &mut state, &poly_pars, decl));

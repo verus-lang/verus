@@ -191,6 +191,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             TypX::Opaque { def_path: def_path1, args: args1 },
             TypX::Opaque { def_path: def_path2, args: args2 },
         ) => def_path1 == def_path2 && n_types_equal(args1, args2),
+        // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
         (TypX::Float(_), _) => false,
