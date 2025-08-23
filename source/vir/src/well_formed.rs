@@ -1694,6 +1694,17 @@ pub fn check_crate(
     for dt in krate.datatypes.iter() {
         check_datatype(&ctxt, dt)?;
     }
+    for tr_impl in krate.trait_impls.iter() {
+        for typ in tr_impl.x.trait_typ_args.iter() {
+            check_typ(&ctxt, typ, &tr_impl.span)?;
+        }
+    }
+    for assoc_type_impl in krate.assoc_type_impls.iter() {
+        for typ in assoc_type_impl.x.trait_typ_args.iter() {
+            check_typ(&ctxt, typ, &assoc_type_impl.span)?;
+        }
+        check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span)?;
+    }
     crate::recursive_types::check_recursive_types(krate)?;
     Ok(())
 }
