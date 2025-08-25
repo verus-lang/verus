@@ -965,7 +965,17 @@ pub enum ExprX {
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
-    ReadPlace(Place, ReadKind),
+    ReadPlace(Place, UnfinalizedReadKind),
+    /// Evaluate both in sequence and return the left value.
+    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
+    /// vars that would clutter everything up.
+    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub struct UnfinalizedReadKind {
+    pub preliminary_kind: ReadKind,
+    pub id: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -982,6 +992,7 @@ pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
+    /// TODO(mut_refs): Decide: is this only for single-variant structs?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),

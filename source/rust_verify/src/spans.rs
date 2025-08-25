@@ -277,10 +277,14 @@ impl SpanContextX {
         Some(SpanData { lo, hi, ctxt: rustc_span::SyntaxContext::root(), parent: None }.span())
     }
 
+    pub(crate) fn get_next_span_id(&self) -> u64 {
+        self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub(crate) fn to_air_span(&self, span: Span) -> vir::messages::Span {
         let raw_span = to_raw_span(span);
 
-        let id = self.next_span_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = self.get_next_span_id();
         let data = self.pack_span(span);
         let as_string = format!("{:?}", span);
         vir::messages::Span { raw_span, id, data, as_string }
@@ -314,6 +318,17 @@ impl<'tcx> crate::context::ContextX<'tcx> {
 
     pub(crate) fn spanned_typed_new<X>(&self, span: Span, typ: &Typ, x: X) -> Arc<SpannedTyped<X>> {
         self.spans.spanned_typed_new(span, typ, x)
+    }
+
+    pub(crate) fn spanned_typed_new_vir<X>(
+        &self,
+        span: &vir::messages::Span,
+        typ: &Typ,
+        x: X,
+    ) -> Arc<SpannedTyped<X>> {
+        let mut span = span.clone();
+        span.id = self.spans.get_next_span_id();
+        SpannedTyped::new(&span, typ, x)
     }
 }
 
