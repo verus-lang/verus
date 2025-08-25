@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -907,7 +907,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(*ret_mode)
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match ctxt.funs.get(x) {
@@ -919,10 +919,18 @@ fn check_expr_handle_mut_arg(
             };
 
             if !typing.allow_prophecy_dependence && function.x.attrs.prophecy_dependent {
-                return Err(error(
-                    &expr.span,
-                    "cannot call prophecy-dependent function in prophecy-independent context",
-                ));
+                let resolved_fn_is_prophecy_dependent = match kind {
+                    CallTargetKind::DynamicResolved { resolved, .. } => {
+                        ctxt.funs.get(resolved).unwrap().x.attrs.prophecy_dependent
+                    }
+                    _ => true,
+                };
+                if resolved_fn_is_prophecy_dependent {
+                    return Err(error(
+                        &expr.span,
+                        "cannot call prophecy-dependent function in prophecy-independent context",
+                    ));
+                }
             }
 
             if function.x.mode == Mode::Exec {
@@ -1832,31 +1840,31 @@ fn check_function(
                 "prophetic attribute can only be applied to 'spec' functions",
             ));
         }
-        if !matches!(function.x.kind, FunctionKind::Static) {
-            return Err(error(
-                &function.span,
-                "prophetic attribute not supported on trait functions",
-            ));
-        }
     }
     let mut fun_typing =
         fun_typing0.push_allow_prophecy_dependence(function.x.attrs.prophecy_dependent);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
         let our_trait = ctxt.traits.contains(trait_path);
-        let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
-            let trait_method = &ctxt.funs[method];
-            let expect_mode = trait_method.x.mode;
-            if function.x.mode != expect_mode {
-                return Err(error(
-                    &function.span,
-                    format!("function must have mode {}", expect_mode),
-                ));
-            }
-            (trait_method.x.params.iter().map(|f| f.x.mode).collect(), trait_method.x.ret.x.mode)
-        } else {
-            (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec)
-        };
+        let (expected_params, expected_ret_mode, expected_proph): (Vec<Mode>, Mode, bool) =
+            if our_trait {
+                let trait_method = &ctxt.funs[method];
+                let expect_mode = trait_method.x.mode;
+                let expect_proph = trait_method.x.attrs.prophecy_dependent;
+                if function.x.mode != expect_mode {
+                    return Err(error(
+                        &function.span,
+                        format!("function must have mode {}", expect_mode),
+                    ));
+                }
+                (
+                    trait_method.x.params.iter().map(|f| f.x.mode).collect(),
+                    trait_method.x.ret.x.mode,
+                    expect_proph,
+                )
+            } else {
+                (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec, false)
+            };
         assert!(expected_params.len() == function.x.params.len());
         for (param, expect) in function.x.params.iter().zip(expected_params.iter()) {
             let expect_mode = *expect;
@@ -1871,6 +1879,14 @@ fn check_function(
             return Err(error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),
+            ));
+        }
+        if function.x.attrs.prophecy_dependent && !expected_proph {
+            return Err(error(
+                &function.span,
+                format!(
+                    "implementation of trait function cannot be marked prophetic if the trait function is not"
+                ),
             ));
         }
     }
