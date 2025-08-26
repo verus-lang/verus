@@ -435,6 +435,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         assert!(ctxt.module.is_none());
                         reach_function(ctxt, state, name);
                     }
+                    ExprX::StaticVar(name) => {
+                        reach_function(ctxt, state, name);
+                    }
                     ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);

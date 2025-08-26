@@ -1040,7 +1040,15 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } = function;
+    let FuncCheckSst {
+        reqs,
+        post_condition,
+        unwind,
+        body,
+        local_decls,
+        local_decls_decreases_init,
+        statics,
+    } = function;
 
     state.temp_types.clear();
 
@@ -1114,7 +1122,8 @@ fn visit_func_check_sst(
     });
     state.types.pop_scope();
 
-    let body = visit_stm(ctx, state, &body);
+    let body = visit_stm(ctx, state, body);
+    let local_decls_decreases_init = visit_stms(ctx, state, local_decls_decreases_init);
 
     update_temp_locals(state, &mut locals, &mut updated_temps);
     state.remaining_temps.clear();
@@ -1126,6 +1135,7 @@ fn visit_func_check_sst(
         unwind,
         body,
         local_decls: Arc::new(locals),
+        local_decls_decreases_init,
         statics: statics.clone(),
     }
 }

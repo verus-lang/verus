@@ -518,3 +518,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] static_cross_modules_issue1810 verus_code! {
+        mod mod_a {
+
+            use vstd::prelude::*;
+
+            pub exec static FOO: u64 ensures true
+            {
+                1
+            }
+
+        }
+
+        use mod_a::FOO;
+        use vstd::prelude::*;
+
+        fn main() {
+            if FOO == 1 {}
+        }
+    } => Ok(())
+}

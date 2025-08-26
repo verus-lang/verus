@@ -1460,3 +1460,107 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] generic_fn_value_issue1763 verus_code! {
+        pub trait Tr {
+            fn trait_func(&self) -> bool;
+        }
+
+        pub trait Sr {
+            fn trait_func_s(&self) -> bool;
+        }
+
+        impl<T: Tr + ?Sized> Sr for T {
+            fn trait_func_s(&self) -> (r: bool)
+                ensures r == true,
+            {
+                true
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T, b: bool) {
+            let the_fn = T::trait_func_s;
+            assert(call_ensures(the_fn, (t,), b) ==> b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_as_field_and_receiver_issue1604 verus_code! {
+        use vstd::prelude::*;
+
+        struct X {
+            arr: [u8; 10]
+        }
+
+        pub fn test_arr(arr: &mut [u8; 10], order: usize) -> Result<u8, ()>  {
+            let val = *arr.get(order).ok_or(())?;
+            Ok(val)
+        }
+
+        impl X {
+            pub fn test(&mut self, order: usize) -> Result<u8, ()>  {
+                let val = *self.arr.get(order).ok_or(())?;
+                Ok(val)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] use_arc_as_receiver_issue1311 verus_code! {
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        pub struct Foo {
+        }
+
+        impl Foo {
+            pub fn get(&self, args: &u8) -> (out: u8) { 0 }
+        }
+
+        fn main() {
+            let foo = Foo { };
+            let shared_foo = Arc::new(foo);
+            let v = shared_foo.get(&20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_depending_on_view_issue966 verus_code! {
+        use vstd::prelude::*;
+
+        trait VerusClone: View + Sized {
+            fn verus_clone(&self) -> (r: Self)
+                ensures self@ == r@;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn vec_filter<V: VerusClone>(v: Vec<V>, f: impl Fn(&V)->bool, f_spec: spec_fn(V)->bool) -> (r: Vec<V>)
+            requires forall|v: V| #[trigger] f.requires((&v,)), forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+        {
+            let mut r = Vec::new();
+            let mut i = 0;
+            while i < v.len()
+                invariant
+                    forall|v: V| #[trigger] f.requires((&v,)),
+                    i <= v.len(),
+                    forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+            {
+                let ghost pre_r = r@.to_multiset();
+                assert(
+                    v@.subrange(0, i as int + 1)
+                    =~=
+                    v@.subrange(0, i as int).push(v@[i as int]));
+                if f(&v[i]) {
+                    r.push(v[i].verus_clone());
+                }
+
+                i += 1;
+            }
+            r
+        }
+    } => Ok(())
+}

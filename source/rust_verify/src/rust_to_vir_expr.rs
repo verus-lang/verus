@@ -954,7 +954,7 @@ fn invariant_block_to_vir<'tcx>(
 
 fn is_open_au_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
     let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
-    let vir_attrs = parse_attrs(hir_attrs, None)?;    
+    let vir_attrs = parse_attrs(hir_attrs, None)?;
     Ok(vir_attrs.contains(&Attr::AtomicUpdateBlock))
 }
 

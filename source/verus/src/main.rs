@@ -507,6 +507,12 @@ fn get_vstd_kind(args: &Vec<String>) -> &'static str {
     }
     match found {
         Some((_, kind)) => kind,
-        _ => default,
+        _ => {
+            if std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd") {
+                "IsVstd"
+            } else {
+                default
+            }
+        }
     }
 }

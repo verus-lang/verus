@@ -394,25 +394,25 @@ pub(crate) fn check_termination_stm(
     proof_body: Option<Stm>,
     body: &Stm,
     exec_with_no_termination_check: bool,
-) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
+) -> Result<(Vec<LocalDecl>, crate::sst::Stms, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     if exec_with_no_termination_check && function.x.decrease.is_empty() {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     let (ctxt, decreases_exps, stm) = check_termination(ctx, diagnostics, function, body)?;
 
-    let (decls, mut stm_assigns) =
-        mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let (decls, stm_assigns) = mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let mut block_stms = stm_assigns.clone();
     if let Some(proof_body) = proof_body {
-        stm_assigns.push(proof_body);
+        block_stms.push(proof_body);
     }
-    stm_assigns.push(stm.clone());
-    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
-    Ok((decls, stm_block))
+    block_stms.push(stm.clone());
+    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(block_stms)));
+    Ok((decls, Arc::new(stm_assigns), stm_block))
 }
 
 pub(crate) fn expand_call_graph(

@@ -580,7 +580,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 self.pop_scope();
 
                 R::ret(|| {
-                    expr_new(ExprX::OpenAtomicUpdate(R::get(e), R::get(binder), *is_mut, R::get(body)))
+                    expr_new(ExprX::OpenAtomicUpdate(
+                        R::get(e),
+                        R::get(binder),
+                        *is_mut,
+                        R::get(body),
+                    ))
                 })
             }
             ExprX::Return(e) => {

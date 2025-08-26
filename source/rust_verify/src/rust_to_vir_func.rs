@@ -8,6 +8,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
+use crate::rustc_type_ir::inherent::IntoKind;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -16,8 +17,9 @@ use rustc_hir::{
     HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
+    Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -151,7 +153,7 @@ fn handle_autospec<'tcx>(
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
                 ret: spec_ret_param,
-                ens_has_return: false,
+                ens_has_return: true,
                 require: functionx.require.clone(), // requires becomes recommends
                 ensure: (Arc::new(vec![]), Arc::new(vec![])),
                 returns: None,
@@ -731,10 +733,37 @@ fn mismatch_type_error_user_str_early<'tcx>(
     substs: GenericArgsRef<'tcx>,
     poly_sig: rustc_middle::ty::EarlyBinder<'tcx, rustc_middle::ty::PolyFnSig<'tcx>>,
 ) -> String {
+    let mut idx = 0;
+    let substs = substs
+        .iter()
+        .map(|arg| match arg.kind() {
+            GenericArgKind::Lifetime(region) => match region.kind() {
+                RegionKind::ReEarlyParam(r) => {
+                    if r.name.to_string() == "'_" {
+                        let mut r = r;
+                        r.name = rustc_span::Symbol::intern(&format!("'_{:}", idx));
+                        idx += 1;
+                        GenericArg::from(Region::new_from_kind(
+                            ctxt.tcx,
+                            RegionKind::ReEarlyParam(r),
+                        ))
+                    } else {
+                        arg
+                    }
+                }
+                _ => arg,
+            },
+            _ => arg,
+        })
+        .collect::<Vec<_>>();
+    let substs = ctxt.tcx.mk_args(&substs);
+
+    let early_binder_str = substs_to_string(&substs);
+
     let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
     use rustc_middle::ty::FnSig;
 
-    let binder_str = binders_to_str(&poly_sig.bound_vars());
+    let binder_str = binders_to_string(&poly_sig.bound_vars());
 
     let mut args: Vec<String> = vec![];
     let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
@@ -742,10 +771,42 @@ fn mismatch_type_error_user_str_early<'tcx>(
         args.push(format!("{:}", t));
     }
 
-    format!("{:}({:}) -> {:}", binder_str, args[0..args.len() - 1].join(", "), args[args.len() - 1],)
+    format!(
+        "{:}{:}({:}) -> {:}",
+        early_binder_str,
+        binder_str,
+        args[0..args.len() - 1].join(", "),
+        args[args.len() - 1],
+    )
 }
 
-fn binders_to_str(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
+fn substs_to_string<'tcx>(substs: &GenericArgsRef<'tcx>) -> String {
+    if substs.len() == 0 {
+        return "".to_string();
+    }
+
+    let mut v = vec![];
+    for arg in substs.iter() {
+        let s = match &arg.kind() {
+            GenericArgKind::Lifetime(region) => match region.kind() {
+                RegionKind::ReEarlyParam(r) => r.name.to_string(),
+                _ => format!("(Region {:?})", region),
+            },
+            GenericArgKind::Type(ty) => match ty.kind() {
+                TyKind::Param(pty) => pty.name.to_string(),
+                _ => format!("(Type {:?})", ty),
+            },
+            GenericArgKind::Const(c) => match c.kind() {
+                ConstKind::Param(pc) => pc.name.to_string(),
+                _ => format!("(Const {:?})", c),
+            },
+        };
+        v.push(s);
+    }
+    format!("{:}{:}{:}", "for<", v.join(", "), "> ")
+}
+
+fn binders_to_string(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
     use rustc_middle::ty::BoundTyKind;
     use rustc_middle::ty::BoundVariableKind;
     if l.len() == 0 {

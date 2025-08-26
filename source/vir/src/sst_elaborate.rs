@@ -171,6 +171,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
         let body = self.visit_stm(&def.body)?;
         let local_decls =
             Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
         let is_native = self.is_native.take().expect("is_native");
 
@@ -180,6 +181,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
             unwind,
             body,
             local_decls: Arc::new(local_decls),
+            local_decls_decreases_init: Arc::new(local_decls_decreases_init),
             statics: def.statics.clone(),
         };
 

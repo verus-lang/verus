@@ -1407,6 +1407,7 @@ enum UnwindAir {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
+    local_decls_decreases_init: Stms,
     may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
     commands: Vec<CommandsWithContext>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
@@ -2470,6 +2471,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         local.push(mk_unnamed_axiom(expr));
                     }
                 }
+                for exp in state.local_decls_decreases_init.clone().iter() {
+                    air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
+                }
             }
 
             // For any mutable param `x` to the function, we might refer to either
@@ -2821,8 +2825,15 @@ pub(crate) fn body_stm_to_air(
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncCheckSst { reqs, post_condition, body: stm, local_decls, statics, unwind } =
-        func_check_sst;
+    let FuncCheckSst {
+        reqs,
+        post_condition,
+        body: stm,
+        local_decls,
+        local_decls_decreases_init,
+        statics,
+        unwind,
+    } = func_check_sst;
 
     if is_bit_vector_mode {
         if is_integer_ring {
@@ -2918,6 +2929,7 @@ pub(crate) fn body_stm_to_air(
 
     let mut state = State {
         local_shared,
+        local_decls_decreases_init: local_decls_decreases_init.clone(),
         may_be_used_in_old,
         commands: Vec::new(),
         snapshot_count: 0,
