@@ -1600,3 +1600,26 @@ test_verify_one_file_with_options! {
         }
     } => Ok(_err) => {/* allow decreases checks warnings */ }
 }
+
+test_verify_one_file! {
+    #[test] recursive_call_in_loop_mut_ref verus_code! {
+        fn test1 (x:&mut usize)
+            ensures *x <= *old(x),
+            decreases old(x),
+        {
+            if *x == 0 {
+                return;
+            }
+            let mut i:usize = 0;
+            *x -= 1;
+            while i <10
+                invariant
+                    *x < *old(x),
+                decreases 10 - i
+            {
+                test1(x);
+                i += 1;
+            }
+        }
+    } => Ok(())
+}
