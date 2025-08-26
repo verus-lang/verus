@@ -1699,6 +1699,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
+        ExprX::OpenAtomicUpdate(..) => todo!(),
         ExprX::AirStmt(_) => Ok(Mode::Exec),
         ExprX::NeverToAny(e) => {
             let mode = check_expr(ctxt, record, typing, outer_mode, e)?;

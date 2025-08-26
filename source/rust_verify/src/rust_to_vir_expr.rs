@@ -15,8 +15,8 @@ use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenInvariantBlockItem,
-    SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
+    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
+    OpenInvariantBlockItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -952,6 +952,175 @@ fn invariant_block_to_vir<'tcx>(
     )))
 }
 
+fn is_open_au_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
+    let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+    let vir_attrs = parse_attrs(hir_attrs, None)?;    
+    Ok(vir_attrs.contains(&Attr::AtomicUpdateBlock))
+}
+
+fn malformed_au_block_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
+    return err_span(
+        expr.span,
+        "malformed atomic update block; use `open_atomic_update!` macro instead",
+    );
+}
+
+fn open_au_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<ExprOrPlace, VirErr> {
+    // ```
+    // #[verifier::open_au_block] {
+    //     let $x = open_atomic_update_begin($au);
+    //     let y = $body;
+    //     open_atomic_update_end(y);
+    // }
+    // ```
+
+    let ExprKind::Block(block, _) = expr.kind else {
+        panic!("expr should be a block expression");
+    };
+
+    let Block { stmts: [open_stmt, mid_stmt, close_stmt], expr: None, .. } = block else {
+        return malformed_au_block_err(expr);
+    };
+
+    // ```
+    // let $x = open_atomic_update_begin($au);
+    // ```
+    let StmtKind::Let(LetStmt {
+        pat:
+            x_pat @ Pat {
+                kind: PatKind::Binding(BindingMode(ByRef::No, x_mut), x_hir_id, _, None),
+                default_binding_modes: true,
+                ..
+            },
+        init:
+            Some(Expr {
+                kind:
+                    ExprKind::Call(
+                        Expr {
+                            kind:
+                                ExprKind::Path(QPath::Resolved(
+                                    None,
+                                    rustc_hir::Path {
+                                        res: Res::Def(DefKind::Fn, begin_fun_id),
+                                        ..
+                                    },
+                                )),
+                            ..
+                        },
+                        [au_arg],
+                    ),
+                ..
+            }),
+        els: None,
+        ..
+    }) = open_stmt.kind
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateBegin)) =
+        bctx.ctxt.verus_items.id_to_name.get(begin_fun_id)
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    // ```
+    // let y = $body;
+    // ```
+    let StmtKind::Let(LetStmt {
+        pat:
+            Pat {
+                kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), y_bind, _, None),
+                default_binding_modes: true,
+                ..
+            },
+        init: Some(body_expr @ Expr { kind: ExprKind::Block(body_block, None), .. }),
+        els: None,
+        ..
+    }) = mid_stmt.kind
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    // ```
+    // open_atomic_update_end(y);
+    // ```
+    let StmtKind::Semi(Expr {
+        kind:
+            ExprKind::Call(
+                Expr {
+                    kind:
+                        ExprKind::Path(QPath::Resolved(
+                            None,
+                            rustc_hir::Path { res: Res::Def(DefKind::Fn, end_fun_id), .. },
+                        )),
+                    ..
+                },
+                [
+                    Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Local(y_use), .. },
+                            )),
+                        ..
+                    },
+                ],
+            ),
+        ..
+    }) = close_stmt.kind
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateEnd)) =
+        bctx.ctxt.verus_items.id_to_name.get(end_fun_id)
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    if y_bind != y_use {
+        dbg!(y_bind, y_use);
+        return malformed_au_block_err(expr);
+    }
+
+    let mut vir_stmts = Vec::new();
+    for stmt in body_block.stmts {
+        vir_stmts.extend(stmt_to_vir(bctx, stmt)?);
+    }
+
+    let vir_body = bctx.spanned_typed_new(
+        body_block.span,
+        &typ_of_node(bctx, body_expr.span, &body_expr.hir_id, false)?,
+        ExprX::Block(
+            Arc::new(vir_stmts),
+            body_block.expr.map(|expr| expr_to_vir_consume(bctx, &expr, modifier)).transpose()?,
+        ),
+    );
+
+    let au_vir_arg = expr_to_vir_consume(bctx, au_arg, modifier)?;
+    let au_vir_binder = Arc::new(VarBinderX {
+        name: pat_to_var(x_pat)?,
+        a: typ_of_node(bctx, x_pat.span, x_hir_id, x_mut.is_mut())?,
+    });
+
+    let mid_exp = bctx.spanned_typed_new(
+        mid_stmt.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::OpenAtomicUpdate(au_vir_arg, au_vir_binder, x_mut.is_mut(), vir_body),
+    );
+
+    Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
+        expr.span,
+        &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
+        ExprX::Block(Default::default(), Some(mid_exp)),
+    )))
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub(crate) struct ExprModifier {
     /// dereferencing a mutable reference
@@ -1637,6 +1806,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
+            } else if is_open_au_block(bctx, expr)? {
+                open_au_block_to_vir(bctx, expr, modifier)
             } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, current_modifier)?;

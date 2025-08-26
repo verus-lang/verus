@@ -925,6 +925,8 @@ pub enum ExprX {
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    /// Open Atomic Update
+    OpenAtomicUpdate(Expr, VarBinder<Typ>, bool, Expr),
     /// Atomic function call update marker
     Atomically(Expr),
     /// Atomic function call update marker

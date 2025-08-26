@@ -566,6 +566,23 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato))
                 })
             }
+            ExprX::OpenAtomicUpdate(e, b, is_mut, body) => {
+                let e = self.visit_expr(e)?;
+
+                let binder = self.visit_binder_typ(b)?;
+
+                self.push_scope();
+                let b = R::get_or(&binder, b);
+                self.insert_binding(&b.name, ScopeEntry::new(&b.a, *is_mut, true));
+
+                let body = self.visit_expr(body)?;
+
+                self.pop_scope();
+
+                R::ret(|| {
+                    expr_new(ExprX::OpenAtomicUpdate(R::get(e), R::get(binder), *is_mut, R::get(body)))
+                })
+            }
             ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;
                 R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))

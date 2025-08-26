@@ -272,6 +272,12 @@ pub(crate) enum OpenInvariantBlockItem {
     OpenInvariantEnd,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum OpenAtomicUpdateItem {
+    OpenAtomicUpdateBegin,
+    OpenAtomicUpdateEnd,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum InvariantItem {
     AtomicInvariantNamespace,
@@ -370,6 +376,7 @@ pub(crate) enum VerusItem {
     UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
+    OpenAtomicUpdate(OpenAtomicUpdateItem),
     Vstd(VstdItem, Option<Ident>),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
@@ -526,6 +533,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
+
+        ("verus::vstd::atomic::open_atomic_update_begin",   VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateBegin)),
+        ("verus::vstd::atomic::open_atomic_update_end",     VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateEnd)),
 
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
         ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),

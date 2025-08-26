@@ -1024,15 +1024,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_stmt(&mut self, i: &'ast verus_syn::Stmt) {
         match i {
-            verus_syn::Stmt::Local(verus_syn::Local {
-                attrs: _,
-                let_token: _,
-                tracked,
-                ghost,
-                pat: _,
-                init,
-                semi_token: _,
-            }) => {
+            verus_syn::Stmt::Local(verus_syn::Local { tracked, ghost, init, .. }) => {
                 if tracked.is_some() {
                     self.mark(i, CodeKind::Proof, LineContent::GhostTracked(CodeKind::Proof));
                     return;
@@ -1053,8 +1045,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     }
                     match &*right.expr {
                         verus_syn::Expr::Call(call_expr) => {
-                            let verus_syn::ExprCall { attrs: _, func, paren_token: _, args: _ } =
-                                &*call_expr;
+                            let verus_syn::ExprCall { func, .. } = &*call_expr;
                             if let verus_syn::Expr::Path(path) = &**func {
                                 if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                                     .then(|| path.path.segments[0].ident.to_string())

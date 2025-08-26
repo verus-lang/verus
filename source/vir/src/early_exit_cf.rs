@@ -124,6 +124,7 @@ fn expr_get_early_exits_rec(
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
             }
+            ExprX::OpenAtomicUpdate(..) => todo!(),
         }
     });
 }

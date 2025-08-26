@@ -700,6 +700,103 @@ pub fn atomically<X, Y, P>(_f: impl FnOnce(fn (X) -> Y)) -> AtomicUpdate<X, Y, P
     arbitrary()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::open_atomic_update_begin"]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn open_atomic_update_begin<X, Y, Pred: UpdatePredicate<X, Y>>(
+    _upd: AtomicUpdate<X, Y, Pred>,
+) -> X {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::open_atomic_update_end"]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn open_atomic_update_end<Y>(_y: Y) {
+    unimplemented!();
+}
+
+#[macro_export]
+macro_rules! open_atomic_update {
+    ($au:expr => $x:ident => $body:block) => {
+        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+            #[cfg(verus_keep_ghost_body)]
+            #[allow(unused_mut)]
+            let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
+
+            #[allow(unused_mut)]
+            let y = $body;
+
+            #[cfg(verus_keep_ghost_body)]
+            $crate::vstd::atomic::open_atomic_update_end(y);
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! open_atomic_update_in_proof {
+    ($au:expr => $x:ident => $body:block) => {
+        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+            #[cfg(verus_keep_ghost_body)]
+            #[allow(unused_mut)]
+            let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
+
+            #[allow(unused_mut)]
+            let y = $body;
+
+            #[cfg(verus_keep_ghost_body)]
+            $crate::vstd::atomic::open_atomic_update_end(y);
+        }
+    }
+}
+
+// #[macro_export]
+// macro_rules! open_atomic_update {
+//     [$($tail:tt)*] => {
+//         #[cfg(verus_keep_ghost_body)]
+//         ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+//             $crate::vstd::atomic::open_atomic_update_internal!($($tail)*)
+//         )
+//     };
+// }
+// #[macro_export]
+// macro_rules! open_atomic_update_in_proof {
+//     [$($tail:tt)*] => {
+//         ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+//             $crate::vstd::atomic::open_atomic_update_in_proof_internal!($($tail)*)
+//         )
+//     };
+// }
+// #[macro_export]
+// macro_rules! open_atomic_update_internal {
+//     ($au:expr => $x:ident => $body:block) => {
+//         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+//             #[cfg(verus_keep_ghost_body)]
+//             #[allow(unused_mut)]
+//             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
+//             #[allow(unused_mut)]
+//             let y = $body;
+//             #[cfg(verus_keep_ghost_body)]
+//             $crate::vstd::atomic::open_atomic_update_end(y);
+//         }
+//     }
+// }
+// #[macro_export]
+// macro_rules! open_atomic_update_in_proof_internal {
+//     ($au:expr => $x:ident => $body:block) => {
+//         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+//             #[cfg(verus_keep_ghost_body)]
+//             #[allow(unused_mut)]
+//             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
+//             #[allow(unused_mut)]
+//             let y = $body;
+//             #[cfg(verus_keep_ghost_body)]
+//             $crate::vstd::atomic::open_atomic_update_end(y);
+//         }
+//     }
+// }
 impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */

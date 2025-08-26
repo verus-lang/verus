@@ -2220,7 +2220,6 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
-
             state.push_scope();
             std::mem::swap(&mut state.mask, &mut inner_mask);
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
@@ -2231,7 +2230,6 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(body_stm);
 
             // Assert the invariant at the end
-
             match body_e.to_value() {
                 Some(_e) => {
                     if !ctx.checking_spec_preconditions() {
@@ -2254,6 +2252,7 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
+        ExprX::OpenAtomicUpdate(..) => todo!(),
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
                 None => (vec![], sst_unit_value(&expr.span)),

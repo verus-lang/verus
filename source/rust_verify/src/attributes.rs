@@ -270,6 +270,8 @@ pub(crate) enum Attr {
     Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // specifies an open atomic update block
+    AtomicUpdateBlock,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
@@ -484,6 +486,9 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "open_au_block" => {
+                    v.push(Attr::AtomicUpdateBlock)
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
                     if arg == "custom_req_err" =>

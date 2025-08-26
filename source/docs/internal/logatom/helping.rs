@@ -1,4 +1,5 @@
 use vstd::atomic::*;
+use vstd::tokens::frac::*;
 
 // This is a simple example where concurrent processes help each other finish a task.
 //
@@ -14,7 +15,7 @@ verus! {
 type FlipAU = AtomicUpdate<FlagToken, FlagToken, FlipPred>;
 
 type K = (int, int);
-type V = (PermissionBool, PermissionU32, Option<FlipAU>);
+type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, Option<FlipAU>);
 
 struct FlagInv;
 impl InvariantPredicate<K, V> for FlagInv {
@@ -26,7 +27,7 @@ impl InvariantPredicate<K, V> for FlagInv {
 }
 
 pub struct FlagToken {
-    // ???
+    state: GhostVar<bool>,
 }
 
 pub struct Flag {
@@ -36,16 +37,19 @@ pub struct Flag {
 }
 
 impl Flag {
-    pub fn new() -> Self {
+    pub fn new() -> (Self, FlagToken) {
         let (value, Tracked(value_perm)) = AtomicBool::new(false);
         let (pending, Tracked(pending_perm)) = AtomicBool::new(0);
+        let (Tracked(auth), Tracked(var)) = GhostVarAuth::new(false);
         let tracked inv = AtomicInvariant::new(
             (value.id(), pending.id()),
-            (value_perm, pending_perm, None),
+            (value_perm, pending_perm, auth, None),
             arbitrary()
         );
 
-        Self { value, pending, inv }
+        let this = Self { value, pending, inv };
+        let token = FlagToken { state: var };
+        (this, token)
     }
 
     pub fn read(&self) -> bool {
@@ -61,8 +65,8 @@ impl Flag {
     pub fn flip(&self)
         atomically (au) {
             type FlipPred,
-            FlagToken -> FlagToken,
-            ensures self.value@.value != old(self).value@.value,
+            (old_token: FlagToken) -> (new_token: FlagToken),
+            ensures new_token.state@ != new_token.state@,
         }
     {
         let tracked mut au = au;
@@ -93,17 +97,21 @@ impl Flag {
             proof { v = (flag_perm, pend_perm, other_au); }
         });
 
-        if res.is_ok() {
-            open_atomic_update!(au => _ => {
-                // flip
-            });
-
+        if res.is_ok() {            
             open_atomic_invariant!(self.inv => v => {
-                let tracked (mut flag_perm, mut pend_perm, mut other_au) = v;
+                let tracked (mut flag_perm, mut pend_perm, mut auth, mut other_au) = v;
                 let tracked other_au = other_au.tracked_unwrap();
 
-                open_atomic_update!(other_au => _ => {
-                    // flip
+                open_atomic_update!(au => token => {
+                    let ghost old = auth@;
+                    auth.update(&mut token.state, !old);
+                    token
+                });
+
+                open_atomic_update!(other_au => token => {
+                    let ghost old = auth@;
+                    auth.update(&mut token.state, !old);
+                    token
                 });
 
                 proof { v = (flag_perm, pend_perm, None); }
@@ -124,8 +132,12 @@ impl Flag {
         });
 
         if res.is_ok() {
-            open_atomic_update!(au => _ => {
-                // flip
+            open_atomic_invariant!(self.inv => v => {
+                open_atomic_update!(other_au => token => {
+                    let ghost old = auth@;
+                    auth.update(&mut token.state, !old);
+                    token
+                });
             });
 
             return Ok(());
@@ -139,8 +151,12 @@ impl Flag {
         });
 
         if res.is_ok() {
-            open_atomic_update!(au => _ => {
-                // flip
+            open_atomic_invariant!(self.inv => v => {
+                open_atomic_update!(other_au => token => {
+                    let ghost old = auth@;
+                    auth.update(&mut token.state, !old);
+                    token
+                });
             });
 
             return Ok(());

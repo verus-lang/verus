@@ -3847,17 +3847,24 @@ impl VisitMut for Visitor {
         self.assign_to = is_assign_to;
 
         if let Expr::Macro(macro_expr) = expr {
-            macro_expr.mac.path.segments.first_mut().map(|x| {
-                let ident = x.ident.to_string();
-                // NOTE: this is currently hardcoded for
-                // open_*_invariant macros, but this could be extended
-                // to rewrite other macro names depending on proof vs exec mode.
-                if is_inside_ghost
-                    && (ident == "open_atomic_invariant" || ident == "open_local_invariant")
-                {
-                    x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
+            if is_inside_ghost {
+                if let Some(x) = macro_expr.mac.path.segments.first_mut() {
+                    let mut ident = x.ident.to_string();
+                    // NOTE: This is currently hardcoded for the macros
+                    //  * `open_local_invariant`,
+                    //  * `open_atomic_invariant`, and
+                    //  * `open_atomic_update`
+                    // but this could be extended to rewrite other macro
+                    // names depending on proof vs exec mode.
+                    if matches!(
+                        ident.as_str(),
+                        "open_local_invariant" | "open_atomic_invariant" | "open_atomic_update"
+                    ) {
+                        ident.push_str("_in_proof");
+                        x.ident = Ident::new(&ident, x.span());
+                    }
                 }
-            });
+            }
         }
 
         let do_replace = match &expr {
@@ -5416,9 +5423,10 @@ pub(crate) fn proof_macro_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn inv_macro_exprs(
+pub(crate) fn inv_au_macro_exprs(
     erase_ghost: EraseGhost,
     treat_elements_as_ghost: bool,
+    ghost_override_index: usize,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
@@ -5440,10 +5448,10 @@ pub(crate) fn inv_macro_exprs(
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
             MacroElement::Expr(expr) => {
-                // Always treat the third element ($eexpr) as ghost even if
-                // `treat_elements_as_ghost` is false.
+                // Always treat the element at `ghost_override_index` as ghost
+                // even if `treat_elements_as_ghost` is false.
                 visitor.inside_ghost =
-                    if treat_elements_as_ghost || idx == 2 { 1u32 } else { 0u32 };
+                    u32::from(treat_elements_as_ghost || idx == ghost_override_index);
                 visitor.visit_expr_mut(expr);
             }
             _ => {}

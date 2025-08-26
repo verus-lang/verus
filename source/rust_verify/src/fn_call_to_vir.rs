@@ -361,6 +361,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 f_name
             ),
         ),
+        VerusItem::OpenAtomicUpdate(_) => err_span(
+            expr.span,
+            format!("{} should never be used except through open_atomic_update macro", f_name),
+        ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(spec_literal_item)) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
