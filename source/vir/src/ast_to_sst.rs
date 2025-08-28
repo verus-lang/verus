@@ -517,6 +517,53 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     }
 }
 
+/// Given a bunch of stms and exps that need to be executed like:
+///    stms[0], exps[0], stms[1], exps[1], ...
+/// Reorders them to (all stms, all exps)
+/// When necessary, we introduce temporaries if an exp might be changed might be changed
+/// by an assignment that we reorder it with.
+fn uninterleave_stms_exps(
+    ctx: &Ctx,
+    state: &mut State,
+    stms: Vec<Vec<Stm>>,
+    exps: Vec<Exp>,
+    fun: &Function,
+) -> (Vec<Stm>, Vec<Exp>) {
+    assert!(stms.len() == exps.len());
+
+    let mut largest_idx_with_stm = None;
+    for i in (0..stms.len()).rev() {
+        if stms[i].len() > 0 {
+            largest_idx_with_stm = Some(i);
+            break;
+        }
+    }
+
+    let mut final_stms = stms;
+    let mut final_exps = vec![];
+
+    for i in 0..exps.len() {
+        let arg = &exps[i];
+
+        // Create a temporary for any exp that comes before a stm
+        if largest_idx_with_stm.is_some()
+            && i < largest_idx_with_stm.unwrap()
+            && !matches!(&arg.x, ExpX::Loc(_))
+        {
+            let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
+            let kind = LocalDeclKind::StmCallArg { native: !poly };
+            let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
+            final_exps.push(temp_var);
+            final_stms[i].push(init_var(&arg.span, &temp_id, arg));
+        } else {
+            final_exps.push(arg.clone());
+        }
+    }
+
+    let final_stms = final_stms.into_iter().flatten().collect::<Vec<_>>();
+    (final_stms, final_exps)
+}
+
 enum ReturnedCall {
     Call {
         fun: Fun,
@@ -562,19 +609,23 @@ fn expr_get_call(
                     // disrupting the old behavior.
                     return Ok(None);
                 }
-                let mut stms: Vec<Stm> = Vec::new();
+                let mut stms: Vec<Vec<Stm>> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
-                    let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
-                    stms.append(&mut stms0);
+                    let (stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
+                    stms.push(stms0);
                     let e0 = match e0.to_value() {
                         Some(e) => e,
                         None => {
+                            let stms = stms.into_iter().flatten().collect::<Vec<_>>();
                             return Ok(Some((stms, ReturnedCall::Never)));
                         }
                     };
                     exps.push(e0);
                 }
+
+                let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, &function);
+
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
                     if let FunctionKind::TraitMethodDecl { has_default: true, .. } =

@@ -687,3 +687,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] call_with_side_effects_in_arg verus_code! {
+        fn foo(x: u64, y: u64) -> (ret: (u64, u64))
+            ensures ret == (x, y)
+        {
+            (x, y)
+        }
+
+        fn test() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = foo(x, ({ x = 60; y }));
+
+            assert(z === (60, 30)); // FAILS
+        }
+
+        fn test2() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = foo(x, ({ x = 60; y }));
+
+            assert(z === (24, 30));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
