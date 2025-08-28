@@ -45,7 +45,7 @@ test_verify_one_file_with_options! {
 
         fn test_mut_ref_in_pair() {
             let mut u: u64 = 20;
-            let u_ref: Pair<&mut u64, u64> = Pair(&mut u, 70);
+            let u_ref: Pair<&mut u64, u64> = Pair { 0: &mut u, 1: 70 };
 
             *u_ref.0 = 30;
 
@@ -74,6 +74,24 @@ test_verify_one_file_with_options! {
             *u_ref = 17;
 
             assert(u == 17);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // TODO(new_mut_ref): failing because of interactions between Ctors and two-phase-borrows
+    #[ignore] #[test] test_paren_ctors_with_mut_refs ["new-mut-ref"] => verus_code! {
+        fn test_mut_ref_in_pair() {
+            let mut u: u64 = 20;
+            let u_ref: Pair<&mut u64, u64> = Pair(&mut u, 70);
+
+            *u_ref.0 = 30;
+
+            proof {
+                assert(has_resolved(u_ref.0));
+            }
+
+            assert(u == 30);
         }
     } => Ok(())
 }
@@ -2199,4 +2217,448 @@ test_verify_one_file_with_options! {
             assert(has_resolved(x_ref));
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrow_resolving ["new-mut-ref"] => verus_code! {
+        struct X<'a> {
+            x: u64,
+            y: &'a mut u64,
+        }
+
+        impl<'a> X<'a> {
+            fn method_call_takes_mut_ref(&mut self, x: u64)
+                ensures mut_ref_future(self).x == 20,
+                no_unwind
+            {
+                self.x = 20;
+            }
+        }
+
+        fn call_takes_mut_ref<T>(a: &mut T, x: u64)
+            no_unwind
+        {
+        }
+
+        fn call_takes_generic<T>(a: T, x: u64)
+            no_unwind
+        {
+        }
+
+        // When a call takes a two-phase borrow, the mutable reference doesn't get mutated
+        // until *after* all arguments have been evaluated. Thus, for a two-phase borrow,
+        // we won't see resolution immediately, but for a 'normal' borrow, we should resolution
+        // immediately.
+
+        fn test1() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            // two-phase-borrow (implicit reborrows are two-phase borrows)
+            call_takes_mut_ref(a_ref, {
+                *a_ref
+            });
+
+            assert(has_resolved(a_ref));
+        }
+
+        fn test1_fails() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            // two-phase-borrow (implicit reborrows are two-phase borrows)
+            call_takes_mut_ref(a_ref, {
+                assert(has_resolved(a_ref)); // FAILS
+                *a_ref
+            });
+        }
+
+
+
+        fn test2() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            call_takes_mut_ref(&mut *a_ref, 0);
+
+            assert(has_resolved(a_ref));
+        }
+
+        fn test2_fails() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            // an explicit borrow is always a normal borrow, but Rust inserts an additional two-phase
+            // borrow through adjustments. So what we have here is:
+            //   &mut(two phase) * &mut(normal) * a_ref
+            // Verus cleans this up to just:
+            //   &mut(two phase) * a_ref
+            // thus treats it as a two-phase borrow, which is why the has_resolved fails here.
+            // However, Rust wouldn't let you read from *a_ref until the call is done (because of
+            // the "normal" reborrow)
+            call_takes_mut_ref(&mut *a_ref, {
+                assert(has_resolved(a_ref)); // FAILS
+                0
+            });
+        }
+
+        fn test3() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            // When instantiating a generic with &mut T, there is no reborrow at all,
+            // so a_ref should never be resolved
+            call_takes_generic(a_ref, 0);
+
+            assert(has_resolved(a_ref)); // FAILS
+        }
+
+        fn test4(x: X) {
+            let mut thevar = x;
+
+            // two-phase-borrow (implicit borrow for a receiver is two-phase)
+            thevar.method_call_takes_mut_ref(thevar.x);
+
+            assert(has_resolved(thevar));
+        }
+
+        fn test4_fails(x: X) {
+            let mut a = x;
+
+            // two-phase-borrow (implicit borrow for a receiver is two-phase)
+            a.method_call_takes_mut_ref({
+                assert(has_resolved(a)); // FAILS
+                a.x
+            });
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_borrow_basic ["new-mut-ref"] => verus_code! {
+        fn call_takes_mut_ref(a: &mut u64, x: u64)
+            requires x < 50
+            ensures mut_ref_future(a) == x + 1
+        {
+            *a = x + 1;
+        }
+
+        fn test1() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            call_takes_mut_ref(a_ref, *a_ref);
+
+            assert(a == 25);
+        }
+
+        fn test1_fails() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            call_takes_mut_ref(a_ref, *a_ref);
+
+            assert(a == 25);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_lifetime_error ["new-mut-ref"] => verus_code! {
+        fn call_takes_mut_ref(a: &mut u64, x: u64) {
+            *a = x + 1;
+        }
+
+        fn test2() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            call_takes_mut_ref(&mut *a_ref, *a_ref);
+
+            assert(a == 25);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*a_ref` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_lifetime_error_generic ["new-mut-ref"] => verus_code! {
+        fn call_generic<T>(a: T, x: u64) {
+        }
+
+        fn test2() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            call_generic(a_ref, *a_ref);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `a_ref`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_receiver_struct ["new-mut-ref"] => verus_code! {
+        struct X {
+            a: u64,
+            b: u64,
+        }
+
+        struct Y {
+            x1: X,
+            x2: X,
+        }
+
+        impl X {
+            fn method_call(&mut self, x: u64)
+                ensures mut_ref_future(self) == (X {
+                    a: x,
+                    b: mut_ref_current(self).a,
+                })
+            {
+                self.b = self.a;
+                self.a = x;
+            }
+        }
+
+        fn test1() {
+            let mut x = X { a: 0, b: 1 };
+            x.method_call(x.a + 20);
+
+            assert(x == X { a: 20, b: 0 });
+        }
+
+        fn test1_fails() {
+            let mut x = X { a: 0, b: 1 };
+            x.method_call(x.a + 20);
+
+            assert(x == X { a: 20, b: 0 });
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut x = X { a: 0, b: 1 };
+            let mut x_ref = &mut x;
+            x_ref.method_call(x_ref.a + 20);
+
+            assert(x == X { a: 20, b: 0 });
+        }
+
+        fn test2_fails() {
+            let mut x = X { a: 0, b: 1 };
+            let mut x_ref = &mut x;
+            x_ref.method_call(x_ref.a + 20);
+
+            assert(x == X { a: 20, b: 0 });
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let mut y = Y { x1: X { a: 0, b: 1 }, x2: X { a: 3, b: 4 } };
+            y.x1.method_call(y.x1.a + 20);
+
+            assert(y == Y { x1: X { a: 20, b: 0 }, x2: X { a: 3, b: 4 } });
+        }
+
+        fn test3_fails() {
+            let mut y = Y { x1: X { a: 0, b: 1 }, x2: X { a: 3, b: 4 } };
+            y.x1.method_call(y.x1.a + 20);
+
+            assert(y == Y { x1: X { a: 20, b: 0 }, x2: X { a: 3, b: 4 } });
+            assert(false); // FAILS
+        }
+
+        fn test4() {
+            let mut y = Y { x1: X { a: 0, b: 1 }, x2: X { a: 3, b: 4 } };
+            let y_ref = &mut y;
+            y_ref.x1.method_call(y_ref.x1.a + y_ref.x1.b + 20);
+
+            assert(y == Y { x1: X { a: 21, b: 0 }, x2: X { a: 3, b: 4 } });
+        }
+
+        fn test4_fails() {
+            let mut y = Y { x1: X { a: 0, b: 1 }, x2: X { a: 3, b: 4 } };
+            let y_ref = &mut y;
+            y_ref.x1.method_call(y_ref.x1.a + y_ref.x1.b + 20);
+
+            assert(y == Y { x1: X { a: 21, b: 0 }, x2: X { a: 3, b: 4 } });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_arrays_slices ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct X {
+            a: u64,
+            b: u64,
+        }
+
+        impl X {
+            fn method_call(&mut self, x: u64)
+                ensures mut_ref_future(self) == (X {
+                    a: x,
+                    b: mut_ref_current(self).a,
+                })
+            {
+                self.b = self.a;
+                self.a = x;
+            }
+        }
+
+        fn test_slice(j: &mut [X])
+            requires
+                (*j).len() > 0,
+                (*j)[0] == (X { a: 0, b: 1 }),
+        {
+            j[0].method_call(j[0].a + 20);
+            assert((*j)[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_slice_fail(j: &mut [X])
+            requires
+                (*j).len() > 0,
+                (*j)[0] == (X { a: 0, b: 1 }),
+        {
+            j[0].method_call(j[0].a + 20);
+            assert((*j)[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+
+        fn test_slice_boxed(j: Box<[X]>)
+            requires
+                j.len() > 0,
+                j[0] == (X { a: 0, b: 1 }),
+        {
+            let mut j = j;
+            j[0].method_call(j[0].a + 20);
+            assert(j[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_slice_boxed_fail(j: Box<[X]>)
+            requires
+                j.len() > 0,
+                j[0] == (X { a: 0, b: 1 }),
+        {
+            let mut j = j;
+            j[0].method_call(j[0].a + 20);
+            assert(j[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+
+        fn test_slice_boxed2(j: Box<[X]>)
+            requires
+                j.len() > 0,
+                j[0] == (X { a: 0, b: 1 }),
+        {
+            let mut j = j;
+            let mut j_ref = &mut j;
+            j_ref[0].method_call(j_ref[0].a + 20);
+            assert(j[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_slice_boxed2_fail(j: Box<[X]>)
+            requires
+                j.len() > 0,
+                j[0] == (X { a: 0, b: 1 }),
+        {
+            let mut j = j;
+            let mut j_ref = &mut j;
+            j_ref[0].method_call(j_ref[0].a + 20);
+            assert(j[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+
+        fn test_array(j: &mut [X; 2])
+            requires
+                mut_ref_current(j)[0] == (X { a: 0, b: 1 }),
+        {
+            j[0].method_call(j[0].a);
+            assert(mut_ref_current(j)[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_array_fail(j: &mut [X; 2])
+            requires
+                mut_ref_current(j)[0] == (X { a: 0, b: 1 }),
+        {
+            j[0].method_call(j[0].a);
+            assert(mut_ref_current(j)[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+
+        fn test_array2() {
+            let mut j: [X; 2] = [
+                X { a: 0, b: 1 },
+                X { a: 5, b: 10 },
+            ];
+
+            j[0].method_call(j[0].a);
+            assert(j[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_array2_fail() {
+            let mut j: [X; 2] = [
+                X { a: 0, b: 1 },
+                X { a: 5, b: 10 },
+            ];
+
+            j[0].method_call(j[0].a);
+            assert(j[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+
+        fn test_array3() {
+            let mut j: [X; 2] = [
+                X { a: 0, b: 1 },
+                X { a: 5, b: 10 },
+            ];
+            let j_ref = &mut j;
+
+            j_ref[0].method_call(j_ref[0].a);
+            assert(j[0] == (X { a: 20, b: 0 }));
+        }
+
+        fn test_array3_fail() {
+            let mut j: [X; 2] = [
+                X { a: 0, b: 1 },
+                X { a: 5, b: 10 },
+            ];
+            let j_ref = &mut j;
+
+            j_ref[0].method_call(j_ref[0].a);
+            assert(j[0] == (X { a: 20, b: 0 }));
+            assert(false); // FAILS
+        }
+    //} => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
+    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_vec ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct X {
+            a: u64,
+            b: u64,
+        }
+
+        impl X {
+            fn method_call(&mut self, x: u64)
+                ensures mut_ref_future(self) == (X {
+                    a: x,
+                    b: mut_ref_current(self).a,
+                })
+            {
+                self.b = self.a;
+                self.a = x;
+            }
+        }
+
+        fn test_vec(j: &mut Vec<X>) {
+            // j[0] is actually a call to index_mut, which disrupts the possibility of a
+            // two-phase borrow.
+            j[0].method_call(j[0].a);
+        }
+    //} => Err(err) => assert_rust_error_msg(err, "cannot use `j` because it was mutably borrowed")
+    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
 }
