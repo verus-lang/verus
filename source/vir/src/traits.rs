@@ -42,6 +42,7 @@ fn demote_one_expr(
                 autospec_usage,
             ),
             args,
+            post_args,
         ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
             let ct = CallTarget::Fun(
                 CallTargetKind::Static,
@@ -50,7 +51,7 @@ fn demote_one_expr(
                 impl_paths.clone(),
                 *autospec_usage,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
         ExprX::Call(
             CallTarget::Fun(
@@ -66,6 +67,7 @@ fn demote_one_expr(
                 autospec_usage,
             ),
             args,
+            post_args,
         ) if traits.contains(&get_trait(fun))
             && !internal_traits.contains(&get_trait(fun))
             && funs.contains(fun)
@@ -80,7 +82,7 @@ fn demote_one_expr(
                 impl_paths.clone(),
                 *autospec_usage,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
         ExprX::Call(
             CallTarget::Fun(
@@ -96,6 +98,7 @@ fn demote_one_expr(
                 autospec_usage,
             ),
             args,
+            post_args,
         ) if extension_traits.contains(&get_trait(fun)) => {
             assert!(traits.contains(&get_trait(fun)));
             assert!(funs.contains(fun));
@@ -109,7 +112,7 @@ fn demote_one_expr(
                 impl_paths.clone(),
                 *autospec_usage,
             );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+            Ok(expr.new_x(ExprX::Call(ct, args.clone(), post_args.clone())))
         }
         _ => Ok(expr.clone()),
     }
@@ -276,7 +279,10 @@ pub fn rewrite_one_external_expr(
             let fun = rewrite_fun(from_path, to_path, fun);
             expr.new_x(ExprX::ExecFnByName(fun))
         }
-        (ExprX::Call(CallTarget::Fun(kind, fun, typs, impl_paths, auto), args), Some(to_spec)) => {
+        (
+            ExprX::Call(CallTarget::Fun(kind, fun, typs, impl_paths, auto), args, post_args),
+            Some(to_spec),
+        ) => {
             let fun = rewrite_fun(from_path, to_spec, fun);
             let kind = match kind {
                 CallTargetKind::Static
@@ -298,6 +304,7 @@ pub fn rewrite_one_external_expr(
             expr.new_x(ExprX::Call(
                 CallTarget::Fun(kind, fun, typs.clone(), impl_paths.clone(), *auto),
                 args.clone(),
+                post_args.clone(),
             ))
         }
         _ => expr.clone(),
