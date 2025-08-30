@@ -384,7 +384,50 @@ fn compare_external_ty_or_true<'tcx>(
         _ => false,
     }
 }
-
+fn compare_clasue_kind<'tcx>(
+    ck1: &rustc_middle::ty::ClauseKind<'tcx>,
+    ck2: &rustc_middle::ty::ClauseKind<'tcx>,
+) -> bool {
+    match (ck1, ck2) {
+        (
+            rustc_middle::ty::ClauseKind::Trait(pred1),
+            rustc_middle::ty::ClauseKind::Trait(pred2),
+        ) => pred1.trait_ref.def_id == pred2.trait_ref.def_id && pred1.polarity == pred2.polarity,
+        (
+            rustc_middle::ty::ClauseKind::Projection(pred1),
+            rustc_middle::ty::ClauseKind::Projection(pred2),
+        ) => {
+            pred1.projection_term.def_id == pred2.projection_term.def_id && pred1.term == pred2.term
+        }
+        (
+            rustc_middle::ty::ClauseKind::RegionOutlives(..),
+            rustc_middle::ty::ClauseKind::RegionOutlives(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::TypeOutlives(..),
+            rustc_middle::ty::ClauseKind::TypeOutlives(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::ConstArgHasType(..),
+            rustc_middle::ty::ClauseKind::ConstArgHasType(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::WellFormed(..),
+            rustc_middle::ty::ClauseKind::WellFormed(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::ConstEvaluatable(..),
+            rustc_middle::ty::ClauseKind::ConstEvaluatable(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::HostEffect(..),
+            rustc_middle::ty::ClauseKind::HostEffect(..),
+        ) => true,
+        // Uncomment the following line when upgrading to Rust 1.90.
+        // (rustc_middle::ty::ClauseKind::UnstableFeature(..), rustc_middle::ty::ClauseKind::UnstableFeature(..)) => true,
+        _ => false,
+    }
+}
 fn compare_external_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -392,8 +435,27 @@ fn compare_external_ty<'tcx>(
     ty2: &rustc_middle::ty::Ty<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
+    // println!("ty1 {:#?} \n ty2 {:#?}", ty1, ty2);
+    // println!("external_trait_from_to {:#?}", external_trait_from_to);
     if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
+    } else if let (
+        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
+        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
+    ) = (ty1.kind(), ty2.kind())
+    {
+        // two opaque types. We compare their trait bounds
+        let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
+        let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+        if ty1_bounds.len() != ty2_bounds.len() {
+            return false;
+        }
+        for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
+            if !compare_clasue_kind(&bound1.kind().skip_binder(), &bound2.kind().skip_binder()) {
+                return false;
+            }
+        }
+        return true;
     } else {
         ty1 == ty2
     }

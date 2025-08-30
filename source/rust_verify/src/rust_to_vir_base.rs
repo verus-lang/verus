@@ -2103,17 +2103,6 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
     match opaque_ty.origin {
         rustc_hir::OpaqueTyOrigin::FnReturn { parent, .. } => {
-            let mode = crate::attributes::get_mode(
-                Mode::Exec,
-                ctxt.tcx.get_attrs_unchecked(parent.into()),
-            );
-            if mode != Mode::Exec {
-                return err_span(
-                    opaque_ty.span,
-                    format!("Opaque type is not supported in {} mode", mode),
-                );
-            }
-
             let ty = ctxt.tcx.fn_sig(parent).skip_binder().output().skip_binder();
             match ty.kind() {
                 rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
