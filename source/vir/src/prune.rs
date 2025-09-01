@@ -471,6 +471,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         for method in ["req", "ens"] {
                             let ident = Arc::new(method.to_string());
                             let path = path.push_segment(ident);
+                            dbg!(&path);
                             let fun = Arc::new(FunX { path: path });
                             reach_function(ctxt, state, &fun);
                         }
