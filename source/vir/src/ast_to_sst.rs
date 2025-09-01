@@ -2313,7 +2313,8 @@ pub(crate) fn expr_to_stm_opt(
                 Arc::new(vec![au_temp_var, x_tmp_var, y_var]),
             );
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens.clone())));
+            let error = error(&expr.span, "cannot show atomic postcondition hold at end of block");
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone())));
 
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }

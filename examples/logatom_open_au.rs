@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs ignore --- incomplete feature
 use vstd::*;
 use vstd::prelude::*;
 use vstd::atomic::*;
@@ -13,13 +12,13 @@ impl UpdatePredicate<i32, i32> for MyPredicate {
     }
 
     open spec fn ens(self, x: i32, y: i32) -> bool {
-        y == 3
+        y == 5
     }
 }
 
-fn trivial(au: AtomicUpdate<i32, i32, MyPredicate>) {
+fn silly(au: AtomicUpdate<i32, i32, MyPredicate>) {
     open_atomic_update!(au, mut n => {
-        n + 1
+        n + 3
     });
 }
 

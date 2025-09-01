@@ -740,10 +740,10 @@ pub fn open_atomic_update_end<Y>(_y: Y) {
 macro_rules! open_atomic_update {
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-            #[cfg(verus_keep_ghost_body)]
+            //#[cfg(verus_keep_ghost_body)]
             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
             let y = $body;
-            #[cfg(verus_keep_ghost_body)]
+            //#[cfg(verus_keep_ghost_body)]
             $crate::vstd::atomic::open_atomic_update_end(y);
         }
     }
@@ -753,10 +753,10 @@ macro_rules! open_atomic_update {
 macro_rules! open_atomic_update_in_proof {
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-            #[cfg(verus_keep_ghost_body)]
+            //#[cfg(verus_keep_ghost_body)]
             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
             let y = $body;
-            #[cfg(verus_keep_ghost_body)]
+            //#[cfg(verus_keep_ghost_body)]
             $crate::vstd::atomic::open_atomic_update_end(y);
         }
     }
