@@ -58,7 +58,7 @@ pub struct PostConditionInfo {
 }
 
 #[inline(always)]
-pub(crate) fn fun_to_air_ident(name_ctxt: &NameCtxt, fun: &Fun) -> Ident {
+pub fn fun_to_air_ident(name_ctxt: &NameCtxt, fun: &Fun) -> Ident {
     Arc::new(name_ctxt.fun_to_string(fun))
 }
 

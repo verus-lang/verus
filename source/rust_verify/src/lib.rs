@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 #![feature(box_patterns)]
+// #![feature(get_mut_unchecked)]
+#![feature(exit_status_error)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
 // available to cargo
@@ -75,3 +77,5 @@ mod user_filter;
 pub mod util;
 pub mod verifier;
 pub mod verus_items;
+
+mod sledgehammer;

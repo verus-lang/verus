@@ -429,7 +429,7 @@ fn req_ens_to_sst(
 }
 
 pub fn func_decl_to_sst(
-    ctx: &mut Ctx,
+    ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
@@ -529,7 +529,7 @@ pub fn func_decl_to_sst(
 }
 
 pub fn func_axioms_to_sst(
-    ctx: &mut Ctx,
+    ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     function: &Function,
     public_body: bool,

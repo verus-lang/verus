@@ -5,7 +5,11 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
+<<<<<<< HEAD
 use crate::rust_to_vir_base::mk_crate_id;
+=======
+use crate::sledgehammer::{self, sledgehammer};
+>>>>>>> 3ad86db96 (Implement Sledgehammer-style proof search)
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -50,7 +54,7 @@ const RLIMIT_PER_SECOND: f32 = 3000000f32;
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
 
-trait Diagnostics: air::messages::Diagnostics {
+pub(crate) trait Diagnostics: air::messages::Diagnostics {
     fn use_progress_bars(&self) -> bool;
     fn add_progress_bar(&self, ctx: CommandContext);
     fn complete_progress_bar(&self, ctx: CommandContext);
@@ -334,7 +338,12 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
+<<<<<<< HEAD
     crate_id: Option<CrateId>,
+=======
+    pub(crate) crate_name: Option<String>,
+    crate_names: Option<Vec<String>>,
+>>>>>>> 3ad86db96 (Implement Sledgehammer-style proof search)
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -455,7 +464,7 @@ impl std::ops::Add for RunCommandQueriesResult {
     }
 }
 
-struct VerifyBucketOut {
+pub(crate) struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
     rlimit_count: Option<(u64, u64)>,
@@ -599,7 +608,7 @@ impl Verifier {
         self.deferred_errors.extend(other.deferred_errors);
     }
 
-    fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
+    pub(crate) fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
         self.buckets.get(bucket_id).expect("expected valid BucketId")
     }
 
@@ -621,7 +630,7 @@ impl Verifier {
         })
     }
 
-    fn create_log_file(
+    pub(crate) fn create_log_file(
         &mut self,
         bucket_id_opt: Option<&BucketId>,
         suffix: &str,
@@ -1317,13 +1326,17 @@ impl Verifier {
     }
 
     // Verify a single bucket
-    fn verify_bucket(
+    pub(crate) fn verify_bucket(
         &mut self,
         reporter: &impl Diagnostics,
         krate: &vir::sst::KrateSst,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        // If `outcome` is Some, populate with information on whether
+        // verification succeeded and what axioms were used if axiom-usage-info
+        // is enabled.
+        mut outcome: Option<&mut sledgehammer::VerificationOutcome>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1653,6 +1666,16 @@ impl Verifier {
 
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
+                            match outcome {
+                                Some(ref mut outcome) => {
+                                    outcome.any_invalid |= any_invalid;
+                                    outcome.any_timeout |= any_timed_out;
+                                }
+                                _ => {}
+                            }
+                            outcome
+                                .iter_mut()
+                                .for_each(|outcome| outcome.merge_axioms(&command_used_axioms));
 
                             if let Some(used_axioms) = command_used_axioms {
                                 if used_axioms.len() > 0 {
@@ -1914,6 +1937,10 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
+        let (sh_result, new_ctx) =
+            sledgehammer(self, reporter, krate, source_map, bucket_id, global_ctx)?;
+        let krate = sh_result.as_ref().unwrap_or(krate);
+        global_ctx = new_ctx;
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
             self.crate_id.as_ref().expect("crate_id"),
@@ -1974,7 +2001,7 @@ impl Verifier {
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, None)?;
 
         global_ctx = ctx.free();
 
