@@ -452,6 +452,31 @@ pub fn friendly_fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
     }
 }
 
+pub fn merge_friendly_name_map(other_map: &HashMap<Path, String>) {
+    if let Ok(mut guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        let map_opt = &mut *guard;
+        if map_opt.is_none() {
+            *map_opt = Some(HashMap::new());
+        }
+        let map = map_opt.as_mut().unwrap();
+        for (path, name) in other_map {
+            if map.contains_key(path) {
+                eprintln!("Verus Bug: duplicate friendly name {path:#?}");
+            }
+            map.insert(path.clone(), name.clone());
+        }
+    }
+}
+
+pub fn get_friendly_name_map() -> Option<HashMap<Path, String>> {
+    if let Ok(guard) = PATH_AS_RUST_NAME_MAP.lock() {
+        if let Some(map) = &*guard {
+            return Some(map.clone());
+        }
+    }
+    None
+}
+
 // Can source_module see an item restricted to restricted_to?
 pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path) -> bool {
     match restricted_to {

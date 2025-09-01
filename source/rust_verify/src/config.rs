@@ -57,6 +57,32 @@ pub struct LogArgs {
     pub log_call_graph: bool,
 }
 
+impl Clone for LogArgs {
+    fn clone(&self) -> Self {
+        let vlog = &self.vir_log_option;
+        Self {
+            log_vir: self.log_vir,
+            log_vir_simple: self.log_vir_simple,
+            log_vir_poly: self.log_vir_poly,
+            log_vir_sst: self.log_vir_sst,
+            log_trait_conflicts: self.log_trait_conflicts,
+            vir_log_option: VirLogOption {
+                no_span: vlog.no_span,
+                no_type: vlog.no_type,
+                no_fn_details: vlog.no_fn_details,
+                no_encoding: vlog.no_encoding,
+            },
+            log_interpreter: self.log_interpreter,
+            log_air_initial: self.log_air_initial,
+            log_air_final: self.log_air_final,
+            log_smt: self.log_smt,
+            log_smt_transcript: self.log_smt_transcript,
+            log_triggers: self.log_triggers,
+            log_call_graph: self.log_call_graph,
+        }
+    }
+}
+
 /// Describes the relationship between this crate and vstd.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Vstd {
@@ -72,7 +98,7 @@ pub enum Vstd {
     ImportedViaCore,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ArgsX {
     pub export: Option<String>,
     pub import: Vec<(String, String)>,

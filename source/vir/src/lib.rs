@@ -68,7 +68,7 @@ pub mod safe_api;
 mod scc;
 pub mod sst;
 mod sst_elaborate;
-mod sst_to_air;
+pub mod sst_to_air;
 pub mod sst_to_air_func;
 pub mod sst_util;
 mod sst_vars;

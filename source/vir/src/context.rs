@@ -42,7 +42,7 @@ pub struct GlobalCtx {
     pub(crate) fun_bounds: Arc<HashMap<Fun, GenericBounds>>,
     pub(crate) fun_attrs: Arc<HashMap<Fun, FunctionAttrs>>,
     /// Used for synthesized AST nodes that have no relation to any location in the original code:
-    pub(crate) no_span: Span,
+    pub no_span: Span,
     pub func_call_graph: Arc<Graph<Node>>,
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
@@ -52,9 +52,9 @@ pub struct GlobalCtx {
     pub(crate) extension_to_trait: HashMap<Path, Path>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
-    pub(crate) rlimit: f32,
-    pub(crate) interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
-    pub(crate) func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+    pub rlimit: f32,
+    pub interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
+    pub func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
