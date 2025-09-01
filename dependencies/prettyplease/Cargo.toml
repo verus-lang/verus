@@ -19,7 +19,7 @@ verbatim = ["verus_syn/parsing"]
 
 [dependencies]
 proc-macro2 = { version = "1.0.80", default-features = false }
-verus_syn = { version = "=0.0.0-2025-08-12-1837", path = "../syn", default-features = false, features = ["full"] }
+verus_syn = { version = "=0.0.0-2025-08-12-1837", path = "../syn", default-features = false, features = ["full", "visit", "visit-mut", "extra-traits", "parsing", "printing", "clone-impls"] }
 
 [dev-dependencies]
 indoc = "2"
