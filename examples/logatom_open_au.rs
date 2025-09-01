@@ -18,8 +18,8 @@ impl UpdatePredicate<i32, i32> for MyPredicate {
 }
 
 fn trivial(au: AtomicUpdate<i32, i32, MyPredicate>) {
-    open_atomic_update!(au, x => {
-        x + 1
+    open_atomic_update!(au, mut n => {
+        n + 1
     });
 }
 

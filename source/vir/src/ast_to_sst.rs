@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
     LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -2253,54 +2253,35 @@ pub(crate) fn expr_to_stm_opt(
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::OpenAtomicUpdate(au_expr, x_bind, _x_mut, body) => {
-            // let pred = $au_expr.pred;
+            // let au_temp = $au_expr;
             // let tmp_x = new existential;
             //
-            // assume(req(pred, tmp_x));
+            // assume(req(au_temp, tmp_x));
             //
             // let $mut $x = tmp_x;
             // let y = $body;
             //
-            // assume(ens(pred, tmp_x, y));
+            // assume(ens(au_temp, tmp_x, y));
 
             let (mut stms, au_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
             let au_exp = unwrap_or_return_never!(au_exp, stms);
             let au_typ = &au_expr.typ;
 
-            let TypX::Datatype(dt @ Dt::Path(path), typ_args, _) = au_typ.as_ref() else {
-                panic!("atomic update must be of type atomic update")
+            let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update should be a datatype")
             };
-
-            let [x_typ, y_typ, pred_typ] = typ_args.as_slice() else {
-                panic!("atomic update should have exactly three type arguments")
-            };
-
-            // let typ_name = path.last_segment();
-            // let pred_exp = Arc::new(SpannedTyped::new(
-            //     &expr.span,
-            //     pred_typ,
-            //     ExpX::UnaryOpr(
-            //         UnaryOpr::Field(FieldOpr {
-            //             datatype: dt.clone(),
-            //             variant: typ_name.clone(),
-            //             field: "pred".to_string().into(),
-            //             get_variant: false,
-            //             check: VariantCheck::None,
-            //         }),
-            //         au_exp,
-            //     ),
-            // ));
 
             let (au_temp_id, au_temp_var) = state.declare_temp_assign(&au_expr.span, au_typ);
             stms.push(init_var(&au_expr.span, &au_temp_id, &au_exp));
 
+            let x_typ = &x_bind.a;
             let (x_tmp_id, x_tmp_var) =
                 state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::OpenInvariantBinder);
             stms.push(assume_has_typ(&x_tmp_id, x_typ, &expr.span));
 
             let call_req = ExpX::Call(
                 fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::req"),
-                Arc::new(vec![au_expr.typ.clone(), x_typ.clone()]),
+                typ_args.clone(),
                 Arc::new(vec![au_temp_var.clone(), x_tmp_var.clone()]),
             );
             let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
@@ -2310,7 +2291,7 @@ pub(crate) fn expr_to_stm_opt(
             state.local_decls.push(Arc::new(LocalDeclX {
                 ident: x_id.clone(),
                 typ: x_typ.clone(),
-                kind: LocalDeclKind::OpenInvariantBinder,
+                kind: LocalDeclKind::LetBinder,
             }));
             stms.push(init_var(&expr.span, &x_id, &x_tmp_var));
 
@@ -2328,7 +2309,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let call_ens = ExpX::Call(
                 fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::ens"),
-                Arc::new(vec![au_expr.typ.clone(), x_typ.clone(), y_typ.clone()]),
+                typ_args.clone(),
                 Arc::new(vec![au_temp_var, x_tmp_var, y_var]),
             );
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);

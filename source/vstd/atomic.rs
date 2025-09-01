@@ -683,12 +683,14 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
 }
 
 impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
-    pub closed spec fn req(self, x: X) -> bool {
-        self.pred.req(x)
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::req"]
+    pub open spec fn req(self, x: X) -> bool {
+        self.predicate().req(x)
     }
 
-    pub closed spec fn ens(self, x: X, y: Y) -> bool {
-        self.pred.ens(x, y)
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::ens"]
+    pub open spec fn ens(self, x: X, y: Y) -> bool {
+        self.predicate().ens(x, y)
     }
 }
 

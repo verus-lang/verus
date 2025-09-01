@@ -290,6 +290,12 @@ pub(crate) enum InvariantItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum AtomicUpdateItem {
+    AtomicUpdateReq,
+    AtomicUpdateEns,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum SetItem {
     Empty,
     Full,
@@ -304,6 +310,7 @@ pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     SetFn(SetItem),
     Invariant(InvariantItem),
+    AtomicUpdate(AtomicUpdateItem),
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -565,6 +572,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
+        ("verus::vstd::atomic::AtomicUpdate::req",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq), Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::ens",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns), Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
         ("verus::vstd::atomic::atomically",  VerusItem::Spec(SpecItem::Atomically)),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
