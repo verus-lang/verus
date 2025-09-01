@@ -4,6 +4,8 @@ fn main() { }
 
 verus! {
 
+mod prophetic;
+
 // Use a module here, so that we can `broadcast use` in the examples further below.
 mod iters {
 
