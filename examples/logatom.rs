@@ -28,7 +28,7 @@ pub fn middle(x: i32) -> (y: i32)
     },
 {
     atomic_function(x, "hi", ()) atomically |update| {
-        open_atomic_update!(atom_upd => z => {
+        open_atomic_update!(atom_upd, z => {
             update(z)
         });
     }

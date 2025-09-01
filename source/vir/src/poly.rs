@@ -425,7 +425,14 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::Var(x) => SpannedTyped::new(
+            &exp.span,
+            match state.types.get(x) {
+                Some(typ) => typ,
+                None => panic!("unknown variable: {:?}", x),
+            },
+            ExpX::Var(x.clone()),
+        ),
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -438,7 +445,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::Old(..) => panic!("internal error: unexpected ExpX::Old"),
         ExpX::Call(call_fun, typs, exps) => match call_fun {
             CallFun::Fun(name, _) | CallFun::Recursive(name) => {
-                let function = &ctx.func_sst_map[name].x;
+                let function = match ctx.func_sst_map.get(name) {
+                    Some(fun) => &fun.x,
+                    None => panic!("unknown function: {:?}", name),
+                };
+
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
                 let mut args: Vec<Exp> = Vec::new();

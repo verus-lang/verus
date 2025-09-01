@@ -3,7 +3,7 @@
 /// 2) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
+    AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun, FunX,
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, Place, RevealGroup,
     Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
@@ -281,7 +281,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         }
         TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) | TypX::ConstBool(_) => {}
-        TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
+        TypX::Projection { trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
         }
@@ -462,6 +462,18 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
                         reach_set_ops(state);
+                    }
+                    ExprX::OpenAtomicUpdate(au, _, _, _) => {
+                        let TypX::Datatype(Dt::Path(path), _, _) = au.typ.as_ref() else {
+                            unreachable!()
+                        };
+
+                        for method in ["req", "ens"] {
+                            let ident = Arc::new(method.to_string());
+                            let path = path.push_segment(ident);
+                            let fun = Arc::new(FunX { path: path });
+                            reach_function(ctxt, state, &fun);
+                        }
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(Dt::Path(crate::def::option_type_path()));

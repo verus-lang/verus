@@ -1712,7 +1712,27 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
-        ExprX::OpenAtomicUpdate(..) => todo!(),
+        ExprX::OpenAtomicUpdate(au, x_bind, _x_mut, body) => {
+            if outer_mode == Mode::Spec {
+                return Err(error(&expr.span, "cannot open atomic update in spec mode"));
+            }
+
+            let au_mode = {
+                let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
+                check_expr(ctxt, record, &mut ghost_typing, outer_mode, au)?
+            };
+
+            if au_mode != Mode::Proof {
+                return Err(error(&au.span, "atomic update must be proof mode"));
+            }
+
+            let mut typing = typing.push_var_scope();
+            typing.insert(&x_bind.name, Mode::Proof);
+
+            check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+
+            Ok(Mode::Exec)
+        }
         ExprX::AirStmt(_) => Ok(Mode::Exec),
         ExprX::NeverToAny(e) => {
             let mode = check_expr(ctxt, record, typing, outer_mode, e)?;

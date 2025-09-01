@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
+    Constant, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
     LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -2252,7 +2252,90 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
-        ExprX::OpenAtomicUpdate(..) => todo!(),
+        ExprX::OpenAtomicUpdate(au_expr, x_bind, _x_mut, body) => {
+            // let pred = $au_expr.pred;
+            // let tmp_x = new existential;
+            //
+            // assume(req(pred, tmp_x));
+            //
+            // let $mut $x = tmp_x;
+            // let y = $body;
+            //
+            // assume(ens(pred, tmp_x, y));
+
+            let (mut stms, au_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
+            let au_exp = unwrap_or_return_never!(au_exp, stms);
+            let au_typ = &au_expr.typ;
+
+            let TypX::Datatype(dt @ Dt::Path(path), typ_args, _) = au_typ.as_ref() else {
+                panic!("atomic update must be of type atomic update")
+            };
+
+            let [x_typ, y_typ, pred_typ] = typ_args.as_slice() else {
+                panic!("atomic update should have exactly three type arguments")
+            };
+
+            // let typ_name = path.last_segment();
+            // let pred_exp = Arc::new(SpannedTyped::new(
+            //     &expr.span,
+            //     pred_typ,
+            //     ExpX::UnaryOpr(
+            //         UnaryOpr::Field(FieldOpr {
+            //             datatype: dt.clone(),
+            //             variant: typ_name.clone(),
+            //             field: "pred".to_string().into(),
+            //             get_variant: false,
+            //             check: VariantCheck::None,
+            //         }),
+            //         au_exp,
+            //     ),
+            // ));
+
+            let (au_temp_id, au_temp_var) = state.declare_temp_assign(&au_expr.span, au_typ);
+            stms.push(init_var(&au_expr.span, &au_temp_id, &au_exp));
+
+            let (x_tmp_id, x_tmp_var) =
+                state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::OpenInvariantBinder);
+            stms.push(assume_has_typ(&x_tmp_id, x_typ, &expr.span));
+
+            let call_req = ExpX::Call(
+                fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::req"),
+                Arc::new(vec![au_expr.typ.clone(), x_typ.clone()]),
+                Arc::new(vec![au_temp_var.clone(), x_tmp_var.clone()]),
+            );
+            let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_req.clone())));
+
+            let x_id = state.get_var_unique_id(&x_bind.name);
+            state.local_decls.push(Arc::new(LocalDeclX {
+                ident: x_id.clone(),
+                typ: x_typ.clone(),
+                kind: LocalDeclKind::OpenInvariantBinder,
+            }));
+            stms.push(init_var(&expr.span, &x_id, &x_tmp_var));
+
+            state.push_scope();
+            //std::mem::swap(&mut state.mask, &mut inner_mask);
+            let (body_stms, body_exp) = expr_to_stm_opt(ctx, state, body)?;
+            let body_exp = unwrap_or_return_never!(body_exp, body_stms);
+            //std::mem::swap(&mut state.mask, &mut inner_mask);
+            state.pop_scope();
+
+            stms.extend(body_stms);
+
+            let (y_id, y_var) = state.declare_temp_assign(&expr.span, au_typ);
+            stms.push(init_var(&expr.span, &y_id, &body_exp));
+
+            let call_ens = ExpX::Call(
+                fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::ens"),
+                Arc::new(vec![au_expr.typ.clone(), x_typ.clone(), y_typ.clone()]),
+                Arc::new(vec![au_temp_var, x_tmp_var, y_var]),
+            );
+            let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens.clone())));
+
+            return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
+        }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
                 None => (vec![], sst_unit_value(&expr.span)),
@@ -2717,6 +2800,32 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
         CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
+}
+
+fn fn_from_path(ctx: &Ctx, path: impl AsRef<str>) -> CallFun {
+    let path = path.as_ref();
+    let mut iter = path.split("::").map(|s| s.trim()).peekable();
+
+    let krate = match iter.peek() {
+        Some(&"#vstd") => {
+            let _ = iter.next();
+            Some(ctx.global.vstd_crate_name.clone())
+        }
+
+        Some(&"#crate") => {
+            let _ = iter.next();
+            Some(ctx.global.crate_name.clone())
+        }
+
+        _ => None,
+    };
+
+    let segments = Arc::new(iter.map(|s| Arc::new(s.to_string())).collect());
+
+    CallFun::Fun(
+        Arc::new(crate::ast::FunX { path: Arc::new(crate::ast::PathX { krate, segments }) }),
+        None,
+    )
 }
 
 pub fn assert_assume_satisfies_user_defined_type_invariant(

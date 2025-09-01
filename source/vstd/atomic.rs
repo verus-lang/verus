@@ -676,6 +676,22 @@ pub struct AtomicUpdate<X, Y, Pred> {
     _dummy: core::marker::PhantomData<spec_fn(X) -> Y>,
 }
 
+impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
+    pub closed spec fn predicate(self) -> Pred {
+        self.pred
+    }
+}
+
+impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
+    pub closed spec fn req(self, x: X) -> bool {
+        self.pred.req(x)
+    }
+
+    pub closed spec fn ens(self, x: X, y: Y) -> bool {
+        self.pred.ens(x, y)
+    }
+}
+
 pub trait UpdatePredicate<X, Y> {
     spec fn req(self, x: X) -> bool;
 
@@ -720,15 +736,11 @@ pub fn open_atomic_update_end<Y>(_y: Y) {
 
 #[macro_export]
 macro_rules! open_atomic_update {
-    ($au:expr => $x:ident => $body:block) => {
+    ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)]
             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-
-            #[allow(unused_mut)]
             let y = $body;
-
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::atomic::open_atomic_update_end(y);
         }
@@ -737,15 +749,11 @@ macro_rules! open_atomic_update {
 
 #[macro_export]
 macro_rules! open_atomic_update_in_proof {
-    ($au:expr => $x:ident => $body:block) => {
+    ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)]
             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-
-            #[allow(unused_mut)]
             let y = $body;
-
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::atomic::open_atomic_update_end(y);
         }
