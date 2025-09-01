@@ -406,7 +406,9 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
+        ::verus_builtin_macros::verus_ghost_inv_macro_exprs!(
+            $crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*)
+        )
     };
 }
 

@@ -2252,7 +2252,7 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
-        ExprX::OpenAtomicUpdate(au_expr, x_bind, _x_mut, body) => {
+        ExprX::OpenAtomicUpdate(au_expr, x_bind, x_mut, body) => {
             // let au_temp = $au_expr;
             // let tmp_x = new existential;
             //
@@ -2276,7 +2276,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let x_typ = &x_bind.a;
             let (x_tmp_id, x_tmp_var) =
-                state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::OpenInvariantBinder);
+                state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::LetBinder);
             stms.push(assume_has_typ(&x_tmp_id, x_typ, &expr.span));
 
             let call_req = ExpX::Call(
@@ -2291,7 +2291,7 @@ pub(crate) fn expr_to_stm_opt(
             state.local_decls.push(Arc::new(LocalDeclX {
                 ident: x_id.clone(),
                 typ: x_typ.clone(),
-                kind: LocalDeclKind::LetBinder,
+                kind: LocalDeclKind::StmtLet { mutable: *x_mut },
             }));
             stms.push(init_var(&expr.span, &x_id, &x_tmp_var));
 
@@ -2314,7 +2314,10 @@ pub(crate) fn expr_to_stm_opt(
             );
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
             let error = error(&expr.span, "cannot show atomic postcondition hold at end of block");
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone())));
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone()),
+            ));
 
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }

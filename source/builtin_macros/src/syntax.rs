@@ -4505,6 +4505,7 @@ enum MacroElement {
     FatArrow(Token![=>]),
     Colon(Token![:]),
     Expr(Expr),
+    Mut(Token![mut]),
 }
 
 #[derive(Debug)]
@@ -4560,6 +4561,8 @@ impl Parse for MacroElement {
             Ok(MacroElement::FatArrow(input.parse()?))
         } else if input.peek(Token![:]) {
             Ok(MacroElement::Colon(input.parse()?))
+        } else if input.peek(Token![mut]) {
+            Ok(MacroElement::Mut(input.parse()?))
         } else {
             Ok(MacroElement::Expr(input.parse()?))
         }
@@ -4662,6 +4665,7 @@ impl ToTokens for MacroElement {
             MacroElement::FatArrow(e) => e.to_tokens(tokens),
             MacroElement::Colon(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
+            MacroElement::Mut(e) => e.to_tokens(tokens),
         }
     }
 }
@@ -5445,18 +5449,24 @@ pub(crate) fn inv_au_macro_exprs(
         inside_impl: None,
         additional_items: Vec::new(),
     };
-    for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
-        match element {
-            MacroElement::Expr(expr) => {
-                // Always treat the element at `ghost_override_index` as ghost
-                // even if `treat_elements_as_ghost` is false.
-                visitor.inside_ghost =
-                    u32::from(treat_elements_as_ghost || idx == ghost_override_index);
-                visitor.visit_expr_mut(expr);
-            }
-            _ => {}
-        };
-    }
+
+    invoke
+        .elements
+        .elements
+        .iter_mut()
+        .filter_map(|elem| match elem {
+            MacroElement::Expr(expr) => Some(expr),
+            _ => None,
+        })
+        .enumerate()
+        .for_each(|(idx, expr)| {
+            // Always treat the element at `ghost_override_index` as ghost
+            // even if `treat_elements_as_ghost` is false.
+            let ghost = treat_elements_as_ghost || idx == ghost_override_index;
+            visitor.inside_ghost = u32::from(ghost);
+            visitor.visit_expr_mut(expr);
+        });
+
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
 }
