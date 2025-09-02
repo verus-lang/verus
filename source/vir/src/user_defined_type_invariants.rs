@@ -37,7 +37,7 @@ pub(crate) fn annotate_user_defined_invariants(
         &|expr: &Expr| {
             match &expr.x {
                 ExprX::Ctor(Dt::Path(_), ..) => {
-                    if info.ctor_needs_check[&expr.span.id]
+                    if info.ctor_needs_check.get(&expr.span.id).cloned().unwrap_or(false)
                         && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
                     {
                         let fun =

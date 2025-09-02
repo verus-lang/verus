@@ -5,8 +5,8 @@ use vstd::*;
 verus! {
 
 pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
-    atomically (atom_upd) {
-        type FunctionPred,
+    atomically (au) {
+        type FunPred,
         (z: i32) -> (w: i32),
         requires z == 5,
         ensures w == 7,
@@ -14,8 +14,7 @@ pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
     requires x == 2,
     ensures y == 3,
 {
-    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, _> = atom_upd;
-
+    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, FunPred<'a, T>> = au;
     return x + 1;
 }
 
@@ -26,10 +25,14 @@ pub fn middle(x: i32) -> (y: i32)
         requires z == 5,
         ensures w == 7,
     },
+    requires x == 2,
 {
-    atomic_function(x, "hi", ()) atomically |update| {
-        open_atomic_update!(atom_upd, z => {
-            update(z)
+    atomic_function(x, "hi", ()) atomically |upd| {
+        open_atomic_update!(atom_upd, a => {
+            assert(a == 5);
+            let b = upd(a);
+            assert(b == 7);
+            b
         });
     }
 }

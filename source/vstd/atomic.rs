@@ -677,6 +677,7 @@ pub struct AtomicUpdate<X, Y, Pred> {
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::predicate"]
     pub closed spec fn predicate(self) -> Pred {
         self.pred
     }

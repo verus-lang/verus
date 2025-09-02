@@ -39,7 +39,7 @@ use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
     FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
@@ -1864,25 +1864,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             )?)
                         }
                         (rustc_hir::def::Res::Local(local_hir_id), _) => {
-                            let maybe_actx = bctx
-                                .atomically
-                                .as_deref()
-                                // .inspect(|actx| {
-                                //     dbg!(&local_hir_id);
-                                //     dbg!(tcx.hir_opt_name(local_hir_id));
-                                //     dbg!(&actx.update_binder);
-                                // })
-                                .filter(|actx| actx.update_binder == local_hir_id);
+                            match bctx.atomically.as_deref() {
+                                Some(actx) if actx.update_binder == local_hir_id => {
+                                    let vir_span = crate::spans::err_air_span(expr.span);
+                                    actx.call_spans.send(vir_span).unwrap();
+                                    let [input] = args_slice else {
+                                        panic!("update function should have exactly one parameter")
+                                    };
 
-                            if let Some(actx) = &maybe_actx {
-                                actx.found.store(true, Ordering::Relaxed);
-
-                                let [input] = args_slice else { todo!() };
-                                let arg = expr_to_vir_consume(bctx, input, modifier)?;
-                                let typ = Arc::new(TypX::Bool);
-                                Some(bctx.spanned_typed_new(fun.span, &typ, ExprX::Update(arg)))
-                            } else {
-                                None // dynamically computed function, see below
+                                    let arg = expr_to_vir_consume(bctx, input, modifier)?;
+                                    Some(bctx.spanned_typed_new(
+                                        fun.span,
+                                        &actx.info.y_typ,
+                                        ExprX::Update(actx.info.clone(), arg),
+                                    ))
+                                }
+                                // dynamically computed function, see below
+                                _ => None,
                             }
                         }
                         _ => {
@@ -1893,9 +1891,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                     }
                 }
-                _ => {
-                    None // dynamically computed function, see below
-                }
+                // dynamically computed function, see below
+                _ => None,
             };
             match res {
                 Some(res) => Ok(ExprOrPlace::Expr(res)),

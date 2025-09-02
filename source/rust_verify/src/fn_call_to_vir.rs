@@ -22,7 +22,9 @@ use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
-use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
+use rustc_hir::{
+    Block, BlockCheckMode, Expr, ExprKind, LetStmt, Node, Pat, PatKind, QPath, Stmt, StmtKind,
+};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -30,12 +32,12 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
-    ChainedOp, ComputeMode, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
-    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun,
+    CallTarget, ChainedOp, ComputeMode, Constant, Dt, ExprX, FieldOpr, FunX, HeaderExpr,
+    HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant,
+    Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -572,27 +574,162 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
             }
             SpecItem::Atomically => {
-                let [arg_expr] = args.as_slice() else { todo!() };
-                let ExprKind::Closure(closure) = arg_expr.kind else { todo!() };
+                // The atomic function call expands as follows:
+                //
+                // function(x1, x2, x3) atomically |update| {
+                //     ...
+                // }
+                //
+                // function(x1, x2, x3, ::vstd::atomic::atomically(move |update| {
+                //     let _args = (x1, x2, x3);
+                //     { ... }
+                // }))
+                //
+                // Most of the structure is enforced by the type checker, we need to identify the
+                // let binding and use it to construct the correct function predicate type.
+
+                fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
+                    err_span(
+                        expr.span,
+                        "malformed atomic call; please do not use `vstd::atomic::atomically` directly",
+                    )
+                }
+
+                let au_typ = expr_typ()?;
+                let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
+                    panic!("`vstd::atomic::atomically` should return an atomic update")
+                };
+
+                let [x_typ, y_typ, pred_typ] = au_typ_args.as_slice() else {
+                    panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
+                };
+
+                let TypX::Datatype(pred_dt @ Dt::Path(pred_dt_path), ..) = pred_typ.as_ref() else {
+                    return malformed_err(&expr);
+                };
+
+                let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
+                    return malformed_err(&expr);
+                };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param] = body.params else { todo!() };
+                let [update_param] = body.params else {
+                    panic!("the closure should take exactly one argument")
+                };
 
-                //let ExprKind::Block(block, _) = body.value.kind else { todo!() };
-                //dbg!(&body);
+                // The pattern below matches the following structure:
+                // { let _args = (x1, x2, x3); { ... } }
 
+                let Expr {
+                    kind:
+                        ExprKind::Block(
+                            Block {
+                                stmts:
+                                    [
+                                        Stmt {
+                                            kind:
+                                                StmtKind::Let(LetStmt {
+                                                    pat:
+                                                        Pat {
+                                                            kind: PatKind::Binding(..),
+                                                            default_binding_modes: true,
+                                                            ..
+                                                        },
+                                                    init: Some(fun_args),
+                                                    els: None,
+                                                    ..
+                                                }),
+                                            ..
+                                        },
+                                    ],
+                                expr: Some(value_expr @ Expr { kind: ExprKind::Block(..), .. }),
+                                ..
+                            },
+                            None,
+                        ),
+                    ..
+                } = body.value
+                else {
+                    return malformed_err(expr);
+                };
+
+                static COUNTER: AtomicU64 = AtomicU64::new(1000);
+                let temp_id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                let pred_var = VarIdent(
+                    Arc::new("au_pred".to_string()),
+                    vir::ast::VarIdentDisambiguate::VirTemp(temp_id),
+                );
+
+                let fun_args = expr_to_vir_consume(bctx, fun_args, outer_modifier)?;
+                let decl_init_expr = bctx.spanned_typed_new(
+                    expr.span,
+                    pred_typ,
+                    ExprX::Ctor(
+                        pred_dt.clone(),
+                        Arc::new(pred_dt_path.last_segment().as_str().to_owned()),
+                        Arc::new(vec![Arc::new(air::ast::BinderX {
+                            name: Arc::new("data".to_string()),
+                            a: fun_args,
+                        })]),
+                        None,
+                    ),
+                );
+
+                let decl_pred = vir::ast::StmtX::Decl {
+                    pattern: bctx.spanned_typed_new(
+                        expr.span,
+                        &pred_typ,
+                        vir::ast::PatternX::Var { name: pred_var.clone(), mutable: false },
+                    ),
+                    mode: Some(Mode::Spec),
+                    init: Some(bctx.spanned_typed_new(
+                        expr.span,
+                        &pred_typ,
+                        vir::ast::PlaceX::Temporary(decl_init_expr),
+                    )),
+                    els: None,
+                };
+
+                let info = Arc::new(AtomicCallInfoX {
+                    au_typ: au_typ.clone(),
+                    x_typ: x_typ.clone(),
+                    y_typ: y_typ.clone(),
+                    pred_typ: pred_typ.clone(),
+                    pred_var: pred_var.clone(),
+                });
+
+                let (tx, rx) = std::sync::mpsc::channel();
                 let actx = Arc::new(AtomicallyCtxt {
                     update_binder: update_param.pat.hir_id,
-                    found: AtomicBool::new(false),
+                    call_spans: tx,
+                    info: info.clone(),
                 });
 
                 let atomically = Some(actx.clone());
                 let bctx_inner = BodyCtxt { atomically, ..bctx.clone() };
+                let value = expr_to_vir_consume(&bctx_inner, value_expr, outer_modifier)?;
+                let block = bctx.spanned_typed_new(
+                    expr.span,
+                    &value.typ,
+                    ExprX::Block(
+                        Arc::new(vec![bctx.spanned_new(expr.span, decl_pred)]),
+                        Some(value.clone()),
+                    ),
+                );
 
-                let value = expr_to_vir_consume(&bctx_inner, body.value, outer_modifier)?;
-                dbg!(actx.found.load(Ordering::Relaxed));
-
-                mk_expr(ExprX::Atomically(value))
+                let call_spans = rx.try_iter().collect::<Vec<_>>();
+                match call_spans.len() {
+                    0 => err_span(arg.span, "function must be called in `atomically` block"),
+                    1 => mk_expr(ExprX::Atomically(info, block)),
+                    _ => Err(Arc::new(vir::messages::MessageX {
+                        level: air::messages::MessageLevel::Error,
+                        note: "function must be called exactly once in `atomically` block".into(),
+                        spans: call_spans,
+                        labels: Vec::new(),
+                        help: None,
+                        fancy_note: None,
+                    })),
+                }
             }
         },
         VerusItem::Quant(quant_item) => {
@@ -2287,7 +2424,7 @@ pub(crate) fn check_variant_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     variant_name: &String,
     field_name_typ: Option<(String, &rustc_middle::ty::Ty<'tcx>)>,
-) -> Result<(vir::ast::Dt, Option<vir::ast::Ident>), VirErr> {
+) -> Result<(Dt, Option<vir::ast::Ident>), VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);
@@ -2371,7 +2508,7 @@ fn check_union_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     field_name: &String,
     expected_field_typ: &rustc_middle::ty::Ty<'tcx>,
-) -> Result<vir::ast::Dt, VirErr> {
+) -> Result<Dt, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);

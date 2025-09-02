@@ -7,7 +7,8 @@ use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
-use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
+use std::sync::mpsc::Sender;
+use vir::ast::{AtomicCallInfo, Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
@@ -16,7 +17,7 @@ pub struct ErasureInfo {
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
-    pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) ignored_functions: Vec<(DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
 }
 
@@ -54,7 +55,8 @@ pub(crate) struct BodyCtxt<'tcx> {
 
 pub(crate) struct AtomicallyCtxt {
     pub(crate) update_binder: HirId,
-    pub(crate) found: std::sync::atomic::AtomicBool,
+    pub(crate) call_spans: Sender<vir::messages::Span>,
+    pub(crate) info: AtomicCallInfo,
 }
 
 impl<'tcx> ContextX<'tcx> {

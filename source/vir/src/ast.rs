@@ -787,6 +787,16 @@ pub enum AutospecUsage {
     Final,
 }
 
+pub type AtomicCallInfo = Arc<AtomicCallInfoX>;
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct AtomicCallInfoX {
+    pub au_typ: Typ,
+    pub x_typ: Typ,
+    pub y_typ: Typ,
+    pub pred_typ: Typ,
+    pub pred_var: VarIdent,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -928,9 +938,9 @@ pub enum ExprX {
     /// Open Atomic Update
     OpenAtomicUpdate(Expr, VarBinder<Typ>, bool, Expr),
     /// Atomic function call update marker
-    Atomically(Expr),
+    Atomically(AtomicCallInfo, Expr),
     /// Atomic function call update marker
-    Update(Expr),
+    Update(AtomicCallInfo, Expr),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue

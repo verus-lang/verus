@@ -660,13 +660,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
             }
-            ExprX::Atomically(e) => {
+            ExprX::Atomically(i, e) => {
+                let i = i.clone();
                 let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Atomically(R::get(e))))
+                R::ret(|| expr_new(ExprX::Atomically(i, R::get(e))))
             }
-            ExprX::Update(e) => {
+            ExprX::Update(i, e) => {
+                let i = i.clone();
                 let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Update(R::get(e))))
+                R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
             }
         }
     }

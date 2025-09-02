@@ -1778,7 +1778,8 @@ fn check_expr_handle_mut_arg(
         ExprX::ReadPlace(place, _read_type) => {
             Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
         }
-        ExprX::Atomically(_exp) | ExprX::Update(_exp) => Ok(Mode::Proof),
+        ExprX::Atomically(..) => Ok(Mode::Proof),
+        ExprX::Update(..) => Ok(Mode::Proof),
     };
     Ok((mode?, None))
 }
