@@ -109,6 +109,141 @@ impl<T, Pred> ProphSeq<T, Pred>
             self.proph_elem(i) == Some(t);
 }
 
+// Take3 iterator
+pub struct Take3<T> {
+    pub inner: T,
+    pub count: usize,
+    // pub ghost_count: Ghost<int>,
+    // pub start_pos: Ghost<int>,
+}
+
+impl<T: Iterator> Take3<T> {
+    fn new(iter: T) -> (r: Take3<T>)
+        requires
+            true, //iter.inv(),
+        ensures
+            //r.inv(),
+            r.inner == iter,
+            r.count == 0,
+            //r.events().len() == 0,
+    {
+        Take3 { inner: iter, count: 0 } //, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
+    }
+
+    // spec fn spec_new(iter: T) -> Take3<T> {
+    //     Take3 { inner: iter, count: 0, ghost_count: Ghost(0), start_pos: Ghost(iter.events().len() as int) }
+    // }
+}
+
+impl<T: Iterator> Iterator for Take3<T> {
+    type Item = T::Item;
+
+    #[verifier::prophetic]
+    open spec fn seq(&self) -> Seq<Self::Item> {
+        if self.count >= 3 {
+            Seq::empty()
+        } else {
+            self.inner.seq().take(3 - self.count)
+        }
+    }
+
+    #[verifier::prophetic]
+    open spec fn completes(&self) -> bool {
+        true //self.count >= 3 || self.inner.completes()
+    }
+
+    // open spec fn inv(&self) -> bool {
+    //     &&& self.inner.inv()
+    //     &&& 0 <= self.start_pos@
+    //     &&& self.inner.events().len() == self.start_pos@ + self.count
+    //     &&& {
+    //         ||| self.count < 3 && self.count == self.ghost_count@
+    //         ||| self.count == 3 && self.ghost_count@ >= 3
+    //     }
+    // }
+
+    fn next(&mut self) -> (r: Option<Self::Item>) {
+        if self.count < 3 {
+            self.count = self.count + 1;
+            let r = self.inner.next();
+            assume(false);
+            r
+        } else {
+            assert(self.seq().len() == 0);
+            None
+        }
+    }
+}
+
+// Skip3 iterator
+pub struct Skip3<T> {
+    pub inner: T,
+    pub has_started: bool,
+}
+
+impl<T: Iterator> Skip3<T> {
+    fn new(iter: T) -> (r: Skip3<T>)
+        // requires
+        //     iter.inv(),
+        ensures
+            //r.inv(),
+            !r.has_started,
+            r.inner == iter,
+            //r.events().len() == 0,
+    {
+        Skip3 { inner: iter, has_started: false }
+    }
+
+    spec fn spec_new(iter: T) -> Skip3<T> {
+        Skip3 { inner: iter, has_started: false }
+    }
+}
+
+impl<T: Iterator> Iterator for Skip3<T> {
+    type Item = T::Item;
+
+    #[verifier::prophetic]
+    open spec fn seq(&self) -> Seq<Self::Item> {
+        // if self.has_started && self.inner.seq().len() >= 3 {
+        //     self.inner.seq().skip(3)
+        // } else {
+        //     Seq::empty()
+        // }
+        if !self.has_started && self.inner.seq().len() >= 3 {
+            self.inner.seq().skip(3)
+        } else if !self.has_started {
+            Seq::empty()
+        } else {
+            self.inner.seq()
+        }
+    }
+    
+    #[verifier::prophetic]
+    open spec fn completes(&self) -> bool {
+        self.inner.completes()
+    }
+
+    // open spec fn inv(&self) -> bool {
+    //     &&& self.inner.inv()
+    //     &&& 0 <= self.start_pos@
+    //     &&& !self.has_started ==> self.start_pos@ == self.inner.events().len()
+    //     &&& self.has_started ==> self.start_pos@ + 3 <= self.inner.events().len()
+    //     // We only perform Next operations
+    //     &&& forall |i| self.start_pos@ <= i < self.inner.events().len() ==> (#[trigger] self.inner.events()[i].op) is Next
+    // }
+
+
+    fn next(&mut self) -> (r: Option<Self::Item>) {
+        if !self.has_started {
+            let _ = self.inner.next();
+            let _ = self.inner.next();
+            let _ = self.inner.next();
+            self.has_started = true;
+        }
+        self.inner.next()
+    }
+}
+
 /* map iterator */
 
 ghost struct MapIteratorPred<Iter, F> {
@@ -274,5 +409,139 @@ fn test() {
     assert(w[2] == 4);
 }
 
+
+
+fn test_take3_seq(v: &Vec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Take3::new(vec_iter(v));
+    let r = iter.next();
+    assert(r == Some(&0u8));
+    let r = iter.next();
+    assert(r == Some(&10u8));
+    let r = iter.next();
+    assert(r == Some(&20u8));
+    let r = iter.next();
+    assert(r.is_none());
 }
 
+fn test_take3_take3_seq(v: &Vec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Take3::new(Take3::new(vec_iter(v)));
+    let r = iter.next();
+    assert(r == Some(&0u8));
+    let r = iter.next();
+    assert(r == Some(&10u8));
+    let r = iter.next();
+    assert(r == Some(&20u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_skip3_seq(v: &Vec<u8>)
+    requires
+        v@.len() == 7,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+{
+    let mut iter = Skip3::new(vec_iter(v));
+    let r = iter.next();
+    assert(r == Some(&30u8));
+    let r = iter.next();
+    assert(r == Some(&40u8));
+    let r = iter.next();
+    assert(r == Some(&50u8));
+    let r = iter.next();
+    assert(r == Some(&60u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+fn test_skip3_skip3_seq(v: &Vec<u8>)
+    requires
+        v@.len() == 10,
+        v@[0] == 0,
+        v@[1] == 10,
+        v@[2] == 20,
+        v@[3] == 30,
+        v@[4] == 40,
+        v@[5] == 50,
+        v@[6] == 60,
+        v@[7] == 70,
+        v@[8] == 80,
+        v@[9] == 90,
+{
+    let mut iter = Skip3::new(Skip3::new(vec_iter(v)));
+    let r = iter.next();
+    assert(r == Some(&60u8));
+    let r = iter.next();
+    assert(r == Some(&70u8));
+    let r = iter.next();
+    assert(r == Some(&80u8));
+    let r = iter.next();
+    assert(r == Some(&90u8));
+    let r = iter.next();
+    assert(r.is_none());
+}
+
+// TODO: Should be able to prove termination
+#[verifier::exec_allows_no_decreases_clause]
+fn test_skip3_skip3_loop_iso_true(v: &Vec<u8>)
+    requires
+        v@.len() >= 6,
+{
+    let ghost mut s: Seq<u8> = Seq::empty();
+
+    let mut iter = Skip3::new(Skip3::new(vec_iter(v)));
+    let ghost i0 = iter;
+    //let ghost mut count = iter.seq().len();
+    loop
+        invariant
+            s + iter.seq().map_values(|e: &u8| *e) =~= v@.skip(6),
+        ensures
+            s =~= v@.skip(6),
+        //decreases count //iter.seq().len(), //v@.len() - 6 - iter.events().len(),
+    {
+        if let Some(r) = iter.next() {
+            proof {
+                s = s.push(*r);
+                //count = (count - 1) as nat;
+            }
+        } else {
+            break;
+        }
+    }
+    assert(s == v@.skip(6));
+}
+
+
+
+}  // verus!
