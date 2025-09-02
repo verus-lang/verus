@@ -3,7 +3,7 @@ use crate::fixup::FixupContext;
 use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
-use syn_verus::{AttrStyle, Attribute, Expr, Lit, MacroDelimiter, Meta, MetaList, MetaNameValue};
+use verus_syn::{AttrStyle, Attribute, Expr, Lit, MacroDelimiter, Meta, MetaList, MetaNameValue};
 
 impl Printer {
     pub fn outer_attrs(&mut self, attrs: &[Attribute]) {
@@ -94,7 +94,7 @@ impl Printer {
         if meta
             .path
             .get_ident()
-            .is_some_and(|x| x.to_string() == "trigger")
+            .map_or(false, |x| x.to_string() == "trigger")
         {
             self.attr_tokens(meta.tokens.clone());
             return;

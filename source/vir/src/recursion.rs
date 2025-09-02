@@ -7,7 +7,7 @@ use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
-use crate::context::Ctx;
+use crate::context::{Ctx, GraphBuilder};
 use crate::def::{
     FUEL_PARAM, FUEL_TYPE, Spanned, decrease_at_entry, rename_rec_param, unique_bound, unique_local,
 };
@@ -394,32 +394,32 @@ pub(crate) fn check_termination_stm(
     proof_body: Option<Stm>,
     body: &Stm,
     exec_with_no_termination_check: bool,
-) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
+) -> Result<(Vec<LocalDecl>, crate::sst::Stms, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     if exec_with_no_termination_check && function.x.decrease.is_empty() {
-        return Ok((vec![], body.clone()));
+        return Ok((vec![], Arc::new(vec![]), body.clone()));
     }
 
     let (ctxt, decreases_exps, stm) = check_termination(ctx, diagnostics, function, body)?;
 
-    let (decls, mut stm_assigns) =
-        mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let (decls, stm_assigns) = mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    let mut block_stms = stm_assigns.clone();
     if let Some(proof_body) = proof_body {
-        stm_assigns.push(proof_body);
+        block_stms.push(proof_body);
     }
-    stm_assigns.push(stm.clone());
-    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
-    Ok((decls, stm_block))
+    block_stms.push(stm.clone());
+    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(block_stms)));
+    Ok((decls, Arc::new(stm_assigns), stm_block))
 }
 
 pub(crate) fn expand_call_graph(
     func_map: &HashMap<Fun, Function>,
     trait_impl_map: &HashMap<(Fun, Path), Fun>,
     reveal_group_set: &HashSet<Fun>,
-    call_graph: &mut Graph<Node>,
+    call_graph: &mut GraphBuilder<Node>,
     span_infos: &mut Vec<Span>,
     function: &Function,
 ) -> Result<(), VirErr> {
@@ -465,6 +465,18 @@ pub(crate) fn expand_call_graph(
                 bound,
             ) {
                 continue;
+            }
+            let t_node = Node::Trait(trait_path.clone());
+            if let Some(origin_trait) = call_graph.replace_with.get(&t_node) {
+                if let Node::Trait(origin_trait) = origin_trait {
+                    if crate::recursive_types::suppress_bound_in_trait_decl(
+                        origin_trait,
+                        &function.x.typ_params,
+                        bound,
+                    ) {
+                        continue;
+                    }
+                }
             }
         }
         let tr = match &**bound {

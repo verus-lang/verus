@@ -232,6 +232,8 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
+    /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
+    Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
     SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
@@ -243,6 +245,7 @@ pub enum TypX {
     /// (because it follows from the types), but it is not easy to compute without
     /// storing it here. We need it because it is useful for determining which
     /// FnDef axioms to introduce.
+    /// If it resolves to a default function, it can be None.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
@@ -262,6 +265,10 @@ pub enum TypX {
         trait_path: Path,
         name: Ident,
     },
+    /// <T as Pointee>::Metadata (see https://doc.rust-lang.org/beta/core/ptr/trait.Pointee.html)
+    /// For the msot part, this should be treated identically to a Projection, but the AIR
+    /// encoding is special.
+    PointeeMetadata(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
@@ -270,6 +277,7 @@ pub enum TypX {
     ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    MutRef(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -331,9 +339,19 @@ pub enum UnaryOp {
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
-    Clip { range: IntRange, truncate: bool },
-    /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
-    CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode, kind: ModeCoercion },
+    Clip {
+        range: IntRange,
+        truncate: bool,
+    },
+    /// Return raw bits of a float as an int
+    FloatToBits,
+    /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
+    CoerceMode {
+        op_mode: Mode,
+        from_mode: Mode,
+        to_mode: Mode,
+        kind: ModeCoercion,
+    },
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -346,9 +364,9 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
-    /// Used only for handling builtin::strslice_len
+    /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Used only for handling builtin::strslice_is_ascii
+    /// Used only for handling verus_builtin::strslice_is_ascii
     StrIsAscii,
     /// Given an exec/proof expression used to construct a loop iterator,
     /// try to infer a pure specification for the loop iterator.
@@ -358,9 +376,13 @@ pub enum UnaryOp {
     /// For an exec/proof expression e, the spec s should be chosen so that the value v
     /// that e evaluates to is immutable and v == s, where v may contain local variables.
     /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter { print_hint: bool },
+    InferSpecForLoopIter {
+        print_hint: bool,
+    },
     /// May need coercion after casting a type argument
     CastToInteger,
+    MutRefCurrent,
+    MutRefFuture,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -375,7 +397,7 @@ pub struct FieldOpr {
     pub datatype: Dt,
     pub variant: Ident,
     pub field: Ident,
-    /// Does this come from a get_variant_field / get_union_field builtin?
+    /// Does this come from a get_variant_field / get_union_field verus_builtin?
     /// (This is relevant for mode-checking.)
     pub get_variant: bool,
     pub check: VariantCheck,
@@ -413,6 +435,11 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Predicate over any type that indicates its mutable references has resolved.
+    /// For &mut T this says the prophetic value == the current value.
+    /// For primitive types this is trivially true.
+    /// For datatypes this is recursive in the natural way.
+    HasResolved(Typ),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
@@ -432,7 +459,9 @@ pub enum ArithOp {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IntegerTypeBitwidth {
+    /// Exact number of bits (e.g. 8 for u8/i8)
     Width(u32),
+    /// usize/isize
     ArchWordSize,
 }
 
@@ -487,7 +516,7 @@ pub enum BinaryOp {
     Xor,
     /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
-    /// the is_smaller_than builtin, used for decreases (true for <, false for ==)
+    /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
@@ -501,9 +530,9 @@ pub enum BinaryOp {
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),
-    /// Used only for handling builtin::strslice_get_char
+    /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Used only for handling builtin::array_index
+    /// Used only for handling verus_builtin::array_index
     ArrayIndex,
 }
 
@@ -542,7 +571,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Option<Typ>)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -589,6 +619,10 @@ pub enum Constant {
     StrSlice(Arc<String>),
     // Hold unicode values here
     Char(char),
+    /// Rust representation of f32 constant as u32 bits
+    Float32(u32),
+    /// Rust representation of f64 constant as u64 bits
+    Float64(u64),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -668,6 +702,8 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    /// default_ensures clauses, for use by call_ensures on impls that inherit the default
+    DefaultEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -695,6 +731,8 @@ pub enum CallTargetKind {
     Dynamic,
     /// Dynamically dispatched function with known resolved target
     DynamicResolved { resolved: Fun, typs: Typs, impl_paths: ImplPaths, is_trait_default: bool },
+    /// Same as DynamicResolved with is_trait_default = true, but resolves to external default fun
+    ExternalTraitDefault,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -775,7 +813,7 @@ pub enum ExprX {
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Dt, Ident, Binders<Expr>, Option<Expr>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<Place>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -811,13 +849,30 @@ pub enum ExprX {
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
+    Choose {
+        params: VarBinders<Typ>,
+        cond: Expr,
+        body: Expr,
+    },
     /// Manually supply triggers for body of quantifier
-    WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
+    WithTriggers {
+        triggers: Arc<Vec<Exprs>>,
+        body: Expr,
+    },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign {
+        init_not_mut: bool,
+        lhs: Expr,
+        rhs: Expr,
+        op: Option<BinaryOp>,
+    },
+    AssignToPlace {
+        place: Place,
+        rhs: Expr,
+        op: Option<BinaryOp>,
+    },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -827,20 +882,37 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume { is_assume: bool, expr: Expr },
+    AssertAssume {
+        is_assume: bool,
+        expr: Expr,
+    },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
-    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
+    AssertAssumeUserDefinedTypeInvariant {
+        is_assume: bool,
+        expr: Expr,
+        fun: Fun,
+    },
     /// Assert-forall or assert-by statement
-    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    AssertBy {
+        vars: VarBinders<Typ>,
+        require: Expr,
+        ensure: Expr,
+        proof: Expr,
+    },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    AssertQuery {
+        requires: Exprs,
+        ensures: Exprs,
+        proof: Expr,
+        mode: AssertQueryMode,
+    },
     /// Assertion discharged via computation
     AssertCompute(Expr, ComputeMode),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
-    Match(Expr, Arms),
+    Match(Place, Arms),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
@@ -856,13 +928,20 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue {
+        label: Option<String>,
+        is_break: bool,
+    },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    Ghost {
+        alloc_wrapper: bool,
+        tracked: bool,
+        expr: Expr,
+    },
     /// Enter a proof block from inside spec-mode code
     ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
@@ -873,6 +952,41 @@ pub enum ExprX {
     NeverToAny(Expr),
     /// nondeterministic choice
     Nondeterministic,
+    /// BorrowMut performs BorrowMutPhaseOne and BorrowMutPhaseTwo together.
+    /// However, the two phases can be split up to do a 2-phase borrow.
+    BorrowMut(Place),
+    /// Phase 1: Create the mut_ref value with the prophetic future value
+    BorrowMutPhaseOne(Place),
+    /// Phase 2: Update the original place to be equal to the prophecized value.
+    /// The Expr argument here is the expression returned by the PhaseOne (of type &mut T)
+    BorrowMutPhaseTwo(Place, Expr),
+    AssumeResolved(Expr, Typ),
+    /// Indicates a move or a copy from the given place.
+    /// These over-approximate the actual set of copies/moves.
+    /// (That is, many reads marked Move or Copy should really be marked Spec).
+    /// We don't know for sure if something is a "real" move or copy until mode-checking.
+    ReadPlace(Place, ReadKind),
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ReadKind {
+    Move,
+    Copy,
+    ImmutBor,
+    Spec,
+}
+
+// TODO(mut_refs): add ArrayIndex
+// TODO(mut_refs): add Tracked coercions
+pub type Place = Arc<SpannedTyped<PlaceX>>;
+pub type Places = Arc<Vec<Place>>;
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub enum PlaceX {
+    Field(FieldOpr, Place),
+    /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
+    DerefMut(Place),
+    Local(VarIdent),
+    Temporary(Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -886,7 +1000,7 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr>, els: Option<Expr> },
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Place>, els: Option<Expr> },
 }
 
 /// Function parameter
@@ -954,6 +1068,7 @@ pub struct AutoExtEqual {
     pub assert: bool,
     pub assert_by: bool,
     pub ensures: bool,
+    pub invariant: bool,
 }
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
@@ -1129,7 +1244,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination
@@ -1262,6 +1378,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
+    // Some((TSpec, TSpecImpl))
+    pub external_trait_extension: Option<(Path, Path)>,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
@@ -1294,6 +1413,8 @@ pub struct TraitImplX {
     pub owning_module: Option<Path>,
     // Not declared directly to Verus, but imported based on related traits and types:
     pub auto_imported: bool,
+    // Is a blanket implementation declared by external_trait_extension:
+    pub external_trait_blanket: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

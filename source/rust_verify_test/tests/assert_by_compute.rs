@@ -344,7 +344,7 @@ test_verify_one_file! {
     #[test] fn_calls_bad3 verus_code! {
         mod privacy_invasion {
             #[allow(unused_imports)]
-            use builtin::assert_by_compute_only;
+            use verus_builtin::assert_by_compute_only;
 
             mod mostly_private {
                 pub closed spec fn f() -> u32 { 1 }
@@ -762,4 +762,21 @@ test_verify_one_file! {
             assert(B::foo());
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] const_in_another_module verus_code! {
+        mod m {
+            use vstd::prelude::*;
+            pub const BIN_HUGE: u64 = 12;
+        }
+
+        mod x {
+            use vstd::prelude::*;
+            use crate::m::*;
+            proof fn test() {
+                assert(BIN_HUGE == 12) by(compute_only);
+            }
+        }
+    } => Ok(())
 }

@@ -92,7 +92,7 @@ where
             false,
         )?;
         let mode = match hir_field_def_opt {
-            Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id)),
+            Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
         };
         let vis = mk_visibility_from_vis(ctxt, field_def.vis);
@@ -328,7 +328,7 @@ pub(crate) fn check_item_union<'tcx>(
         return err_span(span, "check_item_union: wrong VariantData");
     };
     for hir_field_def in hir_fields.iter() {
-        let mode = get_mode(Mode::Exec, ctxt.tcx.hir().attrs(hir_field_def.hir_id));
+        let mode = get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id));
         if mode != Mode::Exec {
             return err_span(span, "a union field can only be exec-mode");
         }
@@ -442,13 +442,12 @@ fn get_sized_constraint<'tcx>(
     // manually iterate the process.
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
-    use crate::rustc_middle::ty::inherent::AdtDef;
     use crate::rustc_trait_selection::traits::NormalizeExt;
     let tcx = ctxt.tcx;
 
-    let param_env = tcx.param_env(adt_def.def_id());
-    let typing_env = TypingEnv::post_analysis(tcx, adt_def.def_id());
-    if tcx.type_of(adt_def.def_id()).skip_binder().is_sized(tcx, typing_env) {
+    let param_env = tcx.param_env(adt_def.did());
+    let typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
+    if tcx.type_of(adt_def.did()).skip_binder().is_sized(tcx, typing_env) {
         return Ok(None);
     }
 
@@ -473,7 +472,7 @@ fn get_sized_constraint<'tcx>(
         let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(
             tcx,
             sized_constraint,
-            adt_def.def_id(),
+            adt_def.did(),
         );
         let norm = at.normalize(*ty);
         if norm.value != *ty {
@@ -511,7 +510,7 @@ fn get_sized_constraint<'tcx>(
     Ok(Some(mid_ty_to_vir(
         ctxt.tcx,
         &ctxt.verus_items,
-        adt_def.def_id(),
+        adt_def.did(),
         span,
         &sized_constraint,
         false,
@@ -647,8 +646,11 @@ pub(crate) fn check_item_external<'tcx>(
         ctxt.verus_items.id_to_name.get(&external_def_id),
         Some(crate::verus_items::VerusItem::External(_))
     );
-    if !is_builtin_external && path.krate == Some(Arc::new("builtin".to_string())) {
-        return err_span(span, "cannot apply `external_type_specification` to Verus builtin types");
+    if !is_builtin_external && path.krate == Some(Arc::new("verus_builtin".to_string())) {
+        return err_span(
+            span,
+            "cannot apply `external_type_specification` to Verus verus_builtin types",
+        );
     }
 
     let proxy_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, proxy_adt_def.did());

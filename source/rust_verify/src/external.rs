@@ -70,7 +70,7 @@ pub struct CrateItem {
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item
-    VerusAware { module_path: Path },
+    VerusAware { module_path: Path, const_directive: bool, external_body: bool },
     /// Path/String to refer to this item for diagnostics
     /// Path is an Option because there are some items we can't compute a Path for
     External { path: Option<Path>, path_string: String, explicit: bool },
@@ -124,14 +124,14 @@ impl CrateItems {
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
 
-pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<CrateItems, VirErr> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
         VerifState::Default
     };
 
-    let root_module = ctxt.tcx.hir().root_module();
+    let root_module = ctxt.tcx.hir_root_module();
     let root_module_path = crate::rust_to_vir::get_root_module_path(ctxt);
 
     let mut visitor = VisitMod {
@@ -151,12 +151,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
 
     let mut map = HashMap::<OwnerId, VerifOrExternal>::new();
     for crate_item in visitor.items.iter() {
-        let owner_id = match crate_item.id {
-            GeneralItemId::ItemId(id) => id.owner_id,
-            GeneralItemId::ImplItemId(id) => id.owner_id,
-            GeneralItemId::ForeignItemId(id) => id.owner_id,
-            GeneralItemId::TraitItemId(id) => id.owner_id,
-        };
+        let owner_id = crate_item.id.owner_id();
         let old = map.insert(owner_id, crate_item.verif.clone());
         assert!(old.is_none());
     }
@@ -195,12 +190,7 @@ struct VisitMod<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
     // Configure the visitor for nested visits
-    type Map = rustc_middle::hir::map::Map<'tcx>;
     type NestedFilter = rustc_middle::hir::nested_filter::All;
-
-    fn nested_visit_map(&mut self) -> Self::Map {
-        self.ctxt.tcx.hir()
-    }
 
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         self.visit_general(GeneralItem::Item(item), item.hir_id(), item.span);
@@ -217,6 +207,10 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
     fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
         self.visit_general(GeneralItem::TraitItem(item), item.hir_id(), item.span);
     }
+
+    fn maybe_tcx(&mut self) -> rustc_middle::ty::TyCtxt<'tcx> {
+        self.ctxt.tcx
+    }
 }
 
 fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
@@ -232,7 +226,7 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
 
 impl<'a, 'tcx> VisitMod<'a, 'tcx> {
     fn visit_general(&mut self, general_item: GeneralItem<'tcx>, hir_id: HirId, span: Span) {
-        let attrs = self.ctxt.tcx.hir().attrs(hir_id);
+        let attrs = self.ctxt.tcx.hir_attrs(hir_id);
 
         let eattrs = match self.ctxt.get_external_attrs(attrs) {
             Ok(eattrs) => eattrs,
@@ -330,7 +324,11 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         // Append this item to the items
 
         let verif = if state_for_this_item == VerifState::Verify {
-            VerifOrExternal::VerusAware { module_path: self.module_path.clone() }
+            VerifOrExternal::VerusAware {
+                module_path: self.module_path.clone(),
+                const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
+                external_body: my_eattrs.external_body,
+            }
         } else {
             let path_opt =
                 def_id_to_vir_path_option(self.ctxt.tcx, Some(&self.ctxt.verus_items), def_id);
@@ -375,7 +373,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         match general_item {
             GeneralItem::Item(item) => match item.kind {
-                ItemKind::Mod(_module) => {
+                ItemKind::Mod(_ident, _module) => {
                     self.module_path =
                         def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
                 }
@@ -385,14 +383,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         has_any_verus_aware_item: false,
                     });
                 }
-                ItemKind::Const(_ty, _generics, _body_id) => {
-                    let path = def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
-                    if path
-                        .segments
-                        .iter()
-                        .find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_"))
-                        .is_some()
-                    {
+                ItemKind::Const(_ident, _ty, _generics, _body_id) => {
+                    if eattrs.structural_const_wrapper {
                         self.state = VerifState::Verify;
                     }
                 }
@@ -430,8 +422,11 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
                     ));
                 } else {
-                    self.items[this_item_idx].verif =
-                        VerifOrExternal::VerusAware { module_path: self.module_path.clone() }
+                    self.items[this_item_idx].verif = VerifOrExternal::VerusAware {
+                        module_path: self.module_path.clone(),
+                        const_directive: false,
+                        external_body: false,
+                    }
                 }
             }
         }
@@ -452,13 +447,17 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     span: rustc_span::Span,
 ) {
     if ctxt.cmd_line_args.vstd == crate::config::Vstd::IsCore {
-        // This gives a lot of warnings from the embedding of the 'builtin' crate so ignore it
+        // This gives a lot of warnings from the embedding of the 'verus_builtin' crate so ignore it
         return;
     }
 
     if eattrs.internal_get_field_many_variants {
         // The macro sometimes outputs this attribute together with 'external' for the purpose
         // of some diagnostics. We thus want to ignore it.
+        return;
+    }
+
+    if eattrs.uses_unerased_proxy {
         return;
     }
 
@@ -549,6 +548,17 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
     }
 }
 
+impl GeneralItemId {
+    pub(crate) fn owner_id(self) -> OwnerId {
+        match self {
+            GeneralItemId::ItemId(id) => id.owner_id,
+            GeneralItemId::ImplItemId(id) => id.owner_id,
+            GeneralItemId::ForeignItemId(id) => id.owner_id,
+            GeneralItemId::TraitItemId(id) => id.owner_id,
+        }
+    }
+}
+
 impl<'a> GeneralItem<'a> {
     fn id(self) -> GeneralItemId {
         match self {
@@ -562,7 +572,7 @@ impl<'a> GeneralItem<'a> {
     fn may_have_external_body(self) -> bool {
         match self {
             GeneralItem::Item(i) => match i.kind {
-                ItemKind::Fn(..) => true,
+                ItemKind::Fn { .. } => true,
                 ItemKind::Struct(..) => true,
                 ItemKind::Enum(..) => true,
                 ItemKind::Union(..) => true,
@@ -628,7 +638,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                 };
                 if let Some(type_local_def_id) = type_def_id.as_local() {
                     let type_hir_id = ctxt.tcx.local_def_id_to_hir_id(type_local_def_id);
-                    let type_attrs = ctxt.tcx.hir().attrs(type_hir_id);
+                    let type_attrs = ctxt.tcx.hir_attrs(type_hir_id);
                     let mut type_eattrs = match ctxt.get_external_attrs(type_attrs) {
                         Ok(eattrs) => eattrs,
                         Err(_) => {

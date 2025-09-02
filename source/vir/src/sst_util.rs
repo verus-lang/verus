@@ -87,37 +87,61 @@ pub fn subst_typ_for_datatype(
     subst_typ(&typ_substs, typ)
 }
 
+struct SubstCtxt<'a> {
+    typ_substs: &'a HashMap<Ident, Typ>,
+    // free variables in the Exps in SubstState.substs:
+    allow_unfinalized: bool,
+}
+
+struct SubstState {
+    substs: ScopeMap<UniqueIdent, Exp>,
+    free_vars: ScopeMap<UniqueIdent, ()>,
+    // variables already in scope, which we therefore cannot use when picking a fresh variable name:
+    fresh_var_blacklist: ScopeMap<UniqueIdent, ()>,
+}
+
 fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     span: &Span,
-    substs: &mut ScopeMap<UniqueIdent, Exp>,
-    free_vars: &mut ScopeMap<UniqueIdent, ()>,
+    _ctxt: &SubstCtxt,
+    state: &mut SubstState,
     bs: &VarBinders<A>,
     fa: FA,
     f_typ: FT,
 ) -> VarBinders<A> {
-    substs.push_scope(false);
-    free_vars.push_scope(true);
+    state.substs.push_scope(false);
+    state.free_vars.push_scope(true);
+    state.fresh_var_blacklist.push_scope(true);
     let mut binders: Vec<VarBinder<A>> = Vec::new();
     for b in bs.iter() {
         let unique = unique_bound(&b.name);
-        free_vars.insert(unique.clone(), ()).expect("subst_rename_binders free_vars");
-        let name = if free_vars.contains_key(&unique) {
+        let name = if state.free_vars.contains_key(&unique) {
             // capture-avoiding substitution:
             // rename bound variable to avoid capturing free variable
             let mut n: u64 = 0;
             loop {
                 let name = crate::def::subst_rename_ident(&b.name, n);
                 let rename = unique_bound(&name);
-                if !free_vars.contains_key(&rename) {
-                    free_vars.insert(rename.clone(), ()).expect("subst_rename_binders free_vars");
+                if !state.fresh_var_blacklist.contains_key(&rename) {
+                    state
+                        .free_vars
+                        .insert(rename.clone(), ())
+                        .expect("subst_rename_binders free_vars");
+                    state
+                        .fresh_var_blacklist
+                        .insert(rename.clone(), ())
+                        .expect("subst_rename_binders fresh_var_blacklist");
                     let typ = f_typ(&b.a);
                     let var = SpannedTyped::new(span, &typ, ExpX::Var(rename.clone()));
-                    substs.insert(unique, var).expect("subst_rename_binders substs");
+                    state.substs.insert(unique, var).expect("subst_rename_binders substs");
                     break name;
                 }
                 n += 1;
             }
         } else {
+            state
+                .fresh_var_blacklist
+                .insert(unique.clone(), ())
+                .expect("subst_rename_binders fresh_var_blacklist");
             b.name.clone()
         };
         binders.push(Arc::new(VarBinderX { name, a: fa(&b.a) }));
@@ -125,18 +149,15 @@ fn subst_rename_binders<A: Clone, FA: Fn(&A) -> A, FT: Fn(&A) -> Typ>(
     Arc::new(binders)
 }
 
-fn subst_exp_rec(
-    typ_substs: &HashMap<Ident, Typ>,
-    substs: &mut ScopeMap<UniqueIdent, Exp>,
-    free_vars: &mut ScopeMap<UniqueIdent, ()>,
-    exp: &Exp,
-    allow_unfinalized: bool,
-) -> Exp {
-    let typ = subst_typ(typ_substs, &exp.typ);
+fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
+    // If we're not finalized, substitutions are only allowed for type variables:
+    assert!(!ctxt.allow_unfinalized || state.substs.map().len() == 0);
+
+    let typ = subst_typ(&ctxt.typ_substs, &exp.typ);
     let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
-    let ft = |t: &Typ| subst_typ(typ_substs, t);
+    let ft = |t: &Typ| subst_typ(&ctxt.typ_substs, t);
     match &exp.x {
-        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !ctxt.allow_unfinalized => {
             // Var won't match binders if we're not finalized
             // (special case allow_unfinalized = true for type-only substitution)
             panic!("MustBeFinalized")
@@ -158,44 +179,33 @@ fn subst_exp_rec(
         | ExpX::FuelConst(..)
         | ExpX::WithTriggers(..) => crate::sst_visitor::map_shallow_exp(
             exp,
-            &mut (substs, free_vars),
-            &|_, t| Ok(subst_typ(typ_substs, t)),
-            &|(substs, free_vars), e| {
-                Ok(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized))
-            },
+            state,
+            &|_, t| Ok(subst_typ(ctxt.typ_substs, t)),
+            &|state, e| Ok(subst_exp_rec(ctxt, state, e)),
         )
         .expect("map_shallow_exp for subst_exp_rec"),
         ExpX::Var(x) => {
-            assert!(free_vars.contains_key(x));
-            match substs.get(x) {
+            assert!(state.fresh_var_blacklist.contains_key(x));
+            match state.substs.get(x) {
                 None => mk_exp(ExpX::Var(x.clone())),
                 Some(e) => e.clone(),
             }
         }
-        ExpX::VarLoc(x) => match substs.get(x) {
+        ExpX::VarLoc(x) => match state.substs.get(x) {
             None => mk_exp(ExpX::VarLoc(x.clone())),
             Some(_) => panic!("cannot substitute for VarLoc"),
         },
-        ExpX::VarAt(x, a) => match substs.get(x) {
+        ExpX::VarAt(x, a) => match state.substs.get(x) {
             None => mk_exp(ExpX::VarAt(x.clone(), *a)),
             Some(_) => panic!("cannot substitute for VarAt"),
         },
         ExpX::Bind(bnd, e1) => {
-            let ftrigs = |substs: &mut ScopeMap<UniqueIdent, Exp>,
-                          free_vars: &mut ScopeMap<UniqueIdent, ()>,
-                          triggers: &Trigs|
-             -> Trigs {
+            let ftrigs = |state: &mut SubstState, triggers: &Trigs| -> Trigs {
                 let mut trigs: Vec<Trig> = Vec::new();
                 for trigger in triggers.iter() {
                     let mut trig: Vec<Exp> = Vec::new();
                     for t in trigger.iter() {
-                        trig.push(subst_exp_rec(
-                            typ_substs,
-                            substs,
-                            free_vars,
-                            t,
-                            allow_unfinalized,
-                        ));
+                        trig.push(subst_exp_rec(ctxt, state, t));
                     }
                     trigs.push(Arc::new(trig));
                 }
@@ -205,18 +215,12 @@ fn subst_exp_rec(
                 BndX::Let(bs) => {
                     let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
-                        binders.push(b.new_a(subst_exp_rec(
-                            typ_substs,
-                            substs,
-                            free_vars,
-                            &b.a,
-                            allow_unfinalized,
-                        )));
+                        binders.push(b.new_a(subst_exp_rec(ctxt, state, &b.a)));
                     }
                     let binders = subst_rename_binders(
                         &bnd.span,
-                        substs,
-                        free_vars,
+                        ctxt,
+                        state,
                         &Arc::new(binders),
                         |e: &Exp| e.clone(),
                         |e: &Exp| e.typ.clone(),
@@ -224,33 +228,30 @@ fn subst_exp_rec(
                     BndX::Let(binders)
                 }
                 BndX::Quant(quant, binders, ts, ab) => {
-                    let binders =
-                        subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts), ab.clone())
+                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
+                    BndX::Quant(*quant, binders, ftrigs(state, ts), ab.clone())
                 }
                 BndX::Lambda(binders, ts) => {
-                    let binders =
-                        subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Lambda(binders, ftrigs(substs, free_vars, ts))
+                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
+                    BndX::Lambda(binders, ftrigs(state, ts))
                 }
                 BndX::Choose(binders, ts, cond) => {
-                    let binders =
-                        subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    let cond =
-                        subst_exp_rec(typ_substs, substs, free_vars, cond, allow_unfinalized);
-                    BndX::Choose(binders, ftrigs(substs, free_vars, ts), cond)
+                    let binders = subst_rename_binders(&bnd.span, ctxt, state, binders, ft, ft);
+                    let cond = subst_exp_rec(ctxt, state, cond);
+                    BndX::Choose(binders, ftrigs(state, ts), cond)
                 }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
-            let e1 = subst_exp_rec(typ_substs, substs, free_vars, e1, allow_unfinalized);
-            substs.pop_scope();
-            free_vars.pop_scope();
+            let e1 = subst_exp_rec(ctxt, state, e1);
+            state.substs.pop_scope();
+            state.free_vars.pop_scope();
+            state.fresh_var_blacklist.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
         }
         ExpX::ArrayLiteral(exprs) => {
             let mut new_exprs: Vec<Exp> = Vec::new();
             for e in exprs.iter() {
-                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized));
+                new_exprs.push(subst_exp_rec(ctxt, state, e));
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
@@ -268,32 +269,40 @@ pub(crate) fn subst_exp(
     if typ_substs.len() == 0 && substs.len() == 0 {
         return exp.clone();
     }
+    let allow_unfinalized = substs.len() == 0;
 
     let mut scope_substs: ScopeMap<UniqueIdent, Exp> = ScopeMap::new();
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
+    let mut fresh_var_blacklist: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(true);
-    let mut free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
+    fresh_var_blacklist.push_scope(true);
+    let mut exp_free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
     free_vars_exp_scope(
         exp,
         &mut crate::sst_visitor::VisitorScopeMap::new(),
-        &mut free_vars_map,
-        substs.len() == 0,
+        &mut exp_free_vars_map,
+        allow_unfinalized,
     );
-    for (y, _) in free_vars_map {
-        let _ = free_vars.insert(y.clone(), ());
+    for (y, _) in exp_free_vars_map {
+        let _ = fresh_var_blacklist.insert(y.clone(), ());
     }
     for (x, v) in substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
             let _ = free_vars.insert(y.clone(), ());
+            let _ = fresh_var_blacklist.insert(y.clone(), ());
         }
     }
-    let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp, substs.len() == 0);
-    scope_substs.pop_scope();
-    free_vars.pop_scope();
-    assert_eq!(scope_substs.num_scopes(), 0);
-    assert_eq!(free_vars.num_scopes(), 0);
+    let ctxt = SubstCtxt { typ_substs, allow_unfinalized };
+    let mut state = SubstState { substs: scope_substs, free_vars, fresh_var_blacklist };
+    let e = subst_exp_rec(&ctxt, &mut state, exp);
+    state.substs.pop_scope();
+    state.free_vars.pop_scope();
+    state.fresh_var_blacklist.pop_scope();
+    assert_eq!(state.substs.num_scopes(), 0);
+    assert_eq!(state.free_vars.num_scopes(), 0);
+    assert_eq!(state.fresh_var_blacklist.num_scopes(), 0);
     e
 }
 
@@ -362,6 +371,8 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
+                Constant::Float32(c) => (format!("'{}'", c), 99),
+                Constant::Float64(c) => (format!("'{}'", c), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
@@ -422,6 +433,9 @@ impl ExpX {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
+                UnaryOp::FloatToBits => {
+                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
@@ -441,6 +455,12 @@ impl ExpX {
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
                 }
+                UnaryOp::MutRefCurrent => {
+                    (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::MutRefFuture => {
+                    (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
@@ -450,6 +470,9 @@ impl ExpX {
                     }
                     HasType(t) => {
                         (format!("has_type({}, {:?})", exp.x.to_user_string(global), t), 99)
+                    }
+                    HasResolved(t) => {
+                        (format!("has_resolved::<{:?}>({})", t, exp.x.to_user_string(global)), 99)
                     }
                     IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
                         (format!("usize::BITS"), 99)
@@ -750,6 +773,24 @@ pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
+pub fn sst_mut_ref_current(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_current expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefCurrent;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
+pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefFuture;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
 pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
     match ext {
         None => sst_equal(span, e1, e2),
@@ -806,6 +847,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
             LocalDeclKind::Nondeterministic => false,
+            LocalDeclKind::BorrowMut => false,
         }
     }
 }

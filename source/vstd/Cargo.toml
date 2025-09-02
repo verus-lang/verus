@@ -5,17 +5,25 @@
 
 [package]
 name = "vstd"
-version = "0.1.0"
+version = "0.0.0-2025-08-12-1837"
 edition = "2021"
+license = "MIT"
+description = "Verus Standard Library: Useful specifications and lemmas for verifying Rust code"
+documentation = "https://verus-lang.github.io/verus/verusdoc/vstd/"
+homepage = "https://github.com/verus-lang/verus"
+repository = "https://github.com/verus-lang/verus"
+readme = "../../README.md"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
 
 [lib]
 name = "vstd"
 path = "vstd.rs"
 
 [dependencies]
-builtin_macros = { path = "../builtin_macros" }
-builtin = { path = "../builtin" }
-state_machines_macros = { path = "../state_machines_macros" }
+verus_builtin_macros = { version = "=0.0.0-2025-08-12-1837", path = "../builtin_macros" }
+verus_builtin = { version = "=0.0.0-2025-08-12-1837", path = "../builtin" }
+verus_state_machines_macros = { version = "=0.0.0-2025-08-12-1837", path = "../state_machines_macros" }
 
 [features]
 default = ["std"]

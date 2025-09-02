@@ -100,6 +100,7 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
+    Float(u32),
     Datatype(Dt, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
     Decorate2(crate::ast::TypDecoration, MonoTyps),
@@ -130,6 +131,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Float(range) => Some(Arc::new(MonoTypX::Float(*range))),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
@@ -154,6 +156,8 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
+        TypX::PointeeMetadata(_) => None,
+        TypX::MutRef(_) => None,
     }
 }
 
@@ -161,6 +165,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Float(range) => Arc::new(TypX::Float(*range)),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Datatype(path.clone(), Arc::new(typs), Arc::new(vec![])))
@@ -181,7 +186,8 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Float(_) => false,
+        TypX::SpecFn(..) | TypX::FnDef(..) => false,
         TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -197,19 +203,23 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => true,
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            true
+        }
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => true,
     }
 }
 
 /// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Float(_) => typ.clone(),
+        TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -229,7 +239,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
         TypX::Boxed(_) => panic!("Boxed unexpected here"),
-        TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
+        TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => typ.clone(),
         TypX::Primitive(_, _) => {
             if typ_as_mono(typ).is_none() {
                 Arc::new(TypX::Boxed(typ.clone()))
@@ -241,14 +251,14 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => typ.clone(),
     }
 }
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => {
-            Arc::new(TypX::Boxed(typ.clone()))
-        }
+        TypX::Bool | TypX::Int(_) | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -256,11 +266,14 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
+        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } | TypX::PointeeMetadata(_) => {
+            typ.clone()
+        }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::MutRef(_) => typ.clone(),
     }
 }
 
@@ -268,6 +281,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
@@ -287,7 +301,10 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
                 SpannedTyped::new(&exp.span, typ, expx)
             }
         }
-        TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
+        TypX::TypParam(_)
+        | TypX::Projection { .. }
+        | TypX::PointeeMetadata(_)
+        | TypX::MutRef(_) => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
@@ -464,7 +481,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
-            CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
+            CallFun::InternalFun(
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+            ) => {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
@@ -515,6 +534,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             match op {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
+                | UnaryOp::FloatToBits
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -539,6 +559,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::CastToInteger => {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
+                }
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                    let e1 = coerce_exp_to_native(ctx, &e1);
+                    mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
                 }
             }
         }
@@ -585,6 +609,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                         coerce_typ_to_native(ctx, &exp.typ)
                     };
                     mk_exp_typ(&typ, exprx)
+                }
+                UnaryOpr::HasResolved(_t) => {
+                    let e = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp(ExpX::UnaryOpr(op.clone(), e.clone()))
                 }
             }
         }
@@ -723,6 +751,17 @@ fn visit_trigs(ctx: &Ctx, state: &mut State, trigs: &Trigs) -> Trigs {
     Arc::new(trigs.iter().map(|e| visit_exps(ctx, state, e)).collect())
 }
 
+pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
+    let mut state = State {
+        remaining_temps: HashSet::new(),
+        types: ScopeMap::new(),
+        temp_types: HashMap::new(),
+        is_trait: false,
+        in_exec_closure: false,
+    };
+    visit_exp_native(ctx, &mut state, exp)
+}
+
 fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
     if dest.is_init {
         if let ExpX::VarLoc(x) = &dest.dest.x {
@@ -738,7 +777,17 @@ fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
 fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
     let mk_stm = |s: StmX| Spanned::new(stm.span.clone(), s);
     match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             let function = &ctx.func_sst_map[fun].x;
             let is_spec = function.mode == Mode::Spec;
             let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -768,6 +817,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let callx = StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
+                is_trait_default: *is_trait_default,
                 mode: *mode,
                 typ_args: typ_args.clone(),
                 args: Arc::new(new_args),
@@ -933,9 +983,8 @@ fn visit_func_decl_sst(
     let FuncDeclSst {
         req_inv_pars,
         ens_pars,
-        post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -951,20 +1000,16 @@ fn visit_func_decl_sst(
 
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
-    let enss = visit_exps_native(ctx, state, enss);
-    state.types.pop_scope();
-
-    state.types.push_scope(true);
-    let post_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, post_pars);
+    let enss0 = visit_exps_native(ctx, state, enss0);
+    let enss1 = visit_exps_native(ctx, state, enss1);
     state.types.pop_scope();
 
     let fndef_axioms = visit_exps_native(ctx, state, fndef_axioms);
     FuncDeclSst {
         req_inv_pars,
         ens_pars,
-        post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -995,7 +1040,15 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } = function;
+    let FuncCheckSst {
+        reqs,
+        post_condition,
+        unwind,
+        body,
+        local_decls,
+        local_decls_decreases_init,
+        statics,
+    } = function;
 
     state.temp_types.clear();
 
@@ -1033,6 +1086,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
+            | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()
@@ -1068,7 +1122,8 @@ fn visit_func_check_sst(
     });
     state.types.pop_scope();
 
-    let body = visit_stm(ctx, state, &body);
+    let body = visit_stm(ctx, state, body);
+    let local_decls_decreases_init = visit_stms(ctx, state, local_decls_decreases_init);
 
     update_temp_locals(state, &mut locals, &mut updated_temps);
     state.remaining_temps.clear();
@@ -1080,6 +1135,7 @@ fn visit_func_check_sst(
         unwind,
         body,
         local_decls: Arc::new(locals),
+        local_decls_decreases_init,
         statics: statics.clone(),
     }
 }

@@ -1,4 +1,6 @@
 #[allow(unused_imports)]
+use super::calc_macro::*;
+#[allow(unused_imports)]
 use super::multiset::Multiset;
 #[allow(unused_imports)]
 use super::pervasive::*;
@@ -29,6 +31,23 @@ impl<A> Seq<A> {
     // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
+    }
+
+    /// Applies the function `f` to each element of the sequence,
+    /// producing a sequence of sequences, and then concatenates (flattens)
+    /// those into a single flat sequence of `B`.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// fn example() {
+    ///     let s = seq![1, 2, 3];
+    ///     let result = s.flat_map(|x| seq![x, x]);
+    ///     assert_eq!(result, seq![1, 1, 2, 2, 3, 3]);
+    /// }
+    /// ``
+    pub open spec fn flat_map<B>(self, f: spec_fn(A) -> Seq<B>) -> Seq<B> {
+        self.map_values(f).flatten()
     }
 
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
@@ -86,6 +105,47 @@ impl<A> Seq<A> {
             let right_sorted = right.sort_by(leq);
             merge_sorted_with(left_sorted, right_sorted, leq)
         }
+    }
+
+    /// Tests if all elements in the sequence satisfy the predicate.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// fn example() {
+    ///     let s = seq![2, 4, 6, 8];
+    ///     assert!(s.all(|x| x % 2 == 0));
+    /// }
+    /// ```
+    pub open spec fn all(self, pred: spec_fn(A) -> bool) -> bool {
+        forall|i: int| 0 <= i < self.len() ==> #[trigger] pred(self[i])
+    }
+
+    /// Tests if any element in the sequence satisfies the predicate.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// fn example() {
+    ///     let s = seq![1, 2, 3, 4];
+    ///     assert!(s.any(|x| x > 3));
+    /// }
+    /// ```
+    pub open spec fn any(self, pred: spec_fn(A) -> bool) -> bool {
+        exists|i: int| 0 <= i < self.len() && #[trigger] pred(self[i])
+    }
+
+    /// Checks that exactly one element in the sequence satisfies the given predicate.
+    /// ## Example
+    ///
+    /// ```rust
+    /// fn example() {
+    ///     let s = seq![1, 2, 3];
+    ///     assert!(s.exactly_one(|x| x == 2));
+    /// }
+    /// ```
+    pub open spec fn exactly_one(self, pred: spec_fn(A) -> bool) -> bool {
+        self.filter(pred).len() == 1
     }
 
     pub proof fn lemma_sort_by_ensures(self, leq: spec_fn(A, A) -> bool)
@@ -685,6 +745,18 @@ impl<A> Seq<A> {
         }
     }
 
+    /// [`Self::fold_left`] on the reversed sequence is equivalent to
+    /// [`Self::fold_right`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_left<B>(self, v: B, f: spec_fn(B, A) -> B)
+        ensures
+            self.reverse().fold_left(v, f) == self.fold_right(|a: A, b: B| f(b, a), v),
+    {
+        assert(self.reverse().reverse() =~= self);
+        let g = |a: A, b: B| f(b, a);
+        assert(f =~= |b: B, a: A| g(a, b));
+        self.reverse().lemma_reverse_fold_right(v, |a: A, b: B| f(b, a))
+    }
+
     /// Folds the sequence to the right, applying `f` to perform the fold.
     ///
     /// Equivalent to `DoubleEndedIterator::rfold` in Rust.
@@ -776,6 +848,35 @@ impl<A> Seq<A> {
         }
     }
 
+    /// [`Self::fold_right`] on the reversed sequence is equivalent to
+    /// [`Self::fold_left`] on the original sequence with corresponding folding operator
+    pub proof fn lemma_reverse_fold_right<B>(self, v: B, f: spec_fn(A, B) -> B)
+        ensures
+            self.reverse().fold_right(f, v) == self.fold_left(v, |b: B, a: A| f(a, b)),
+        decreases self.len(),
+    {
+        let g = |b: B, a: A| f(a, b);
+        if self.len() > 0 {
+            let last = self.last();
+            let s0 = self.drop_last();
+            assert(self.reverse() =~= seq![last] + s0.reverse());
+            let res1 = self.reverse().fold_right(f, v);
+            let res2 = self.fold_left(v, g);
+            assert(res1 == self.reverse().fold_right_alt(f, v)) by {
+                self.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            assert(self.reverse().first() == last);
+            assert(self.reverse().subrange(1, self.reverse().len() as int) =~= s0.reverse());
+            assert(res1 == f(last, s0.reverse().fold_right_alt(f, v)));
+            assert(res1 == f(last, s0.reverse().fold_right(f, v))) by {
+                s0.reverse().lemma_fold_right_alt(f, v)
+            }
+            assert(res2 == g(s0.fold_left(v, g), last));
+            s0.lemma_reverse_fold_right(v, f);
+        }
+    }
+
     // Proven lemmas
     /// Given a sequence with no duplicates, each element occurs only
     /// once in its conversion to a multiset
@@ -832,6 +933,28 @@ impl<A> Seq<A> {
                 lemma_multiset_commutative(s0, s1);
                 assert(self.to_multiset().count(self[a]) >= 2);
             }
+        }
+    }
+
+    /// Conversion of a sequence to multiset is equivalent to conversion of its reversion to multiset
+    pub proof fn lemma_reverse_to_multiset(self)
+        ensures
+            self.reverse().to_multiset() =~= self.to_multiset(),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use super::multiset::group_multiset_axioms;
+
+        if self.len() > 0 {
+            let s2 = self.drop_first();
+            let e = self.first();
+            assert(self =~= seq![e] + s2);
+            assert(self.to_multiset() =~= seq![e].to_multiset().add(s2.to_multiset())) by {
+                lemma_multiset_commutative(seq![e], s2)
+            }
+            assert(self.reverse() =~= s2.reverse().push(e));
+            assert(self.reverse().to_multiset() =~= s2.reverse().to_multiset().insert(e));
+            s2.lemma_reverse_to_multiset();
         }
     }
 
@@ -1053,6 +1176,1175 @@ impl<A> Seq<A> {
                 },
         )
     }
+
+    /// Skipping `i` elements and then 1 more is equivalent to skipping `i + 1` elements.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![1, 2, 3, 4];
+    ///     s.lemma_seq_skip_skip(2);
+    ///     assert(s.skip(2).skip(1) =~= s.skip(3));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_seq_skip_skip(self, i: int)
+        ensures
+            0 <= i < self.len() ==> (self.skip(i)).skip(1) =~= #[trigger] self.skip(i + 1),
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// If an element is contained in a sequence, then there exists an index where that element appears.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![10, 20, 30];
+    ///     assert(s.contains(20));
+    ///     let idx = s.lemma_contains_to_index(20);
+    ///     assert(s[idx] == 20);
+    /// }
+    /// ```
+    pub proof fn lemma_contains_to_index(self, elem: A) -> (idx: int)
+        requires
+            self.contains(elem),
+        ensures
+            0 <= idx < self.len() && self[idx] == elem,
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        if self[0] == elem {
+            0
+        } else {
+            let i = self.skip(1).lemma_contains_to_index(elem);
+            i + 1
+        }
+    }
+
+    /// If a predicate holds for the first element and for all elements in the tail,
+    /// then it holds for the entire sequence.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![2, 4, 6, 8];
+    ///     let is_even = |x| x % 2 == 0;
+    ///     assert(is_even(s[0]));
+    ///     assert(s.skip(1).all(is_even));
+    ///     s.lemma_all_from_head_tail(is_even);
+    ///     assert(s.all(is_even));
+    /// }
+    /// ```
+    pub proof fn lemma_all_from_head_tail(self, pred: spec_fn(A) -> bool)
+        requires
+            self.len() > 0,
+            pred(self[0]) && self.skip(1).all(|x| pred(x)),
+        ensures
+            self.all(|x| pred(x)),
+    {
+        broadcast use group_seq_properties;
+
+        assert(seq![self[0]] + self.skip(1) == self);
+    }
+
+    /// If a predicate holds for any element in the sequence and does not hold for the first element,
+    /// then the predicate must hold for some element in the tail.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![1, 4, 6, 8];
+    ///     let is_even = |x| x % 2 == 0;
+    ///     assert(s.any(is_even));
+    ///     assert(!is_even(s[0]));
+    ///     s.lemma_any_tail(is_even);
+    ///     assert(s.skip(1).any(is_even));
+    /// }
+    /// ```
+    pub proof fn lemma_any_tail(self, pred: spec_fn(A) -> bool)
+        requires
+            self.any(|x| pred(x)),
+        ensures
+            !pred(self[0]) ==> self.skip(1).any(|x| pred(x)),
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// Removes duplicate elements from a sequence, maintaining the order of first appearance.
+    /// Takes a `seen` sequence parameter to track previously encountered elements.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// fn example() {
+    ///     let s = seq![1, 2, 1, 3, 2, 4];
+    ///     let seen = seq![];
+    ///     let result = s.remove_duplicates(seen);
+    ///     assert_eq!(result, seq![1, 2, 3, 4]);
+    ///
+    ///     let seen2 = seq![2, 3];
+    ///     let result2 = s.remove_duplicates(seen2);
+    ///     assert_eq!(result2, seq![1, 4]);
+    /// }
+    /// ```
+    pub open spec fn remove_duplicates(self, seen: Seq<A>) -> Seq<A>
+        decreases self.len(),
+    {
+        if self.len() == 0 {
+            seen
+        } else if seen.contains(self[0]) {
+            self.skip(1).remove_duplicates(seen)
+        } else {
+            self.skip(1).remove_duplicates(seen + seq![self[0]])
+        }
+    }
+
+    /// Properties of remove_duplicates:
+    /// - The output contains x if and only if x was in the input sequence or seen set
+    /// - The output length is at most the sum of input and seen lengths
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![1, 2, 1, 3];
+    ///     let seen = seq![2];
+    ///     s.lemma_remove_duplicates_properties(seen);
+    ///     assert(s.remove_duplicates(seen).contains(1));
+    ///     assert(s.remove_duplicates(seen).contains(3));
+    ///     assert(!s.remove_duplicates(seen).contains(2));
+    ///     assert(s.remove_duplicates(seen).len() <= s.len() + seen.len());
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_remove_duplicates_properties(self, seen: Seq<A>)
+        ensures
+            forall|x|
+                (self + seen).contains(x) <==> #[trigger] self.remove_duplicates(seen).contains(x),
+            #[trigger] self.remove_duplicates(seen).len() <= self.len() + seen.len(),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        if self.len() == 0 {
+        } else if seen.contains(self[0]) {
+            let rest = self.skip(1);
+            rest.lemma_remove_duplicates_properties(seen);
+        } else {
+            let rest = self.skip(1);
+            rest.lemma_remove_duplicates_properties(seen + seq![self[0]]);
+        }
+    }
+
+    /// Shows that removing duplicates from a sequence is equivalent to:
+    /// 1. First removing duplicates from the prefix up to index i (with the given seen set)
+    /// 2. Using that result as the new seen set for removing duplicates from the suffix after i
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![1, 2, 1, 3, 2, 4];
+    ///     let seen = seq![];
+    ///     s.lemma_remove_duplicates_append_index(seen, 2);
+    ///     assert(s.remove_duplicates(seen)
+    ///         =~= seq![1, 3, 2, 4].remove_duplicates(seq![1, 2].remove_duplicates(seen)));
+    /// }
+    /// ```
+    pub proof fn lemma_remove_duplicates_append_index(self, i: int, seen: Seq<A>)
+        requires
+            0 <= i < self.len(),
+        ensures
+            self.remove_duplicates(seen) == self.skip(i).remove_duplicates(
+                self.take(i).remove_duplicates(seen),
+            ),
+        decreases self.len(),
+    {
+        broadcast use {
+            group_seq_properties,
+            lemma_seq_skip_of_skip,
+            Seq::lemma_remove_duplicates_properties,
+        };
+
+        if i == 0 {
+        } else if i == self.len() {
+            assert(self.take(i) == self);
+        } else {
+            assert(self.skip(1).take(i - 1) == self.subrange(1, i));
+            assert(self.take(i).skip(1) == self.subrange(1, i));
+            assert(self.skip(1).take(i - 1) == self.take(i).skip(1));
+            if seen.contains(self[0]) {
+                self.skip(1).lemma_remove_duplicates_append_index(i - 1, seen);
+            } else {
+                self.skip(1).lemma_remove_duplicates_append_index(i - 1, seen + seq![self[0]]);
+            }
+        }
+    }
+
+    /// For two sequences, skipping one element after concatenation equals concatenating
+    /// the result of skipping one element of the first sequence (which must be non-empty)
+    /// with the second sequence.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let s1 = seq![1, 2];
+    ///     let s2 = seq![3, 4, 5];
+    ///
+    ///     lemma_skip1_concat(s1, s2);
+    ///     assert((s1 + s2).skip(1) =~= seq![2, 3, 4, 5]);
+    /// }
+    /// ```
+    proof fn lemma_skip1_concat(xs: Seq<A>, ys: Seq<A>)
+        requires
+            xs.len() > 0,
+        ensures
+            (xs + ys).skip(1) == xs.skip(1) + ys,
+    {
+        broadcast use group_seq_properties;
+
+        assert((xs + ys).skip(1) == xs.skip(1) + ys);
+    }
+
+    /// When appending an element `x` to a sequence:
+    /// - If `x` is in `self + seen`, removing duplicates equals removing duplicates from self
+    /// - If x is not in (self + seen), removing duplicates equals removing duplicates from self,
+    ///   concatenated with [x]
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let s1 = seq![1, 2];
+    ///     let seen = seq![];
+    ///     assert!(!s1.contains(3));
+    ///     lemma_remove_duplicates_append(s1, 3, seen);
+    ///     assert((s1 + seq![3]).remove_duplicates(seen) =~= s1.remove_duplicates(seen) + seq![3]);
+    /// }
+    /// ```
+    pub proof fn lemma_remove_duplicates_append(self, x: A, seen: Seq<A>)
+        ensures
+            (self + seen).contains(x) ==> (self + seq![x]).remove_duplicates(seen)
+                == self.remove_duplicates(seen),
+            !(self + seen).contains(x) ==> (self + seq![x]).remove_duplicates(seen)
+                == self.remove_duplicates(seen) + seq![x],
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        reveal_with_fuel(Seq::remove_duplicates, 2);
+
+        if self.len() != 0 {
+            let head = self[0];
+            let tail = self.skip(1);
+
+            let seen2 = if seen.contains(head) {
+                seen
+            } else {
+                seen + seq![head]
+            };
+            tail.lemma_remove_duplicates_append(x, seen2);
+            assert((self + seq![x]).skip(1) == tail + seq![x]) by {
+                Seq::lemma_skip1_concat(self, seq![x]);
+            };
+        }
+    }
+
+    /// If all elements in a sequence fail the predicate,
+    /// filtering by that predicate yields an empty sequence
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let s = seq![1, 2, 3];
+    ///     let pred = |x| x > 5;
+    ///     lemma_all_neg_filter_empty(s, pred);
+    ///     assert(s.filter(pred).len() == 0);
+    /// }
+    /// ```
+    pub proof fn lemma_all_neg_filter_empty(self, pred: spec_fn(A) -> bool)
+        requires
+            self.all(|x: A| !pred(x)),
+        ensures
+            self.filter(pred).len() == 0,
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        reveal(Seq::filter);
+        if self.len() != 0 {
+            let rest = self.drop_last();
+            rest.lemma_all_neg_filter_empty(pred);
+            rest.lemma_filter_len_push(pred, self.last());
+            let neg_pred = |x| !pred(x);
+            assert(neg_pred(self.last()));
+        }
+    }
+
+    /// Applies an Option-returning function to each element, keeping only successful (Some) results
+    ///
+    /// ## Example
+    /// ```rust
+    /// let s = seq![1, 2, 3];
+    /// let f = |x| if x % 2 == 0 { Some(x * 2) } else { None };
+    /// assert(s.filter_map(f) =~= seq![4]);
+    /// ```
+    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> Seq<B>
+        decreases self.len(),
+    {
+        // We're defining this by starting at the end of the list since it makes it
+        // easier to reason about in the common case of looping over a vector in the
+        // implementation.
+        if self.len() == 0 {
+            Seq::empty()
+        } else {
+            let rest = self.drop_last();
+            match f(self.last()) {
+                Option::Some(s) => rest.filter_map(f) + seq![s],
+                Option::None => rest.filter_map(f),
+            }
+        }
+    }
+
+    /// If an element exists in the filtered sequence,
+    /// it must exist in the original sequence
+    /// ```
+    pub broadcast proof fn lemma_filter_contains_rev(self, p: spec_fn(A) -> bool, elem: A)
+        requires
+            #[trigger] self.filter(p).contains(elem),
+        ensures
+            self.contains(elem),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        reveal(Seq::filter);
+        if self.len() == 0 {
+        } else {
+            let rest = self.drop_last();
+            let last = self.last();
+            if !p(last) || last != elem {
+                rest.lemma_filter_contains_rev(p, elem);
+            }
+        }
+    }
+
+    /// If an element exists in filter_map's output,
+    /// there must be an input element that mapped to it
+    /// ```
+    pub broadcast proof fn lemma_filter_map_contains<B>(self, f: spec_fn(A) -> Option<B>, elt: B)
+        requires
+            #[trigger] self.filter_map(f).contains(elt),
+        ensures
+            exists|t: A| #[trigger] self.contains(t) && f(t) == Some(elt),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        if self.len() == 0 {
+        } else {
+            let last = self.last();
+            let rest = self.drop_last();
+            if f(last) == Some(elt) {
+                assert(self.contains(last));
+            } else {
+                rest.lemma_filter_map_contains(f, elt);
+                let t = choose|t: A| #[trigger] rest.contains(t) && f(t) == Some(elt);
+                assert(self.contains(t));
+            }
+        }
+    }
+
+    /// Taking k+1 elements is the same as taking k elements plus the kth element
+    ///
+    /// ## Example
+    /// ```rust
+    /// let s = seq![1, 2, 3];
+    /// lemma_take_plus_one(s, 1);
+    /// seq![1, 2] == seq![1] + seq![2]
+    /// ```
+    pub proof fn lemma_take_succ(xs: Seq<A>, k: int)
+        requires
+            0 <= k < xs.len(),
+        ensures
+            xs.take(k + 1) =~= xs.take(k) + seq![xs[k]],
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// filter_map on a single element sequence
+    /// either produces a new single element sequence (if f returns Some)
+    /// or an empty sequence (if f returns None)
+    pub proof fn lemma_filter_map_singleton<B>(a: A, f: spec_fn(A) -> Option<B>)
+        ensures
+            seq![a].filter_map(f) =~= match f(a) {
+                Option::Some(b) => seq![b],
+                Option::None => Seq::empty(),
+            },
+    {
+        reveal_with_fuel(Seq::filter_map, 2);
+    }
+
+    /// filter_map of take(i+1) equals
+    /// filter_map of take(i) plus maybe the mapped i'th element
+    ///
+    /// ## Example
+    /// ```rust
+    /// let s = seq![1, 2, 3];
+    /// let f = |x| if x % 2 == 0 { Some(x * 2) } else { None };
+    /// s.lemma_filter_map_take_succ(s, f, 1);
+    /// assert(s.take(2).filter_map(f) == s.take(1).filter_map(f) + seq![f(s[1]).unwrap()]);
+    /// assert(s.take(2).filter_map(f) == seq![] + seq![4]);
+    /// ```
+    pub broadcast proof fn lemma_filter_map_take_succ<B>(self, f: spec_fn(A) -> Option<B>, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.take(i + 1).filter_map(f) =~= self.take(i).filter_map(f) + (match f(
+                self[i],
+            ) {
+                Option::Some(s) => seq![s],
+                Option::None => Seq::empty(),
+            }),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        if i != 0 {
+            self.drop_last().lemma_filter_map_take_succ(f, i - 1);
+            assert(self.take(i + 1).drop_last() == self.take(i));
+        }
+    }
+
+    /// An alternative implementation of filter that processes the sequence recursively from
+    /// left to right, in contrast to the standard filter which processes from right to left.
+    pub open spec fn filter_alt(self, p: spec_fn(A) -> bool) -> Seq<A> {
+        if self.len() == 0 {
+            Seq::empty()
+        } else {
+            let rest = self.drop_first().filter(p);
+            let first = self.first();
+            if p(first) {
+                seq![first] + rest
+            } else {
+                rest
+            }
+        }
+    }
+
+    /// When filtering (x + sequence), if x satisfies the predicate, x is prepended to
+    /// the filtered sequence. Otherwise, only the filtered sequence remains.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn filter_prepend_test() {
+    ///     let s = seq![2, 3, 4];
+    ///     let is_even = |x: int| x % 2 == 0;
+    ///     let with_five = seq![5] + s;
+    ///     assert(with_five.filter(is_even) =~= seq![2, 4]); // 5 filtered out
+    ///     let with_six = seq![6] + s;
+    ///     assert(with_six.filter(is_even) =~= seq![6, 2, 4]); // 6 included
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_filter_prepend(self, x: A, p: spec_fn(A) -> bool)
+        ensures
+            #[trigger] (seq![x] + self).filter(p) == (if p(x) {
+                seq![x]
+            } else {
+                Seq::empty()
+            }) + self.filter(p),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        reveal(Seq::filter);
+        let lhs = (seq![x] + self).filter(p);
+        let rhs = (if p(x) {
+            seq![x]
+        } else {
+            Seq::empty()
+        }) + self.filter(p);
+
+        if self.len() == 0 {
+            assert(lhs =~= rhs);
+        } else {
+            let tail_seq = if p(self.last()) {
+                seq![self.last()]
+            } else {
+                Seq::empty()
+            };
+
+            assert(((seq![x] + self).drop_last()) =~= seq![x] + self.drop_last());
+            let sub = (seq![x] + self.drop_last()).filter(p);
+            assert(lhs =~= sub + tail_seq);
+            assert(rhs =~= (if p(x) {
+                seq![x]
+            } else {
+                Seq::empty()
+            }) + self.drop_last().filter(p) + tail_seq);
+            self.drop_last().lemma_filter_prepend(x, p);
+        }
+    }
+
+    /// The filter() and filter_alt() methods produce equivalent results for any sequence
+    pub proof fn lemma_filter_eq_filter_alt(self, p: spec_fn(A) -> bool)
+        ensures
+            self.filter(p) =~= self.filter_alt(p),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use Seq::lemma_filter_prepend;
+
+        reveal(Seq::filter);
+        if self.len() == 0 {
+        } else {
+            let first = self.first();
+            let but_first = self.drop_first();
+            assert(self =~= seq![first] + but_first);
+            self.drop_first().lemma_filter_eq_filter_alt(p);
+        }
+    }
+
+    /// Filtering preserves the prefix relationship between sequences.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn filter_monotone_test() {
+    ///     let s = seq![1, 2, 3];
+    ///     let ys = seq![1, 2, 3, 4, 5];
+    ///     let is_even = |x: int| x % 2 == 0;
+    ///     assert(s.is_prefix_of(ys));
+    ///     assert(s.filter(is_even).is_prefix_of(ys.filter(is_even)));
+    ///     assert(s.filter(is_even) =~= seq![2]);
+    ///     assert(ys.filter(is_even) =~= seq![2, 4]);
+    /// }
+    /// ```
+    pub proof fn lemma_filter_monotone(self, ys: Seq<A>, p: spec_fn(A) -> bool)
+        requires
+            self.is_prefix_of(ys),
+        ensures
+            self.filter(p).is_prefix_of(ys.filter(p)),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        self.lemma_filter_eq_filter_alt(p);
+        ys.lemma_filter_eq_filter_alt(p);
+        if self.len() == 0 {
+        } else {
+            self.drop_first().lemma_filter_monotone(ys.drop_first(), p);
+        }
+    }
+
+    /// The length of filter(take(i)) is never greater than the length of filter(entire_sequence).
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn filter_take_len_test() {
+    ///     let s = seq![1, 2, 3, 4, 5];
+    ///     let is_even = |x: int| x % 2 == 0;
+    ///     let i = 3;
+    ///     assert(s.take(i) =~= seq![1, 2, 3]);
+    ///     assert(s.take(i).filter(is_even) =~= seq![2]);
+    ///     assert(s.filter(is_even) =~= seq![2, 4]);
+    ///     assert(s.filter(is_even).len() >= s.take(i).filter(is_even).len());
+    /// }
+    /// ```
+    pub proof fn lemma_filter_take_len(self, p: spec_fn(A) -> bool, i: int)
+        requires
+            0 <= i <= self.len(),
+        ensures
+            self.filter(p).len() >= self.take(i).filter(p).len(),
+        decreases i,
+    {
+        broadcast use group_seq_properties;
+        broadcast use Seq::lemma_filter_len_push;
+        broadcast use Seq::lemma_filter_push;
+
+        self.take(i).lemma_filter_monotone(self, p);
+    }
+
+    /// Filtering a prefix of a sequence produces the same number or fewer elements
+    /// as filtering the entire sequence.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn filter_take_len_test() {
+    ///     let s = seq![1, 2, 3, 4, 5];
+    ///     let is_even = |x: int| x % 2 == 0;
+    ///     assert(s.filter(is_even).len() >= s.take(3).filter(is_even).len());
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_filter_len_push(self, p: spec_fn(A) -> bool, elem: A)
+        ensures
+            #[trigger] self.push(elem).filter(p).len() == self.filter(p).len() + (if p(elem) {
+                1int
+            } else {
+                0int
+            }),
+    {
+        broadcast use group_seq_properties;
+        broadcast use Seq::lemma_filter_push;
+
+    }
+
+    /// If an index i is valid for a sequence (0 ≤ i < len), then the element at that index
+    /// is contained in the sequence.
+    pub broadcast proof fn lemma_index_contains(self, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            self.contains(#[trigger] self[i]),
+    {
+    }
+
+    /// Taking i+1 elements from a sequence is equivalent to taking i elements
+    /// and then pushing the element at index i.
+    pub broadcast proof fn lemma_take_succ_push(self, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.take(i + 1) =~= self.take(i).push(self[i]),
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// Taking the full length of a sequence returns the sequence itself.
+    pub broadcast proof fn lemma_take_len(self)
+        ensures
+            #[trigger] self.take(self.len() as int) == self,
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// Taking i+1 elements and checking if any element satisfies predicate p is equivalent to:
+    /// either taking i elements and checking if any satisfies p, OR checking if the i-th element satisfies p.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn take_any_succ_test() {
+    ///     let s = seq![1, 2, 3];
+    ///     let is_even = |x| x % 2 == 0;
+    ///     let i = 1;
+    ///     assert(s.take(i + 1).any(is_even) == (s.take(i).any(is_even) || is_even(s[i])));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_take_any_succ(self, p: spec_fn(A) -> bool, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.take(i + 1).any(p) <==> self.take(i).any(p) || p(self[i]),
+    {
+        broadcast use group_seq_properties;
+
+        self.lemma_take_succ_push(i);
+        if self.take(i + 1).any(p) {
+            let x = choose|x: A| self.take(i + 1).contains(x) && #[trigger] p(x);
+            assert(self.take(i).contains(x) || x == self[i]);
+        }
+        if self.take(i).any(p) {
+            let x = choose|x: A| self.take(i).contains(x) && #[trigger] p(x);
+            assert(self.take(i + 1).contains(x));
+        }
+        if p(self[i]) {
+            assert(self.take(i + 1).contains(self[i]));
+        }
+    }
+
+    /// A sequence has no duplicates iff mapping an injective function over it
+    /// produces a sequence with no duplicates.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn no_duplicates_injective_test() {
+    ///     let s = seq![1, 2];
+    ///     let f = |x| x + 1;  // injective function
+    ///     assert(s.no_duplicates() == s.map_values(f).no_duplicates());
+    /// }
+    /// ```
+    pub proof fn lemma_no_duplicates_injective<B>(self, f: spec_fn(A) -> B)
+        requires
+            injective(f),
+        ensures
+            self.no_duplicates() <==> self.map_values(f).no_duplicates(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use super::set_lib::group_set_properties;
+
+        let mapped = self.map_values(f);
+        assert(mapped.len() == self.len());
+        if mapped.no_duplicates() {
+            assert forall|i: int, j: int| 0 <= i < j < mapped.len() implies self[i] != self[j] by {
+                assert(mapped[i] == f(self[i]));
+                assert(mapped[j] == f(self[j]));
+            }
+        }
+    }
+
+    /// Pushing an element and then mapping a function over a sequence is equivalent to
+    /// mapping the function over the sequence and then pushing the function applied to that element.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn push_map_test() {
+    ///     let s = seq![1, 2];
+    ///     let f = |x| x + 1;
+    ///     assert(s.push(3).map_values(f) =~= s.map_values(f).push(f(3)));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_push_map_commute<B>(self, f: spec_fn(A) -> B, x: A)
+        ensures
+            self.map_values(f).push(f(x)) =~= #[trigger] self.push(x).map_values(f),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+    }
+
+    /// Converting a sequence to a set after pushing an element is equivalent to
+    /// converting to a set first and then inserting that element.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn push_to_set_test() {
+    ///     let s = seq![1, 2];
+    ///     assert(s.push(3).to_set() =~= s.to_set().insert(3));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_push_to_set_commute(self, elem: A)
+        ensures
+            #[trigger] self.push(elem).to_set() =~= self.to_set().insert(elem),
+    {
+        broadcast use group_seq_properties;
+        broadcast use super::set::group_set_axioms;
+
+        let lhs = self.push(elem).to_set();
+        let rhs = self.to_set().insert(elem);
+
+        assert(lhs.subset_of(rhs));
+        assert forall|x: A| rhs.contains(x) implies lhs.contains(x) by {
+            lemma_seq_contains_after_push(self, elem, x);
+            if x == elem {
+            } else {
+                lemma_seq_contains_after_push(self, elem, x);
+            }
+        }
+    }
+
+    /// Filtering a sequence after pushing an element is equivalent to:
+    /// if the element satisfies the predicate, filter the sequence and push the element
+    /// otherwise, just filter the sequence without the element.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn filter_push_test() {
+    ///     let s = seq![1, 2];
+    ///     let is_even = |x| x % 2 == 0;
+    ///     assert(s.push(4).filter(is_even) == s.filter(is_even).push(4));
+    ///     assert(s.push(3).filter(is_even) == s.filter(is_even));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_filter_push(self, elem: A, pred: spec_fn(A) -> bool)
+        ensures
+            #[trigger] self.push(elem).filter(pred) == if pred(elem) {
+                self.filter(pred).push(elem)
+            } else {
+                self.filter(pred)
+            },
+    {
+        broadcast use group_seq_properties;
+
+        reveal(Seq::filter);
+        assert(self.push(elem).drop_last() =~= self);
+    }
+
+    /// If two sequences have the same length and `i` is a valid index,
+    /// then the pair (a[i], b[i]) is contained in their zip.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn zip_contains_test() {
+    ///     let a = seq![1, 2];
+    ///     let b = seq!["a", "b"];
+    ///     assert(a.zip_with(b).contains((a[0], b[0])));
+    ///     assert(a.zip_with(b).contains((a[1], b[1])));
+    /// }
+    /// ```
+    pub proof fn lemma_zip_with_contains_index<B>(self, b: Seq<B>, i: int)
+        requires
+            0 <= i < self.len(),
+            self.len() == b.len(),
+        ensures
+            self.zip_with(b).contains((self[i], b[i])),
+    {
+        assert(self.zip_with(b)[i] == (self[i], b[i]));
+    }
+
+    /// Proves equivalence between checking a predicate over zipped sequences and checking
+    /// corresponding elements by index. Requires sequences of equal length.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2];
+    ///     let ys = seq![2, 3];
+    ///     let f = |x, y| x < y;
+    ///     assert(xs.zip_with(ys).all(|(x, y)| f(x, y)) <==>
+    ///            forall|i| 0 <= i < xs.len() ==> f(xs[i], ys[i]));
+    ///     // We can now prove specific index relationships
+    ///     assert(xs[0] < ys[0]); // 1 < 2
+    ///     assert(xs[1] < ys[1]); // 2 < 3
+    /// }
+    /// ```
+    pub proof fn lemma_zip_with_uncurry_all<B>(self, b: Seq<B>, f: spec_fn(A, B) -> bool)
+        requires
+            self.len() == b.len(),
+        ensures
+            self.zip_with(b).all(|p: (A, B)| f(p.0, p.1)) <==> forall|i: int|
+                0 <= i < self.len() ==> f(self[i], b[i]),
+    {
+        broadcast use group_seq_properties;
+
+        let zipped = self.zip_with(b);
+        let f_uncurr = |p: (A, B)| f(p.0, p.1);
+        let lhs = zipped.all(f_uncurr);
+        let rhs = (forall|i: int| 0 <= i < self.len() ==> f(self[i], b[i]));
+        if lhs {
+            assert forall|i: int| 0 <= i < self.len() implies f(self[i], b[i]) by {
+                self.lemma_zip_with_contains_index(b, i);
+                assert(forall|j| 0 <= j < zipped.len() ==> f_uncurr(zipped[j]));
+            }
+        }
+    }
+
+    /// flat_mapping after pushing an element is the same as
+    /// flat_mapping first and then appending f of that element.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2];
+    ///     let f = |x| seq![x, x + 1];
+    ///     assert(xs.push(3).flat_map(f) =~= xs.flat_map(f) + f(3));
+    ///     // xs.push(3).flat_map(f)    = [1,2,2,3,3,4]
+    ///     // xs.flat_map(f) + f(3)     = [1,2,2,3] + [3,4]
+    /// }
+    /// ```
+    pub proof fn lemma_flat_map_push<B>(self, f: spec_fn(A) -> Seq<B>, elem: A)
+        ensures
+            self.push(elem).flat_map(f) =~= self.flat_map(f) + f(elem),
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+        broadcast use Seq::lemma_flatten_push;
+        broadcast use Seq::lemma_push_map_commute;
+
+    }
+
+    /// flat_mapping a sequence up to index i+1 is equivalent to
+    /// flat_mapping up to index i and appending f of the element at index i.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2, 3];
+    ///     let f = |x| seq![x, x + 1];
+    ///
+    ///     assert(xs.take(2).flat_map(f) =~= xs.take(1).flat_map(f) + f(xs[1]));
+    ///     // xs.take(2).flat_map(f)        = [1,2,2,3]
+    ///     // xs.take(1).flat_map(f) + f(2) = [1,2] + [2,3]
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_flat_map_take_append<B>(self, f: spec_fn(A) -> Seq<B>, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.take(i + 1).flat_map(f) =~= self.take(i).flat_map(f) + f(self[i]),
+        decreases i,
+    {
+        broadcast use group_seq_properties;
+
+        self.lemma_take_succ_push(i);
+        self.take(i).lemma_flat_map_push(f, self[i]);
+    }
+
+    /// flat_mapping a sequence with a single element
+    /// is equivalent to applying the function f to that element.
+    pub broadcast proof fn lemma_flat_map_singleton<B>(self, f: spec_fn(A) -> Seq<B>)
+        requires
+            #[trigger] self.len() == 1,
+        ensures
+            #[trigger] self.flat_map(f) == f(self[0]),
+    {
+        broadcast use Seq::lemma_flatten_singleton;
+
+    }
+
+    /// Mapping a sequence's first i+1 elements equals
+    /// mapping its first i elements plus f of the i-th element.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2, 3];
+    ///     let f = |x| x * 2;
+    ///
+    ///     assert(xs.take(2).map_values(f) =~= xs.take(1).map_values(f).push(f(xs[1])));
+    ///     // Left:  [1,2].map(f)          = [2,4]
+    ///     // Right: [1].map(f).push(f(2)) = [2].push(4)
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_map_take_succ<B>(self, f: spec_fn(A) -> B, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.take(i + 1).map_values(f) =~= self.take(i).map_values(f).push(
+                f(self[i]),
+            ),
+    {
+        broadcast use group_seq_properties;
+
+        self.lemma_take_succ_push(i);
+    }
+
+    /// If a sequence is a prefix of another sequence,
+    /// their elements match at all indices within the prefix length.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2, 3];
+    ///     let prefix = seq![1, 2];
+    ///     assert(prefix.is_prefix_of(xs));
+    ///     assert(prefix[0] == xs[0] && prefix[1] == xs[1]);
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefix_index_eq(self, prefix: Seq<A>)
+        requires
+            #[trigger] prefix.is_prefix_of(self),
+        ensures
+            forall|i: int| 0 <= i < prefix.len() ==> prefix[i] == self[i],
+    {
+    }
+
+    /// If a concatenated sequence (prefix1 + prefix2) is a prefix of another sequence,
+    /// then prefix1 by itself is also a prefix of that sequence.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2, 3, 4];
+    ///     let prefix1 = seq![1, 2];
+    ///     let prefix2 = seq![3];
+    ///     assert((prefix1 + prefix2).is_prefix_of(xs));
+    ///     assert(prefix1.is_prefix_of(xs));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefix_concat(self, prefix1: Seq<A>, prefix2: Seq<A>)
+        requires
+            #[trigger] (prefix1 + prefix2).is_prefix_of(self),
+        ensures
+            prefix1.is_prefix_of(self),
+    {
+        broadcast use Seq::lemma_prefix_index_eq;
+
+    }
+
+    /// If `prefix1 + [t]` is a prefix of a sequence,
+    /// `prefix1` is a prefix of `prefix2`,
+    /// `prefix2` is a prefix of the sequence,
+    /// `prefix1` and `prefix2` are different, and
+    /// `prefix1` doesn't contain `t`,
+    /// then `prefix2` must contain t.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![1, 2, 3, 4];
+    ///     let prefix1 = seq![1];
+    ///     let prefix2 = seq![1, 2];
+    ///     let t = 2;
+    ///     assert((prefix1 + seq![t]).is_prefix_of(xs));
+    ///     assert(prefix1.is_prefix_of(prefix2));
+    ///     assert(prefix2.is_prefix_of(xs));
+    ///     assert(prefix2.contains(t));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefix_chain_contains(self, prefix1: Seq<A>, prefix2: Seq<A>, t: A)
+        requires
+            #[trigger] (prefix1 + seq![t]).is_prefix_of(self),
+            #[trigger] prefix1.is_prefix_of(prefix2),
+            prefix2.is_prefix_of(self),
+            prefix1 != prefix2,
+            !prefix1.contains(t),
+        ensures
+            prefix2.contains(t),
+    {
+        broadcast use Seq::lemma_prefix_concat;
+        broadcast use Seq::lemma_prefix_index_eq;
+
+        assert(prefix2[prefix1.len() as int] == t);
+    }
+
+    /// If `prefix1 + [t]` and `prefix2 + [t]` are both prefixes of a sequence,
+    /// and neither `prefix1` nor `prefix2` contains `t`,
+    /// then `prefix1` equals `prefix2`.
+    pub broadcast proof fn lemma_prefix_append_unique(self, prefix1: Seq<A>, prefix2: Seq<A>, t: A)
+        requires
+            #[trigger] (prefix1 + seq![t]).is_prefix_of(self),
+            #[trigger] (prefix2 + seq![t]).is_prefix_of(self),
+            !prefix1.contains(t),
+            !prefix2.contains(t),
+        ensures
+            prefix1 == prefix2,
+    {
+        broadcast use Seq::lemma_prefix_concat;
+        broadcast use Seq::lemma_prefix_index_eq;
+        broadcast use Seq::lemma_prefix_chain_contains;
+
+        if prefix1 != prefix2 {
+            assert(prefix1.is_prefix_of(prefix2) || prefix2.is_prefix_of(prefix1));
+        }
+    }
+
+    /// If a predicate `p` is true for all elements in a sequence,
+    /// and `p` is true for an element `e`, then `p` remains true for all elements
+    /// after pushing `e` to the sequence.
+    ///
+    /// # Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let xs = seq![2, 4, 6];
+    ///     let is_even = |x| x % 2 == 0;
+    ///     assert(xs.all(is_even));
+    ///     assert(is_even(8));
+    ///     assert(xs.push(8).all(is_even));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_all_push(self, p: spec_fn(A) -> bool, elem: A)
+        requires
+            self.all(p),
+            p(elem),
+        ensures
+            #[trigger] self.push(elem).all(p),
+    {
+        broadcast use group_seq_properties;
+
+        assert forall|x: A| self.push(elem).contains(x) implies p(x) by {
+            lemma_seq_contains_after_push(self, elem, x);
+        }
+    }
+
+    /// Two sequences are equal when concatenated with the same prefix
+    /// iff those two sequences are equal.
+    pub proof fn lemma_concat_injective(self, s1: Seq<A>, s2: Seq<A>)
+        ensures
+            (self + s1 == self + s2) <==> (s1 == s2),
+    {
+        broadcast use group_seq_properties;
+
+        assert((self + s1).skip(self.len() as int) == s1);
+    }
+
+    pub broadcast group group_seq_extra {
+        Seq::<_>::lemma_seq_skip_skip,
+        Seq::<_>::lemma_remove_duplicates_properties,
+        Seq::<_>::lemma_filter_contains_rev,
+        Seq::<_>::lemma_filter_map_take_succ,
+        Seq::<_>::lemma_filter_prepend,
+        Seq::<_>::lemma_filter_len_push,
+        Seq::<_>::lemma_take_len,
+        Seq::<_>::lemma_take_any_succ,
+        Seq::<_>::lemma_push_map_commute,
+        Seq::<_>::lemma_push_to_set_commute,
+        Seq::<_>::lemma_filter_push,
+        Seq::<_>::lemma_flat_map_take_append,
+        Seq::<_>::lemma_flat_map_singleton,
+        Seq::<_>::lemma_map_take_succ,
+        Seq::<_>::lemma_prefix_index_eq,
+        Seq::<_>::lemma_prefix_concat,
+        Seq::<_>::lemma_prefix_chain_contains,
+        Seq::<_>::lemma_prefix_append_unique,
+        Seq::<_>::lemma_all_push,
+    }
+}
+
+/// Filtering a sequence and then viewing its elements produces the same result as
+/// viewing the elements first and then filtering with the corresponding predicate.
+/// The predicates p and sp must be equivalent under view.
+///
+/// # Example
+/// ```rust
+/// proof fn example() {
+///     let s = seq!["hello".to_string(), "world".to_string()];
+///     let p = |x: String| x.len() > 4;
+///     let sp = |x: Seq<char>| x.len() > 4;
+///
+///     let way1 = s.filter(p).map_values(|x| x.view());
+///     let way2 = s.map_values(|x| x.view()).filter(sp);
+///     assert(way1 == way2);
+/// }
+/// ```
+pub proof fn lemma_filter_view_commute<S: View>(
+    s: Seq<S>,
+    p: spec_fn(S) -> bool,
+    sp: spec_fn(S::V) -> bool,
+)
+    requires
+        forall|s: S| p(s) <==> sp(s.view()),
+    ensures
+        s.filter(p).map_values(|x: S| x.view()) == s.map_values(|x: S| x.view()).filter(sp),
+    decreases s.len(),
+{
+    broadcast use group_seq_properties;
+    broadcast use Seq::lemma_push_map_commute;
+    broadcast use Seq::lemma_filter_push;
+
+    reveal(Seq::filter);
+    let view = |x: S| x.view();
+    if s.len() > 0 {
+        let rest = s.drop_last();
+        let last = s.last();
+        assert(s =~= rest.push(last));
+        assert(s.map_values(view).last() == view(last));
+        lemma_filter_view_commute(rest, p, sp);
+    }
+}
+
+/// A sequence has exactly one element satisfying a predicate iff
+/// viewing all elements and filtering with the corresponding predicate
+/// produces a sequence with exactly one element.
+///
+/// # Example
+/// ```rust
+/// proof fn example() {
+///     let s = seq!["hello".to_string(), "world".to_string()];
+///     let p = |x: String| x.len() == 5;
+///     let sp = |x: Seq<char>| x.len() == 5;
+///
+///     assert(s.exactly_one(p) <==> s.map_values(|x| x.view()).exactly_one(sp));
+/// }
+/// ```
+pub proof fn lemma_exactly_one_view<S: View>(
+    s: Seq<S>,
+    p: spec_fn(S) -> bool,
+    sp: spec_fn(S::V) -> bool,
+)
+    requires
+        forall|s: S| p(s) <==> sp(s.view()),
+        injective(|x: S| x.view()),
+    ensures
+        s.exactly_one(p) <==> s.map_values(|x: S| x.view()).exactly_one(sp),
+{
+    lemma_filter_view_commute(s, p, sp);
 }
 
 impl<A, B> Seq<(A, B)> {
@@ -1197,6 +2489,46 @@ impl<A> Seq<Seq<A>> {
             assert(self.drop_last() + seq![self.last()] =~= self);
             assert(self.flatten_alt() == self.drop_last().flatten_alt() + self.last());
         }
+    }
+
+    /// Flattening a sequence of sequences after pushing a new sequence is equivalent to
+    /// concatenating that sequence to the original flattened result.
+    pub broadcast proof fn lemma_flatten_push(self, elem: Seq<A>)
+        ensures
+            #[trigger] self.push(elem).flatten() =~= self.flatten() + elem,
+        decreases self.len(),
+    {
+        broadcast use group_seq_properties;
+
+        assert(self.push(elem).last() == elem);
+        assert(self.push(elem).drop_last() =~= self);
+        calc! {
+            (==)
+            self.push(elem).flatten(); {
+                self.push(elem).lemma_flatten_and_flatten_alt_are_equivalent();
+            }
+            self.push(elem).flatten_alt(); {}
+            self.flatten_alt() + elem; {
+                self.lemma_flatten_and_flatten_alt_are_equivalent();
+            }
+            self.flatten() + elem;
+        }
+    }
+
+    /// Flattening a sequence containing a single sequence yields that inner sequence.
+    pub broadcast proof fn lemma_flatten_singleton(self)
+        requires
+            #[trigger] self.len() == 1,
+        ensures
+            #[trigger] self.flatten() == self[0],
+    {
+        assert(self.flatten() == self[0] + self.drop_first().flatten());
+        assert(self.flatten() == self[0]);
+    }
+
+    pub broadcast group group_seq_flatten {
+        Seq::<_>::lemma_flatten_push,
+        Seq::<_>::lemma_flatten_singleton,
     }
 }
 
@@ -1510,7 +2842,7 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
         0 <= i < s.len(),
     ensures
         #![trigger s.remove(i).to_multiset()]
-        s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
+        s.remove(i).to_multiset() == s.to_multiset().remove(s[i]),
 {
     broadcast use super::multiset::group_multiset_axioms;
 
@@ -1521,6 +2853,30 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
     lemma_seq_union_to_multiset_commutative(s0, s1);
     assert(s == s0 + s1);
     assert(s2 + s0 == (s1 + s0).drop_first());
+    assert(s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]));
+}
+
+pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i <= s.len(),
+    ensures
+        #![trigger s.insert(i, a).to_multiset()]
+        s.insert(i, a).to_multiset() == s.to_multiset().insert(a),
+    decreases s.len(),
+{
+    broadcast use super::multiset::group_multiset_axioms;
+
+    let s0 = s.subrange(0, i);
+    let s1 = s.subrange(i, s.len() as int);
+
+    assert(s =~= s0 + s1);
+    assert(s.insert(i, a) =~= s0 + seq![a] + s1);
+    assert(((s0 + seq![a]) + s1).to_multiset() =~= ((seq![a] + s0) + s1).to_multiset()) by {
+        broadcast use lemma_multiset_commutative;
+
+    };
+    assert((seq![a] + s0 + s1).drop_first() == s0 + s1);
+    assert(s.insert(i, a).to_multiset() =~= s.to_multiset().insert(a));
 }
 
 /// to_multiset() preserves length
@@ -1576,6 +2932,37 @@ pub broadcast proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
             assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
         }
     }
+}
+
+pub broadcast proof fn to_multiset_update<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a).to_multiset() == s.to_multiset().insert(a).remove(s[i]),
+    decreases s.len(),
+{
+    broadcast use {
+        super::seq_lib::lemma_seq_take_len,
+        super::multiset::group_multiset_properties,
+        super::multiset::group_multiset_axioms,
+        to_multiset_insert,
+        to_multiset_remove,
+        to_multiset_contains,
+        lemma_update_is_remove_insert,
+    };
+
+    assert(s.update(i, a).to_multiset() =~= s.to_multiset().insert(a).remove(s[i]));
+
+}
+
+/// Lemma showing that update is equivalent to a remove followed by an insertae
+pub broadcast proof fn lemma_update_is_remove_insert<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #[trigger] s.update(i, a) =~= s.remove(i).insert(i, a),
+    decreases s.len(),
+{
 }
 
 /// The last element of two concatenated sequences, the second one being non-empty, will be the
@@ -1740,9 +3127,9 @@ pub proof fn lemma_flatten_alt_concat<A>(x: Seq<Seq<A>>, y: Seq<Seq<A>>)
 
 /// The multiset of a concatenated sequence `a + b` is equivalent to the multiset of the
 /// concatenated sequence `b + a`.
-pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+pub broadcast proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
-        (a + b).to_multiset() =~= (b + a).to_multiset(),
+        #[trigger] (a + b).to_multiset() =~= (b + a).to_multiset(),
 {
     broadcast use super::multiset::group_multiset_axioms;
 
@@ -1752,9 +3139,9 @@ pub proof fn lemma_seq_union_to_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
 
 /// The multiset of a concatenated sequence `a + b` is equivalent to the multiset of just
 /// sequence `a` added to the multiset of just sequence `b`.
-pub proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
+pub broadcast proof fn lemma_multiset_commutative<A>(a: Seq<A>, b: Seq<A>)
     ensures
-        (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
+        #[trigger] (a + b).to_multiset() =~= a.to_multiset().add(b.to_multiset()),
     decreases a.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -1887,6 +3274,11 @@ pub open spec fn commutative_foldr<A, B>(f: spec_fn(A, B) -> B) -> bool {
     forall|x: A, y: A, v: B| #[trigger] f(x, f(y, v)) == f(y, f(x, v))
 }
 
+// Definition of a commutative fold_left operator.
+pub open spec fn commutative_foldl<A, B>(f: spec_fn(B, A) -> B) -> bool {
+    forall|x: A, y: A, v: B| #[trigger] f(f(v, x), y) == f(f(v, y), x)
+}
+
 // For a commutative fold_right operator, any folding order
 // (i.e., any permutation) produces the same result.
 pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(A, B) -> B, v: B)
@@ -1924,6 +3316,32 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
     } else {
         assert(l2.to_multiset().len() == 0);
     }
+}
+
+// For a commutative fold_left operator, any folding order
+// (i.e., any permutation) produces the same result.
+pub proof fn lemma_fold_left_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(B, A) -> B, v: B)
+    requires
+        commutative_foldl(f),
+        l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_left(v, f) == l2.fold_left(v, f),
+{
+    let g = |a: A, b: B| f(b, a);
+    assert(f =~= |b: B, a: A| g(a, b));
+    assert(l1.fold_left(v, f) == l1.reverse().fold_right(g, v)) by {
+        l1.lemma_reverse_fold_right(v, g)
+    };
+    assert(l2.fold_left(v, f) == l2.reverse().fold_right(g, v)) by {
+        l2.lemma_reverse_fold_right(v, g)
+    };
+    assert(l1.reverse().to_multiset() =~= l2.reverse().to_multiset()) by {
+        l1.lemma_reverse_to_multiset();
+        l2.lemma_reverse_to_multiset();
+    }
+    assert(forall|x: A| #[trigger] l1.reverse().contains(x) ==> l1.contains(x));
+    assert(forall|x: A| #[trigger] l2.reverse().contains(x) ==> l2.contains(x));
+    lemma_fold_right_permutation(l1.reverse(), l2.reverse(), g, v);
 }
 
 /************************** Lemmas about Take/Skip ***************************/
@@ -2120,7 +3538,6 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-// TODO: seems like this warning doesn't come up?
 #[deprecated = "Use `broadcast use group_seq_properties` instead"]
 pub proof fn lemma_seq_properties<A>()
     ensures
@@ -2175,13 +3592,7 @@ pub proof fn lemma_seq_properties<A>()
                 > 0,  //from to_multiset_ensures
 {
     broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-    // TODO: for some reason this still needs to be explicitly stated
 
-    assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
-        v,
-    ).contains(x) by {
-        lemma_seq_contains_after_push(s, v, x);
-    }
 }
 
 #[doc(hidden)]
@@ -2237,23 +3648,32 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 #[macro_export]
 macro_rules! assert_seqs_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::seq_lib::assert_seqs_equal_internal!($($tail)*))
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! assert_seqs_equal_internal {
-    (::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (::vstd::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (::vstd::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr)) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr)) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
     };
-    (crate::builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+    (crate::prelude::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr)) => {
+        $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2)
+    };
+    (crate::verus_builtin::spec_eq($s1:expr, $s2:expr), $idx:ident => $bblock:block) => {
         $crate::vstd::seq_lib::assert_seqs_equal_internal!($s1, $s2, $idx => $bblock)
     };
     ($s1:expr, $s2:expr $(,)?) => {
@@ -2265,7 +3685,7 @@ macro_rules! assert_seqs_equal_internal {
         $crate::vstd::prelude::assert_by($crate::vstd::prelude::equal(s1, s2), {
             $crate::vstd::prelude::assert_(s1.len() == s2.len());
             $crate::vstd::prelude::assert_forall_by(|$idx : $crate::vstd::prelude::int| {
-                $crate::vstd::prelude::requires(::builtin_macros::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
+                $crate::vstd::prelude::requires($crate::vstd::prelude::verus_proof_expr!(0 <= $idx && $idx < s1.len()));
                 $crate::vstd::prelude::ensures($crate::vstd::prelude::equal(s1.index($idx), s2.index($idx)));
                 { $bblock }
             });
@@ -2296,6 +3716,8 @@ pub broadcast group group_to_multiset_ensures {
     to_multiset_remove,
     to_multiset_len,
     to_multiset_contains,
+    to_multiset_insert,
+    to_multiset_update,
 }
 
 // include all the Dafny prelude lemmas

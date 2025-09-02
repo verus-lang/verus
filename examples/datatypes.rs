@@ -1,9 +1,6 @@
-// rust_verify/tests/example.rs expect-warnings
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
 
 verus! {
@@ -29,17 +26,18 @@ fn get_len<A>(list: &List<A>) -> (r: u64)
         r == len(list),
 {
     let mut n: u64 = 0;
-    let mut done = false;
     let mut iter = list;
-    while !done
+    loop
         invariant
             len(list) <= 0xffffffffffffffff,
             n + len(iter) == len(list),
-            done ==> len(iter) == 0,
+        ensures
+            n == len(list),
+        decreases len(iter),
     {
         match iter {
             List::Nil => {
-                done = true;
+                break;
             },
             List::Cons(_, tl) => {
                 iter = tl;

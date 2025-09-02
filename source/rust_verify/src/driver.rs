@@ -7,17 +7,7 @@ struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
 pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> () {
-    rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
-}
-
-fn mk_compiler<'a>(
-    rustc_args: &'a [String],
-    verifier: &'a mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a> {
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
-    compiler.set_file_loader(Some(file_loader));
-    compiler
+    rustc_driver::run_compiler(&rustc_args, &mut DefaultCallbacks)
 }
 
 fn run_compiler<'a, 'b>(
@@ -25,7 +15,6 @@ fn run_compiler<'a, 'b>(
     syntax_macro: bool,
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
 ) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -33,7 +22,7 @@ fn run_compiler<'a, 'b>(
         erase_ghost,
     );
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        mk_compiler(&rustc_args, verifier, file_loader).run()
+        rustc_driver::run_compiler(&rustc_args, verifier)
     }));
     result.map_err(|_| ())
 }
@@ -106,7 +95,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(tcx);
+            crate::lifetime::check(tcx, true);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
@@ -129,14 +118,15 @@ pub struct Stats {
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
-    if vstd == Vstd::IsCore {
+    if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
+    } else if vstd == Vstd::NoVstd {
+        rustc_args.extend(["--cfg", "verus_no_vstd"].map(|s| s.to_string()));
     }
     let allow = &[
         "unused_imports",
@@ -154,7 +144,7 @@ pub(crate) fn run_with_erase_macro_compile(
     for a in allow {
         rustc_args.extend(["-A", a].map(|s| s.to_string()));
     }
-    run_compiler(rustc_args, true, true, &mut callbacks, file_loader)
+    run_compiler(rustc_args, true, true, &mut callbacks)
 }
 
 pub struct VerusRoot {
@@ -198,7 +188,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                         Some(VerusRoot { path, in_vargo: false })
                     } else {
                         // TODO suppress warning when building verus itself
-                        eprintln!("warning: did not find a valid verusroot; continuing, but the builtin and vstd crates are likely missing");
+                        eprintln!("warning: did not find a valid verusroot; continuing, but the verus_builtin and vstd crates are likely missing");
                         None
                     }
                 })
@@ -206,20 +196,12 @@ pub fn find_verusroot() -> Option<VerusRoot> {
         })
 }
 
-pub fn run<F>(
+pub fn run(
     verifier: Verifier,
     mut rustc_args: Vec<String>,
     verus_root: Option<VerusRoot>,
-    file_loader: F,
     build_test_mode: bool,
-) -> (Verifier, Stats, Result<(), ()>)
-where
-    F: 'static
-        + rustc_span::source_map::FileLoader
-        + crate::file_loader::FileLoaderClone
-        + Send
-        + Sync,
-{
+) -> (Verifier, Stats, Result<(), ()>) {
     if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
@@ -230,7 +212,7 @@ where
             let externs = VerusExterns {
                 verus_root: verusroot.clone(),
                 has_vstd: verifier.args.vstd == Vstd::Imported,
-                has_builtin: verifier.args.vstd != Vstd::IsCore,
+                has_builtin: !matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore),
             };
             rustc_args.extend(externs.to_args());
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
@@ -248,7 +230,7 @@ where
     let mut rustc_args_verify = rustc_args.clone();
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     rustc_args_verify.extend(["--cfg", "verus_keep_ghost_body"].map(|s| s.to_string()));
-    if verifier.args.vstd == Vstd::IsCore {
+    if matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args_verify.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     }
     // Build VIR and run verification
@@ -259,16 +241,10 @@ where
         lifetime_start_time: None,
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
-        file_loader: Some(Box::new(file_loader.clone())),
         verus_externs,
+        spans: None,
     };
-    let status = run_compiler(
-        rustc_args_verify.clone(),
-        true,
-        false,
-        &mut verifier_callbacks,
-        Box::new(file_loader.clone()),
-    );
+    let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
         verifier,
         rust_start_time,
@@ -304,12 +280,7 @@ where
     let compile_status = if !verifier.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
-        run_with_erase_macro_compile(
-            rustc_args,
-            Box::new(file_loader),
-            verifier.compile,
-            verifier.args.vstd,
-        )
+        run_with_erase_macro_compile(rustc_args, verifier.compile, verifier.args.vstd)
     };
 
     let time2 = Instant::now();

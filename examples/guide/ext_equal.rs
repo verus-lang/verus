@@ -37,8 +37,6 @@ struct Foo {
 proof fn ext_equal_struct() {
     let f1 = Foo { a: seq![1, 2, 3], b: set!{4, 5, 6} };
     let f2 = Foo { a: seq![1, 2].push(3), b: set!{5, 6}.insert(4) };
-    assert(f1.a =~= f2.a);  // succeeds
-    // assert(f1 == f2);    // FAILS
     assert(f1 =~= f2);  // succeeds
 }
 // ANCHOR_END: ext_eq_struct
@@ -49,7 +47,6 @@ proof fn ext_equal_nested() {
     let s1: Seq<Set<int>> = seq![inner];
     let s2 = s1.update(0, s1[0].insert(1));
     let s3 = s1.update(0, s1[0].insert(2).insert(3));
-    // assert(s2 == s3);  // FAILS
     // assert(s2 =~= s3); // FAILS
     assert(s2 =~~= s3);  // succeeds
     let s4: Seq<Seq<Set<int>>> = seq![s1];
@@ -68,12 +65,10 @@ proof fn ext_equal_fnspec(n: int) {
     // basic case
     let f1 = (|i: int| i + 1);
     let f2 = (|i: int| 1 + i);
-    // assert(f1 == f2); // FAILS
     assert(f1 =~= f2);  // succeeds
     // struct case
     let b1 = Bar { a: |i: int| if i == 1 { i } else { 1 } };
     let b2 = Bar { a: |i: int| 1int };
-    // assert(b1 == b2); // FAILS
     assert(b1 =~= b2);  // succeeds
     // nested case
     let i1 = (|i: int| i + 2);

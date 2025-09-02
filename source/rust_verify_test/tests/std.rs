@@ -178,6 +178,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unsigned_wrapping_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = 255u16.wrapping_mul(253);
+            assert(i == 64515);
+
+            let i = 256u16.wrapping_mul(256);
+            assert(i == 0);
+
+            let i = 257u16.wrapping_mul(259);
+            assert(i == 1027);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] signed_wrapping_mul verus_code! {
         use vstd::*;
 
@@ -512,6 +529,8 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] derive_copy ["--no-external-by-default"] => verus_code! {
+        use vstd::*;
+
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // However, this test case does not use --external-by-default, so verus will
         // process the derived impls anyway.
@@ -530,6 +549,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file! {
     #[test] derive_copy_external_by_default verus_code! {
+        use vstd::*;
+
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // Since this test case uses --external-by-default, these derived impls do not
         // get processed.

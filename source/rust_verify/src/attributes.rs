@@ -1,7 +1,7 @@
 use crate::util::{err_span, vir_err_span_str};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_hir::{AttrArgs, AttrKind, Attribute};
+use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
@@ -101,8 +101,8 @@ enum AttrPrefix {
 }
 
 fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
-    match &attr.kind {
-        AttrKind::Normal(item) => match &item.path.segments[..] {
+    match attr {
+        Attribute::Unparsed(item) => match &item.path.segments[..] {
             [segment] if segment.as_str() == "verifier" => match &item.args {
                 // TODO(main_new) MacArgs::Delimited(_, _, token_stream) => {
                 // TODO(main_new)     let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
@@ -116,12 +116,12 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 // TODO(main_new)         .ok_or(vir_err_span_str(attr.span, "invalid verifier attribute"))?;
                 // TODO(main_new)     Ok(Some((AttrPrefix::Verifier, attr.span, tree)))
                 // TODO(main_new) }
-                _ => return err_span(attr.span, "invalid verifier attribute"),
+                _ => return err_span(attr.span(), "invalid verifier attribute"),
             },
             [prefix_segment, segment] if prefix_segment.as_str() == "verifier" => {
-                attr_args_to_tree(attr.span, segment.to_string(), &item.args)
-                    .map(|tree| Some((AttrPrefix::Verifier, attr.span, tree)))
-                    .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))
+                attr_args_to_tree(attr.span(), segment.to_string(), &item.args)
+                    .map(|tree| Some((AttrPrefix::Verifier, attr.span(), tree)))
+                    .map_err(|_| vir_err_span_str(attr.span(), "invalid verifier attribute"))
             }
             [prefix_segment, segment] if prefix_segment.as_str() == "verus" => {
                 let name = segment.to_string();
@@ -129,23 +129,23 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     "internal" => match &item.args {
                         AttrArgs::Delimited(delim) => {
                             let trees: Box<[AttrTree]> =
-                                token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
-                                    vir_err_span_str(attr.span, "invalid verus attribute")
-                                })?;
+                                token_stream_to_trees(attr.span(), &delim.tokens).map_err(
+                                    |_| vir_err_span_str(attr.span(), "invalid verus attribute"),
+                                )?;
                             if trees.len() != 1 {
-                                return err_span(attr.span, "invalid verus attribute");
+                                return err_span(attr.span(), "invalid verus attribute");
                             }
                             let mut trees = trees.into_vec().into_iter();
                             let tree: AttrTree = trees.next().ok_or_else(|| {
-                                vir_err_span_str(attr.span, "invalid verus attribute")
+                                vir_err_span_str(attr.span(), "invalid verus attribute")
                             })?;
-                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
+                            Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span(), tree)))
                         }
-                        _ => return err_span(attr.span, "invalid verus attribute"),
+                        _ => return err_span(attr.span(), "invalid verus attribute"),
                     },
-                    _ => attr_args_to_tree(attr.span, name, &item.args)
-                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span, tree)))
-                        .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute")),
+                    _ => attr_args_to_tree(attr.span(), name, &item.args)
+                        .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span(), tree)))
+                        .map_err(|_| vir_err_span_str(attr.span(), "invalid verifier attribute")),
                 }
             }
             [segment]
@@ -154,7 +154,7 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                     || segment.as_str() == "exec" =>
             {
                 return err_span(
-                    attr.span,
+                    attr.span(),
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
             }
@@ -162,8 +162,8 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 if !RUSTC_ATTRS_OK_TO_IGNORE.contains(&segment.as_str()) {
                     Ok(Some((
                         AttrPrefix::Rustc,
-                        attr.span,
-                        AttrTree::Fun(attr.span, segment.as_str().into(), None),
+                        attr.span(),
+                        AttrTree::Fun(attr.span(), segment.as_str().into(), None),
                     )))
                 } else {
                     Ok(None)
@@ -299,6 +299,11 @@ pub(crate) enum Attr {
     // In order to apply a specification to a trait externally
     // (the string is the name of the associated type pointing to the specified trait)
     ExternalTraitSpecification(String),
+    // A trait or impl of a trait that extends an external_type_specification trait with ghost items
+    ExternalTraitExtension(String, String),
+    // Mark the blanket trait impl for the external_type_specification trait
+    // (needed so that trait_conflicts.rs knows to ignore it.)
+    ExternalTraitBlanket,
     // Any auto-derives for this type should be treated external
     ExternalAutoDerives(Option<std::collections::HashSet<String>>),
     // Marks a variable that's spec or ghost mode in exec code
@@ -307,8 +312,6 @@ pub(crate) enum Attr {
     InternalRevealFn,
     // Marks the auxiliary function constructed by spec const
     InternalConstBody,
-    // Marks the auxiliary function constructed to wrap the ensures of a const
-    InternalEnsuresWrapper,
     // Marks trusted code
     Trusted,
     // global size_of
@@ -336,6 +339,13 @@ pub(crate) enum Attr {
     ExecAllowNoDecreasesClause,
     // Assume that the function terminates
     AssumeTermination,
+    // Proxy containing unerased code
+    UnerasedProxy,
+    UsesUnerasedProxy,
+    EncodedConst,
+    EncodedStatic,
+    // The "const _: () = { ... }" generated by synstructure for #[derive(Structural)]
+    StructuralConstWrapper,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -525,8 +535,12 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::LoopIsolation(false))
                 }
                 AttrTree::Fun(span, arg, Some(places)) if arg == "auto_ext_equal" => {
-                    let mut auto_ext_equal =
-                        vir::ast::AutoExtEqual { assert: false, assert_by: false, ensures: false };
+                    let mut auto_ext_equal = vir::ast::AutoExtEqual {
+                        assert: false,
+                        assert_by: false,
+                        ensures: false,
+                        invariant: false,
+                    };
                     for place in places.into_iter() {
                         if let AttrTree::Fun(_, r, None) = place {
                             match &**r {
@@ -540,6 +554,10 @@ pub(crate) fn parse_attrs(
                                 }
                                 "ensures" => {
                                     auto_ext_equal.ensures = true;
+                                    continue;
+                                }
+                                "invariant" => {
+                                    auto_ext_equal.invariant = true;
                                     continue;
                                 }
                                 _ => {}
@@ -589,6 +607,19 @@ pub(crate) fn parse_attrs(
                     if arg == "external_trait_specification" =>
                 {
                     v.push(Attr::ExternalTraitSpecification(r.clone()))
+                }
+                AttrTree::Fun(
+                    _,
+                    arg,
+                    Some(
+                        box [
+                            AttrTree::Fun(_, s, None),
+                            AttrTree::Fun(_, via, None),
+                            AttrTree::Fun(_, i, None),
+                        ],
+                    ),
+                ) if arg == "external_trait_extension" && via == "via" => {
+                    v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
@@ -658,6 +689,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "external_trait_blanket" => {
+                        v.push(Attr::ExternalTraitBlanket)
+                    }
                     AttrTree::Fun(_, arg, None) if arg == "open" => {
                         v.push(Attr::Publish(AttrPublish::Open))
                     }
@@ -693,9 +727,6 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "const_body" => {
                         v.push(Attr::InternalConstBody)
-                    }
-                    AttrTree::Fun(_, arg, None) if arg == "const_header_wrapper" => {
-                        v.push(Attr::InternalEnsuresWrapper)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "broadcast_use_reveal" => {
                         v.push(Attr::BroadcastUseReveal)
@@ -737,6 +768,21 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "open_visibility_qualifier" => {
                         v.push(Attr::OpenVisibilityQualifier)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "unerased_proxy" => {
+                        v.push(Attr::UnerasedProxy)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "uses_unerased_proxy" => {
+                        v.push(Attr::UsesUnerasedProxy)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "encoded_const" => {
+                        v.push(Attr::EncodedConst)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "encoded_static" => {
+                        v.push(Attr::EncodedStatic)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "structural_const_wrapper" => {
+                        v.push(Attr::StructuralConstWrapper)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -775,7 +821,7 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     loop {
         if let Some(did) = def_id.as_local() {
             let hir_id = tcx.local_def_id_to_hir_id(did);
-            let attrs = tcx.hir().attrs(hir_id);
+            let attrs = tcx.hir_attrs(hir_id);
             vattrs.extend(parse_attrs_opt(attrs, None));
         }
         if let Some(id) = tcx.opt_parent(def_id) {
@@ -920,9 +966,12 @@ pub(crate) struct ExternalAttrs {
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
     pub(crate) size_of_global: bool,
+    pub(crate) item_broadcast_use: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) external_auto_derives: AutoDerivesAttr,
+    pub(crate) uses_unerased_proxy: bool,
+    pub(crate) structural_const_wrapper: bool,
 }
 
 #[derive(Debug)]
@@ -962,11 +1011,12 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) external_trait_specification: Option<String>,
+    pub(crate) external_trait_extension: Option<(String, String)>,
+    pub(crate) external_trait_blanket: bool,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
     pub(crate) internal_const_body: bool,
-    pub(crate) internal_const_header_wrapper: bool,
     pub(crate) broadcast_use_reveal: bool,
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
@@ -979,6 +1029,10 @@ pub(crate) struct VerifierAttrs {
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
+    pub(crate) unerased_proxy: bool,
+    pub(crate) encoded_const: bool,
+    pub(crate) encoded_static: bool,
+    pub(crate) structural_const_wrapper: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1018,6 +1072,7 @@ pub(crate) fn is_sealed(
 }
 
 /// Get the attributes needed to determine if the item is external.
+/// or needed to determine properties of external items.
 pub(crate) fn get_external_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
@@ -1032,9 +1087,12 @@ pub(crate) fn get_external_attrs(
         sets_mode: false,
         verus_macro: false,
         size_of_global: false,
+        item_broadcast_use: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
         external_auto_derives: AutoDerivesAttr::Regular,
+        uses_unerased_proxy: false,
+        structural_const_wrapper: false,
     };
 
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1048,6 +1106,7 @@ pub(crate) fn get_external_attrs(
             Attr::Mode(_) => es.sets_mode = true,
             Attr::VerusMacro => es.verus_macro = true,
             Attr::SizeOfGlobal => es.size_of_global = true,
+            Attr::ItemBroadcastUse => es.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
             Attr::ExternalAutoDerives(None) => {
@@ -1056,6 +1115,8 @@ pub(crate) fn get_external_attrs(
             Attr::ExternalAutoDerives(Some(external_auto_derives)) => {
                 es.external_auto_derives = AutoDerivesAttr::SomeExternal(external_auto_derives)
             }
+            Attr::UsesUnerasedProxy => es.uses_unerased_proxy = true,
+            Attr::StructuralConstWrapper => es.structural_const_wrapper = true,
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
@@ -1120,11 +1181,12 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         external_fn_specification: false,
         external_type_specification: false,
         external_trait_specification: None,
+        external_trait_extension: None,
+        external_trait_blanket: false,
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
         internal_const_body: false,
-        internal_const_header_wrapper: false,
         broadcast_use_reveal: false,
         trusted: false,
         size_of_global: false,
@@ -1137,6 +1199,10 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         open_visibility_qualifier: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
+        unerased_proxy: false,
+        encoded_const: false,
+        encoded_static: false,
+        structural_const_wrapper: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1148,6 +1214,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::ExternalTraitSpecification(assoc) => {
                 vs.external_trait_specification = Some(assoc.clone())
             }
+            Attr::ExternalTraitExtension(s, i) => vs.external_trait_extension = Some((s, i)),
+            Attr::ExternalTraitBlanket => vs.external_trait_blanket = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
@@ -1193,7 +1261,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
             Attr::InternalConstBody => vs.internal_const_body = true,
-            Attr::InternalEnsuresWrapper => vs.internal_const_header_wrapper = true,
             Attr::BroadcastUseReveal => vs.broadcast_use_reveal = true,
             Attr::Trusted => vs.trusted = true,
             Attr::SizeOfGlobal => vs.size_of_global = true,
@@ -1209,6 +1276,11 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
+            Attr::UnerasedProxy => vs.unerased_proxy = true,
+            Attr::EncodedConst => vs.encoded_const = true,
+            Attr::EncodedStatic => vs.encoded_static = true,
+            Attr::StructuralConstWrapper => vs.structural_const_wrapper = true,
+            Attr::UsesUnerasedProxy => {}
             _ => {}
         }
     }

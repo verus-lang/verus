@@ -360,7 +360,7 @@ test_verify_one_file! {
         fn bar(#[verifier::proof] x: int) {
             #[verifier::proof] let mut x = x;
             #[verifier::proof] let (a, b) = foo(&mut x);
-            builtin::assert_(a + b == x); // THIS LINE FAILS
+            verus_builtin::assert_(a + b == x); // THIS LINE FAILS
         }
     } => Ok(())
 }
@@ -377,7 +377,7 @@ test_verify_one_file_with_options! {
         fn bar(#[verifier::proof] x: int) {
             let mut x = true;
             let (a, b) = foo(&mut x);
-            builtin::assert_(x == true); // FAILS
+            verus_builtin::assert_(x == true); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -609,6 +609,60 @@ test_verify_one_file! {
                 check_inc(a, old(a)),
         {
             *a = *a + 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_overloaded_deref verus_code! {
+        use core::ops::Deref;
+
+        pub struct X {
+            pub inner: usize,
+        }
+
+        #[verifier::external_trait_specification]
+        pub trait ExDeref {
+            type ExternalTraitSpecificationFor: core::ops::Deref;
+
+            type Target: ?Sized;
+
+            fn deref(&self) -> &Self::Target;
+        }
+
+        pub open spec fn x_deref_spec(x: &X) -> (ret: &usize) {
+            &x.inner
+        }
+
+        impl Deref for X {
+            type Target = usize;
+
+            #[verifier::when_used_as_spec(x_deref_spec)]
+            fn deref(&self) -> (ret: &usize)
+                ensures
+                    ret == self.inner,
+            {
+                &self.inner
+            }
+        }
+
+        fn do_exec_deref(x: &X)
+            requires 100 <= x.inner < 102
+        {
+            // Explicit call.
+            let u: &usize = &((*x).deref());
+            assert(100 <= *u < 102);
+            // Implicit call.
+            let v: &usize = &**x;
+            assert(100 <= *v < 102);
+        }
+
+        spec fn do_explicit_spec_deref(x: &X) -> &usize {
+            &((*x).deref())
+        }
+
+        spec fn do_implicit_spec_deref(x: &X) -> &usize {
+            &**x
         }
     } => Ok(())
 }

@@ -46,6 +46,7 @@ pub struct GlobalCtx {
     pub func_call_sccs: Arc<Vec<Node>>,
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
+    pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -84,8 +85,9 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
-    pub(crate) uses_array: bool,
+    pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
+    pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
@@ -173,7 +175,10 @@ fn datatypes_invs(
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
-                        TypX::Int(_) | TypX::TypParam(_) | TypX::Projection { .. } => {
+                        TypX::Int(_)
+                        | TypX::TypParam(_)
+                        | TypX::Projection { .. }
+                        | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
                         TypX::SpecFn(..) => {
@@ -195,7 +200,9 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool => {}
+                        TypX::Float(_) => {}
+                        TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::ConstBool(_) => {}
@@ -210,6 +217,7 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::MutRef(_) => {}
                     }
                 }
             }
@@ -226,6 +234,29 @@ pub struct FuncCallGraphLogFiles {
     pub all_simplified: File,
     pub nostd_initial: File,
     pub nostd_simplified: File,
+}
+
+// A wrapper around Graph that adds functionality to merge nodes as the graph is built
+pub(crate) struct GraphBuilder<T: std::cmp::Eq + std::hash::Hash + Clone> {
+    pub(crate) graph: Graph<T>,
+    // Whenever we see node: T, replace it with replace_with[node]
+    // This merges node and replace_with[node] together into a single node.
+    pub(crate) replace_with: HashMap<T, T>,
+}
+
+impl<T: std::cmp::Eq + std::hash::Hash + Clone> GraphBuilder<T> {
+    pub(crate) fn replace(&self, value: T) -> T {
+        if let Some(value) = self.replace_with.get(&value) { value.clone() } else { value }
+    }
+    pub(crate) fn add_node(&mut self, value: T) {
+        let value = self.replace(value);
+        self.graph.add_node(value);
+    }
+    pub(crate) fn add_edge(&mut self, src: T, dst: T) {
+        let src = self.replace(src);
+        let dst = self.replace(dst);
+        self.graph.add_edge(src, dst);
+    }
 }
 
 impl GlobalCtx {
@@ -264,7 +295,59 @@ impl GlobalCtx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
-        let mut func_call_graph: Graph<Node> = Graph::new();
+        use crate::ast::TraitImpl;
+        let mut extension_to_trait: HashMap<Path, Path> = HashMap::new();
+        let mut trait_impl_to_extensions: HashMap<Path, Vec<Path>> = HashMap::new();
+        let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
+        let mut replace_with: HashMap<Node, Node> = HashMap::new();
+        for t in &krate.traits {
+            // If TSpec extends T with spec functions, merge TSpec into T
+            if let Some((extension, _)) = &t.x.external_trait_extension {
+                let t_node = Node::Trait(t.x.name.clone());
+                let extension_node = Node::Trait(extension.clone());
+                assert!(!replace_with.contains_key(&extension_node));
+                replace_with.insert(extension_node, t_node);
+                assert!(!extension_to_trait.contains_key(extension));
+                extension_to_trait.insert(extension.clone(), t.x.name.clone());
+            }
+        }
+        for trait_impl in &krate.trait_impls {
+            assert!(!trait_impl_map.contains_key(&trait_impl.x.impl_path));
+            trait_impl_map.insert(trait_impl.x.impl_path.clone(), trait_impl.clone());
+        }
+        for trait_impl in &krate.trait_impls {
+            if trait_impl.x.external_trait_blanket {
+                continue;
+            }
+            // If TSpec extends T with spec functions,
+            // merge 'impl TSpec for typ' into 'impl T for typ'.
+            if let Some(t) = extension_to_trait.get(&trait_impl.x.trait_path) {
+                let mut candidates: Vec<TraitImpl> = Vec::new();
+                for imp in trait_impl.x.trait_typ_arg_impls.x.iter() {
+                    if let ImplPath::TraitImplPath(imp) = imp {
+                        if let Some(candidate) = trait_impl_map.get(imp) {
+                            if &candidate.x.trait_path == t && !candidate.x.external_trait_blanket {
+                                candidates.push(candidate.clone());
+                            }
+                        }
+                    }
+                }
+                let origin_impl =
+                    crate::traits::find_trait_impl_from_extension(trait_impl, candidates, t)?;
+                let extension_node =
+                    Node::TraitImpl(ImplPath::TraitImplPath(trait_impl.x.impl_path.clone()));
+                let origin_node =
+                    Node::TraitImpl(ImplPath::TraitImplPath(origin_impl.x.impl_path.clone()));
+                assert!(!replace_with.contains_key(&extension_node));
+                replace_with.insert(extension_node, origin_node);
+                trait_impl_to_extensions
+                    .entry(origin_impl.x.impl_path.clone())
+                    .or_default()
+                    .push(trait_impl.x.impl_path.clone());
+            }
+        }
+        let mut func_call_graph: GraphBuilder<Node> =
+            GraphBuilder { graph: Graph::new(), replace_with };
         let crate_node = Node::Crate(crate_name.clone());
         func_call_graph.add_node(crate_node.clone());
 
@@ -298,6 +381,9 @@ impl GlobalCtx {
             }
         }
         for t in &krate.trait_impls {
+            if t.x.external_trait_blanket {
+                continue;
+            }
             // Heuristic: put trait impls first, because they are likely to precede
             // many functions that rely on them.
             func_call_graph
@@ -402,7 +488,7 @@ impl GlobalCtx {
         // In the final call graph, we add the edge Fun(f4) --> TraitImpl,
         // based on the fact that f4 calls one of { f1, f3 },
         // but the TraitImpl does not depend on f4.
-        let mut preliminary_call_graph = func_call_graph.clone();
+        let mut preliminary_call_graph = func_call_graph.graph.clone();
         preliminary_call_graph.compute_sccs();
         let preliminary_sccs = preliminary_call_graph.sort_sccs();
         let order: HashMap<Node, usize> =
@@ -419,7 +505,7 @@ impl GlobalCtx {
                             let impl_path = ImplPath::TraitImplPath(trait_impl.clone());
                             let trait_impl = Node::TraitImpl(impl_path);
                             // Do we already have f4 --> trait_impl?
-                            for ti in get_edges_from(&func_call_graph, &node_f4) {
+                            for ti in get_edges_from(&func_call_graph.graph, &node_f4) {
                                 if *ti == trait_impl {
                                     continue 'f1;
                                 }
@@ -437,6 +523,7 @@ impl GlobalCtx {
             }
         }
         // Now make the final call graph with the extra edges
+        let mut func_call_graph = func_call_graph.graph;
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
 
@@ -559,6 +646,7 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            trait_impl_to_extensions,
             qid_map,
             rlimit,
             interpreter_log,
@@ -587,6 +675,7 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
@@ -625,8 +714,9 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
-        uses_array: bool,
+        used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
+        resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -670,8 +760,9 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
-            uses_array,
+            used_builtins,
             fndef_types,
+            resolved_typs,
             fndef_type_set,
             functions,
             func_map,

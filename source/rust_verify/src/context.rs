@@ -1,21 +1,23 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
+use rustc_hir::def_id::LocalDefId;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
-use vir::ast::{Expr, Ident, Mode, Pattern};
+use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
-    pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -41,9 +43,12 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) ctxt: Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) fun_id: DefId,
+    pub(crate) external_trait_from_to: Option<Arc<(Path, Path, Option<Path>)>>,
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
+    // loop_isolation for the nearest enclosing loop, false otherwise
+    pub(crate) loop_isolation: bool,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -54,14 +59,14 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn get_verifier_attrs(
         &self,
         attrs: &[Attribute],
-    ) -> Result<crate::attributes::VerifierAttrs, vir::ast::VirErr> {
+    ) -> Result<crate::attributes::VerifierAttrs, VirErr> {
         crate::attributes::get_verifier_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
     }
 
     pub(crate) fn get_verifier_attrs_no_check(
         &self,
         attrs: &[Attribute],
-    ) -> Result<crate::attributes::VerifierAttrs, vir::ast::VirErr> {
+    ) -> Result<crate::attributes::VerifierAttrs, VirErr> {
         crate::attributes::get_verifier_attrs_no_check(
             attrs,
             Some(&mut *self.diagnostics.borrow_mut()),
@@ -71,7 +76,23 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn get_external_attrs(
         &self,
         attrs: &[Attribute],
-    ) -> Result<crate::attributes::ExternalAttrs, vir::ast::VirErr> {
+    ) -> Result<crate::attributes::ExternalAttrs, VirErr> {
         crate::attributes::get_external_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
+    }
+
+    pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
+        let mut r = self.erasure_info.borrow_mut();
+        r.bodies.push((local_def_id, c));
+    }
+}
+
+impl<'tcx> BodyCtxt<'tcx> {
+    pub(crate) fn is_copy(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+        let param_env = self.ctxt.tcx.param_env(self.fun_id);
+        let typing_env = rustc_middle::ty::TypingEnv {
+            param_env,
+            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
+        };
+        self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 }

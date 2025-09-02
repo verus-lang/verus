@@ -1,7 +1,15 @@
 [package]
-name = "builtin"
-version = "0.1.0"
+name = "verus_builtin"
+version = "0.0.0-2025-08-12-1837"
 edition = "2018"
+license = "MIT"
+description = "Verus Builtins: Rust definitions for core constructs in Verus"
+documentation = "https://verus-lang.github.io/verus/verusdoc/vstd/pervasive"
+homepage = "https://github.com/verus-lang/verus"
+repository = "https://github.com/verus-lang/verus"
+readme = "../../README.md"
+keywords = ["verus", "verified-rust", "verification"]
+categories = ["development-tools"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [package.metadata.verus]

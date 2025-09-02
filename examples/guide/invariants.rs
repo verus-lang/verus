@@ -1,9 +1,7 @@
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-
 #[allow(unused_imports)]
-use builtin::*;
+use verus_builtin::*;
 #[allow(unused_imports)]
-use builtin_macros::*;
+use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::arithmetic::overflow::*;
 
@@ -117,6 +115,7 @@ fn fib_impl(n: u64) -> (result: u64)
             fib(n as nat) <= u64::MAX,
             cur == fib(i as nat),
             prev == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         proof {
@@ -149,6 +148,7 @@ fn fib_checked(n: u64) -> (result: u64)
             fib(n as nat) <= u64::MAX,
             cur@ == fib(i as nat),
             prev@ == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         let new_cur = cur.add_checked(&prev);
@@ -178,6 +178,7 @@ fn fib_checked_no_precondition(n: u64) -> (result: Option<u64>)
             0 < i <= n,
             cur@ == fib(i as nat),
             prev@ == fib((i - 1) as nat),
+        decreases n - i,
     {
         i = i + 1;
         let new_cur = cur.add_checked(&prev);

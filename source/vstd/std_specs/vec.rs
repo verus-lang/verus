@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use builtin::*;
+use verus_builtin::*;
 
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
@@ -65,10 +65,10 @@ pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
     admit();
 }
 
-#[verifier::allow_in_spec]
-pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> usize
-    returns
-        spec_vec_len(vec),
+#[verifier::when_used_as_spec(spec_vec_len)]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
+    ensures
+        len == spec_vec_len(vec),
     no_unwind
 ;
 
@@ -140,6 +140,17 @@ pub assume_specification<T, A: Allocator>[Vec::<T,A>::index](vec: &Vec<T>, i: us
     ensures
         *r == vec[i as int];
 */
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::swap_remove ](
+    vec: &mut Vec<T, A>,
+    i: usize,
+) -> (element: T)
+    requires
+        i < old(vec).len(),
+    ensures
+        element == old(vec)[i as int],
+        vec@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
+;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
     vec: &mut Vec<T, A>,

@@ -93,8 +93,10 @@ impl PartialEq for crate::AssumeSpecification {
             && self.generics == other.generics && self.qself == other.qself
             && self.path == other.path && self.inputs == other.inputs
             && self.output == other.output && self.requires == other.requires
-            && self.ensures == other.ensures && self.returns == other.returns
-            && self.invariants == other.invariants && self.unwind == other.unwind
+            && self.ensures == other.ensures
+            && self.default_ensures == other.default_ensures
+            && self.returns == other.returns && self.invariants == other.invariants
+            && self.unwind == other.unwind
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -247,7 +249,8 @@ impl Eq for crate::BroadcastUse {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::BroadcastUse {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.paths == other.paths
+        self.attrs == other.attrs && self.brace_token == other.brace_token
+            && self.paths == other.paths && self.warning == other.warning
     }
 }
 #[cfg(feature = "full")]
@@ -376,6 +379,14 @@ impl PartialEq for crate::DataUnion {
 impl Eq for crate::Decreases {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::Decreases {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::DefaultEnsures {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::DefaultEnsures {
     fn eq(&self, other: &Self) -> bool {
         self.exprs == other.exprs
     }
@@ -2420,6 +2431,7 @@ impl PartialEq for crate::SignatureSpec {
     fn eq(&self, other: &Self) -> bool {
         self.prover == other.prover && self.requires == other.requires
             && self.recommends == other.recommends && self.ensures == other.ensures
+            && self.default_ensures == other.default_ensures
             && self.returns == other.returns && self.decreases == other.decreases
             && self.invariants == other.invariants && self.unwind == other.unwind
             && self.with == other.with

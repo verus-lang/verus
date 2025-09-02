@@ -71,7 +71,7 @@ fn gen_num_typ(n: TypNum, ts: Vec<Typ>) -> Typ {
 // Rust's complex conventions for Sized.
 fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
     match &**typ {
-        vir::ast::TypX::Bool | vir::ast::TypX::Int(..) => {
+        vir::ast::TypX::Bool | vir::ast::TypX::Int(..) | vir::ast::TypX::Float(..) => {
             Box::new(TypX::Primitive(vir::ast_util::typ_to_diagnostic_str(typ)))
         }
         vir::ast::TypX::Datatype(Dt::Tuple(_), ts, _) => {
@@ -152,11 +152,16 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             let name = state.typ_param(name.to_string(), None);
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
+        vir::ast::TypX::PointeeMetadata(t) => {
+            let t = gen_typ(state, t);
+            Box::new(TypX::PointeeMetadata(t))
+        }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
         vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
+        vir::ast::TypX::MutRef(_) => todo!(),
     }
 }
 
@@ -225,8 +230,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     vir_crate: &vir::ast::Krate,
     state: &mut State,
 ) {
-    state.restart_names();
-
     for d in &vir_crate.datatypes {
         let Dt::Path(path) = &d.x.name else {
             panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");
@@ -296,6 +299,9 @@ pub(crate) fn gen_check_trait_impl_conflicts(
 
     for i in &vir_crate.trait_impls {
         if !used_traits.contains(&i.x.trait_path) {
+            continue;
+        }
+        if i.x.external_trait_blanket {
             continue;
         }
         let span = spans.from_air_span(&i.span, None);

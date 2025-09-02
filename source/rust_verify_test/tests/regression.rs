@@ -244,8 +244,8 @@ test_verify_one_file! {
         mod Y {
             #![allow(dead_code)] // this was needed for the original crash
 
-            use builtin::*;
-            use builtin_macros::*;
+            use verus_builtin::*;
+            use verus_builtin_macros::*;
 
             verus!{
                 mod X {
@@ -395,7 +395,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nat_no_use_builtin_issue575 ["no-auto-import-builtin"] => code! {
+    #[test] nat_no_use_builtin_issue575 ["no-auto-import-verus_builtin"] => code! {
         use vstd::prelude::*;
 
         pub struct MyType {
@@ -458,7 +458,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-builtin"] => code! {
+    #[test] def_id_names_for_builtins_regression_588 ["no-auto-import-verus_builtin"] => code! {
         use vstd::{prelude::*, seq::*};
 
         verus! {
@@ -512,8 +512,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-builtin"] => code! {
-        use builtin_macros::*;
+    #[test] test_broadcast_forall_import_issue471 ["no-auto-import-verus_builtin"] => code! {
+        use verus_builtin_macros::*;
         #[allow(unused_imports)]
         use vstd::{seq::*, seq_lib::*};
 
@@ -883,7 +883,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
-        use state_machines_macros::state_machine;
+        use verus_state_machines_macros::state_machine;
         use vstd::*;
 
         state_machine!{ MachineWithProof {
@@ -1020,7 +1020,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] trait_proof_using_own_lemma verus_code! {
         mod m1 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 #[verifier::external_body]
                 pub struct S { p: core::marker::PhantomData<()> }
@@ -1047,7 +1047,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin_macros::*;
+            use verus_builtin_macros::*;
             verus! {
                 use crate::m1::*;
 
@@ -1442,4 +1442,86 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_unsupported_trait_imports ["no-auto-import-verus_builtin"] => code! {
+        // https://github.com/verus-lang/verus/issues/1582
+        // https://github.com/verus-lang/verus/issues/1597
+        // https://github.com/verus-lang/verus/issues/1708
+        #![feature(extern_types)]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        // The bug is a mishandling of unsupported types, so to test it,
+        // declare a foreign type that is unlikely to be supported in future Verus versions:
+        extern "C" { type T; }
+
+        impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] subst_in_traits verus_code! {
+        // https://github.com/verus-lang/verus/issues/1511
+        use vstd::prelude::*;
+
+        struct A {
+            a: bool,
+        }
+
+        struct B;
+
+        trait TraitA {
+            proof fn prop(chain: Seq<Option<A>>, i: int)
+                ensures
+                    0 <= i < chain.len() ==> {
+                        let c = chain[i];
+                        if c is Some {
+                            let MISSING_KEY = c->0;
+                            MISSING_KEY.a
+                        } else {
+                            false
+                        }
+                    }
+                    ;
+        }
+
+        impl TraitA for B {
+            proof fn prop(chain: Seq<Option<A>>, i: int) { assume(false); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] well_formed_typ_check_issue1399 verus_code! {
+        #[verifier::external]
+        enum Never {}
+
+        uninterp spec fn arbitrary<T>() -> T;
+
+        spec fn foo() -> u64 {
+            match arbitrary::<Never>() {
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::Never` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] well_formed_pattern_check_issue1741 verus_code! {
+        #[verifier::external_body]
+        pub enum E {
+            A,
+            B,
+        }
+
+        pub fn foo(e: E) -> i32{
+            match e {
+                E::A { .. } => 0,
+                _ => 1,
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
 }

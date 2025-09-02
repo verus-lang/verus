@@ -32,7 +32,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
         unsupported_err!(expr.span, "invalid reveal", &args);
     };
     let is_broadcast_use = {
-        let expr_attrs = ctxt.tcx.hir().attrs(block_expr.hir_id);
+        let expr_attrs = ctxt.tcx.hir_attrs(block_expr.hir_id);
         let expr_vattrs = ctxt.get_verifier_attrs(expr_attrs)?;
         expr_vattrs.broadcast_use_reveal
     };
@@ -84,7 +84,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         .filter_map(|impl_def_id| {
                             let ident = rustc_span::symbol::Ident::from_str(sym.as_str());
                             let found =
-                                tcx.associated_items(impl_def_id).find_by_name_and_namespace(
+                                tcx.associated_items(impl_def_id).find_by_ident_and_namespace(
                                     tcx,
                                     ident,
                                     rustc_hir::def::Namespace::ValueNS,

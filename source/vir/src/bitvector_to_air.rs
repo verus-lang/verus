@@ -339,6 +339,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let bv_expr = bv_exp_to_expr(ctx, state, arg)?;
                 do_clip(state, &arg.span, bv_expr, *int_range)
             }
+            UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
@@ -355,6 +356,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
+            }
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                panic!("mut-ref operation not allowed in bitvector query")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {

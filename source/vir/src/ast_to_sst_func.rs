@@ -1,7 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent,
-    VirErr,
+    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
+    VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
@@ -231,14 +231,15 @@ fn func_body_to_sst(
 
     let termination_check =
         if crate::recursion::fun_is_recursive(ctx, function) && verifying_owning_bucket {
-            let (mut termination_decls, termination_stm) = crate::recursion::check_termination_stm(
-                ctx,
-                diagnostics,
-                function,
-                Some(proof_body_stm),
-                &check_body_stm,
-                false,
-            )?;
+            let (mut termination_decls, termination_inits, termination_stm) =
+                crate::recursion::check_termination_stm(
+                    ctx,
+                    diagnostics,
+                    function,
+                    Some(proof_body_stm),
+                    &check_body_stm,
+                    false,
+                )?;
             termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
             let termination_check = FuncCheckSst {
@@ -254,6 +255,7 @@ fn func_body_to_sst(
                 }),
                 body: termination_stm,
                 local_decls: Arc::new(termination_decls),
+                local_decls_decreases_init: termination_inits,
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
                 unwind: UnwindSst::NoUnwind,
@@ -282,10 +284,9 @@ fn req_ens_to_sst(
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
+    let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        let mut ps = (*pars).clone();
-        ps.push(param_to_par(&function.x.ret, false));
-        pars = Arc::new(ps);
+        pars_mut.push(param_to_par(&function.x.ret, false));
     }
     let mut exps: Vec<Exp> = Vec::new();
     for e in specs.iter() {
@@ -302,8 +303,9 @@ pub fn func_decl_to_sst(
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
-    let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
-    let post_pars = params_to_pre_post_pars(&function.x.params, false);
+    let (ens_pars, enss0) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.0, false)?;
+    let (_, enss1) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.1, false)?;
 
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
@@ -387,9 +389,8 @@ pub fn func_decl_to_sst(
     Ok(FuncDeclSst {
         req_inv_pars: pars,
         ens_pars,
-        post_pars,
         reqs: Arc::new(reqs),
-        enss: Arc::new(enss),
+        enss: (Arc::new(enss0), Arc::new(enss1)),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
@@ -437,7 +438,8 @@ pub fn func_axioms_to_sst(
                 reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
                 reqs.extend((*function.x.require).clone());
                 let req = crate::ast_util::conjoin(span, &reqs);
-                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                assert!(function.x.ensure.1.len() == 0);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure.0);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
                 let params = params_to_pre_post_pars(&function.x.params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
@@ -458,18 +460,29 @@ pub(crate) fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<ExprX>>,
     param_renames: &HashMap<VarIdent, VarIdent>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Message> {
-    ast_visitor::map_expr_visitor(e, &|expr| {
-        Ok(match &expr.x {
-            ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
-            ExprX::VarLoc(i) => {
-                expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
-            }
-            ExprX::VarAt(i, at) => {
-                expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
-            }
-            _ => expr.clone(),
-        })
-    })
+    ast_visitor::map_expr_place_visitor(
+        e,
+        &|expr| {
+            Ok(match &expr.x {
+                ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|place| {
+            Ok(match &place.x {
+                PlaceX::Local(i) => {
+                    place.new_x(PlaceX::Local(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                _ => place.clone(),
+            })
+        },
+    )
 }
 
 struct InheritanceSubstitutions {
@@ -765,15 +778,10 @@ pub fn func_def_to_sst(
     }
 
     // Ensures: combine from both sources
-    for expr in lo_current.function.x.ensure.iter() {
-        let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
-        if !ctx.checking_spec_preconditions() {
-            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
-        }
-    }
     if let Some(lo_inheritance) = &lo_inheritance {
-        for expr in lo_inheritance.function.x.ensure.clone().iter() {
+        // We're overriding req_ens_function, so we only inherit the non-default-ensures
+        let non_default_ensure = &lo_inheritance.function.x.ensure.0.clone();
+        for expr in non_default_ensure.iter() {
             let exp = lo_inheritance.lower_pure(
                 ctx,
                 &mut state,
@@ -784,6 +792,13 @@ pub fn func_def_to_sst(
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
+        }
+    }
+    for expr in lo_current.function.x.ensure.0.iter().chain(lo_current.function.x.ensure.1.iter()) {
+        let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
+        if !ctx.checking_spec_preconditions() {
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
+            enss.push(exp);
         }
     }
 
@@ -821,9 +836,9 @@ pub fn func_def_to_sst(
         && (function.x.attrs.exec_allows_no_decreases_clause
             || function.x.attrs.exec_assume_termination);
     let no_termination_check = function.x.decrease.len() == 0 && exec_with_no_termination_check;
-    let (decls, stm) =
+    let (decls, local_decls_decreases_init, stm) =
         if no_termination_check || ctx.checking_spec_preconditions() || check_api_safety {
-            (vec![], stm)
+            (vec![], Arc::new(vec![]), stm)
         } else {
             crate::recursion::check_termination_stm(
                 ctx,
@@ -858,6 +873,7 @@ pub fn func_def_to_sst(
         unwind: unwind_sst,
         body: stm,
         local_decls: Arc::new(local_decls),
+        local_decls_decreases_init,
         statics: Arc::new(statics.into_iter().collect()),
     })
 }
@@ -923,7 +939,7 @@ pub fn function_to_sst(
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
         has_requires: function.x.require.len() > 0,
-        has_ensures: function.x.ensure.len() > 0,
+        has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
         has_return_name: function.x.ens_has_return,

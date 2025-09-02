@@ -1,12 +1,14 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -15,7 +17,10 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
+use crate::sst_util::{
+    sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_unit_value,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -516,6 +521,7 @@ enum ReturnedCall {
     Call {
         fun: Fun,
         resolved_method: Option<(Fun, Typs)>,
+        is_trait_default: Option<bool>,
         typs: Typs,
         has_return: bool,
         args: Exps,
@@ -569,11 +575,29 @@ fn expr_get_call(
                     };
                     exps.push(e0);
                 }
+                use crate::ast::{CallTargetKind, FunctionKind};
+                let is_trait_default =
+                    if let FunctionKind::TraitMethodDecl { has_default: true, .. } =
+                        &function.x.kind
+                    {
+                        match kind {
+                            CallTargetKind::Static => None,
+                            CallTargetKind::ProofFn(..) => None,
+                            CallTargetKind::Dynamic => Some(false),
+                            CallTargetKind::DynamicResolved { is_trait_default, .. } => {
+                                Some(*is_trait_default)
+                            }
+                            CallTargetKind::ExternalTraitDefault => Some(true),
+                        }
+                    } else {
+                        None
+                    };
                 Ok(Some((
                     stms,
                     ReturnedCall::Call {
                         fun: x.clone(),
                         resolved_method: kind.resolved(),
+                        is_trait_default,
                         typs: typs.clone(),
                         has_return: has_ret,
                         args: Arc::new(exps),
@@ -878,6 +902,7 @@ fn stm_call(
     span: &Span,
     name: Fun,
     resolved_method: Option<(Fun, Typs)>,
+    is_trait_default: Option<bool>,
     typs: Typs,
     args: Exps,
     dest: Option<Dest>,
@@ -920,6 +945,7 @@ fn stm_call(
         fun: name,
         resolved_method,
         mode: fun.x.mode,
+        is_trait_default,
         typ_args: typs,
         args: small_args,
         split: None,
@@ -1055,6 +1081,15 @@ pub(crate) fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
+        ExprX::AssignToPlace { place, rhs, op } => {
+            let loc = place_to_expr_loc(place);
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: *op },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
+        }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
                 panic!("op should already be removed")
@@ -1070,7 +1105,14 @@ pub(crate) fn expr_to_stm_opt(
                 }
                 Some((
                     stms2,
-                    ReturnedCall::Call { fun, resolved_method, typs, has_return: _, args },
+                    ReturnedCall::Call {
+                        fun,
+                        resolved_method,
+                        is_trait_default,
+                        typs,
+                        has_return: _,
+                        args,
+                    },
                 )) => {
                     // make a Call
                     stms.extend(stms2.into_iter());
@@ -1101,6 +1143,7 @@ pub(crate) fn expr_to_stm_opt(
                         &expr.span,
                         fun,
                         resolved_method,
+                        is_trait_default,
                         typs,
                         args,
                         Some(dest),
@@ -1155,6 +1198,7 @@ pub(crate) fn expr_to_stm_opt(
             let f = match bsf {
                 BuiltinSpecFun::ClosureReq => InternalFun::ClosureReq,
                 BuiltinSpecFun::ClosureEns => InternalFun::ClosureEns,
+                BuiltinSpecFun::DefaultEns => InternalFun::DefaultEns,
             };
             Ok((
                 check_stms,
@@ -1170,7 +1214,14 @@ pub(crate) fn expr_to_stm_opt(
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (
                     mut stms,
-                    ReturnedCall::Call { fun: x, resolved_method, typs, has_return: ret, args },
+                    ReturnedCall::Call {
+                        fun: x,
+                        resolved_method,
+                        is_trait_default,
+                        typs,
+                        has_return: ret,
+                        args,
+                    },
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
                         // ExpX::Call
@@ -1194,6 +1245,7 @@ pub(crate) fn expr_to_stm_opt(
                             &expr.span,
                             x.clone(),
                             resolved_method.clone(),
+                            is_trait_default,
                             typs.clone(),
                             args.clone(),
                             Some(dest),
@@ -1230,6 +1282,7 @@ pub(crate) fn expr_to_stm_opt(
                             &expr.span,
                             x.clone(),
                             resolved_method,
+                            is_trait_default,
                             typs.clone(),
                             args,
                             None,
@@ -2043,6 +2096,8 @@ pub(crate) fn expr_to_stm_opt(
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
                 let (rec, exp) = expr_to_pure_exp_check(ctx, state, &inv.inv)?;
+                let exp =
+                    crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.invariant);
                 check_recommends.extend(rec);
                 let (at_entry, at_exit) = match inv.kind {
                     LoopInvariantKind::InvariantExceptBreak => (true, false),
@@ -2352,6 +2407,58 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
+        ExprX::BorrowMut(_place) => {
+            panic!("BorrowMut should have been removed in simplify");
+        }
+        ExprX::BorrowMutPhaseOne(place) => {
+            let place_exp = place_to_exp(ctx, state, place)?;
+
+            let (var_ident, mut_ref_exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::BorrowMut);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+
+            let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
+            let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
+
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+
+            Ok((vec![stm, assume_stm], ReturnValue::Some(mut_ref_exp)))
+        }
+        ExprX::BorrowMutPhaseTwo(place, mut_ref_expr) => {
+            let expr = SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::AssignToPlace {
+                    place: place.clone(),
+                    rhs: crate::ast_util::mk_mut_ref_future(&expr.span, mut_ref_expr),
+                    op: None,
+                },
+            );
+            expr_to_stm_opt(ctx, state, &expr)
+        }
+        ExprX::AssumeResolved(e, typ) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = unwrap_or_return_never!(exp, stms);
+            let expx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), exp.clone());
+            let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
+            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            stms.push(assume_stm);
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::ReadPlace(place, _read_type) => {
+            let expr = place_to_expr(place);
+            expr_to_stm_opt(ctx, state, &expr)
+        }
+    }
+}
+
+fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
+    let expr = place_to_expr(place);
+    let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
+    assert!(stms.len() == 0);
+    match exp {
+        ReturnValue::Some(e) => Ok(e),
+        _ => panic!("place_to_exp expected exp"),
     }
 }
 
@@ -2394,16 +2501,25 @@ fn stmt_to_stm(
                 kind: LocalDeclKind::StmtLet { mutable: *mutable },
             });
 
+            let init = init.as_ref().map(|init| place_to_expr(init));
+
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
-            if let Some(init) = init {
+            if let Some(init) = &init {
                 match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
                     }
                     Some((
                         mut stms,
-                        ReturnedCall::Call { fun, resolved_method, typs, has_return: _, args },
+                        ReturnedCall::Call {
+                            fun,
+                            resolved_method,
+                            is_trait_default,
+                            typs,
+                            has_return: _,
+                            args,
+                        },
                     )) => {
                         // Special case: convert to a Call
                         // It can't be pure in this case, so don't return a Bnd.
@@ -2417,6 +2533,7 @@ fn stmt_to_stm(
                             &init.span,
                             fun,
                             resolved_method,
+                            is_trait_default,
                             typs,
                             args,
                             Some(dest),
@@ -2435,7 +2552,7 @@ fn stmt_to_stm(
             }
 
             // Otherwise, translate the initializer to an Exp.
-            let (mut stms, exp) = match init {
+            let (mut stms, exp) = match &init {
                 None => (vec![], None),
                 Some(init) => {
                     let (stms, exp) = expr_to_stm_opt(ctx, state, init)?;

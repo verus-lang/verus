@@ -1,6 +1,6 @@
 use crate::classify;
 use crate::precedence::Precedence;
-use syn_verus::{
+use verus_syn::{
     Expr, ExprBreak, ExprRange, ExprRawAddr, ExprReference, ExprReturn, ExprUnary, ExprYield,
 };
 

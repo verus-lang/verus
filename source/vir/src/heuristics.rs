@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Int(_) => false,
         TypX::Bool => false,
+        TypX::Int(_) => false,
+        TypX::Float(_) => false,
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -16,6 +17,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Boxed(typ) => auto_ext_equal_typ(ctx, typ),
         TypX::TypParam(_) => false,
         TypX::Projection { .. } => false,
+        TypX::PointeeMetadata(_) => false,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::ConstBool(_) => false,
@@ -26,6 +28,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
+        TypX::MutRef(_) => false,
     }
 }
 
@@ -47,6 +50,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
     match &exp.x {
         ExpX::Unary(op, e) => match op {
             UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
+            UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
@@ -54,6 +58,8 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
+            | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefFuture
             | UnaryOp::CastToInteger => exp.new_x(ExpX::Unary(*op, insert_auto_ext_equal(ctx, e))),
         },
         ExpX::UnaryOpr(op, e) => match op {
@@ -64,6 +70,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::CustomErr(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
+            UnaryOpr::HasResolved(..) => exp.clone(),
         },
         ExpX::Binary(op, e1, e2) => match op {
             BinaryOp::Eq(Mode::Spec)

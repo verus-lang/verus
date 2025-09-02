@@ -51,8 +51,8 @@
 //! assert(lower_bound_duplicate@.n() == 1);
 //! ```
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use std::result::*;
 use vstd::pcm::*;
 use vstd::pcm_lib::*;
@@ -212,6 +212,20 @@ impl MonotonicCounterResource {
         Self { r }
     }
 
+
+    // Join two resources
+    pub proof fn join(tracked self: Self, tracked other: Self) -> (tracked r: Self)
+        requires
+            self.id() == other.id(),
+            self@.n() == other@.n()
+        ensures
+            r.id() == self.id(),
+            r@.n() == self@.op(other@).n(),
+    {
+        let tracked mut r = self.r.join(other.r);
+        Self { r }
+    }
+
     // This function splits a resource granting full authority to
     // advance a monotonic counter into two resources each granting
     // half authority to advance it. They both have the same `id()`,
@@ -287,6 +301,20 @@ impl MonotonicCounterResource {
         let tracked r = copy_duplicable_part(&self.r, v);
         Self { r }
     }
+
+    pub proof fn lemma_lower_bound(tracked &mut self, tracked other: &Self)
+        requires
+            old(self).id() == other.id(),
+        ensures
+            self@ == old(self)@,
+            self@ is LowerBound && other@ is FullRightToAdvance ==> self@.n() <= other@.n(),
+            other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
+            self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
+            other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
+
+    {
+        self.r.validate_2(&other.r)
+    }
 }
 
 // This example illustrates some uses of the monotonic counter.
@@ -297,6 +325,7 @@ fn main() {
     }
     assert(full@.n() == 1);
     let tracked full = MonotonicCounterResource::alloc();
+    let tracked zero_lower_bound = full.extract_lower_bound();
     let tracked (mut half1, mut half2) = full.split();
     assert(half1.id() == half2.id());
     assert(half1@.n() == 0);
@@ -315,6 +344,13 @@ fn main() {
     assert(lower_bound@.n() == 1);
     let tracked lower_bound_duplicate = lower_bound.extract_lower_bound();
     assert(lower_bound_duplicate@.n() == 1);
+
+
+    proof {
+        let tracked reconstructed_full = half1.join(half2);
+        zero_lower_bound.lemma_lower_bound(&reconstructed_full);
+        assert(zero_lower_bound@.n() <= reconstructed_full@.n());
+    }
 }
 
 } // verus!

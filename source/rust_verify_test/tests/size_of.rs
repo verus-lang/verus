@@ -197,3 +197,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 9)
 }
+
+test_verify_one_file! {
+    #[test] pointee_metadata verus_code! {
+        use core::ptr::Pointee;
+
+        struct X { }
+
+        struct Pair<A, B: ?Sized> {
+            a: A,
+            b: B,
+        }
+
+        uninterp spec fn typefn<M>() -> int;
+
+        spec fn metatypefn<T: ?Sized>() -> int {
+            typefn::<<T as Pointee>::Metadata>()
+        }
+
+        fn test() {
+            assert(metatypefn::<X>() == typefn::<()>());
+            assert(metatypefn::<[X]>() == typefn::<usize>());
+        }
+        fn test2() {
+            assert(metatypefn::<X>() == typefn::<()>());
+            assert(metatypefn::<[X]>() == typefn::<usize>());
+            assert(false); // FAILS
+        }
+
+        fn test_sized<Y>() {
+            assert(metatypefn::<Y>() == typefn::<()>());
+        }
+
+        fn test_unsized<Y: ?Sized>() {
+            assert(metatypefn::<Y>() == typefn::<()>()); // FAILS
+        }
+
+        fn test_dst_struct<B: ?Sized>() {
+            assert(metatypefn::<B>() == metatypefn::<Pair<u32, B>>());
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

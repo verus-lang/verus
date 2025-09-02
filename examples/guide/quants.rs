@@ -1,9 +1,8 @@
 // rust_verify/tests/example.rs expect-warnings
-#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 
 #![allow(unused_imports)]
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 use vstd::{prelude::*, seq::*};
 
 verus! {
@@ -332,7 +331,7 @@ proof fn test_choose_succeeds2() {
 mod M {
 #[allow(unused_imports)]
 
-use builtin::*;
+use verus_builtin::*;
 
 // ANCHOR: just_works
 spec fn is_distinct(x: int, y: int) -> bool {
@@ -470,6 +469,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             i2 < v.len(),
             exists|i: int| i1 <= i <= i2 && k == v[i],
             forall|i: int, j: int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        decreases i2 - i1,
     {
         let ix = i1 + (i2 - i1) / 2;
         if v[ix] < k {
