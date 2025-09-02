@@ -146,8 +146,10 @@ impl<T: Iterator> Iterator for Take3<T> {
     open spec fn seq(&self) -> Seq<Self::Item> {
         if self.count >= 3 {
             Seq::empty()
-        } else {
+        } else if self.inner.seq().len() >= 3 - self.count {
             self.inner.seq().take(3 - self.count)
+        } else {
+            Seq::empty()
         }
     }
 
@@ -170,6 +172,13 @@ impl<T: Iterator> Iterator for Take3<T> {
         if self.count < 3 {
             self.count = self.count + 1;
             let r = self.inner.next();
+            // proof {
+            //     if self.count < 3  && self.inner.seq().len() >= 3 - self.count {
+            //         assert(self.seq() == self.inner.seq().take(3 - self.count));
+            //         assert(self.seq() == old(self).seq().drop_first());
+            //     }
+            // }
+            //assume(self.count >= 3);
             r
         } else {
             assert(self.seq().len() == 0);
