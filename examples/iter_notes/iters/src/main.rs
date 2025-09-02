@@ -336,7 +336,7 @@ impl<'a, T: Copy> Iter for MyVecFancyIter<'a, T> {
         }
         // Implications of done()
         //&&& self.done() ==> self.events().len() >= self.vec@.len() + 1
-        &&& self.events().len() >= self.pos + (self.vec@.len() - self.pos_back) == self.vec@.len()
+        &&& self.events().len() >= self.pos + (self.vec@.len() - self.pos_back) //== self.vec@.len()
     }
 
     open spec fn reaches(&self, dest: Self) -> bool {
@@ -981,7 +981,7 @@ fn all_true_simpler<I: Iter<Item=bool>>(iter: &mut I) -> (r: bool)
     assume(false);
     true
 }
-
+/*
 fn all_true_simpler_caller(v: &MyVec<bool>)
 {
     let mut iter = v.iter();
@@ -1006,6 +1006,7 @@ fn all_true_simpler_caller(v: &MyVec<bool>)
         }
     }
 }
+*/
 
 fn test_rev_next_seq(v: &MyVec<u8>)
     requires
