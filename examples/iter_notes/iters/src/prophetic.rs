@@ -8,6 +8,10 @@ pub trait Iterator {
     #[verifier::prophetic]
     spec fn seq(&self) -> Seq<Self::Item>;
 
+    // TODO: non-prophetic optional decreases metric (works with another spec fn that says whether it decreases)
+
+    /// Indicates whether the iterator will eventually reach a None state 
+    /// assuming the caller continues to call next()
     #[verifier::prophetic]
     spec fn completes(&self) -> bool;
 
@@ -166,7 +170,6 @@ impl<T: Iterator> Iterator for Take3<T> {
         if self.count < 3 {
             self.count = self.count + 1;
             let r = self.inner.next();
-            assume(false);
             r
         } else {
             assert(self.seq().len() == 0);
