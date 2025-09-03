@@ -702,6 +702,7 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
+    alloc_bound,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
@@ -1032,12 +1033,20 @@ impl<'a, T: ?Sized> Copy for SharedReference<'a, T> {
 }
 
 impl<'a, T> SharedReference<'a, T> {
-    // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
-    //     ensures
-    //         pt.ptr() == self.ptr(),
-    //         pt.is_init(),
-    //         pt.value() == self.value(),
-    // ;
+    #[verifier::external_body]
+    pub const fn as_ptr(self) -> (ptr: *const T)
+        ensures
+            ptr == self.ptr() as *const T,
+    {
+        &*self.0
+    }
+
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_init(),
+            pt.value() == self.value(),
+    ;
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
@@ -1085,8 +1094,6 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
-    #[verifier::external_body]
-    // TODO: Bug in lifetime_generate which generates the error "cannot return value referencing temporary value"
     pub fn index(self, idx: usize) -> (out: &'a T)
         requires 
             0 <= idx < self.value()@.len()
