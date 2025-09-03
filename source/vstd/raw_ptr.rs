@@ -179,7 +179,7 @@ pub assume_specification<T: ?Sized>[ <*mut T as PartialEq<*mut T>>::eq ](
     y: &*mut T,
 ) -> (res: bool)
     ensures
-        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata) && (x@.provenance == y@.provenance),
 ;
 
 impl<T: ?Sized> View for *const T {
@@ -196,7 +196,7 @@ pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
     y: &*const T,
 ) -> (res: bool)
     ensures
-        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata) && (x@.provenance == y@.provenance),
 ;
 
 // impl<T> View for PointsTo<T> {
@@ -1102,6 +1102,37 @@ impl<'a, T> SharedReference<'a, [T]> {
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
+    ;
+}
+
+impl<'a> SharedReference<'a, str> {
+    /*
+    #[verifier::external_body]
+    pub fn as_bytes(self) -> (r: SharedReference<'a, [u8]>)
+        ensures
+            self.value().spec_bytes() == r.value()@,
+            self.ptr() as *const u8 == r.ptr() as *const u8,
+            self.ptr()@.provenance == r.ptr()@.provenance,
+            self.ptr()@.addr == r.ptr()@.addr
+    {
+        SharedReference(self.as_ref().as_bytes())
+    }
+    */
+
+    #[verifier::external_body]
+    pub const fn as_ptr(self) -> (ptr: *const u8)
+        ensures
+            ptr == self.ptr() as *const u8,
+    {
+        self.0.as_ptr()
+    }
+
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[u8]>)
+        ensures
+            pt.ptr() as *const u8 == self.ptr() as *const u8,
+            pt.is_init(),
+            // TODO: under what conditions can I assume it is init?
+            pt.value() == self.value().spec_bytes(),
     ;
 }
 
