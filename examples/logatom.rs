@@ -41,7 +41,9 @@ pub fn atomic_call() {
     let x = 2;
     let y = middle(x) atomically |update| {
         let z = 5;
+        assert(z == 5);
         let w = update(z);
+        assert(w == 7);
     };
 }
 

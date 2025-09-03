@@ -42,7 +42,7 @@ fn compare_exchange(&self, perm: Tracked<&mut PermissionU32>, old: u32, new: u32
 
 So, to be able to load an atomic variable, we must provide proof that we have shared permission (`Tracked<&PermissionU32>`) to access the variable, and for store and compare-exchange, we must prove that we have exclusive permission (`Tracked<&mut PermissionU32>`) for the variable.
 
-The current system allows us to prove that both functions work as expected if no other thread accesses the atomic variable, though not much more.
+The current system allows us to prove that both functions work as expected if no other thread accesses the atomic variable.
 
 ## Resources/Related Work
 
@@ -206,7 +206,27 @@ function(args, ::vstd::atomic::atomically(move |update| {
 }))
 ```
 
-The declaration of `_args` is used to construct the update predicate type later on.
+The generates VIR-SST looks roughtly like this:
+
+```rs
+function(args, {
+    let ghost pred = FunctionPred { data: (args) };
+    //
+    // ...
+    //
+    let tracked x = old_perm;
+    let tracked y = arbitrary();
+    assert(UpdatePredicate::req(pred, x));
+    assume(UpdatePredicate::ens(pred, x, y));
+    let tracked new_perm = y;
+    //
+    // ...
+    //
+    let tracked au = arbitrary();
+    assume(AtomicUpdate::predicate(au) == pred);
+    au
+})
+```
 
 ### Design Questions
 
@@ -248,12 +268,43 @@ The declaration of `_args` is used to construct the update predicate type later 
 To open an atomic update, we use the following syntax, inspired by [`vstd::open_atomic_invariant`](https://verus-lang.github.io/verus/verusdoc/vstd/macro.open_atomic_invariant.html):
 
 ```rs
-open_atomic_update!(atomic_update => old_perm => {
+open_atomic_update!(atomic_update, old_perm => {
     // assume atomic pre `atomic_update`
     // ...
     // assert atomic post `atomic_update`
-    return new_perm;
+    new_perm
 });
+```
+
+The macro expands to the following:
+
+```rs
+#[verifier::open_au_block] {
+    let old_perm = ::vstd::atomic::open_atomic_update_begin(atomic_update);
+    let y = {
+        // ...
+        new_perm
+    };
+
+    ::vstd::atomic::open_atomic_update_end(y);
+}
+```
+
+The generates VIR-SST looks roughtly as follows:
+
+```rs
+let au = atomic_update;
+let x = arbitrary();
+
+assume(AtomicUpdate::req(au, x));
+
+let old_perm = x;
+let y = {
+    // ...
+    new_perm
+};
+
+assume(AtomicUpdate::ens(au, x, y));
 ```
 
 The `open_atomic_update` macro takes an atomic update `atomic_update` as an argument, and binds a new variable `old_perm`, which satisfies the pre-condition of the atomic update.

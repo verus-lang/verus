@@ -586,7 +586,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 // }))
                 //
                 // Most of the structure is enforced by the type checker, we need to identify the
-                // let binding and use it to construct the correct function predicate type.
+                // let binding and use it to construct the correct function predicate type
 
                 fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
                     err_span(
@@ -594,6 +594,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                         "malformed atomic call; please do not use `vstd::atomic::atomically` directly",
                     )
                 }
+
+                assert!(bctx.atomically.is_none());
+                let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
 
                 let au_typ = expr_typ()?;
                 let TypX::Datatype(_, au_typ_args, _) = au_typ.as_ref() else {
@@ -660,7 +663,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     vir::ast::VarIdentDisambiguate::VirTemp(temp_id),
                 );
 
-                let fun_args = expr_to_vir_consume(bctx, fun_args, outer_modifier)?;
+                let fun_args = expr_to_vir_consume(&bctx, fun_args, outer_modifier)?;
                 let decl_init_expr = bctx.spanned_typed_new(
                     expr.span,
                     pred_typ,

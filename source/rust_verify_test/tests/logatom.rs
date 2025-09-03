@@ -120,15 +120,21 @@ const ATOMIC_FUNCTION: &'static str = verus_code_str! {
     use vstd::prelude::*;
     use vstd::atomic::*;
 
-    #[verifier::external_body]
     pub exec fn atomic_function()
         atomically (au) {
             type FunctionPred,
-            (y: u32) -> (z: u32),
-            requires y == 2,
-            ensures z == y + 3,
+            (x: u32) -> (y: u32),
+            requires x == 2,
+            ensures y == x + 3,
         }
-    {}
+    {
+        open_atomic_update!(au, mut n => {
+            assert(n == 2);
+            proof { n += 3_u32; };
+            assert(n == 5);
+            n
+        });
+    }
 };
 
 test_verify_one_file! {
@@ -142,7 +148,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atomic_call_no_update
+    #[test] atomic_call_missing_update
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         exec fn function() {
             atomic_function() atomically |update| {};
@@ -151,7 +157,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atomic_call_multiple_updates
+    #[test] atomic_call_too_many_updates
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         exec fn function() {
             atomic_function() atomically |update| {
@@ -160,4 +166,61 @@ test_verify_one_file! {
             };
         }
     } => Err(err) => assert_vir_error_msg(err, "function must be called exactly once in `atomically` block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_simple
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        exec fn function() {
+            let tracked mut num = 2;
+            atomic_function() atomically |update| {
+                assert(num == 2);
+                num = update(num);
+                assert(num == 5);
+            };
+            assert(num == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_from_atomic_function
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        pub exec fn other_atomic_function()
+            atomically (atom_upd) {
+                (a: u32) -> (b: u32),
+                requires a == 2,
+                ensures b == 5,
+            },
+        {
+            atomic_function() atomically |upd| {
+                open_atomic_update!(atom_upd, fst => {
+                    assert(fst == 2);
+                    let snd = upd(fst);
+                    assert(snd == 5);
+                    snd
+                });
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_fail_atomic_pre
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        pub exec fn other_atomic_function()
+            atomically (atom_upd) {
+                (a: u32) -> (b: u32),
+                requires a == 3,
+                ensures b == 6,
+            },
+        {
+            atomic_function() atomically |upd| {
+                open_atomic_update!(atom_upd, mut num => {
+                    num = upd(num);
+                    num
+                });
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
 }

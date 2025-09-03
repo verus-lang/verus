@@ -1778,8 +1778,22 @@ fn check_expr_handle_mut_arg(
         ExprX::ReadPlace(place, _read_type) => {
             Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
         }
-        ExprX::Atomically(..) => Ok(Mode::Proof),
-        ExprX::Update(..) => Ok(Mode::Proof),
+        ExprX::Atomically(_info, _e) => {
+            // todo: fix mode check
+
+            //let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+            //check_expr(ctxt, record, &mut typing, Mode::Proof, e)?;
+
+            Ok(Mode::Proof)
+        }
+        ExprX::Update(_info, e) => {
+            if outer_mode != Mode::Proof {
+                return Err(error(&expr.span, "update function must be called in proof mode"));
+            }
+
+            check_expr_has_mode(ctxt, record, typing, Mode::Proof, e, Mode::Proof)?;
+            Ok(Mode::Proof)
+        }
     };
     Ok((mode?, None))
 }
@@ -1818,6 +1832,7 @@ fn check_stmt(
                 && mode != Mode::Exec
                 && init.is_some()
             {
+                dbg!(&stmt);
                 return Err(error(&stmt.span, "exec code cannot initialize non-exec variables"));
             }
             if !mode_le(outer_mode, mode) {

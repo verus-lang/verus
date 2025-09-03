@@ -2577,7 +2577,8 @@ pub(crate) fn expr_to_stm_opt(
                 Arc::new(vec![pred_var.clone(), x_var.clone()]),
             );
             let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
-            let error = error(&expr.span, "cannot show atomic precondition holds before update function");
+            let error =
+                error(&expr.span, "cannot show atomic precondition holds before update function");
             stms.push(Spanned::new(
                 expr.span.clone(),
                 StmX::Assert(state.next_assert_id(), Some(error), call_req),
@@ -2590,7 +2591,6 @@ pub(crate) fn expr_to_stm_opt(
             );
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
             stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
-
 
             Ok((stms, ReturnValue::Some(y_var)))
         }

@@ -552,7 +552,7 @@ impl Visitor {
 
     #[allow(unused)]
     fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) {
-        let Some(atomic_spec) = self.take_ghost(&mut sig.spec.atomic_spec) else { return };
+        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return };
         let full_span = atomic_spec.span();
 
         fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
@@ -3340,16 +3340,23 @@ impl Visitor {
         };
 
         let span = atomically.span();
-        let AtomicallyBlock { update_binder, body, .. } = atomically;
+        let AtomicallyBlock { update_binder, mut body, .. } = atomically;
+        self.visit_block_mut(&mut body);
 
-        let extra_arg = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-            #vstd::atomic::atomically(move |#update_binder| {
-                let _args = ( #args );
-                #body
-            })
-        ));
+        let extra_arg = match self.erase_ghost {
+            EraseGhost::Keep => quote_spanned_vstd!(vstd, span =>
+                #vstd::atomic::atomically(move |#update_binder| {
+                    let _args = ( #args );
+                    #body
+                })
+            ),
 
-        args.push(extra_arg);
+            _ => quote_spanned_vstd!(vstd, span =>
+                #vstd::atomic::atomically(::core::mem::drop)
+            ),
+        };
+
+        args.push(Expr::Verbatim(extra_arg));
     }
 
     fn add_loop_specs(
