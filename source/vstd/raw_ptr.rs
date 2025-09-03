@@ -179,7 +179,7 @@ pub assume_specification<T: ?Sized>[ <*mut T as PartialEq<*mut T>>::eq ](
     y: &*mut T,
 ) -> (res: bool)
     ensures
-        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata) && (x@.provenance == y@.provenance),
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
 impl<T: ?Sized> View for *const T {
@@ -196,7 +196,7 @@ pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
     y: &*const T,
 ) -> (res: bool)
     ensures
-        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata) && (x@.provenance == y@.provenance),
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
 // impl<T> View for PointsTo<T> {
