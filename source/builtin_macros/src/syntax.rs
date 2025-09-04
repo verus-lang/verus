@@ -81,6 +81,8 @@ pub(crate) struct Visitor {
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
     inside_external_code: u32,
+    // visiting a trait impl, which should not have a stability attribute automatically added
+    inside_trait_impl: bool,
     // visiting a constant, for which we have to translate ghost code even when erasing
     inside_const: bool,
     // Widen means we're a direct subexpression in an arithmetic expression that will widen the result.
@@ -790,6 +792,8 @@ impl Visitor {
         semi_token: Option<Token![;]>,
         is_trait: bool,
         is_impl_fn: bool,
+        // is_trait_impl: bool,
+        // add flag for is_trait_impl
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
@@ -999,6 +1003,27 @@ impl Visitor {
 
         self.inside_ghost -= 1;
 
+// #[stable(feature = "spec", since = "1.88.0")]
+// path = stable
+// tokens = [feature = "spec", since = "1.88.0"]
+// style = outer
+// Call vstd_kind() and check if it's spec/proof
+        let mut stability_attrs = vec![];
+
+        // Find a way to skip it for trait impls
+        if !is_trait && !self.inside_trait_impl && matches!(vstd_kind(), VstdKind::IsCore) && matches!(
+            sig.mode,
+            FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
+        ) {
+            let stability_tokens = "feature = \"spec_or_proof\", since = \"1.88\"".parse().unwrap();
+            stability_attrs.push(mk_rust_attr(
+                sig.fn_token.span, 
+                "stable", 
+                stability_tokens
+            ))
+            // #[stable(feature = "spec_or_proof", since = "1.88.0")]
+        }
+
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
         attrs.extend(broadcast_attrs);
@@ -1006,6 +1031,7 @@ impl Visitor {
         attrs.extend(mode_attrs);
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
+        attrs.extend(stability_attrs);
         self.filter_attrs(attrs);
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
@@ -4208,7 +4234,9 @@ impl VisitMut for Visitor {
         imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
+        self.inside_trait_impl = imp.trait_.is_some();
         verus_syn::visit_mut::visit_item_impl_mut(self, imp);
+        // add flag to visitor state to check if we're inside trait impl
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
@@ -4514,6 +4542,7 @@ pub(crate) fn rewrite_items(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4548,6 +4577,7 @@ pub(crate) fn rewrite_impl_items(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4581,6 +4611,7 @@ pub(crate) fn rewrite_expr(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4612,6 +4643,7 @@ pub(crate) fn rewrite_proof_decl(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4665,6 +4697,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4866,6 +4899,7 @@ pub(crate) fn sig_specs_attr(
         inside_ghost: 1,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4903,6 +4937,7 @@ pub(crate) fn while_loop_spec_attr(
         inside_ghost: 1,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -4935,6 +4970,7 @@ pub(crate) fn for_loop_spec_attr(
         inside_ghost: 1,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -5100,6 +5136,7 @@ pub(crate) fn proof_block(
         inside_ghost: 1,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -5124,6 +5161,7 @@ pub(crate) fn proof_macro_exprs(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -5153,6 +5191,7 @@ pub(crate) fn inv_macro_exprs(
         inside_ghost: 0,
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
@@ -5188,6 +5227,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_type: 0,
         inside_external_code: 0,
+        inside_trait_impl: false,
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
