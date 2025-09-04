@@ -20,12 +20,12 @@ they can be seamlessly cast to and fro.
 
 use super::layout::*;
 use super::prelude::*;
-use core::slice::SliceIndex;
-use core::ops::Index;
-use crate::vstd::slice::spec_slice_len;
-use crate::vstd::seq::*;
-use crate::vstd::primitive_int::PrimitiveInt;
 use crate::vstd::endian::*;
+use crate::vstd::primitive_int::PrimitiveInt;
+use crate::vstd::seq::*;
+use crate::vstd::slice::spec_slice_len;
+use core::ops::Index;
+use core::slice::SliceIndex;
 
 verus! {
 
@@ -84,12 +84,11 @@ impl Provenance {
 }
 
 pub broadcast axiom fn alloc_bound(p: Provenance)
-    ensures 
-        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1
+    ensures
+        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1,
 ;
+
 // write a broadcast axiom on any Provenance object
-
-
 /// Metadata
 ///
 /// For thin pointers (i.e., when T: Sized), the metadata is `()`.
@@ -201,16 +200,14 @@ pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
 
 // impl<T> View for PointsTo<T> {
 //     type V = PointsToData<T>;
-
 //     open spec fn view(&self) -> Self::V {
 //         PointsToData {
-//             ptr: self.ptr(), 
+//             ptr: self.ptr(),
 //             opt_value: self.mem_contents_seq()
 //         }
 //     }
 //     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
 // }
-
 impl<T> PointsTo<T> {
     /// The (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn opt_value(&self) -> MemContents<T>;
@@ -275,15 +272,13 @@ impl<T> PointsTo<T> {
 
 // impl<T> View for PointsTo<[T]> {
 //     type V = PointsToData<T>;
-
 //     open spec fn view(&self) -> Self::V {
 //         PointsToData {
-//             ptr: self.ptr(), 
+//             ptr: self.ptr(),
 //             opt_value: self.mem_contents_seq()
 //         }
 //     }
 // }
-
 impl<T: ?Sized> PointsTo<T> {
     /// The pointer that this permission is associated with.
     pub uninterp spec fn ptr(&self) -> *mut T;
@@ -292,16 +287,17 @@ impl<T: ?Sized> PointsTo<T> {
 impl<T> PointsTo<[T]> {
     /// The sequence of (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
+
     // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
     // MemContents<Seq<T>> - entire sequence is init or uninit. Weird bc don't actually have sequence in memory, but not sufficient
     // don't write opt_value in terms of view
-
     /// Returns `true` if all of the permission's associated memory is initialized.
     // #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        forall |i| 0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+        forall|i|
+            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
@@ -310,7 +306,7 @@ impl<T> PointsTo<[T]> {
         !self.is_init()
     }
 
-    /// Returns a sequence where for each index, 
+    /// Returns a sequence where for each index,
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
@@ -330,44 +326,59 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr != 0,
     ;
 
-    /// The memory associated with a pointer should always be within bounds of its spatial provenance. 
-    pub axiom fn ptr_bounds(tracked &self)
-        // TODO: do I need this requires?
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    pub axiom fn ptr_bounds(
+        tracked &self,
+    )
+    // TODO: do I need this requires?
+
         requires
-            size_of::<T>() != 0, 
+            size_of::<T>() != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-            self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+            self.ptr()@.addr + self.value().len() * size_of::<T>()
+                <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
 
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
-
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
-    pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
+    pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to:
+        &Self)
         requires
             start_index + len <= self.mem_contents_seq().len(),
         ensures
             sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
-                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: len as usize },
+                PtrData {
+                    addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: len as usize,
+                },
             ),
-            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(start_index as int, start_index as int + len as int),
+            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
+                start_index as int,
+                start_index as int + len as int,
+            ),
     ;
 
-    /// Provided that memory is initialized, the pointer's address is aligned to `V`, 
-    /// and `self.value().len() * size_of::<T>() == size_of::<V>()`, 
+    /// Provided that memory is initialized, the pointer's address is aligned to `V`,
+    /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
     /// we can always cast a `[T]` permission to a `V` permission.
-    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
-        where 
-            T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
-            V: PrimitiveInt + BasePow2 + Integer,
+    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
+        T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
+        V: PrimitiveInt + BasePow2 + Integer,
+
         requires
             self.is_init(),
-            self.ptr()@.addr as int % align_of::<V>() as int == 0, 
+            self.ptr()@.addr as int % align_of::<V>() as int == 0,
             self.value().len() * size_of::<T>() == size_of::<V>(),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: () },
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
             ),
             points_to.is_init(),
             points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
@@ -378,7 +389,7 @@ impl<T> PointsTo<[T]> {
     /// Note that this is a `proof` function, i.e.,
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
-    /// 
+    ///
     /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
     /// ie add index param
     /// skip unless i need it
@@ -388,7 +399,6 @@ impl<T> PointsTo<[T]> {
     //         self.ptr() == old(self).ptr(),
     //         self.is_uninit(),
     // ;
-
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     ///
@@ -402,6 +412,80 @@ impl<T> PointsTo<[T]> {
     ;
 }
 
+impl PointsTo<str> {
+    /// The sequence of (possibly uninitialized) memory that this permission gives access to.
+    pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<char>>;
+
+    /// Returns `true` if all of the permission's associated memory is initialized.
+    // #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        forall|i|
+            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+    }
+
+    /// Returns `true` if any part of the permission's associated memory is uninitialized.
+    // #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        !self.is_init()
+    }
+
+    /// Returns a sequence where for each index,
+    /// if the permission's associated memory at that index is initialized,
+    /// the corresponding index in the sequence holds that value.
+    /// Otherwise, the value at that index is meaningless.
+    // #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<char> {
+        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+    }
+
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
+    pub axiom fn is_nonnull(tracked &self)
+        ensures
+            self.ptr()@.addr != 0,
+    ;
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    pub axiom fn ptr_bounds(tracked &self)
+        ensures
+            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
+            self.ptr()@.addr + self.value().len() * size_of::<u8>()
+                <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+    ;
+
+    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
+    pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to:
+        &Self)
+        requires
+            start_index + len <= self.mem_contents_seq().len(),
+        ensures
+            sub_points_to.ptr() == ptr_mut_from_data::<str>(
+                PtrData {
+                    addr: (self.ptr()@.addr + start_index * size_of::<u8>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: len as usize,
+                },
+            ),
+            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
+                start_index as int,
+                start_index as int + len as int,
+            ),
+    ;
+
+    /// Guarantees that the memory ranges associated with two permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    ///
+    /// Note: If S is non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
+    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        ensures
+            *old(self) == *self,
+            self.ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= self.ptr() as int,
+    ;
+}
 
 impl<T> MemContents<T> {
     /// Returns `true` if it is a [`MemContents::Init`] value.
@@ -880,7 +964,10 @@ impl<V> PointsTo<[V]> {
     /// and a range corresponding to the address of the `PointsTo<V>`,  size of `V`, and length.
     pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         ensures
-            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() as int)*self.value().len()),
+            points_to_raw.is_range(
+                self.ptr().addr() as int,
+                (size_of::<V>() as int) * self.value().len(),
+            ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 
@@ -888,7 +975,10 @@ impl<V> PointsTo<[V]> {
     /// and a range corresponding to the address of the `PointsTo<V>`, size of `V`, and length.
     pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         ensures
-            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() as int)*self.value().len()),
+            points_to_raw.is_range(
+                self.ptr().addr() as int,
+                (size_of::<V>() as int) * self.value().len(),
+            ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 }
@@ -1017,7 +1107,6 @@ pub fn deallocate(
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
 pub struct SharedReference<'a, T: ?Sized>(&'a T);
 
-
 impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
     #[verifier::external_body]
     fn clone(&self) -> (ret: Self)
@@ -1069,13 +1158,13 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     {
         self.0
     }
-
     // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
     //         pt.ptr() == self.ptr(),
     //         pt.is_init(),
     //         pt.value() == self.value(),
     // ;
+
 }
 
 impl<'a, T> SharedReference<'a, [T]> {
@@ -1089,14 +1178,14 @@ impl<'a, T> SharedReference<'a, [T]> {
 
     pub const fn len(self) -> (output: usize)
         ensures
-            output == spec_slice_len(self.value())
+            output == spec_slice_len(self.value()),
     {
         self.as_ref().len()
     }
 
     pub fn index(self, idx: usize) -> (out: &'a T)
-        requires 
-            0 <= idx < self.value()@.len()
+        requires
+            0 <= idx < self.value()@.len(),
         ensures
             *out == self.value()@.index(idx as int),
     {
@@ -1113,19 +1202,6 @@ impl<'a, T> SharedReference<'a, [T]> {
 }
 
 impl<'a> SharedReference<'a, str> {
-    /*
-    #[verifier::external_body]
-    pub fn as_bytes(self) -> (r: SharedReference<'a, [u8]>)
-        ensures
-            self.value().spec_bytes() == r.value()@,
-            self.ptr() as *const u8 == r.ptr() as *const u8,
-            self.ptr()@.provenance == r.ptr()@.provenance,
-            self.ptr()@.addr == r.ptr()@.addr
-    {
-        SharedReference(self.as_ref().as_bytes())
-    }
-    */
-
     #[verifier::external_body]
     pub const fn as_ptr(self) -> (ptr: *const u8)
         ensures
@@ -1134,12 +1210,12 @@ impl<'a> SharedReference<'a, str> {
         self.0.as_ptr()
     }
 
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[u8]>)
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
         ensures
-            pt.ptr() as *const u8 == self.ptr() as *const u8,
+            pt.ptr() == self.ptr(),
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
-            pt.value() == self.value().spec_bytes(),
+            pt.value() == self.value()@,
     ;
 }
 
@@ -1155,15 +1231,14 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
-// impl<'a, T> Index<usize> for SharedReference<'a, [T]> 
+// impl<'a, T> Index<usize> for SharedReference<'a, [T]>
 // where
-//     // T: Index<I> + ?Sized, 
+//     // T: Index<I> + ?Sized,
 //     // I: SliceIndex<[T]>,
 // {
-//     type Output = T; 
-
+//     type Output = T;
 //     #[inline(always)]
-//     fn index(&self, idx: usize) ->(out: &Self::Output) 
+//     fn index(&self, idx: usize) ->(out: &Self::Output)
 //         requires
 //             0 <= idx < self.view().len(),
 //         // ensures
@@ -1174,55 +1249,46 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
 //         &(*self.as_ref())[idx]
 //     }
 // }
-
 // #[verifier::external_trait_specification]
 // impl<'a, T, I> Index<I> for SharedReference<'a, [T]>
 // where
 //     I: SliceIndex<[T]>,
 // {
 //     type Output = I::Output;
-
 //     #[inline(always)]
 //     fn index(&self, index: I) -> &I::Output {
 //         index.index(self.as_ref())
 //     }
 // }
 // #[verifier::external_trait_specification]
-// pub trait ExIndex<Idx> 
+// pub trait ExIndex<Idx>
 // where
 //     Idx: ?Sized,
 // {
 //     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
-
 //     type Output: ?Sized;
-
 //     fn index(&self, index: Idx) -> &Self::Output;
 // }
-
-// impl<'a, T, I> Index<I> for &'a T 
+// impl<'a, T, I> Index<I> for &'a T
 // where
-//     T: Index<I>, 
+//     T: Index<I>,
 // {
 //     type Output = T::Output;
-
 //     fn index(&self, index: I) -> &T::Output {
 //         self.index(index)
 //     }
 // }
-
-// impl<'a, T, I> Index<I> for SharedReference<'a, T> 
+// impl<'a, T, I> Index<I> for SharedReference<'a, T>
 // where
-//     T: SliceIndex<I>, 
+//     T: SliceIndex<I>,
 //     I: std::slice::SliceIndex<[T]>,
 // {
 //     type Output = T::Output;
-
 //     #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::Index::index")]
 //     fn index(&self, index: I) -> &T::Output {
 //         self.as_ref().index(&index)
 //     }
 // }
-
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.
@@ -1248,9 +1314,8 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 }
 
 } // verus!
-
 #[verus_spec(v =>
-    with 
+    with
         Tracked(perm): Tracked<&'a PointsTo<T>>
     requires
         perm.ptr() == ptr,
@@ -1264,7 +1329,6 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T
-{
+pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
 }
