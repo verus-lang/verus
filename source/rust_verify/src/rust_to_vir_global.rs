@@ -70,6 +70,7 @@ pub(crate) fn process_const_early<'tcx>(
         let ty = crate::rust_to_vir_base::mid_ty_to_vir(
             ctxt.tcx,
             &ctxt.verus_items,
+            None,
             def_id,
             item.span,
             &ty,

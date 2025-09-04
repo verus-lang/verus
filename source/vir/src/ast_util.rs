@@ -743,10 +743,10 @@ impl DatatypeX {
 
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
-    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _>(
+    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
-        &mut |_, e| {
+        &mut |_, e, _| {
             match &e.x {
                 ExprX::Var(x) | ExprX::VarLoc(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -755,10 +755,10 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
             }
             Ok(())
         },
-        &mut |_, _| Ok(()),
-        &mut |_, _| Ok(()),
         &mut |_, _, _| Ok(()),
-        &mut |_, p| {
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _, _| Ok(()),
+        &mut |_, p, _| {
             match &p.x {
                 PlaceX::Local(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -767,6 +767,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
             }
             Ok(())
         },
+        &mut |_| (),
     )
     .expect("referenced_vars_expr");
     vars.into_inner()

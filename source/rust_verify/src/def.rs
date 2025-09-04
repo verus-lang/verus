@@ -14,7 +14,9 @@ pub(crate) fn path_to_well_known_item(
             vir::ast::WellKnownItem::DropTrait,
         )]
         .into_iter()
-        .map(|(did, wii)| (def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, did), wii))
+        .map(|(did, wii)| {
+            (def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, did, ctxt.path_def_id_ref()), wii)
+        })
         .collect(),
     )
 }

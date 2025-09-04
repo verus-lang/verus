@@ -607,6 +607,20 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert!(
+        expected_msgs
+            .iter()
+            .all(|expected_msg| err.errors.iter().any(|x| x.rendered.contains(expected_msg)))
+    );
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();

@@ -180,7 +180,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         "call of trait impl"
     );
 
-    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, f);
+    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, f, bctx.ctxt.path_def_id_ref());
     let name = Arc::new(FunX { path: path.clone() });
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
@@ -211,8 +211,14 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let impl_paths = get_impl_paths(bctx, did, args, None);
 
-                let f =
-                    Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                let f = Arc::new(FunX {
+                    path: def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        did,
+                        bctx.ctxt.path_def_id_ref(),
+                    ),
+                });
                 record_name = f.clone();
 
                 vir::ast::CallTargetKind::DynamicResolved {
@@ -244,8 +250,14 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     panic!("{} {:?}", "could not resolve call to trait default method", &expr.span);
                 };
 
-                let f =
-                    Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                let f = Arc::new(FunX {
+                    path: def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        did,
+                        bctx.ctxt.path_def_id_ref(),
+                    ),
+                });
                 record_name = f.clone();
 
                 let f = vir::def::trait_inherit_default_name(&f, &impl_path);
@@ -296,8 +308,14 @@ pub(crate) fn deref_to_vir<'tcx>(
         if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
     let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
 
-    let trait_fun =
-        Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
+    let trait_fun = Arc::new(FunX {
+        path: def_id_to_vir_path(
+            tcx,
+            &bctx.ctxt.verus_items,
+            trait_fun_id,
+            bctx.ctxt.path_def_id_ref(),
+        ),
+    });
     let mut record_trait_fun = trait_fun.clone();
 
     let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
@@ -305,8 +323,14 @@ pub(crate) fn deref_to_vir<'tcx>(
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
             let impl_paths = get_impl_paths(bctx, did, args, None);
-            let resolved =
-                Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+            let resolved = Arc::new(FunX {
+                path: def_id_to_vir_path(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    did,
+                    bctx.ctxt.path_def_id_ref(),
+                ),
+            });
 
             record_trait_fun = resolved.clone();
 
@@ -1156,6 +1180,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = mid_ty_to_vir(
                 tcx,
                 &bctx.ctxt.verus_items,
+                None,
                 bctx.fun_id,
                 expr.span,
                 &arg_typ,
@@ -1479,6 +1504,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     GenericArgKind::Type(ty) => mid_ty_to_vir(
                         tcx,
                         &bctx.ctxt.verus_items,
+                        None,
                         bctx.fun_id,
                         expr.span,
                         &ty,
@@ -1664,6 +1690,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = mid_ty_to_vir(
                 tcx,
                 &bctx.ctxt.verus_items,
+                None,
                 bctx.fun_id,
                 expr.span,
                 &arg_typ,
@@ -2135,6 +2162,7 @@ fn mk_typ_args<'tcx>(
                 typ_args.push(mid_ty_to_vir(
                     tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     span,
                     &ty,
@@ -2274,7 +2302,8 @@ pub(crate) fn check_variant_field<'tcx>(
         }
     };
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let vir_adt_ty =
+        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, None, bctx.fun_id, span, &ty, false)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {
@@ -2316,11 +2345,19 @@ pub(crate) fn check_variant_field<'tcx>(
             };
 
             let field_ty = field.ty(tcx, substs);
-            let vir_field_ty =
-                mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
+            let vir_field_ty = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                None,
+                bctx.fun_id,
+                span,
+                &field_ty,
+                false,
+            )?;
             let vir_expected_field_ty = mid_ty_to_vir(
                 tcx,
                 &bctx.ctxt.verus_items,
+                None,
                 bctx.fun_id,
                 span,
                 &expected_field_typ,
@@ -2371,14 +2408,22 @@ fn check_union_field<'tcx>(
 
     let field_ty = field.ty(tcx, substs);
     let vir_field_ty =
-        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &field_ty, false)?;
-    let vir_expected_field_ty =
-        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &expected_field_typ, false)?;
+        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, None, bctx.fun_id, span, &field_ty, false)?;
+    let vir_expected_field_ty = mid_ty_to_vir(
+        tcx,
+        &bctx.ctxt.verus_items,
+        None,
+        bctx.fun_id,
+        span,
+        &expected_field_typ,
+        false,
+    )?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
         return err_span(span, "field has the wrong type");
     }
 
-    let vir_adt_ty = mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, bctx.fun_id, span, &ty, false)?;
+    let vir_adt_ty =
+        mid_ty_to_vir(tcx, &bctx.ctxt.verus_items, None, bctx.fun_id, span, &ty, false)?;
     let adt_path = match &*vir_adt_ty {
         TypX::Datatype(path, _, _) => path.clone(),
         _ => {

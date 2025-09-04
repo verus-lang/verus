@@ -6,6 +6,7 @@ use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
+use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
@@ -36,6 +37,8 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
+    pub(crate) name_def_id_map:
+        std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Path, DefId>>>,
 }
 
 #[derive(Clone)]
@@ -83,6 +86,10 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
         let mut r = self.erasure_info.borrow_mut();
         r.bodies.push((local_def_id, c));
+    }
+
+    pub(crate) fn path_def_id_ref(&self) -> Option<std::cell::RefMut<'_, HashMap<Path, DefId>>> {
+        self.name_def_id_map.try_borrow_mut().ok()
     }
 }
 
