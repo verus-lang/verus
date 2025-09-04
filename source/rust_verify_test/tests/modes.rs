@@ -1514,3 +1514,16 @@ test_verify_one_file! {
             ensures false;
     } => Err(err) => assert_vir_error_msg(err, "a `proof` function must have a body")
 }
+
+test_verify_one_file! {
+    #[test] loop_decreases_clause_spec_check verus_code! {
+        fn foo() -> u64 { 0 }
+
+        fn test() {
+            loop
+                decreases foo()
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::foo` with mode exec")
+}

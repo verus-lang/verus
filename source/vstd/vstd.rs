@@ -32,6 +32,7 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
+pub mod float;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;

@@ -89,6 +89,7 @@ fn simplify_function(
         &|_state, _, expr| simplify_one_expr(func_map, expr),
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
         &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
     )
 }
 

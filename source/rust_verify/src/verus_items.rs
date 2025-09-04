@@ -134,6 +134,8 @@ pub(crate) enum ExprItem {
     GetUnionField,
     IsVariant,
     ArrayIndex,
+    F32ToBits,
+    F64ToBits,
     StrSliceLen,
     StrSliceGetChar,
     StrSliceIsAscii,
@@ -333,6 +335,7 @@ pub(crate) enum BuiltinTraitItem {
 pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
+    ConstrainType,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -377,6 +380,7 @@ pub(crate) enum VerusItem {
     External(ExternalItem),
     Resolve,
     HasResolved,
+    HasResolvedUnsized,
     MutRefCurrent,
     MutRefFuture,
     ErasedGhostValue,
@@ -431,6 +435,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::verus_builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
         ("verus::verus_builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
+        ("verus::verus_builtin::f32_to_bits",             VerusItem::Expr(ExprItem::F32ToBits)),
+        ("verus::verus_builtin::f64_to_bits",             VerusItem::Expr(ExprItem::F64ToBits)),
         ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::verus_builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
@@ -575,6 +581,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::verus_builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
+        ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
@@ -589,6 +596,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
         ("verus::verus_builtin::resolve",          VerusItem::Resolve),
         ("verus::verus_builtin::has_resolved",     VerusItem::HasResolved),
+        ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
     ]

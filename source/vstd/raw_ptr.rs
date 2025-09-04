@@ -162,7 +162,7 @@ pub ghost enum MemContents<T> {
 /// If `opt_value` is `Uninit`, then we have no knowledge about what's in memory,
 /// and we assume `ptr` points to uninitialized memory.
 /// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
-//  but we don't know, so we have to pretend they're uninitialized.)
+///  but we don't know, so we have to pretend they're uninitialized.)
 pub ghost struct PointsToData<T> {
     pub ptr: *mut T,
     pub opt_value: MemContents<T>,
@@ -174,6 +174,10 @@ impl<T: ?Sized> View for *mut T {
     uninterp spec fn view(&self) -> Self::V;
 }
 
+/// Compares the address and metadata of two pointers.
+///
+/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: ?Sized>[ <*mut T as PartialEq<*mut T>>::eq ](
     x: &*mut T,
     y: &*mut T,
@@ -191,6 +195,10 @@ impl<T: ?Sized> View for *const T {
     }
 }
 
+/// Compares the address and metadata of two pointers.
+///
+/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
     x: &*const T,
     y: &*const T,

@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
-    FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -136,6 +136,7 @@ struct Record {
     type_inv_info: TypeInvInfo,
 }
 
+#[derive(Debug)]
 enum VarMode {
     Infer(Span),
     Mode(Mode),
@@ -707,10 +708,14 @@ fn check_place_has_mode(
     outer_mode: Mode,
     place: &Place,
     expected: Mode,
+    mutating: bool,
 ) -> Result<(), VirErr> {
-    let mode = check_place(ctxt, record, typing, outer_mode, place)?;
+    let mode = check_place(ctxt, record, typing, outer_mode, place, mutating)?;
+    if is_unit(&place.typ) {
+        return Ok(());
+    }
     if !mode_le(mode, expected) {
-        Err(error(&place.span, format!("place has mode {}, expected mode {}", mode, expected)))
+        Err(error(&place.span, format!("expression has mode {}, expected mode {}", mode, expected)))
     } else {
         Ok(())
     }
@@ -722,10 +727,11 @@ fn check_place(
     typing: &mut Typing,
     outer_mode: Mode,
     place: &Place,
+    mutating: bool,
 ) -> Result<Mode, VirErr> {
     match &place.x {
         PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }, p) => {
-            let mode = check_place(ctxt, record, typing, outer_mode, p)?;
+            let mode = check_place(ctxt, record, typing, outer_mode, p, mutating)?;
 
             let field_mode = match datatype {
                 Dt::Path(path) => {
@@ -738,14 +744,27 @@ fn check_place(
 
             Ok(mode_join(mode, field_mode))
         }
-        PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p),
+        PlaceX::DerefMut(p) => check_place(ctxt, record, typing, outer_mode, p, mutating),
         PlaceX::Local(var) => {
+            if typing.in_forall_stmt || typing.in_proof_in_spec {
+                return Ok(Mode::Spec);
+            }
             let x_mode = typing.get(var, &place.span)?;
-            Ok(x_mode)
+            let context_mode = typing.block_ghostness.join_mode(outer_mode);
+
+            let mode = mode_join(x_mode, context_mode);
+
+            if mutating && mode != x_mode {
+                return Err(error(
+                    &place.span,
+                    &format!("cannot mutate {x_mode} variable in {context_mode}-code"),
+                ));
+            }
+
+            record.erasure_modes.var_modes.push((place.span.clone(), mode));
+            Ok(mode)
         }
-        PlaceX::Temporary(_e) => {
-            panic!("Temporary has not been implemented yet");
-        }
+        PlaceX::Temporary(e) => check_expr(ctxt, record, typing, outer_mode, e),
     }
 }
 
@@ -888,7 +907,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(*ret_mode)
         }
-        ExprX::Call(CallTarget::Fun(_, x, _, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match ctxt.funs.get(x) {
@@ -900,10 +919,18 @@ fn check_expr_handle_mut_arg(
             };
 
             if !typing.allow_prophecy_dependence && function.x.attrs.prophecy_dependent {
-                return Err(error(
-                    &expr.span,
-                    "cannot call prophecy-dependent function in prophecy-independent context",
-                ));
+                let resolved_fn_is_prophecy_dependent = match kind {
+                    CallTargetKind::DynamicResolved { resolved, .. } => {
+                        ctxt.funs.get(resolved).unwrap().x.attrs.prophecy_dependent
+                    }
+                    _ => true,
+                };
+                if resolved_fn_is_prophecy_dependent {
+                    return Err(error(
+                        &expr.span,
+                        "cannot call prophecy-dependent function in prophecy-independent context",
+                    ));
+                }
             }
 
             if function.x.mode == Mode::Exec {
@@ -1027,7 +1054,8 @@ fn check_expr_handle_mut_arg(
                 Dt::Tuple(_) => (None, Mode::Exec),
             };
             if let Some(update) = update {
-                mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
+                mode =
+                    mode_join(mode, check_place(ctxt, record, typing, outer_mode, update, false)?);
             }
             for arg in binders.iter() {
                 let field_mode = match variant_opt {
@@ -1321,7 +1349,7 @@ fn check_expr_handle_mut_arg(
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
-            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec)?;
+            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             check_expr_has_mode(ctxt, record, typing, Mode::Exec, rhs, Mode::Exec)?;
             Ok(Mode::Exec)
         }
@@ -1335,13 +1363,15 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec {
                 return Err(error(&expr.span, "assignment is not allowed inside spec"));
             }
-            if let (ExprX::VarLoc(xl), ExprX::Var(xr)) = (&lhs.x, &rhs.x) {
-                // Special case mode inference just for our encoding of "let tracked pat = ..."
-                // in Rust as "let xl; ... { let pat ... xl = xr; }".
-                if let Some(span) = typing.to_be_inferred(xl) {
-                    let mode = typing.get(xr, &rhs.span)?;
-                    typing.infer_as(xl, mode);
-                    record.erasure_modes.var_modes.push((span, mode));
+            if let (ExprX::VarLoc(xl), ExprX::ReadPlace(pr, _)) = (&lhs.x, &rhs.x) {
+                if let PlaceX::Local(xr) = &pr.x {
+                    // Special case mode inference just for our encoding of "let tracked pat = ..."
+                    // in Rust as "let xl; ... { let pat ... xl = xr; }".
+                    if let Some(span) = typing.to_be_inferred(xl) {
+                        let mode = typing.get(xr, &rhs.span)?;
+                        typing.infer_as(xl, mode);
+                        record.erasure_modes.var_modes.push((span, mode));
+                    }
                 }
             }
             let x_mode =
@@ -1449,7 +1479,7 @@ fn check_expr_handle_mut_arg(
             }
         }
         ExprX::Match(e1, arms) => {
-            let mode1 = check_expr(ctxt, record, typing, outer_mode, e1)?;
+            let mode1 = check_place(ctxt, record, typing, outer_mode, e1, false)?;
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && mode1 != Mode::Exec
@@ -1485,7 +1515,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(final_mode)
         }
-        ExprX::Loop { cond, body, invs, .. } => {
+        ExprX::Loop { cond, body, invs, decrease, loop_isolation: _, is_for_loop: _, label: _ } => {
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
@@ -1502,6 +1532,11 @@ fn check_expr_handle_mut_arg(
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 let mut typing = typing.push_allow_prophecy_dependence(true);
                 check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, &inv.inv, Mode::Spec)?;
+            }
+            for dec in decrease.iter() {
+                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_allow_prophecy_dependence(false);
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, dec, Mode::Spec)?;
             }
             Ok(Mode::Exec)
         }
@@ -1695,14 +1730,7 @@ fn check_expr_handle_mut_arg(
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
-            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec)?;
-            Ok(Mode::Exec)
-        }
-        ExprX::DerefMut(e) => {
-            if outer_mode != Mode::Exec {
-                return Err(error(&expr.span, "deref can only be in exec mode"));
-            }
-            check_expr_has_mode(ctxt, record, typing, Mode::Exec, e, Mode::Exec)?;
+            check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             Ok(Mode::Exec)
         }
         ExprX::AssumeResolved(e, _t) => {
@@ -1725,6 +1753,9 @@ fn check_expr_handle_mut_arg(
             }
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
+        }
+        ExprX::ReadPlace(place, _read_type) => {
+            Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
         }
     };
     Ok((mode?, None))
@@ -1772,8 +1803,8 @@ fn check_stmt(
             add_pattern(ctxt, record, typing, mode, pattern)?;
             match init.as_ref() {
                 None => {}
-                Some(expr) => {
-                    check_expr_has_mode(ctxt, record, typing, outer_mode, expr, mode)?;
+                Some(place) => {
+                    check_place_has_mode(ctxt, record, typing, outer_mode, place, mode, false)?;
                 }
             }
             match els.as_ref() {
@@ -1809,31 +1840,31 @@ fn check_function(
                 "prophetic attribute can only be applied to 'spec' functions",
             ));
         }
-        if !matches!(function.x.kind, FunctionKind::Static) {
-            return Err(error(
-                &function.span,
-                "prophetic attribute not supported on trait functions",
-            ));
-        }
     }
     let mut fun_typing =
         fun_typing0.push_allow_prophecy_dependence(function.x.attrs.prophecy_dependent);
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
         let our_trait = ctxt.traits.contains(trait_path);
-        let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
-            let trait_method = &ctxt.funs[method];
-            let expect_mode = trait_method.x.mode;
-            if function.x.mode != expect_mode {
-                return Err(error(
-                    &function.span,
-                    format!("function must have mode {}", expect_mode),
-                ));
-            }
-            (trait_method.x.params.iter().map(|f| f.x.mode).collect(), trait_method.x.ret.x.mode)
-        } else {
-            (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec)
-        };
+        let (expected_params, expected_ret_mode, expected_proph): (Vec<Mode>, Mode, bool) =
+            if our_trait {
+                let trait_method = &ctxt.funs[method];
+                let expect_mode = trait_method.x.mode;
+                let expect_proph = trait_method.x.attrs.prophecy_dependent;
+                if function.x.mode != expect_mode {
+                    return Err(error(
+                        &function.span,
+                        format!("function must have mode {}", expect_mode),
+                    ));
+                }
+                (
+                    trait_method.x.params.iter().map(|f| f.x.mode).collect(),
+                    trait_method.x.ret.x.mode,
+                    expect_proph,
+                )
+            } else {
+                (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec, false)
+            };
         assert!(expected_params.len() == function.x.params.len());
         for (param, expect) in function.x.params.iter().zip(expected_params.iter()) {
             let expect_mode = *expect;
@@ -1848,6 +1879,14 @@ fn check_function(
             return Err(error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),
+            ));
+        }
+        if function.x.attrs.prophecy_dependent && !expected_proph {
+            return Err(error(
+                &function.span,
+                format!(
+                    "implementation of trait function cannot be marked prophetic if the trait function is not"
+                ),
             ));
         }
     }
@@ -1889,7 +1928,7 @@ fn check_function(
 
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
-        let mut dec_typing = dec_typing.push_allow_prophecy_dependence(true);
+        let mut dec_typing = dec_typing.push_allow_prophecy_dependence(false);
         check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     if let Some(mask_spec) = &function.x.mask_spec {

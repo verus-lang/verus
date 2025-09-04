@@ -957,16 +957,21 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
         forall|a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),
         forall|b: B| (#[trigger] y.contains(b)) ==> exists|a: A| x.contains(a) && f(a) == b,
         x.finite(),
-        y.finite(),
     ensures
+        y.finite(),
         x.len() == y.len(),
     decreases x.len(),
 {
     broadcast use group_set_properties;
 
-    if x.len() != 0 {
+    if x.len() == 0 {
+        if !y.is_empty() {
+            let e = y.choose();
+        }
+    } else {
         let a = x.choose();
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
+        assert(y == y.remove(f(a)).insert(f(a)));
     }
 }
 

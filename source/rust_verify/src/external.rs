@@ -384,13 +384,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                     });
                 }
                 ItemKind::Const(_ident, _ty, _generics, _body_id) => {
-                    let path = def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
-                    if path
-                        .segments
-                        .iter()
-                        .find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_"))
-                        .is_some()
-                    {
+                    if eattrs.structural_const_wrapper {
                         self.state = VerifState::Verify;
                     }
                 }
