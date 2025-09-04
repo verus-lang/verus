@@ -27,17 +27,33 @@ pub trait Iterator {
             });
 }
 
+pub trait DoubleEndedIterator : Iterator {
+    fn next_back(&mut self) -> (ret: Option<Self::Item>)
+        ensures
+            self.completes() == old(self).completes(),
+            ({
+                if old(self).seq().len() > 0 {
+                    self.seq() == old(self).seq().drop_last()
+                        && ret == Some(old(self).seq().last())
+                } else {
+                    self.seq() === old(self).seq() && ret === None && self.completes()
+                }
+            });
+
+}
+
 /* vec iterator */
 
 pub struct VecIterator<'a, T> {
     v: &'a Vec<T>,
     i: usize,
+    j: usize,
 }
 
 impl<'a, T> VecIterator<'a, T> {
     #[verifier::type_invariant]
     closed spec fn vec_iterator_type_inv(self) -> bool {
-        self.i <= self.v.len()
+        self.i <= self.j <= self.v.len()
     }
 }
 
@@ -51,7 +67,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     type Item = &'a T;
 
     closed spec fn seq(&self) -> Seq<Self::Item> {
-        self.v@.skip(self.i as int).map(|i, v| &v)
+        self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
     }
 
     closed spec fn completes(&self) -> bool {
@@ -60,10 +76,24 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
         proof { use_type_invariant(&*self); }
-        if self.i < self.v.len() {
+        if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
             return Some(&self.v[i]);
+        } else {
+            return None;
+        }
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
+    type Item = &'a T;
+
+    fn next_back(&mut self) -> (ret: Option<Self::Item>) {
+        proof { use_type_invariant(&*self); }
+        if self.i < self.j {
+            self.j = self.j - 1;
+            return Some(&self.v[self.j]);
         } else {
             return None;
         }
