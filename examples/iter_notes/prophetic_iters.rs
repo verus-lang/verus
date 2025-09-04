@@ -491,5 +491,57 @@ fn test() {
     assert(w@ === seq![3, 2, 1]);
 }
 
+#[verifier::exec_allows_no_decreases_clause]
+#[verifier::loop_isolation(false)]
+fn test_loop() {
+    let f = |i: &u8| -> (out: u8)
+        requires i < 255,
+        ensures out == i + 1,
+        {
+            *i + 1
+        };
+    let g = |i: u8| -> (out: u8)
+        requires i >= 3
+        ensures out == i - 3,
+        {
+            i - 3
+        };
+
+    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+
+    let iter = vec_iter(&v);
+    let iter = ReverseIterator::new(iter); // 6 5 4 3 2 1
+    let iter = MapIterator::new(iter, f);  // 7 6 5 4 3 2
+    let iter = TakeIterator::new(iter, 5); // 7 6 5 4 3
+    let iter = MapIterator::new(iter, g);  // 4 3 2 1 0
+    let iter = SkipIterator::new(iter, 1); // 3 2 1 0
+    let iter = TakeIterator::new(iter, 3); // 3 2 1
+
+    // for elem in iter {
+    //    assert(1 <= elem <= 3);
+    // }
+
+    let mut iter = iter;
+    let ghost iter_snapshot = iter;
+    let ghost mut idx = 0;
+    loop
+        invariant
+            0 <= idx <= iter_snapshot.seq().len(),
+            iter.seq() =~= iter_snapshot.seq().skip(idx)
+    {
+        match iter.next() {
+            None => {
+                break;
+            }
+            Some(elem) => {
+                /* body */
+                assert(1 <= elem <= 3);
+            }
+        }
+
+        proof { idx = idx + 1; }
+    }
+}
+
 }
 
