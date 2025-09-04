@@ -4350,3 +4350,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] trait_impl_typs_wf_check_issue1732 verus_code! {
+        #[verifier::external]
+        pub struct I;
+
+        pub trait T { type A; }
+
+        impl T for I {
+            type A = ();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_assoc_typs_wf_check verus_code! {
+        #[verifier::external]
+        pub struct I;
+
+        pub trait T { type A; }
+
+        pub struct X;
+
+        impl T for X {
+            type A = I;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::I` which is ignored because it is either declared outside the verus! macro or it is marked as `external`")
+}

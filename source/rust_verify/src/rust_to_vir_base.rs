@@ -689,6 +689,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         TyKind::Bool => true,
         TyKind::Uint(_) | TyKind::Int(_) => true,
         TyKind::Char => true,
+        TyKind::Float(_) => true,
         TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
         TyKind::Param(_) => true,
         TyKind::Tuple(_) => true,
@@ -708,7 +709,6 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, _) => false,
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Free, _) => false,
-        TyKind::Float(..) => false,
         TyKind::Foreign(..) => false,
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
         TyKind::FnPtr(..) => false,
@@ -848,6 +848,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Bool => (Arc::new(TypX::Bool), false),
         TyKind::Uint(_) | TyKind::Int(_) => (Arc::new(TypX::Int(mk_range(verus_items, ty))), false),
         TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
+        TyKind::Float(f) => match f {
+            rustc_middle::ty::FloatTy::F16 => (Arc::new(TypX::Float(16)), false),
+            rustc_middle::ty::FloatTy::F32 => (Arc::new(TypX::Float(32)), false),
+            rustc_middle::ty::FloatTy::F64 => (Arc::new(TypX::Float(64)), false),
+            rustc_middle::ty::FloatTy::F128 => (Arc::new(TypX::Float(128)), false),
+        },
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = t_rec(tys)?;
             (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
@@ -1136,7 +1142,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
-        TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")

@@ -239,6 +239,13 @@ pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
     body
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::constrain_type"]
+#[verifier::spec]
+pub fn constrain_type<T>(_x: T, _y: T) -> bool {
+    true
+}
+
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
 #[macro_export]
@@ -1340,6 +1347,20 @@ impl_binary_op!(SpecShr, spec_shr, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+#[cfg(verus_keep_ghost)]
+#[verifier::spec]
+#[rustc_diagnostic_item = "verus::verus_builtin::f32_to_bits"]
+pub fn f32_to_bits(_f: f32) -> u32 {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::spec]
+#[rustc_diagnostic_item = "verus::verus_builtin::f64_to_bits"]
+pub fn f64_to_bits(_f: f64) -> u64 {
+    unimplemented!()
+}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::strslice_is_ascii"]

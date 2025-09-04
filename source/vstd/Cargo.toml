@@ -5,7 +5,7 @@
 
 [package]
 name = "vstd"
-version = "0.1.0"
+version = "0.0.0-2025-08-12-1837"
 edition = "2021"
 license = "MIT"
 description = "Verus Standard Library: Useful specifications and lemmas for verifying Rust code"
@@ -21,9 +21,9 @@ name = "vstd"
 path = "vstd.rs"
 
 [dependencies]
-verus_builtin_macros = { path = "../builtin_macros" }
-verus_builtin = { path = "../builtin" }
-verus_state_machines_macros = { path = "../state_machines_macros" }
+verus_builtin_macros = { version = "=0.0.0-2025-08-12-1837", path = "../builtin_macros" }
+verus_builtin = { version = "=0.0.0-2025-08-12-1837", path = "../builtin" }
+verus_state_machines_macros = { version = "=0.0.0-2025-08-12-1837", path = "../state_machines_macros" }
 
 [features]
 default = ["std"]

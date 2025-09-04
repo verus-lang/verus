@@ -109,6 +109,7 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
+            | UnaryOp::FloatToBits { .. }
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
@@ -250,7 +251,7 @@ fn check_trigger_expr(
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } => {
+                UnaryOp::Clip { .. } | UnaryOp::FloatToBits => {
                     check_trigger_expr_arg(state, false, arg);
                     Ok(())
                 }

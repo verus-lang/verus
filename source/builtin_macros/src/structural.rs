@@ -13,12 +13,10 @@ pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::To
         })
         .collect::<proc_macro2::TokenStream>();
 
-    // TODO: this feature has disappeared in the latest version of synstructure
-    // (this is why we still use a specific commit of synstructure)
-    // see 'path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()' in rust_to_vir
-    s.underscore_const(false);
-
-    s.gen_impl(quote_spanned_builtin! { verus_builtin, s.ast().span() =>
+    let mut tokens1 = quote::quote_spanned!(s.ast().span() =>
+        #[verus::internal(structural_const_wrapper)]
+    );
+    let tokens2 = s.gen_impl(quote_spanned_builtin! { verus_builtin, s.ast().span() =>
         #[automatically_derived]
         #[allow(non_local_definitions)]
         gen unsafe impl #verus_builtin::Structural for @Self {
@@ -28,7 +26,9 @@ pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::To
                 #assert_receiver_is_structural_body
             }
         }
-    })
+    });
+    tokens1.extend(tokens2.into_iter());
+    tokens1
 }
 
 pub fn derive_structural(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
