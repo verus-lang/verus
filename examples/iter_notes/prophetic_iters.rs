@@ -27,31 +27,47 @@ pub trait Iterator {
             });
 }
 
+pub trait DoubleEndedIterator : Iterator {
+    fn next_back(&mut self) -> (ret: Option<Self::Item>)
+        ensures
+            self.completes() == old(self).completes(),
+            ({
+                if old(self).seq().len() > 0 {
+                    self.seq() == old(self).seq().drop_last()
+                        && ret == Some(old(self).seq().last())
+                } else {
+                    self.seq() === old(self).seq() && ret === None && self.completes()
+                }
+            });
+
+}
+
 /* vec iterator */
 
 pub struct VecIterator<'a, T> {
     v: &'a Vec<T>,
     i: usize,
+    j: usize,
 }
 
 impl<'a, T> VecIterator<'a, T> {
     #[verifier::type_invariant]
     closed spec fn vec_iterator_type_inv(self) -> bool {
-        self.i <= self.v.len()
+        self.i <= self.j <= self.v.len()
     }
 }
 
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures iter.seq() == v@.map(|i, v| &v)
 {
-    VecIterator { v: v, i: 0 }
+    VecIterator { v: v, i: 0, j: v.len() }
 }
 
 impl<'a, T> Iterator for VecIterator<'a, T> {
     type Item = &'a T;
 
     closed spec fn seq(&self) -> Seq<Self::Item> {
-        self.v@.skip(self.i as int).map(|i, v| &v)
+        self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
     }
 
     closed spec fn completes(&self) -> bool {
@@ -60,10 +76,22 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
         proof { use_type_invariant(&*self); }
-        if self.i < self.v.len() {
+        if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
             return Some(&self.v[i]);
+        } else {
+            return None;
+        }
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
+    fn next_back(&mut self) -> (ret: Option<Self::Item>) {
+        proof { use_type_invariant(&*self); }
+        if self.i < self.j {
+            self.j = self.j - 1;
+            return Some(&self.v[self.j]);
         } else {
             return None;
         }
@@ -366,6 +394,47 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
     }
 }
 
+// reverse iterator
+
+struct ReverseIterator<Iter> {
+    iter: Iter,
+}
+
+impl<Iter: Iterator + DoubleEndedIterator> ReverseIterator<Iter> {
+    fn new(iter: Iter) -> (s: Self)
+        ensures
+            s.seq() == iter.seq().reverse(),
+            s.completes() <==> iter.completes(),
+    {
+        ReverseIterator {
+            iter: iter,
+        }
+    }
+}
+
+impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
+    type Item = Iter::Item;
+
+    #[verifier::prophetic]
+    closed spec fn seq(&self) -> Seq<Self::Item> {
+        self.iter.seq().reverse()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn completes(&self) -> bool {
+        self.iter.completes()
+    }
+
+    fn next(&mut self) -> (ret: Option<Self::Item>) {
+        self.iter.next_back()
+    }
+}
+
+impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterator<Iter> {
+    fn next_back(&mut self) -> (ret: Option<Self::Item>) {
+        self.iter.next()
+    }
+}
 
 // collect
 
@@ -402,23 +471,24 @@ fn test() {
             *i + 1
         };
     let g = |i: u8| -> (out: u8)
-        requires i >= 2
-        ensures out == i - 2,
+        requires i >= 3
+        ensures out == i - 3,
         {
-            i - 2
+            i - 3
         };
 
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
 
     let iter = vec_iter(&v);
-    let iter = MapIterator::new(iter, f);
-    let iter = TakeIterator::new(iter, 5);
-    let iter = MapIterator::new(iter, g);
-    let iter = SkipIterator::new(iter, 1);
-    let iter = TakeIterator::new(iter, 3);
+    let iter = ReverseIterator::new(iter); // 6 5 4 3 2 1
+    let iter = MapIterator::new(iter, f);  // 7 6 5 4 3 2
+    let iter = TakeIterator::new(iter, 5); // 7 6 5 4 3
+    let iter = MapIterator::new(iter, g);  // 4 3 2 1 0
+    let iter = SkipIterator::new(iter, 1); // 3 2 1 0
+    let iter = TakeIterator::new(iter, 3); // 3 2 1
     let w = collect_to_vec(iter);
 
-    assert(w@ === seq![1, 2, 3]);
+    assert(w@ === seq![3, 2, 1]);
 }
 
 }
