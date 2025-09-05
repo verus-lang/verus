@@ -30,7 +30,8 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PointerCoercion,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PatAdjust, PatAdjustment,
+    PointerCoercion,
 };
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
@@ -43,7 +44,7 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
     FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
-    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr,
+    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
     UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
@@ -470,33 +471,121 @@ fn handle_dot_dot(
     }
 }
 
-pub(crate) fn pattern_to_vir_inner<'tcx>(
+pub(crate) fn pattern_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+) -> Result<vir::ast::Pattern, VirErr> {
+    let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
+    {
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((pat.hir_id, unadjusted_pat.span.id));
+    }
+
+    // See rustc_mir_build/src/thir/pattern/mod.rs
+    let adjustments: &[PatAdjustment<'tcx>] =
+        bctx.types.pat_adjustments().get(pat.hir_id).map_or(&[], |v| &**v);
+    let mut vir_pat = unadjusted_pat;
+
+    if bctx.ctxt.cmd_line_args.new_mut_ref {
+        for adjust in adjustments.iter().rev() {
+            match adjust.kind {
+                PatAdjust::BuiltinDeref => {
+                    let is_mut = match adjust.source.kind() {
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => true,
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => false,
+                        _ => {
+                            crate::internal_err!(pat.span, "expected reference type")
+                        }
+                    };
+
+                    if is_mut {
+                        let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone()));
+                        let x = PatternX::MutRef(vir_pat);
+                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                    } else {
+                        let typ =
+                            Arc::new(TypX::Decorate(TypDecoration::Ref, None, vir_pat.typ.clone()));
+                        let x = PatternX::ImmutRef(vir_pat);
+                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                    };
+                }
+                PatAdjust::OverloadedDeref => {
+                    unsupported_err!(pat.span, "overloaded deref in pattern");
+                }
+            }
+        }
+    }
+
+    Ok(vir_pat)
+}
+
+pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
+    let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
-        PatKind::Binding(BindingMode(_, mutability), canonical, x, subpat) => {
+        PatKind::Binding(_binding_mode, canonical, x, subpat) => {
+            // We want the computed binding mode, which accounts for match ergonomics,
+            // rather than the source-level binding mode.
+            let BindingMode(by_ref, mutability) =
+                bctx.types.pat_binding_modes().get(pat.hir_id).expect("binding mode");
+
             let mutable = match mutability {
                 Mutability::Not => false,
                 Mutability::Mut => true,
             };
 
+            let vir_by_ref = match by_ref {
+                ByRef::No => vir::ast::ByRef::No,
+                ByRef::Yes(Mutability::Mut) => {
+                    if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                        unsupported_err!(pat.span, "'ref mut' binding in pattern");
+                    }
+                    vir::ast::ByRef::MutRef
+                }
+                ByRef::Yes(Mutability::Not) => vir::ast::ByRef::ImmutRef,
+            };
+
+            // For a PatKind::Binding node, the HIR node type is always the type of
+            // the bound variable.
+            // However, we want the pattern.typ to be the type that is being matched against,
+            // which is different if there's a nontrivial binding mode.
+            let var_typ = pat_typ.clone();
+            let actual_pat_typ = match by_ref {
+                ByRef::No => var_typ.clone(),
+                ByRef::Yes(Mutability::Mut) => match &*var_typ {
+                    TypX::MutRef(t) => t.clone(),
+                    _ => crate::internal_err!(pat.span, "expected &mut type"),
+                },
+                ByRef::Yes(Mutability::Not) => match &*var_typ {
+                    TypX::Decorate(TypDecoration::Ref, None, t) => t.clone(),
+                    _ => crate::internal_err!(pat.span, "expected & type"),
+                },
+            };
+            pat_typ = actual_pat_typ;
+
             // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
             // mutable reference (or if it contains a nested mutable reference),
             // even if the variable is not marked 'mut'.
-            // Conservatively mark all variables non-mutable for now
-            // TODO be more precise about this.
+            // Conservatively mark all variables mutable for now
+            // TODO(new_mut_ref) be more precise about this.
             let mutable = mutable || bctx.ctxt.cmd_line_args.new_mut_ref;
 
             let name = local_to_var(x, canonical.local_id);
+            let binding = vir::ast::PatternBinding {
+                name,
+                mutable,
+                by_ref: vir_by_ref,
+                typ: var_typ.clone(),
+            };
             match subpat {
-                None => PatternX::Var { name, mutable },
+                None => PatternX::Var(binding),
                 Some(subpat) => {
-                    PatternX::Binding { name, mutable, sub_pat: pattern_to_vir(bctx, subpat)? }
+                    PatternX::Binding { binding, sub_pat: pattern_to_vir(bctx, subpat)? }
                 }
             }
         }
@@ -632,7 +721,11 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             PatternX::Range(e1, e2)
         }
         PatKind::Guard(..) => unsupported_err!(pat.span, "pattern guards", pat),
-        PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
+        PatKind::Ref(..) => {
+            // note: to handle this, you need to check skipped_ref_pats
+            // see rustc_mir_build/src/thir/pattern/mod.rs
+            unsupported_err!(pat.span, "ref patterns", pat);
+        }
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
@@ -643,16 +736,6 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
     Ok(pattern)
-}
-
-pub(crate) fn pattern_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    pat: &Pat<'tcx>,
-) -> Result<vir::ast::Pattern, VirErr> {
-    let vir_pat = pattern_to_vir_inner(bctx, pat)?;
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.hir_vir_ids.push((pat.hir_id, vir_pat.span.id));
-    Ok(vir_pat)
 }
 
 pub(crate) fn block_to_vir<'tcx>(
