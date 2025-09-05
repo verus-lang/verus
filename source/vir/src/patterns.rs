@@ -1,0 +1,179 @@
+use crate::ast::*;
+use crate::context::GlobalCtx;
+use crate::messages::{error};
+use std::sync::Arc;
+use crate::def::Spanned;
+use crate::ast_util::{mk_eq, mk_ineq, conjoin};
+use crate::ast_util::bool_typ;
+
+pub fn pattern_to_exprs(
+    ctx: &GlobalCtx,
+    place: &Place,
+    pattern: &Pattern,
+    has_guard: bool,
+    decls: &mut Vec<Stmt>,
+) -> Result<Expr, VirErr> {
+    let mut pattern_bound_decls = vec![];
+    let e = pattern_to_exprs_rec(ctx, pattern, place, &mut pattern_bound_decls)?;
+
+    for pbd in pattern_bound_decls {
+        if has_guard && pbd.mut_ref {
+            return Err(error(
+                &pattern.span,
+                "Not yet supported: guard pattern when at least one bound var is mutably borrowed",
+            ));
+        }
+
+        let ComputedPatternBinding { name, mutable, mut_ref, place } = pbd;
+
+        let place = if mut_ref {
+            PlaceX::temporary(SpannedTyped::new(
+                &place.span,
+                &Arc::new(TypX::MutRef(place.typ.clone())),
+                ExprX::BorrowMut(place.clone())
+            ))
+        } else {
+            place
+        };
+
+        let pattern = PatternX::simple_var(name, mutable, &place.span, &place.typ);
+        // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
+        let decl = StmtX::Decl {
+            pattern,
+            mode: Some(Mode::Exec),
+            init: Some(place.clone()),
+            els: None,
+        };
+        decls.push(Spanned::new(place.span.clone(), decl));
+    }
+
+    Ok(e)
+}
+
+struct ComputedPatternBinding {
+    name: VarIdent,
+    mutable: bool,
+    mut_ref: bool,
+    place: Place,
+}
+
+fn computed(binding: &PatternBinding, place: &Place) -> Result<ComputedPatternBinding, VirErr> {
+    Ok(ComputedPatternBinding {
+        name: binding.name.clone(),
+        mutable: binding.mutable,
+        place: place.clone(),
+        mut_ref: matches!(binding.by_ref, ByRef::MutRef)
+    })
+}
+
+fn read_place(place: &Place) -> Expr {
+    SpannedTyped::new(&place.span, &place.typ, ExprX::ReadPlace(place.clone(),
+                UnfinalizedReadKind { preliminary_kind: ReadKind::ImmutBor, id: 0 }))
+}
+
+fn pattern_to_exprs_rec(
+    ctx: &GlobalCtx,
+    pattern: &Pattern,
+    place: &Place,
+    bindings: &mut Vec<ComputedPatternBinding>,
+) -> Result<Expr, VirErr> {
+    let t_bool = Arc::new(TypX::Bool);
+    match &pattern.x {
+        PatternX::Wildcard(_) => {
+            Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
+        }
+        PatternX::Var(binding) => {
+            bindings.push(computed(binding, place)?);
+            Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
+        }
+        PatternX::Binding { binding, sub_pat } => {
+            let pattern_test = pattern_to_exprs_rec(ctx, sub_pat, place, bindings)?;
+            // This binding needs to go last in case we have something like this:
+            //   `ref mut x @ Some(y)`
+            // (which is ok if the y is bound via copy)
+            // In this case we need to read `y` before taking the mut ref
+            bindings.push(computed(binding, place)?);
+            Ok(pattern_test)
+        }
+        PatternX::Constructor(dt, variant, patterns) => {
+            let expr = read_place(&place);
+            let is_variant_opr =
+                UnaryOpr::IsVariant { datatype: dt.clone(), variant: variant.clone() };
+            let test_variant = SpannedTyped::new(&pattern.span, &bool_typ(), ExprX::UnaryOpr(is_variant_opr, expr.clone()));
+
+            let mut test = test_variant;
+
+            for binder in patterns.iter() {
+                let field_opr = FieldOpr {
+                    datatype: dt.clone(),
+                    variant: variant.clone(),
+                    field: binder.name.clone(),
+                    get_variant: false,
+                    check: VariantCheck::None,
+                };
+                let field_typ = &binder.a.typ;
+                let field_place = SpannedTyped::new(&binder.a.span, field_typ, PlaceX::Field(field_opr, place.clone()));
+                let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings)?;
+                let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
+                test = SpannedTyped::new(&pattern.span, &t_bool, and);
+            }
+
+            Ok(test)
+        }
+        PatternX::Or(_pat1, _pat2) => {
+            todo!(); // TODO(new_mut_ref)
+            /*
+            let mut decls1 = vec![];
+            let mut decls2 = vec![];
+
+            let pat1_matches = pattern_to_exprs_rec(ctx, expr, pat1, &mut decls1)?;
+            let pat2_matches = pattern_to_exprs_rec(ctx, expr, pat2, &mut decls2)?;
+
+            let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
+
+            assert!(decls1.len() == decls2.len());
+            for d1 in decls1 {
+                let d2 = decls2
+                    .iter()
+                    .find(|d| d.name == d1.name)
+                    .expect("both sides of 'or' pattern should bind the same variables");
+                assert!(d1.mutable == d2.mutable);
+                let combined_decl = PatternBoundDecl {
+                    name: d1.name,
+                    mutable: d1.mutable,
+                    expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
+                };
+                decls.push(combined_decl);
+            }
+
+            Ok(matches)
+            */
+        }
+        PatternX::Expr(e) => {
+            let expr = read_place(&place);
+            Ok(mk_eq(&pattern.span, &expr, e))
+        }
+        PatternX::Range(lower, upper) => {
+            let expr = read_place(&place);
+            let mut v = vec![];
+            if let Some(lower) = lower {
+                v.push(mk_ineq(&pattern.span, lower, &expr, InequalityOp::Le));
+            }
+            if let Some((upper, upper_ineq)) = upper {
+                v.push(mk_ineq(&pattern.span, &expr, upper, *upper_ineq));
+            }
+            Ok(conjoin(&pattern.span, &v))
+        }
+        PatternX::ImmutRef(sub_pat) => {
+            pattern_to_exprs_rec(ctx, sub_pat, place, bindings)
+        }
+        PatternX::MutRef(sub_pat) => {
+            let deref_place = SpannedTyped::new(
+                &sub_pat.span,
+                &sub_pat.typ,
+                PlaceX::DerefMut(place.clone())
+            );
+            pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings)
+        }
+    }
+}
