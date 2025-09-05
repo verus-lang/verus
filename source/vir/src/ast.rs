@@ -632,6 +632,20 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub enum ByRef {
+    No,
+    ImmutRef,
+    MutRef,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub struct PatternBinding {
+    pub name: VarIdent,
+    pub mutable: bool,
+    pub by_ref: ByRef,
+}
+
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
@@ -641,13 +655,9 @@ pub enum PatternX {
     /// True if this is implicitly added from a ..
     Wildcard(bool),
     /// x or mut x
-    Var {
-        name: VarIdent,
-        mutable: bool,
-    },
+    Var(PatternBinding),
     Binding {
-        name: VarIdent,
-        mutable: bool,
+        binding: PatternBinding,
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident

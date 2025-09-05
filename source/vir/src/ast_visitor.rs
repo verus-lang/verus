@@ -2,9 +2,9 @@ use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
-    TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX,
-    VarBinders, VarIdent, Variant, VirErr,
+    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    TraitImpl, TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -704,15 +704,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let typ = self.visit_typ(&pattern.typ)?;
         let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Var { name: _, mutable: _ } => {
-                R::ret(|| pattern_new(pattern.x.clone()))
-            }
-            PatternX::Binding { name, mutable, sub_pat } => {
+            PatternX::Wildcard(_) | PatternX::Var(_) => R::ret(|| pattern_new(pattern.x.clone())),
+            PatternX::Binding { binding, sub_pat } => {
                 let sub_pat = self.visit_pattern(sub_pat)?;
                 R::ret(|| {
                     pattern_new(PatternX::Binding {
-                        name: name.clone(),
-                        mutable: *mutable,
+                        binding: binding.clone(),
                         sub_pat: R::get(sub_pat),
                     })
                 })
@@ -931,10 +928,10 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard(_) => {}
-        PatternX::Var { name, mutable } => {
+        PatternX::Var(PatternBinding { name, mutable, by_ref: _ }) => {
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }
-        PatternX::Binding { name, mutable, sub_pat } => {
+        PatternX::Binding { binding: PatternBinding { name, mutable, by_ref: _ }, sub_pat } => {
             insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }

@@ -479,24 +479,35 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
-        PatKind::Binding(BindingMode(_, mutability), canonical, x, subpat) => {
+        PatKind::Binding(BindingMode(by_ref, mutability), canonical, x, subpat) => {
             let mutable = match mutability {
                 Mutability::Not => false,
                 Mutability::Mut => true,
+            };
+            let by_ref = match by_ref {
+                ByRef::No => vir::ast::ByRef::No,
+                ByRef::Yes(Mutability::Mut) => {
+                    if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                        unsupported_err!(pat.span, "'ref mut' binding in pattern");
+                    }
+                    vir::ast::ByRef::MutRef
+                }
+                ByRef::Yes(Mutability::Not) => vir::ast::ByRef::ImmutRef,
             };
 
             // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
             // mutable reference (or if it contains a nested mutable reference),
             // even if the variable is not marked 'mut'.
             // Conservatively mark all variables non-mutable for now
-            // TODO be more precise about this.
+            // TODO(new_mut_ref) be more precise about this.
             let mutable = mutable || bctx.ctxt.cmd_line_args.new_mut_ref;
 
             let name = local_to_var(x, canonical.local_id);
+            let binding = vir::ast::PatternBinding { name, mutable, by_ref };
             match subpat {
-                None => PatternX::Var { name, mutable },
+                None => PatternX::Var(binding),
                 Some(subpat) => {
-                    PatternX::Binding { name, mutable, sub_pat: pattern_to_vir(bctx, subpat)? }
+                    PatternX::Binding { binding, sub_pat: pattern_to_vir(bctx, subpat)? }
                 }
             }
         }

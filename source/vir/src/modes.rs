@@ -1,8 +1,8 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec,
-    VarIdent, VirErr,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr,
+    UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -479,11 +479,15 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var { name: x, mutable: _ } => {
+        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _ }) => {
+            // TODO(new_mut_ref): disallow ByRef::Mut in spec code
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
-        PatternX::Binding { name: x, mutable: _, sub_pat } => {
+        PatternX::Binding {
+            binding: PatternBinding { name: x, mutable: _, by_ref: _ },
+            sub_pat,
+        } => {
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -1798,7 +1802,7 @@ fn check_stmt(
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
-                (PatternX::Var { name: x, mutable: _ }, None) => {
+                (PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _ }), None) => {
                     typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));
                 }
                 _ => panic!("internal error: unexpected mode = None"),

@@ -113,9 +113,9 @@ outside the loop. In all other cases, this check shouldn't matter.
 #![allow(dead_code)] // TODO remove
 
 use crate::ast::{
-    BinaryOp, Datatype, Dt, Expr, ExprX, FieldOpr, Mode, Param, Params, Path, Pattern, PatternX,
-    Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX,
-    UnfinalizedReadKind, VarIdent,
+    BinaryOp, Datatype, Dt, Expr, ExprX, FieldOpr, Mode, Param, Params, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
@@ -843,8 +843,11 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_scope_map, _stmt| Ok(()),
         &mut |_scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var { name, mutable }
-                | PatternX::Binding { name, mutable, sub_pat: _ } => {
+                PatternX::Var(PatternBinding { name, mutable, by_ref: _ })
+                | PatternX::Binding {
+                    binding: PatternBinding { name, mutable, by_ref: _ },
+                    sub_pat: _,
+                } => {
                     let spec = matches!(&modes[name], Mode::Spec);
                     if !spec {
                         if !names.contains(name) {
@@ -882,7 +885,11 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var { name, mutable } | PatternX::Binding { name, mutable, sub_pat: _ } => {
+            PatternX::Var(PatternBinding { name, mutable, by_ref: _ })
+            | PatternX::Binding {
+                binding: PatternBinding { name, mutable, by_ref: _ },
+                sub_pat: _,
+            } => {
                 let spec = matches!(&modes[name], Mode::Spec);
                 if !spec {
                     out.push(BoundVar {
@@ -958,11 +965,15 @@ fn moves_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var { name: _, mutable: _ } => {
+            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref: _ }) => {
                 out.push(projs.clone());
             }
-            PatternX::Binding { name, mutable, sub_pat: _ } => {
+            PatternX::Binding {
+                binding: PatternBinding { name, mutable, by_ref: _ },
+                sub_pat: _,
+            } => {
                 out.push(projs.clone());
+                // TODO(new_mut_ref) depends on by_ref
                 // no need to descend, already moving the whole thing
             }
             PatternX::Constructor(dt, variant, patterns) => {
