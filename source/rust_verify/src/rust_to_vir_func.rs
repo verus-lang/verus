@@ -1201,7 +1201,12 @@ pub(crate) fn check_item_fn<'tcx>(
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
-                vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+                vir::ast::PatternX::Var(vir::ast::PatternBinding {
+                    name: name.clone(),
+                    mutable: true,
+                    by_ref: vir::ast::ByRef::No,
+                    typ: typ.clone(),
+                }),
             );
             let new_init_expr =
                 ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
