@@ -220,6 +220,7 @@ pub enum LocalDeclKind {
     TempViaAssign,
     Decreases,
     StmCallArg { native: bool },
+    CtorArg,
     Assert,
     AssertByVar { native: bool },
     LetBinder,

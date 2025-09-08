@@ -1079,6 +1079,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Return, _, InsertPars::Native)
             | (LocalDeclKind::StmtLet { .. }, _, _)
             | (LocalDeclKind::StmCallArg { native: true }, _, _)
+            | (LocalDeclKind::CtorArg, _, _)
             | (LocalDeclKind::Assert, _, _)
             | (LocalDeclKind::AssertByVar { native: true }, _, _)
             | (LocalDeclKind::LetBinder, _, _)

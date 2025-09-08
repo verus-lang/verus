@@ -836,6 +836,7 @@ impl LocalDeclKind {
             LocalDeclKind::TempViaAssign => false,
             LocalDeclKind::Decreases => false,
             LocalDeclKind::StmCallArg { native: _ } => false,
+            LocalDeclKind::CtorArg => false,
             LocalDeclKind::Assert => false,
             LocalDeclKind::AssertByVar { native: _ } => false,
             LocalDeclKind::LetBinder => false,

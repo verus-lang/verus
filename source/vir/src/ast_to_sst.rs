@@ -527,7 +527,7 @@ fn uninterleave_stms_exps(
     state: &mut State,
     stms: Vec<Vec<Stm>>,
     exps: Vec<Exp>,
-    fun: &Function,
+    fun: Option<&Function>,
 ) -> (Vec<Stm>, Vec<Exp>) {
     assert!(stms.len() == exps.len());
 
@@ -550,8 +550,12 @@ fn uninterleave_stms_exps(
             && i < largest_idx_with_stm.unwrap()
             && !matches!(&arg.x, ExpX::Loc(_))
         {
-            let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
-            let kind = LocalDeclKind::StmCallArg { native: !poly };
+            let kind = if let Some(fun) = fun {
+                let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
+                LocalDeclKind::StmCallArg { native: !poly }
+            } else {
+                LocalDeclKind::CtorArg
+            };
             let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
             final_exps.push(temp_var);
             final_stms[i].push(init_var(&arg.span, &temp_id, arg));
@@ -624,7 +628,7 @@ fn expr_get_call(
                     exps.push(e0);
                 }
 
-                let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, &function);
+                let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, Some(&function));
 
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
@@ -1345,12 +1349,25 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
-            let mut stms: Vec<Stm> = Vec::new();
-            let mut args: Vec<Binder<Exp>> = Vec::new();
+
+            let mut stms: Vec<Vec<Stm>> = Vec::new();
+            let mut exps: Vec<Exp> = Vec::new();
             for binder in binders.iter() {
-                let (mut stms1, e1) = expr_to_stm_opt(ctx, state, &binder.a)?;
-                stms.append(&mut stms1);
-                let e1 = unwrap_or_return_never!(e1, stms);
+                let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
+                stms.push(stms0);
+                let e0 = match e0.to_value() {
+                    Some(e) => e,
+                    None => {
+                        let stms = stms.into_iter().flatten().collect::<Vec<_>>();
+                        return Ok((stms, ReturnValue::Never));
+                    }
+                };
+                exps.push(e0);
+            }
+            let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, None);
+
+            let mut args: Vec<Binder<Exp>> = Vec::new();
+            for (binder, e1) in binders.iter().zip(exps.into_iter()) {
                 let arg = BinderX { name: binder.name.clone(), a: e1 };
                 args.push(Arc::new(arg));
             }
