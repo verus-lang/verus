@@ -1058,14 +1058,13 @@ fn do_div_or_mod_then_clip(
     int_range: Option<IntRange>,
 ) -> Result<BvExpr, VirErr> {
     let (bv_lhs, bv_rhs) = make_same_bv_typ(span, bv_lhs.clone(), bv_rhs.clone())?;
-    let (lhs_w, extend) = bv_lhs.bv_typ.expect_bv(span)?;
-    let (rhs_w, _) = bv_rhs.bv_typ.expect_bv(span)?;
+    let (w, extend) = bv_lhs.bv_typ.expect_bv(span)?;
 
     let lhs_expr = bv_lhs.expr.clone();
     let rhs_expr = bv_rhs.expr.clone();
 
-    match extend {
-        Extend::Zero => {
+    match (arith_op, extend) {
+        (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
@@ -1076,15 +1075,9 @@ fn do_div_or_mod_then_clip(
 
             // When dealing with only unsigned, we always have
             // 0 <= a / b <= a
-            // So w = max(lhs_w, rhs_w) is big enough to hold
+            // So the existing width is big enough to hold
             // both operands and the result.
-            let w = std::cmp::max(lhs_w, rhs_w);
-
-            let lhs_expr = extend_bv_expr(&lhs_expr, extend, lhs_w, w);
-            let rhs_expr = extend_bv_expr(&rhs_expr, extend, rhs_w, w);
-
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
-
             let bv_expr = BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) };
 
             match int_range {
@@ -1092,62 +1085,13 @@ fn do_div_or_mod_then_clip(
                 Some(ir) => do_clip(state, span, bv_expr, ir),
             }
         }
-        _ => {
-            return Err(error(span, format!("not yet supported: div/mod for signed arithmetic")));
-
-            /*
-            None of z3's bv operations give us what we need.
-            Good luck!
-
-            Verus Euclidean Mod:
-                   7    %   3     ==  1
-                   (-7) %   3     ==  2
-                   7    %   (-3)  ==  1
-                   (-7) %   (-3)  ==  2
-
-            Verus Euclidean Div:
-                   7    /   3     ==  2
-                   (-7) /   3     ==  -3
-                   7    /   (-3)  ==  -2
-                   (-7) /   (-3)  ==  3
-
-            z3 operations:
-                Using bvsrem:
-                   7     %  3     ==  1
-                   (-7)  %  3     ==  -1
-                   7     %  (-3)  ==  1
-                   (-7)  %  (-3)  ==  -1
-
-                Using bvsmod:
-                   7     %  3     ==  1
-                   (-7)  %  3     ==  2
-                   7     %  (-3)  ==  -2
-                   (-7)  %  (-3)  ==  -1
-
-                Using bvsdiv:
-                   7     /  3     ==  2
-                   (-7)  /  (-3)  ==  -2
-                   7     /  (-3)  ==  -2
-                   (-7)  /  3     ==  2
-
-            Try it yourself:
-
-            (simplify (bvsrem #x07 #x03))
-            (simplify (bvsrem (bvneg #x07) #x03))
-            (simplify (bvsrem #x07 (bvneg #x03)))
-            (simplify (bvsrem (bvneg #x07) (bvneg #x03)))
-
-            (simplify (bvsmod #x07 #x03))
-            (simplify (bvsmod (bvneg #x07) #x03))
-            (simplify (bvsmod #x07 (bvneg #x03)))
-            (simplify (bvsmod (bvneg #x07) (bvneg #x03)))
-
-            (simplify (bvsdiv #x07 #x03))
-            (simplify (bvsdiv (bvneg #x07) #x03))
-            (simplify (bvsdiv #x07 (bvneg #x03)))
-            (simplify (bvsdiv (bvneg #x07) (bvneg #x03)))
-            */
+        (ArithOp::EuclideanDiv, Extend::Sign) => {
+            return Err(error(span, format!("not yet supported: div for signed arithmetic")));
         }
+        (ArithOp::EuclideanMod, Extend::Sign) => {
+            return Err(error(span, format!("not yet supported: mod for signed arithmetic")));
+        }
+        _ => unreachable!(),
     }
 }
 
