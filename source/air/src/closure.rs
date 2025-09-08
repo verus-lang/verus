@@ -573,10 +573,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 | BinaryOp::BitSub
                 | BinaryOp::BitMul
                 | BinaryOp::BitUDiv
+                | BinaryOp::BitSDiv
+                | BinaryOp::BitSRem
                 | BinaryOp::LShr
                 | BinaryOp::AShr
                 | BinaryOp::Shl
-                | BinaryOp::BitUMod => {
+                | BinaryOp::BitURem => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }

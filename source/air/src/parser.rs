@@ -295,7 +295,7 @@ impl Parser {
                     Node::Atom(s) if s.to_string() == "bvsub" => Some(BinaryOp::BitSub),
                     Node::Atom(s) if s.to_string() == "bvmul" => Some(BinaryOp::BitMul),
                     Node::Atom(s) if s.to_string() == "bvudiv" => Some(BinaryOp::BitUDiv),
-                    Node::Atom(s) if s.to_string() == "bvurem" => Some(BinaryOp::BitUMod),
+                    Node::Atom(s) if s.to_string() == "bvurem" => Some(BinaryOp::BitURem),
                     Node::Atom(s) if s.to_string() == "bvult" => Some(BinaryOp::BitULt),
                     Node::Atom(s) if s.to_string() == "bvugt" => Some(BinaryOp::BitUGt),
                     Node::Atom(s) if s.to_string() == "bvule" => Some(BinaryOp::BitULe),

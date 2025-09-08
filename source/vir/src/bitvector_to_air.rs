@@ -1069,7 +1069,7 @@ fn do_div_or_mod_then_clip(
 
             let op = match arith_op {
                 ArithOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                ArithOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
+                ArithOp::EuclideanMod => air::ast::BinaryOp::BitURem,
                 _ => unreachable!(),
             };
 
