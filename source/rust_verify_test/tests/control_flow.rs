@@ -724,14 +724,13 @@ test_verify_one_file! {
             assert(z === (30, 24)); // FAILS
         }
 
-        fn test2_ok() {
+        fn test3_ok() {
             let mut x = 24;
             let mut y = 30;
 
-            let z = foo(({ x = 60; y }), x);
+            let z = foo(({ x = 60; x }), ({ x = 80; x }));
 
-            assert(z === (30, 60));
-            assert(x == 60);
+            assert(z === (60, 80));
         }
     } => Err(err) => assert_fails(err, 2)
 }
@@ -962,4 +961,204 @@ test_verify_one_file! {
             assert(foo0 === Foo { a: 13, b: 14, c: 199 });
         }
     } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] side_effects_in_arg_array_literal verus_code! {
+        use vstd::prelude::*;
+
+        fn test_fails() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = [x, ({ x = 60; y })];
+
+            assert(z@[0] === 60); // FAILS
+        }
+
+        fn test_ok() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = [x, ({ x = 60; y })];
+
+            assert(z@[0] === 24 && z@[1] === 30);
+            assert(x == 60);
+        }
+
+        fn test2_fails() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = [({ x = 60; y }), x];
+
+            assert(z@[1] === 24); // FAILS
+        }
+
+        fn test2_ok() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = [({ x = 60; y }), x];
+
+            assert(z@[0] === 30 && z@[1] === 60);
+            assert(x == 60);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] side_effects_in_arg_bin_op verus_code! {
+        fn test_fails() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = x + ({ x = 60; y });
+
+            assert(z == 90); // FAILS
+        }
+
+        fn test_ok() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = x + ({ x = 60; y });
+
+            assert(z == 54);
+            assert(x == 60);
+        }
+
+        fn test2_fails() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = ({ x = 60; y }) + x;
+
+            assert(z == 54); // FAILS
+        }
+
+        fn test2_ok() {
+            let mut x = 24;
+            let mut y = 30;
+
+            let z = ({ x = 60; y }) + x;
+
+            assert(z == 90);
+            assert(x == 60);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] side_effects_in_arg_bin_opr verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test_fails() {
+            let mut x: Seq<int> = seq![60];
+            let mut y: Seq<int> = seq![30];
+            assert(x[0] == 60 && y[0] == 30);
+
+            let z = x =~= ({ x = seq![30]; y });
+            assert(x[0] == 30);
+
+            assert(z); // FAILS
+        }
+
+        proof fn test_ok() {
+            let mut x: Seq<int> = seq![60];
+            let mut y: Seq<int> = seq![30];
+            assert(x[0] == 60 && y[0] == 30);
+
+            let z = x =~= ({ x = seq![30]; y });
+            assert(x[0] == 30);
+
+            assert(!z);
+        }
+
+        proof fn test2_fails() {
+            let mut x: Seq<int> = seq![30];
+            let mut y: Seq<int> = seq![30];
+            assert(x[0] == 30 && y[0] == 30);
+
+            let z = ({ x = seq![60]; y }) =~= x;
+            assert(x[0] == 60);
+
+            assert(z); // FAILS
+        }
+
+        proof fn test2_ok() {
+            let mut x: Seq<int> = seq![30];
+            let mut y: Seq<int> = seq![30];
+            assert(x[0] == 30 && y[0] == 30);
+
+            let z = ({ x = seq![60]; y }) =~= x;
+            assert(x[0] == 60);
+
+            assert(!z);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] side_effects_in_arg_with_short_circuiting verus_code! {
+        fn test_fails() {
+            let mut x = true;
+            let mut y = true;
+
+            let z = x && ({ x = false; y });
+
+            assert(z == false); // FAILS
+        }
+
+        fn test_ok() {
+            let mut x = true;
+            let mut y = true;
+
+            let z = x && ({ x = false; y });
+
+            assert(z == true);
+            assert(x == false);
+        }
+
+        fn test2_fails() {
+            let mut x = true;
+            let mut y = true;
+
+            let z = ({ x = false; y }) && x;
+
+            assert(z == true); // FAILS
+        }
+
+        fn test2_ok() {
+            let mut x = true;
+            let mut y = true;
+
+            let z = ({ x = false; y }) && x;
+
+            assert(z == false);
+            assert(x == false);
+        }
+
+        fn test3_fails() {
+            let mut x = true;
+            let mut y = true;
+            let mut w = false;
+
+            let z = ({ x = false; y }) && ({ w = true; x });
+
+            assert(z == true); // FAILS
+        }
+
+        fn test3_ok() {
+            let mut x = true;
+            let mut y = true;
+            let mut w = false;
+
+            let z = ({ x = false; y }) && ({ w = true; x });
+
+            assert(w == true);
+            assert(x == false);
+            assert(z == false);
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

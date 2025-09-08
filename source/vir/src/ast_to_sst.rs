@@ -127,6 +127,18 @@ macro_rules! unwrap_or_return_never {
     };
 }
 
+/// Checks the output of Sequencer::push and returns Never if necessary
+macro_rules! maybe_return_never {
+    ($e:expr) => {
+        match $e {
+            Some(stms) => {
+                return Ok((stms, ReturnValue::Never));
+            }
+            None => {}
+        }
+    };
+}
+
 impl<'a> State<'a> {
     pub fn new(diagnostics: &'a dyn Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
@@ -517,55 +529,92 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     }
 }
 
-/// Given a bunch of stms and exps that need to be executed like:
+/// The `Sequencer` struct should be used for most nodes that have multiple Exprs as input
+/// in order to make sure the resulting Stms and Exps have the right ordering.
+///
+/// Given a bunch of Exprs, e.g., Expr[0], Expr[1], ..., then upon immediate lowering,
+/// each Expr becomes a (Vec<Stm>, Exp), which together make sense when evaluated in the
+/// following order:
+///
 ///    stms[0], exps[0], stms[1], exps[1], ...
-/// Reorders them to (all stms, all exps)
-/// When necessary, we introduce temporaries if an exp might be changed might be changed
-/// by an assignment that we reorder it with.
-fn uninterleave_stms_exps(
-    ctx: &Ctx,
-    state: &mut State,
+///
+/// However, what we _need_ is to put all the Stms together at the beginning and the Exps at
+/// the end, so we can input the Exps to the computation of interest (e.g., function call,
+/// binary op, etc.). However, later Stms might change the meaning of earlier Exps (which
+/// can happen if the Stms contain assignments to variables which are read by the Exps).
+///
+/// The purpose of the `Sequencer` object is to safely commute all the Exps to the end.
+struct Sequencer {
     stms: Vec<Vec<Stm>>,
-    exps: Vec<Exp>,
-    fun: Option<&Function>,
-) -> (Vec<Stm>, Vec<Exp>) {
-    assert!(stms.len() == exps.len());
+    exps: Vec<(Exp, LocalDeclKind)>,
+}
 
-    let mut largest_idx_with_stm = None;
-    for i in (0..stms.len()).rev() {
-        if stms[i].len() > 0 {
-            largest_idx_with_stm = Some(i);
-            break;
+impl Sequencer {
+    fn new() -> Self {
+        Sequencer { stms: vec![], exps: vec![] }
+    }
+
+    /// Append the given Stms and ReturnValue.
+    /// In the event that the ReturnValue is a Never, this will return all the Stms pushed
+    /// up this point (including the Stms from the present call).
+    ///
+    /// The `kind` argument is the LocalDeclKind that should be used in the event that a
+    /// temporary is created.
+    #[must_use]
+    fn push(&mut self, stms: Vec<Stm>, rv: ReturnValue, kind: LocalDeclKind) -> Option<Vec<Stm>> {
+        self.stms.push(stms);
+        match rv.to_value() {
+            Some(e) => {
+                self.exps.push((e, kind));
+                None
+            }
+            None => {
+                let all_stms = std::mem::take(&mut self.stms).into_iter().flatten().collect();
+                Some(all_stms)
+            }
         }
     }
 
-    let mut final_stms = stms;
-    let mut final_exps = vec![];
+    /// Upon completion, turn all the inputted data into (Stms, Exps) that can be evaluated
+    /// in that order.
+    fn into_stms_exps(self, state: &mut State) -> (Vec<Stm>, Vec<Exp>) {
+        let mut largest_idx_with_stm = None;
+        for i in (0..self.stms.len()).rev() {
+            if self.stms[i].len() > 0 {
+                largest_idx_with_stm = Some(i);
+                break;
+            }
+        }
 
-    for i in 0..exps.len() {
-        let arg = &exps[i];
+        let mut final_stms = self.stms;
+        let mut final_exps = vec![];
 
-        // Create a temporary for any exp that comes before a stm
-        if largest_idx_with_stm.is_some()
-            && i < largest_idx_with_stm.unwrap()
-            && !matches!(&arg.x, ExpX::Loc(_))
-        {
-            let kind = if let Some(fun) = fun {
-                let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
-                LocalDeclKind::StmCallArg { native: !poly }
+        for i in 0..self.exps.len() {
+            let (arg, kind) = &self.exps[i];
+
+            // Create a temporary for any exp that comes before a stm
+            if largest_idx_with_stm.is_some()
+                && i < largest_idx_with_stm.unwrap()
+                && !matches!(&arg.x, ExpX::Loc(_))
+            {
+                let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, *kind);
+                final_exps.push(temp_var);
+                final_stms[i].push(init_var(&arg.span, &temp_id, arg));
             } else {
-                LocalDeclKind::CtorArg
-            };
-            let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
-            final_exps.push(temp_var);
-            final_stms[i].push(init_var(&arg.span, &temp_id, arg));
-        } else {
-            final_exps.push(arg.clone());
+                final_exps.push(arg.clone());
+            }
         }
+
+        let final_stms = final_stms.into_iter().flatten().collect::<Vec<_>>();
+        (final_stms, final_exps)
     }
 
-    let final_stms = final_stms.into_iter().flatten().collect::<Vec<_>>();
-    (final_stms, final_exps)
+    /// Helper for the special case of binary ops
+    fn into_stms_exps_expect_2(self, state: &mut State) -> (Vec<Stm>, Exp, Exp) {
+        let (stms, exps) = self.into_stms_exps(state);
+        assert!(exps.len() == 2);
+        (stms, exps[0].clone(), exps[1].clone())
+    }
 }
 
 enum ReturnedCall {
@@ -613,22 +662,19 @@ fn expr_get_call(
                     // disrupting the old behavior.
                     return Ok(None);
                 }
-                let mut stms: Vec<Vec<Stm>> = Vec::new();
-                let mut exps: Vec<Exp> = Vec::new();
+
+                let mut sequr = Sequencer::new();
                 for arg in args.iter() {
                     let (stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
-                    stms.push(stms0);
-                    let e0 = match e0.to_value() {
-                        Some(e) => e,
-                        None => {
-                            let stms = stms.into_iter().flatten().collect::<Vec<_>>();
-                            return Ok(Some((stms, ReturnedCall::Never)));
-                        }
-                    };
-                    exps.push(e0);
+                    let poly =
+                        crate::poly::arg_is_poly(ctx, &function.x.kind, function.x.mode, &arg.typ);
+                    let kind = LocalDeclKind::StmCallArg { native: !poly };
+                    let early_return = sequr.push(stms0, e0, kind);
+                    if let Some(stms) = early_return {
+                        return Ok(Some((stms, ReturnedCall::Never)));
+                    }
                 }
-
-                let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, Some(&function));
+                let (stms, exps) = sequr.into_stms_exps(state);
 
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
@@ -1350,21 +1396,12 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
 
-            let mut stms: Vec<Vec<Stm>> = Vec::new();
-            let mut exps: Vec<Exp> = Vec::new();
+            let mut sequr = Sequencer::new();
             for binder in binders.iter() {
                 let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
-                stms.push(stms0);
-                let e0 = match e0.to_value() {
-                    Some(e) => e,
-                    None => {
-                        let stms = stms.into_iter().flatten().collect::<Vec<_>>();
-                        return Ok((stms, ReturnValue::Never));
-                    }
-                };
-                exps.push(e0);
+                maybe_return_never!(sequr.push(stms0, e0, LocalDeclKind::TempViaAssign));
             }
-            let (stms, exps) = uninterleave_stms_exps(ctx, state, stms, exps, None);
+            let (stms, exps) = sequr.into_stms_exps(state);
 
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for (binder, e1) in binders.iter().zip(exps.into_iter()) {
@@ -1448,8 +1485,8 @@ pub(crate) fn expr_to_stm_opt(
                 BinaryOp::Or => Some((false, true)),
                 _ => None,
             };
-            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
-            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
             match (short_circuit, stms2.len()) {
                 (Some((proceed_on, other)), n) if n > 0 => {
                     // and:
@@ -1468,9 +1505,11 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
                 _ => {
-                    let e1 = unwrap_or_return_never!(e1, stms1);
-                    stms1.append(&mut stms2);
-                    let e2 = unwrap_or_return_never!(e2, stms1);
+                    let mut sequr = Sequencer::new();
+                    maybe_return_never!(sequr.push(stms1, e1, LocalDeclKind::TempViaAssign));
+                    maybe_return_never!(sequr.push(stms2, e2, LocalDeclKind::TempViaAssign));
+                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+
                     let bin = mk_exp(ExpX::Binary(*op, e1.clone(), e2.clone()));
 
                     if let BinaryOp::Arith(arith, arith_mode) = op {
@@ -1510,7 +1549,7 @@ pub(crate) fn expr_to_stm_opt(
                                 let assert =
                                     StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
-                                stms1.push(assert);
+                                stms.push(assert);
                             }
                             _ => {}
                         }
@@ -1543,7 +1582,7 @@ pub(crate) fn expr_to_stm_opt(
                                 let assert =
                                     StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
                                 let assert = Spanned::new(expr.span.clone(), assert);
-                                stms1.push(assert);
+                                stms.push(assert);
                             }
                             (
                                 Mode::Proof | Mode::Spec,
@@ -1556,18 +1595,21 @@ pub(crate) fn expr_to_stm_opt(
                         }
                     }
 
-                    Ok((stms1, ReturnValue::Some(bin)))
+                    Ok((stms, ReturnValue::Some(bin)))
                 }
             }
         }
         ExprX::BinaryOpr(op, e1, e2) => {
-            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
-            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
-            let e1 = unwrap_or_return_never!(e1, stms1);
-            stms1.append(&mut stms2);
-            let e2 = unwrap_or_return_never!(e2, stms1);
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+
+            let mut sequr = Sequencer::new();
+            maybe_return_never!(sequr.push(stms1, e1, LocalDeclKind::TempViaAssign));
+            maybe_return_never!(sequr.push(stms2, e2, LocalDeclKind::TempViaAssign));
+            let (stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+
             let bin = mk_exp(ExpX::BinaryOpr(op.clone(), e1, e2));
-            Ok((stms1, ReturnValue::Some(bin)))
+            Ok((stms, ReturnValue::Some(bin)))
         }
         ExprX::Multi(..) => {
             panic!("internal error: Multi should have been simplified by ast_simplify")
@@ -1647,19 +1689,12 @@ pub(crate) fn expr_to_stm_opt(
             Ok((all_stms, ReturnValue::Some(v)))
         }
         ExprX::ArrayLiteral(elems) => {
-            let mut stms: Vec<Stm> = Vec::new();
-            let mut exps: Vec<Exp> = Vec::new();
+            let mut sequr = Sequencer::new();
             for elem in elems.iter() {
-                let (mut stms0, e0) = expr_to_stm_opt(ctx, state, elem)?;
-                stms.append(&mut stms0);
-                let e0 = match e0.to_value() {
-                    Some(e) => e,
-                    None => {
-                        return Ok((stms, ReturnValue::Never));
-                    }
-                };
-                exps.push(e0);
+                let (stms0, e0) = expr_to_stm_opt(ctx, state, elem)?;
+                maybe_return_never!(sequr.push(stms0, e0, LocalDeclKind::TempViaAssign));
             }
+            let (stms, exps) = sequr.into_stms_exps(state);
             let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
             Ok((stms, ReturnValue::Some(array_lit)))
         }
