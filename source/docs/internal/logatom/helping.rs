@@ -97,7 +97,7 @@ impl Flag {
             proof { v = (flag_perm, pend_perm, other_au); }
         });
 
-        if res.is_ok() {            
+        if res.is_ok() {
             open_atomic_invariant!(self.inv => v => {
                 let tracked (mut flag_perm, mut pend_perm, mut auth, mut other_au) = v;
                 let tracked other_au = other_au.tracked_unwrap();

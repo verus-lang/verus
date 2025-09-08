@@ -157,6 +157,7 @@ fn function(
     requires pre_condition(args),
     ensures post_condition(args, res),
 {
+    assume(atomic_update.pred == Pred {args})
     // ...
 }
 ```
@@ -222,9 +223,7 @@ function(args, {
     //
     // ...
     //
-    let tracked au = arbitrary();
-    assume(AtomicUpdate::predicate(au) == pred);
-    au
+    arbitrary()
 })
 ```
 
@@ -304,7 +303,7 @@ let y = {
     new_perm
 };
 
-assume(AtomicUpdate::ens(au, x, y));
+assert(AtomicUpdate::ens(au, x, y));
 ```
 
 The `open_atomic_update` macro takes an atomic update `atomic_update` as an argument, and binds a new variable `old_perm`, which satisfies the pre-condition of the atomic update.

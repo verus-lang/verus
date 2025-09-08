@@ -570,13 +570,13 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
         ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
         ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
-        ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
+        ("verus::vstd::vstd::exec_nonstatic_call",  VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
-        ("verus::vstd::atomic::AtomicUpdate::req",          VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),  Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::ens",          VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),  Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::predicate",    VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred), Some(Arc::new("atomic::AtomicUpdate::predicate".to_owned())))),
-        ("verus::vstd::atomic::atomically",  VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::AtomicUpdate::req",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),  Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::ens",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),  Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::pred", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred), Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
+        ("verus::vstd::atomic::atomically",         VerusItem::Spec(SpecItem::Atomically)),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),

@@ -677,8 +677,8 @@ pub struct AtomicUpdate<X, Y, Pred> {
 }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
-    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::predicate"]
-    pub closed spec fn predicate(self) -> Pred {
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::pred"]
+    pub closed spec fn pred(self) -> Pred {
         self.pred
     }
 }
@@ -686,12 +686,12 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
 impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::req"]
     pub open spec fn req(self, x: X) -> bool {
-        self.predicate().req(x)
+        self.pred().req(x)
     }
 
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::ens"]
     pub open spec fn ens(self, x: X, y: Y) -> bool {
-        self.predicate().ens(x, y)
+        self.pred().ens(x, y)
     }
 }
 

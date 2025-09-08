@@ -588,6 +588,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     ))
                 })
             }
+            ExprX::Atomically(i, e) => {
+                let i = i.clone();
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Atomically(i, R::get(e))))
+            }
+            ExprX::Update(i, e) => {
+                let i = i.clone();
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
+            }
             ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;
                 R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))
@@ -659,16 +669,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
-            }
-            ExprX::Atomically(i, e) => {
-                let i = i.clone();
-                let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Atomically(i, R::get(e))))
-            }
-            ExprX::Update(i, e) => {
-                let i = i.clone();
-                let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
             }
         }
     }

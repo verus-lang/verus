@@ -550,9 +550,8 @@ impl Visitor {
         }
     }
 
-    #[allow(unused)]
-    fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) {
-        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return };
+    fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) -> Vec<Stmt> {
+        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Vec::new() };
         let full_span = atomic_spec.span();
 
         fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
@@ -577,18 +576,13 @@ impl Visitor {
         }
 
         let AtomicSpec {
-            atomically_token,
-            paren_token,
             atomic_update,
-            block_token,
             pred_type,
             old_perms,
-            arrow_token,
             new_perms,
-            comma1_token,
-            mut requires,
-            mut ensures,
-            comma2_token,
+            requires,
+            ensures,
+            ..
         } = atomic_spec;
 
         let mut old_ty = TokenStream::new();
@@ -637,7 +631,6 @@ impl Visitor {
             comma.to_tokens(&mut args_ty_tokens);
         }
 
-        let inputs = &sig.inputs;
         let generics = &sig.generics;
         let where_clause = &generics.where_clause;
 
@@ -703,6 +696,24 @@ impl Visitor {
         ));
 
         sig.inputs.push(update_arg);
+
+        let mut expr_tokens = quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
+            #builtin::assume_(
+                #builtin::spec_eq(
+                    #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
+                    #pred_ident { data: ( #args_pat_tokens ) },
+                )
+            )
+        );
+
+        // We should always be in exec mode here so this should always run
+        if self.inside_ghost == 0 {
+            expr_tokens = quote_spanned!(full_span =>
+                #[verifier::proof_block] { #expr_tokens ; }
+            );
+        }
+
+        vec![Stmt::Expr(Expr::Verbatim(expr_tokens), Some(Semi { spans: [full_span] }))]
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -998,7 +1009,9 @@ impl Visitor {
 
         let has_body = semi_token.is_none();
 
-        self.handle_atomic_spec(sig, vis);
+        // The statements generated here are appended later not to interfere
+        // with requires, ensures, etc.
+        let atomic_spec_stmts = self.handle_atomic_spec(sig, vis);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -1211,9 +1224,11 @@ impl Visitor {
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
         self.filter_attrs(attrs);
+
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
+        stmts.extend(atomic_spec_stmts);
         stmts
     }
 
