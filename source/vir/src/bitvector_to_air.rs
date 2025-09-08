@@ -4,12 +4,12 @@ use crate::ast::{
     VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
-    LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
-    is_integer_type, is_integer_type_signed,
+    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
+    is_integer_type_signed, LowerUniqueVar,
 };
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
-use crate::messages::{Span, error};
+use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
@@ -1057,14 +1057,15 @@ fn do_div_or_mod_then_clip(
     bv_rhs: &BvExpr,
     int_range: Option<IntRange>,
 ) -> Result<BvExpr, VirErr> {
-    let (lhs_w, lhs_extend) = bv_lhs.bv_typ.expect_bv(span)?;
-    let (rhs_w, rhs_extend) = bv_rhs.bv_typ.expect_bv(span)?;
+    let (bv_lhs, bv_rhs) = make_same_bv_typ(span, bv_lhs.clone(), bv_rhs.clone())?;
+    let (lhs_w, extend) = bv_lhs.bv_typ.expect_bv(span)?;
+    let (rhs_w, _) = bv_rhs.bv_typ.expect_bv(span)?;
 
     let lhs_expr = bv_lhs.expr.clone();
     let rhs_expr = bv_rhs.expr.clone();
 
-    match (lhs_extend, rhs_extend) {
-        (Extend::Zero, Extend::Zero) => {
+    match extend {
+        Extend::Zero => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
@@ -1079,8 +1080,8 @@ fn do_div_or_mod_then_clip(
             // both operands and the result.
             let w = std::cmp::max(lhs_w, rhs_w);
 
-            let lhs_expr = extend_bv_expr(&lhs_expr, lhs_extend, lhs_w, w);
-            let rhs_expr = extend_bv_expr(&rhs_expr, rhs_extend, rhs_w, w);
+            let lhs_expr = extend_bv_expr(&lhs_expr, extend, lhs_w, w);
+            let rhs_expr = extend_bv_expr(&rhs_expr, extend, rhs_w, w);
 
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
 
