@@ -1112,7 +1112,7 @@ fn do_div_or_mod_then_clip(
                 Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAdd, q.clone(), one.clone()));
             let expr = mk_ite(&r_negative, &mk_ite(&denom_positive, &q_minus_1, &q_plus_1), &q);
 
-            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Zero) }
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
         (ArithOp::EuclideanMod, Extend::Sign) => {
             return Err(error(span, format!("not yet supported: mod for signed arithmetic")));

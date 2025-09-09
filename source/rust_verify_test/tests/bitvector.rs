@@ -942,6 +942,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] div_signed_euclidean verus_code! {
+        fn div_signed_euclidean() {
+           assert(7i32 / 3i32 == 2i32) by(bit_vector);
+           assert(-7i32 / 3i32 == -3i32) by(bit_vector);
+           assert(7i32 / -3i32 == -2i32) by(bit_vector);
+           assert(-7i32 / -3i32 == 3i32) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] div_signed_overflow verus_code! {
+        fn div_signed_overflow() {
+            assert(-128i8 / -1i8 == 128) by(bit_vector);
+            assert(-32768i16 / -1i16 == 32768) by(bit_vector);
+            assert(-2147483648i32 / -1i32 == 2147483648) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] div0_underspecified verus_code! {
         fn div_0_underspecified(x: u32, y: u32) {
             assert(0u32 / y == 0) by(bit_vector); // FAILS
