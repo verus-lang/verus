@@ -4,12 +4,12 @@ use crate::ast::{
     VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
-    LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
-    is_integer_type, is_integer_type_signed,
+    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
+    is_integer_type_signed, LowerUniqueVar,
 };
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
-use crate::messages::{Span, error};
+use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
@@ -1082,12 +1082,24 @@ fn do_div_or_mod_then_clip(
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
         (ArithOp::EuclideanDiv, Extend::Sign) => {
-            // def div(numer, denom):
-            //     numer = SignExt(1, numer)
-            //     denom = SignExt(1, denom)
-            //     q = numer / denom
-            //     r = SRem(numer, denom)
-            //     return If(r < 0, If(denom > 0, q - 1, q + 1), q)
+            // Euclidean division for signed integers in the theory of bit-vectors.
+            //
+            // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
+            //
+            // Implementation and proof in z3py:
+            //
+            //     def div_ite(numer, denom):
+            //         numer = SignExt(1, numer)
+            //         denom = SignExt(1, denom)
+            //         q = numer / denom
+            //         r = SRem(numer, denom)
+            //         return If(r < 0, If(denom > 0, q - 1, q + 1), q)
+            //
+            //     a, b = BitVecs("a b", 8)
+            //     bit_div = BV2Int(div_ite(a, b), is_signed=True)
+            //     int_div = BV2Int(a, is_signed=True) / BV2Int(b, is_signed=True)
+            //
+            //     prove(Implies(b != 0, bit_div == int_div))
 
             // Extend to avoid overflow.
             let numer = extend_bv_expr(&lhs_expr, extend, w, w + 1);
