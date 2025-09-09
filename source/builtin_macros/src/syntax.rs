@@ -466,6 +466,17 @@ fn merge_default_ensures(
     }
 }
 
+fn has_stability_attr(attrs: &Vec<Attribute>) -> bool {
+    let mut res = false;
+    for attr in attrs.iter() {
+        if attr.path().is_ident("stable")
+            || attr.path().is_ident("unstable") {
+                res = true;
+            }
+    }
+    res
+}
+
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -1011,8 +1022,10 @@ impl Visitor {
         let mut stability_attrs = vec![];
 
         // Find a way to skip it for trait impls
-        if !is_trait && !self.inside_trait_impl && matches!(vstd_kind(), VstdKind::IsCore) 
-        // && !attrs.contains(x)
+        if !is_trait 
+            && !self.inside_trait_impl 
+            && matches!(vstd_kind(), VstdKind::IsCore) 
+            && !has_stability_attr(attrs)
         // && matches!(
         //     sig.mode,
         //     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
