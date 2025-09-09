@@ -150,6 +150,7 @@ impl Printer {
                 let sop = match op {
                     UnaryOp::Not => "not",
                     UnaryOp::BitNot => "bvnot",
+                    UnaryOp::BitNeg => "bvneg",
                     UnaryOp::BitExtract(_, _) => "extract",
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",

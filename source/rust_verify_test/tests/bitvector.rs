@@ -977,6 +977,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] mod_signed_euclidean verus_code! {
+        fn mod_signed_euclidean() {
+           assert(7i32 % 3i32 == 1i32) by(bit_vector);
+           assert(-7i32 % 3i32 == 2i32) by(bit_vector);
+           assert(7i32 % -3i32 == 1i32) by(bit_vector);
+           assert(-7i32 % -3i32 == 2i32) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mod0_underspecified verus_code! {
         fn mod_0_underspecified(x: u32, y: u32) {
             assert(0u32 % y == 0) by(bit_vector); // FAILS

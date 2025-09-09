@@ -4,12 +4,12 @@ use crate::ast::{
     VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
-    is_integer_type_signed, LowerUniqueVar,
+    LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
+    is_integer_type, is_integer_type_signed,
 };
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
@@ -1127,7 +1127,46 @@ fn do_div_or_mod_then_clip(
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
         (ArithOp::EuclideanMod, Extend::Sign) => {
-            return Err(error(span, format!("not yet supported: mod for signed arithmetic")));
+            // Euclidean modulus for signed integers in the theory of bit-vectors.
+            //
+            // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
+            //
+            // Implementation and proof in z3py:
+            //
+            //    def abs_ite(n):
+            //        return If(n < 0, -n, n)
+            //
+            //    def rem_ite(n, denom):
+            //        r = SRem(n, denom)
+            //        return If(r < 0, r + abs_ite(denom), r)
+            //
+            //    x, y = BitVecs("x y", 8)
+            //    bit_mod = BV2Int(rem_ite(x, y))
+            //    int_mod = BV2Int(x, is_signed=True) % BV2Int(y, is_signed=True)
+            //
+            //    prove(Implies(y != 0, bit_mod == int_mod), show=True, smtlib2_log="rem_ite.smt2")
+
+            // Compute signed remainder in bit-vector theory.
+            let numer = lhs_expr;
+            let denom = rhs_expr;
+            let r =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSRem, numer.clone(), denom.clone()));
+
+            // Absolute value of denominator.
+            let zero = mk_bit_vec_zero(w);
+            let denom_is_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, denom.clone(), zero.clone()));
+            let neg_denom = Arc::new(ExprX::Unary(air::ast::UnaryOp::BitNeg, denom.clone()));
+            let abs_denom = mk_ite(&denom_is_negative, &neg_denom, &denom);
+
+            // If remainder is negative, add abs(denom) to it.
+            let r_is_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, r.clone(), zero.clone()));
+            let r_plus_abs_denom =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAdd, r.clone(), abs_denom.clone()));
+            let expr = mk_ite(&r_is_negative, &r_plus_abs_denom, &r);
+
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Sign) }
         }
         _ => unreachable!(),
     };
