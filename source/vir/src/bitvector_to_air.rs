@@ -4,17 +4,18 @@ use crate::ast::{
     VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
-    is_integer_type_signed, LowerUniqueVar,
+    LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
+    is_integer_type, is_integer_type_signed,
 };
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
 use air::ast_util::{
-    bool_typ, mk_and, mk_implies, mk_ite, mk_or, mk_unnamed_axiom, mk_xor, str_typ, string_var,
+    bool_typ, mk_and, mk_bit_vec_one, mk_bit_vec_zero, mk_implies, mk_ite, mk_or, mk_unnamed_axiom,
+    mk_xor, str_typ, string_var,
 };
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
@@ -1063,7 +1064,7 @@ fn do_div_or_mod_then_clip(
     let lhs_expr = bv_lhs.expr.clone();
     let rhs_expr = bv_rhs.expr.clone();
 
-    match (arith_op, extend) {
+    let bv_expr = match (arith_op, extend) {
         (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
@@ -1078,26 +1079,56 @@ fn do_div_or_mod_then_clip(
             // So the existing width is big enough to hold
             // both operands and the result.
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
-            let bv_expr = BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) };
-
-            match int_range {
-                None => Ok(bv_expr),
-                Some(ir) => do_clip(state, span, bv_expr, ir),
-            }
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
         (ArithOp::EuclideanDiv, Extend::Sign) => {
-            return Err(error(span, format!("not yet supported: div for signed arithmetic")));
+            // def div(numer, denom):
+            //     numer = SignExt(1, numer)
+            //     denom = SignExt(1, denom)
+            //     q = numer / denom
+            //     r = SRem(numer, denom)
+            //     return If(r < 0, If(denom > 0, q - 1, q + 1), q)
+
+            // Extend to avoid overflow.
+            let numer = extend_bv_expr(&lhs_expr, extend, w, w + 1);
+            let denom = extend_bv_expr(&rhs_expr, extend, w, w + 1);
+
+            // Compute quotient and remainder.
+            let q =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSDiv, numer.clone(), denom.clone()));
+            let r =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSRem, numer.clone(), denom.clone()));
+
+            // Adjust quotient based on signs of remainder and denominator.
+            let zero = mk_bit_vec_zero(w + 1);
+            let one = mk_bit_vec_one(w + 1);
+            let r_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, r.clone(), zero.clone()));
+            let denom_positive =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSGt, denom.clone(), zero.clone()));
+            let q_minus_1 =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSub, q.clone(), one.clone()));
+            let q_plus_1 =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAdd, q.clone(), one.clone()));
+            let expr = mk_ite(&r_negative, &mk_ite(&denom_positive, &q_minus_1, &q_plus_1), &q);
+
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Zero) }
         }
         (ArithOp::EuclideanMod, Extend::Sign) => {
             return Err(error(span, format!("not yet supported: mod for signed arithmetic")));
         }
         _ => unreachable!(),
+    };
+
+    match int_range {
+        None => Ok(bv_expr),
+        Some(ir) => do_clip(state, span, bv_expr, ir),
     }
 }
 
 fn test_eq_0(span: &Span, exp: &BvExpr) -> Result<Expr, VirErr> {
     let (width, _) = exp.bv_typ.expect_bv(span)?;
-    let zero = Arc::new(ExprX::Const(Constant::BitVec(Arc::new("0".to_string()), width)));
+    let zero = mk_bit_vec_zero(width);
     let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, exp.expr.clone(), zero));
     Ok(eq)
 }
