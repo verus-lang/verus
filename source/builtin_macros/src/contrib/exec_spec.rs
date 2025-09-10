@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::cell::{RefCell};
 
 use proc_macro::TokenStream;
 use proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
@@ -9,7 +9,10 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::spanned::Spanned;
 use syn_verus::token::Comma;
 use syn_verus::{
-    parse_macro_input, Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches, ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility
+    Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
+    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
+    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
+    PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
 };
 
 /// Checks if the given path is of the form
@@ -157,8 +160,12 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     // Otherwise we assume that the type has
     // ExecSpecType implemented
     Ok(match ctx {
-        TypeKind::Owned => quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecOwnedType },
-        TypeKind::Ref => quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecRefType<'_> },
+        TypeKind::Owned => {
+            quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecOwnedType }
+        }
+        TypeKind::Ref => {
+            quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecRefType<'_> }
+        }
     })
 }
 
@@ -616,7 +623,11 @@ struct LocalCtx {
 
 impl LocalCtx {
     fn new(cur_fn: &Ident) -> Self {
-        LocalCtx { cur_fn: cur_fn.clone(), vars: HashMap::new(), trigger_fns: Rc::new(RefCell::new(HashMap::new())) }
+        LocalCtx {
+            cur_fn: cur_fn.clone(),
+            vars: HashMap::new(),
+            trigger_fns: Rc::new(RefCell::new(HashMap::new())),
+        }
     }
 
     fn add(&mut self, ident: Ident, mode: VarMode) {
@@ -888,58 +899,35 @@ struct GuardedQuantifier {
 ///   `|x| <lower> <= x < <upper> ==> <body>`
 /// or
 ///   `|x| <lower> <= x < <upper> && <body>`
-/// 
+///
 /// Returns (bound var, &&/==>, <lower>, <upper>, <body>)
 fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, Error> {
     if closure.inputs.len() != 1 {
-        return Err(Error::new_spanned(
-            closure,
-            "only support single quantified variable",
-        ));
+        return Err(Error::new_spanned(closure, "only support single quantified variable"));
     }
 
     let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
-        return Err(Error::new_spanned(
-            closure,
-            "only supports a typed variable as quantifier",
-        ));
+        return Err(Error::new_spanned(closure, "only supports a typed variable as quantifier"));
     };
 
     // |x| <guard> ==>/&& <body>
-    let Expr::Binary(ExprBinary {
-        left: guard,
-        op: guard_op,
-        right: body,
-        ..
-    }) = closure.body.as_ref() else {
+    let Expr::Binary(ExprBinary { left: guard, op: guard_op, right: body, .. }) =
+        closure.body.as_ref()
+    else {
         return Err(Error::new_spanned(closure, "unsupported quantified expression"));
     };
 
     // <guard> == <lower> <= x < <upper>
-    let Expr::Binary(ExprBinary {
-        left: lower_guard,
-        op: BinOp::Lt(..),
-        right: upper,
-        ..
-    }) = guard.as_ref()
+    let Expr::Binary(ExprBinary { left: lower_guard, op: BinOp::Lt(..), right: upper, .. }) =
+        guard.as_ref()
     else {
-        return Err(Error::new_spanned(
-            guard,
-            "unsupported quantifier guard upper bound",
-        ));
+        return Err(Error::new_spanned(guard, "unsupported quantifier guard upper bound"));
     };
 
-    let Expr::Binary(ExprBinary {
-        left: lower,
-        op: BinOp::Le(..),
-        right: guard_var,
-        ..
-    }) = lower_guard.as_ref()
+    let Expr::Binary(ExprBinary { left: lower, op: BinOp::Le(..), right: guard_var, .. }) =
+        lower_guard.as_ref()
     else {
-        return Err(Error::new_spanned(
-            lower_guard,
-            "unsupported quantifier guard lower bound",
-        ));
+        return Err(Error::new_spanned(lower_guard, "unsupported quantifier guard lower bound"));
     };
 
     // Parses the guard variable as a one-component path
@@ -981,7 +969,6 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
 
     // TODO: support other forms of quantifiers
     let quant = get_guarded_range_quant(closure)?;
-    
 
     let quant_var = &quant.quant_var;
     let quant_type = &quant.quant_type;
@@ -1006,7 +993,8 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // Since #body and #expr will be used as spec code in exec mode
     // we have to convert all variables in the context to their spec versions via deep_view
     let local_view: Vec<TokenStream2> = ctx
-        .vars.iter()
+        .vars
+        .iter()
         .map(|(name, _)| {
             quote! { let #name = #name.deep_view(); }
         })
@@ -1060,7 +1048,7 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
                 }
             })
         }
-        
+
         (UnOp::Exists(..), BinOp::And(..)) => {
             let inv = quote_spanned! { expr_span => _res == {
                 let _upper = #quant_var;
@@ -1099,11 +1087,8 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
                 }
             })
         }
-    
-        _ => Err(Error::new_spanned(
-            expr,
-            "unsupported quantified expression",
-        )),
+
+        _ => Err(Error::new_spanned(expr, "unsupported quantified expression")),
     }
 }
 
@@ -1725,10 +1710,11 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
         .trigger_fns
         .borrow()
         .iter()
-        .map(|(name, typ)|
+        .map(|(name, typ)| {
             Ok(quote! {
                 uninterp spec fn #name(x: #typ);
-            }))
+            })
+        })
         .collect::<Result<Vec<_>, Error>>()?;
 
     Ok(quote! {

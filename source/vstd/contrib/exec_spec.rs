@@ -6,6 +6,7 @@
 #![cfg(all(feature = "alloc", feature = "std"))]
 
 use crate::prelude::*;
+pub use builtin_macros::exec_spec;
 
 verus! {
 
