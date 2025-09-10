@@ -978,6 +978,9 @@ test_verify_one_file! {
     #[test] div_mod_signed_properties verus_code! {
         fn div_mod_signed_properties(x: i8, y: i8) {
             assert(y != 0 ==> (x / y) * y + (x % y) == x) by(bit_vector);
+            assert(y != 0 ==> (x % y) >= 0) by(bit_vector);
+            assert(y > 0 ==> (x % y) < y) by(bit_vector);
+            assert(y < 0 ==> (x % y) < -y) by(bit_vector);
             assert(x as int / (-1) == -x) by(bit_vector);
         }
     } => Ok(())
