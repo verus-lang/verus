@@ -5,7 +5,7 @@
 
 #![cfg(all(feature = "alloc", feature = "std"))]
 
-use super::prelude::*;
+use crate::prelude::*;
 
 verus! {
 
@@ -215,6 +215,7 @@ impl<'a> ToRef<&'a str> for &'a String {
 }
 
 impl<'a> ToOwned<String> for &'a str {
+    #[verifier::external_body]
     #[inline(always)]
     fn get_owned(self) -> String {
         self.to_string()

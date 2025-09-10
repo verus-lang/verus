@@ -280,14 +280,6 @@ pub fn run_verus(
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
-    let lib_exec_spec_path = verus_target_path.join(format!("{}exec_spec.{}", pre, dl));
-    assert!(lib_exec_spec_path.exists());
-    let lib_exec_spec_path = lib_exec_spec_path.to_str().unwrap();
-
-    let lib_exec_spec_lib_path = verus_target_path.join(format!("{}exec_spec.{}", pre, dl));
-    assert!(lib_exec_spec_lib_path.exists());
-    let lib_exec_spec_lib_path = lib_exec_spec_lib_path.to_str().unwrap();
-
     let bin = verus_target_path.join(format!("rust_verify{exe}"));
 
     // Delay so that we not only "wait_exists" for the files to be created,

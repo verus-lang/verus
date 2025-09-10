@@ -236,23 +236,6 @@ impl DeepView for String {
     }
 }
 
-impl<'a> DeepView for &'a str {
-    type V = Seq<char>;
-
-    open spec fn deep_view(&self) -> Seq<char> {
-        self.view()
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl DeepView for String {
-    type V = Seq<char>;
-
-    open spec fn deep_view(&self) -> Seq<char> {
-        self.view()
-    }
-}
-
 #[cfg(feature = "alloc")]
 #[verifier::external_type_specification]
 #[verifier::external_body]

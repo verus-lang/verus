@@ -5,7 +5,6 @@ members = [
   "builtin",
   "builtin_macros",
   "cargo-verus",
-  "exec_spec",
   "vir",
   "vir_macros",
   "rust_verify",
