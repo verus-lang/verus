@@ -5,8 +5,8 @@ use common::*;
 
 const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::prelude::*;
-    #[allow(unused_imports)] use vstd::exec_spec::*;
-    #[allow(unused_imports)] use exec_spec::*;
+    #[allow(unused_imports)] use vstd::contrib::exec_spec::*;
+    #[allow(unused_imports)] use vstd::contrib::exec_spec;
 };
 
 test_verify_one_file! {
@@ -563,6 +563,258 @@ test_verify_one_file! {
                     d
                 };
                 e
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test complex structs/enums from the X.509 project
+    #[test] test_exec_spec_certificate IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            pub struct Attribute {
+                pub oid: SpecString,
+                pub value: SpecString,
+            }
+
+            pub struct DistinguishedName(pub Seq<Seq<Attribute>>);
+
+            pub enum GeneralName {
+                DNSName(SpecString),
+                DirectoryName(DistinguishedName),
+                IPAddr(Seq<u8>),
+                OtherName,
+                Unsupported,
+            }
+
+            pub enum SubjectKey {
+                RSA {
+                    mod_length: usize,
+                },
+                DSA {
+                    p_len: usize,
+                    q_len: usize,
+                    g_len: usize,
+                },
+                Other,
+            }
+
+            pub struct AuthorityKeyIdentifier {
+                pub critical: Option<bool>,
+                pub key_id: Option<SpecString>,
+                pub issuer: Option<SpecString>,
+                pub serial: Option<SpecString>,
+            }
+
+            pub struct SubjectKeyIdentifier {
+                pub critical: Option<bool>,
+                pub key_id: SpecString,
+            }
+
+            pub enum ExtendedKeyUsageType {
+                ServerAuth,
+                ClientAuth,
+                CodeSigning,
+                EmailProtection,
+                TimeStamping,
+                OCSPSigning,
+                Any,
+                Other(SpecString),
+            }
+
+            pub struct ExtendedKeyUsage {
+                pub critical: Option<bool>,
+                pub usages: Seq<ExtendedKeyUsageType>,
+            }
+
+            pub struct BasicConstraints {
+                pub critical: Option<bool>,
+                pub is_ca: bool,
+                pub path_len: Option<i64>,
+            }
+
+            pub struct KeyUsage {
+                pub critical: Option<bool>,
+                pub digital_signature: bool,
+                pub non_repudiation: bool,
+                pub key_encipherment: bool,
+                pub data_encipherment: bool,
+                pub key_agreement: bool,
+                pub key_cert_sign: bool,
+                pub crl_sign: bool,
+                pub encipher_only: bool,
+                pub decipher_only: bool,
+            }
+
+            pub struct SubjectAltName {
+                pub critical: Option<bool>,
+                pub names: Seq<GeneralName>,
+            }
+
+            pub struct NameConstraints {
+                pub critical: Option<bool>,
+                pub permitted: Seq<GeneralName>,
+                pub excluded: Seq<GeneralName>,
+            }
+
+            pub struct CertificatePolicies {
+                pub critical: Option<bool>,
+                pub policies: Seq<SpecString>,
+            }
+
+            pub struct AuthorityInfoAccess {
+                pub critical: Option<bool>,
+                // Other info is not encoded
+            }
+
+            pub struct SignatureAlgorithm {
+                pub id: SpecString,
+                pub bytes: SpecString,
+            }
+
+            pub struct Extension {
+                pub oid: SpecString,
+                pub critical: Option<bool>,
+            }
+
+            pub struct Certificate {
+                pub fingerprint: SpecString,
+                pub version: u32,
+                pub serial: SpecString,
+                pub sig_alg_outer: SignatureAlgorithm,
+                pub sig_alg_inner: SignatureAlgorithm,
+                pub not_after: u64,
+                pub not_before: u64,
+
+                pub issuer: DistinguishedName,
+                pub subject: DistinguishedName,
+                pub subject_key: SubjectKey,
+
+                pub issuer_uid: Option<SpecString>,
+                pub subject_uid: Option<SpecString>,
+
+                pub ext_authority_key_id: Option<AuthorityKeyIdentifier>,
+                pub ext_subject_key_id: Option<SubjectKeyIdentifier>,
+                pub ext_extended_key_usage: Option<ExtendedKeyUsage>,
+                pub ext_basic_constraints: Option<BasicConstraints>,
+                pub ext_key_usage: Option<KeyUsage>,
+                pub ext_subject_alt_name: Option<SubjectAltName>,
+                pub ext_name_constraints: Option<NameConstraints>,
+                pub ext_certificate_policies: Option<CertificatePolicies>,
+                pub ext_authority_info_access: Option<AuthorityInfoAccess>,
+
+                // All extensions without parameters
+                pub all_exts: Option<Seq<Extension>>,
+            }
+
+            pub enum Purpose {
+                ServerAuth,
+            }
+
+            pub struct Task {
+                pub hostname: Option<SpecString>,
+                pub purpose: Purpose,
+                pub now: u64,
+            }
+
+            pub enum PolicyError {
+                UnsupportedTask,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test basic `forall` expressions
+    #[test] test_exec_spec_basic_forall IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn zero_vec(a: Seq<u32>) -> bool {
+                forall |i: usize| 0 <= i < a.len() ==> a[i as int] != 0
+            }
+        }
+
+        fn sanity_check() {
+            let v = vec![1, 2, 3];
+            if exec_zero_vec(&v) {
+                assert(v.deep_view()[0] != 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test basic `exists` expressions
+    #[test] test_exec_spec_basic_exists IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn non_zero_vec(a: Seq<u32>) -> bool {
+                exists |i: usize| 0 <= i < a.len() && a[i as int] != 0
+            }
+        }
+
+        fn sanity_check() {
+            let v = vec![1, 2, 3];
+            if exec_non_zero_vec(&v) {
+                assert(non_zero_vec(v.deep_view()));
+                assert(exists |i: usize| 0 <= i < v.deep_view().len() && v.deep_view()[i as int] != 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test nested `forall`s.
+    #[test] test_exec_spec_nested_foralls IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn distinct(a: Seq<u32>) -> bool {
+                forall |i: usize| #![trigger a[i as int]] 0 <= i < a.len() ==>
+                forall |j: usize| #![trigger a[j as int]] 0 <= j < i ==>
+                    a[i as int] != a[j as int]
+            }
+        }
+
+        fn sanity_check(v: Vec<u32>) {
+            if exec_distinct(&v) {
+                assert(v.deep_view().len() >= 2 ==> v.deep_view()[0] != v.deep_view()[1]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test nested `exists`s.
+    #[test] test_exec_spec_nested_exists IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn has_duplicate(a: Seq<u32>) -> bool {
+                exists |i: usize| #![trigger a[i as int]] 0 <= i < a.len() &&
+                exists |j: usize| #![trigger a[j as int]] 0 <= j < i &&
+                    a[i as int] == a[j as int]
+            }
+        }
+
+        fn sanity_check(v: Vec<u32>) {
+            if exec_has_duplicate(&v) {
+                assert(v.deep_view().len() == 2 ==> v.deep_view()[0] == v.deep_view()[1]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Test alternating quantifiers
+    #[test] test_exec_spec_alt_quants IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn has_unique_maximum(a: Seq<u32>) -> bool {
+                exists |i: usize| #![trigger a[i as int]] 0 <= i < a.len() &&
+                    forall |j: usize| #![trigger a[j as int]] 0 <= j < a.len() ==>
+                        i == j || a[i as int] > a[j as int]
+            }
+        }
+
+        fn sanity_check(v: Vec<u32>) {
+            if exec_has_unique_maximum(&v) {
+                assert(v.deep_view().len() == 2 ==>
+                    v.deep_view()[0] > v.deep_view()[1] ||
+                    v.deep_view()[0] < v.deep_view()[1]);
             }
         }
     } => Ok(())

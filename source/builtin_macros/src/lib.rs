@@ -359,4 +359,9 @@ pub fn auto_spec(
     input
 }
 
+#[proc_macro]
+pub fn exec_spec(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::exec_spec::exec_spec(input)
+}
+
 /*** End of contrib macros ***/

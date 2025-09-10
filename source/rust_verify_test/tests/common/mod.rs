@@ -278,14 +278,6 @@ pub fn run_verus(
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
-    let lib_exec_spec_path = verus_target_path.join(format!("{}exec_spec.{}", pre, dl));
-    assert!(lib_exec_spec_path.exists());
-    let lib_exec_spec_path = lib_exec_spec_path.to_str().unwrap();
-
-    let lib_exec_spec_lib_path = verus_target_path.join(format!("{}exec_spec.{}", pre, dl));
-    assert!(lib_exec_spec_lib_path.exists());
-    let lib_exec_spec_lib_path = lib_exec_spec_lib_path.to_str().unwrap();
-
     let bin = verus_target_path.join(format!("rust_verify{exe}"));
 
     // Delay so that we not only "wait_exists" for the files to be created,
@@ -357,10 +349,6 @@ pub fn run_verus(
             format!("builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("state_machines_macros={lib_state_machines_macros_path}"),
-            "--extern".to_string(),
-            format!("exec_spec={lib_exec_spec_path}"),
-            "--extern".to_string(),
-            format!("exec_spec_lib={lib_exec_spec_lib_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
             // suppress Rust's generation of long-type files
