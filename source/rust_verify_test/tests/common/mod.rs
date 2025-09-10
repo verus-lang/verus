@@ -144,10 +144,6 @@ pub fn verify_files_vstd_all_diags(
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
 
-    if !run.status.success() {
-        eprintln!("stdout: {}", String::from_utf8_lossy(&run.stdout));
-    }
-
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
 
