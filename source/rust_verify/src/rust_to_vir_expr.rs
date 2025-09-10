@@ -881,7 +881,7 @@ fn invariant_block_to_vir<'tcx>(
     // to use the open_atomic_invariant! macro.
 
     let body = match &expr.kind {
-        ExprKind::Block(body, _) => body,
+        ExprKind::Block(body, None) => body,
         _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
@@ -922,7 +922,7 @@ fn invariant_block_to_vir<'tcx>(
     }
 
     let vir_body = match mid_stmt.kind {
-        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, _), .. }) => {
+        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
                 slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
@@ -1644,7 +1644,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     match &expr.kind {
-        ExprKind::Block(body, _) => {
+        ExprKind::Block(body, label) => {
+            unsupported_err_unless!(label.is_none(), expr.span, "block with label");
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
             } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
