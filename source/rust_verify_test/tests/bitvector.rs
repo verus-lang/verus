@@ -1134,31 +1134,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// TODO once signed division/mod are supported,
-// we can remove these 2 tests and un-ignore the more complete ones below
 test_verify_one_file! {
-    #[test] test_by_equating_div_unsigned_only verus_code! {
-        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
-            assert(y != 0 ==> au == x && bu == y ==> (au as int) / (bu as int) == x / y) by(bit_vector);
-            assert(y != 0 ==> au == x && (bu + bu2) == y ==> (au as int) / ((bu + bu2) as int) == x / y) by(bit_vector);
-            assert(y != 0 ==> (au + au2) == x && bu == y ==> ((au + au2) as int) / (bu as int) == x / y) by(bit_vector);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_by_equating_mod_unsigned_only verus_code! {
-        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
-            assert(y != 0 ==> au == x && bu == y ==> (au as int) % (bu as int) == x % y) by(bit_vector);
-            assert(y != 0 ==> au == x && (bu + bu2) == y ==> (au as int) % ((bu + bu2) as int) == x % y) by(bit_vector);
-            assert(y != 0 ==> (au + au2) == x && bu == y ==> ((au + au2) as int) % (bu as int) == x % y) by(bit_vector);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[ignore] #[test] test_by_equating_div verus_code! {
-        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
+    #[test] test_by_equating_div verus_code! {
+        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) / (bi as int) == x / y) by(bit_vector);
             assert(y != 0 ==> ai == x && bu == y ==> (ai as int) / (bu as int) == x / y) by(bit_vector);
             assert(y != 0 ==> au == x && bi == y ==> (au as int) / (bi as int) == x / y) by(bit_vector);
@@ -1176,8 +1154,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_by_equating_mod verus_code! {
-        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
+    #[test] test_by_equating_mod verus_code! {
+        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) % (bi as int) == x % y) by(bit_vector);
             assert(y != 0 ==> ai == x && bu == y ==> (ai as int) % (bu as int) == x % y) by(bit_vector);
             assert(y != 0 ==> au == x && bi == y ==> (au as int) % (bi as int) == x % y) by(bit_vector);
