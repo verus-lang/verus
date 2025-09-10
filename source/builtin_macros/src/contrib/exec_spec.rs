@@ -17,7 +17,7 @@ use syn_verus::{
 
 /// Checks if the given path is of the form
 /// `idents[0]::idents[1]::...::idents[n]`,
-/// ignoring any path arguments
+/// ignoring any path arguments.
 fn is_path_eq(path: &Path, idents: &[&str]) -> bool {
     if path.segments.len() != idents.len() {
         return false;
@@ -30,8 +30,7 @@ fn is_path_eq(path: &Path, idents: &[&str]) -> bool {
     true
 }
 
-/// Gets the n-th (angle-bracket) argument
-/// as a type
+/// Gets the n-th (angle-bracket) argument as a type.
 fn get_seg_type_arg(seg: &PathSegment, n: usize) -> Result<&Type, Error> {
     match &seg.arguments {
         PathArguments::AngleBracketed(args) if n < args.args.len() => {
@@ -45,7 +44,7 @@ fn get_seg_type_arg(seg: &PathSegment, n: usize) -> Result<&Type, Error> {
     }
 }
 
-/// Simple pattern is either a variable (`a`) or a typed variable (`a: T`)
+/// A simple pattern is either a variable (`a`) or a typed variable (`a: T`).
 fn get_simple_pat(pat: &Pat) -> Result<(&Ident, Option<Box<Type>>), Error> {
     if let Pat::Ident(pat_ident) = pat {
         return Ok((&pat_ident.ident, None));
@@ -59,7 +58,7 @@ fn get_simple_pat(pat: &Pat) -> Result<(&Ident, Option<Box<Type>>), Error> {
     Err(Error::new_spanned(pat, "expect a simple pattern (variable or typed variable)"))
 }
 
-/// Prefix the n-th segment of the path
+/// Appends a `prefix` to the n-th segment of the path.
 fn prefix_nth_segment(path: &Path, prefix: &str, n: usize) -> Result<Path, Error> {
     if n >= path.segments.len() {
         return Err(Error::new_spanned(path, "path too short"));
@@ -76,7 +75,7 @@ fn prefix_nth_segment(path: &Path, prefix: &str, n: usize) -> Result<Path, Error
     Ok(new_path)
 }
 
-/// Custom parser for a list of items
+/// Custom parser for a list of items.
 struct Items(Vec<Item>);
 
 impl Parse for Items {
@@ -89,7 +88,7 @@ impl Parse for Items {
     }
 }
 
-/// Custom parser for a comma-separated list of expressions
+/// Custom parser for a comma-separated list of expressions.
 struct Exprs(Vec<Expr>);
 
 impl Parse for Exprs {
@@ -111,8 +110,7 @@ enum TypeKind {
     Ref,
 }
 
-/// Converts a spec type to exec type via
-/// <T as ExecSpecType>::Exec
+/// Converts a spec type to exec type via `<T as ExecSpecType>::Exec`.
 fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     match typ {
         // Treat Seq<T> as a special case since
@@ -169,7 +167,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     })
 }
 
-/// Compiles a struct item
+/// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
@@ -310,7 +308,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     })
 }
 
-/// Compiles an enum item
+/// Compiles an enum item.
 fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
     if !item_enum.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_enum.generics, "generics not supported"));
@@ -484,7 +482,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
     })
 }
 
-/// Compiles a spec fn to the exec fn signature
+/// Compiles a spec fn to the exec fn signature.
 fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Error> {
     let spec_params = item_fn
         .sig
@@ -600,16 +598,16 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     Ok(respan(sig, item_fn.sig.span()))
 }
 
-/// Each variable is marked with a mode
-/// indicating whether it is the owned
-/// or the borrowed version of the spec type
+/// Each variable is marked with a mode indicating
+/// whether it is the owned or the borrowed version
+/// of the spec type.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum VarMode {
     Owned,
     Ref,
 }
 
-/// Records the locals and their modes
+/// Records the locals and their modes.
 #[derive(Clone, Debug)]
 struct LocalCtx {
     /// Name of the current spec function
@@ -644,7 +642,8 @@ impl LocalCtx {
 }
 
 /// Maps a spec mode path to the corresponding exec mode path
-/// Assuming that it is already checked that path is not a local variable
+/// Assuming that it is already checked that path is not a
+/// local variable.
 fn compile_pat_path(path: &Path) -> Result<Path, Error> {
     if path.segments.len() <= 2 {
         // Special case: do not change Some, None, Ok, Err
@@ -673,7 +672,7 @@ enum ExprPathKind {
     Unknown,
 }
 
-/// Infers the kind of path based on context and the form of the path
+/// Infers the kind of path based on context and the form of the path.
 /// TODO: a bit ad-hoc
 fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
     if is_path_eq(path, &["Some"])
@@ -732,7 +731,7 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
     }
 }
 
-/// Similar to `compile_pat_path`, but for paths occurring in expressions
+/// Similar to `compile_pat_path`, but for paths occurring in expressions.
 /// TODO: find ways to make this more reliable
 fn compile_expr_path(
     ctx: &LocalCtx,
@@ -763,8 +762,8 @@ fn compile_expr_path(
     Ok((new_path, kind))
 }
 
-/// Compile a spec mode pattern to an exec mode pattern
-/// potentially shadowing some local variables
+/// Compiles a spec mode pattern to an exec mode pattern,
+/// potentially shadowing some local variables.
 ///
 /// For paths occurring in the patterns,
 /// we assume that they are only used in two ways:
@@ -772,7 +771,7 @@ fn compile_expr_path(
 ///   - SpecStructName => ExecSpecStructName
 ///
 /// i.e. for paths of length 2, we prefix the first segment with `Exec`
-/// and for paths of length 1, we prefix the last segment with `Exec`
+/// and for paths of length 1, we prefix the last segment with `Exec`.
 fn compile_pattern(
     ctx: &mut LocalCtx,
     pat: &Pat,
@@ -862,7 +861,7 @@ fn compile_pattern(
     }
 }
 
-/// Compiles a match arm
+/// Compiles a match arm.
 fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
     let mut ctx = ctx.clone();
     let mut new_locals = HashSet::new();
@@ -899,8 +898,6 @@ struct GuardedQuantifier {
 ///   `|x| <lower> <= x < <upper> ==> <body>`
 /// or
 ///   `|x| <lower> <= x < <upper> && <body>`
-///
-/// Returns (bound var, &&/==>, <lower>, <upper>, <body>)
 fn get_guarded_range_quant(closure: &ExprClosure) -> Result<GuardedQuantifier, Error> {
     if closure.inputs.len() != 1 {
         return Err(Error::new_spanned(closure, "only support single quantified variable"));
@@ -1631,7 +1628,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
     Ok(expr_ts)
 }
 
-/// Compiles a block
+/// Compiles a block.
 ///
 /// TODO: to avoid issues of `temporary value dropped while borrowed`
 /// the return value of a block has the owned type instead of the ref type
@@ -1676,7 +1673,7 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
     Ok(quote! { { #(#ts)* } })
 }
 
-/// Recursively set the of all tokens in a token stream to the given one
+/// Recursively sets the span of all tokens in a token stream to the given one.
 fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
     input
         .into_iter()
@@ -1693,7 +1690,7 @@ fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
         .collect()
 }
 
-/// Compiles a spec function into an exec function
+/// Compiles a spec function into an exec function.
 fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
     if let FnMode::Spec(..) = &item_fn.sig.mode {
     } else {
@@ -1729,7 +1726,7 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
     })
 }
 
-/// Compiles a fn/struct/enum item
+/// Compiles a fn/struct/enum item.
 fn compile_item(item: Item) -> Result<TokenStream2, Error> {
     match item {
         Item::Fn(item_fn) => compile_spec_fn(&item_fn),
@@ -1739,6 +1736,7 @@ fn compile_item(item: Item) -> Result<TokenStream2, Error> {
     }
 }
 
+/// Parses and compiles a list of items.
 pub fn exec_spec(input: TokenStream) -> TokenStream {
     let items = parse_macro_input!(input as Items);
     let res = items

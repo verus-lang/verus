@@ -9,7 +9,7 @@ const IMPORTS: &str = code_str! {
 };
 
 test_verify_one_file! {
-    /// Tests basic compilation for enums
+    /// Tests basic enum compilation.
     #[test] test_exec_spec_enum IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             pub enum E1 {
@@ -30,7 +30,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests basic compilation for structs
+    /// Tests basic struct compilation.
     #[test] test_exec_spec_struct IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             enum MyOption {
@@ -49,7 +49,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests that compiler generates exec code with good typing
+    /// Tests that compiler generates exec code with good typing.
     #[test] test_exec_spec_typing IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn id_string(s: SpecString) -> SpecString {
@@ -78,7 +78,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests compilation of literals
+    /// Tests compilation of literals.
     #[test] test_exec_spec_literals IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test1(sel: bool, s: Seq<SpecString>) -> Seq<SpecString> {
@@ -120,7 +120,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests basic arithemetic operations
+    /// Tests basic arithemetic operations.
     #[test] test_exec_spec_arith IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn square(x: u32) -> u32
@@ -150,7 +150,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests string indexing
+    /// Tests string indexing.
     #[test] test_exec_spec_index1 IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test(s: SpecString, i: usize) -> char {
@@ -191,7 +191,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests equality
+    /// Tests equality.
     #[test] test_exec_spec_equality IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_eq1(i: usize, j: usize) -> bool {
@@ -224,7 +224,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests match expressions
+    /// Tests match expressions.
     #[test] test_exec_spec_match IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             enum EitherString {
@@ -278,7 +278,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests support for built-in Option type
+    /// Tests support for built-in [`Option`] type.
     #[test] test_exec_spec_option IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_option1(s: Option<SpecString>) -> SpecString {
@@ -300,7 +300,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests support for built-in tuple types
+    /// Tests support for built-in tuple types.
     #[test] test_exec_spec_tuple IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_tuple1(a: u32, b: u32) -> (u32, u32) {
@@ -317,7 +317,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests struct/enum constructors
+    /// Tests struct/enum constructors.
     #[test] test_exec_spec_constructor IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             struct A {
@@ -352,7 +352,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests `matches`
+    /// Tests `matches`.
     #[test] test_exec_spec_matches IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             enum D {
@@ -381,7 +381,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests support for recursions and `decreases` clauses
+    /// Tests support for recursions and `decreases` clauses.
     #[test] test_exec_spec_recursion IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_recursion1(n: usize) -> usize
@@ -408,7 +408,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests support for recursion with sequence
+    /// Tests support for recursion with sequence.
     #[test] test_exec_spec_recursion_seq IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test_all_positive(a: Seq<i32>, i: usize) -> bool
@@ -423,7 +423,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests support for some built-in constants
+    /// Tests support for some built-in constants.
     #[test] test_exec_spec_constant IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn test(i: usize) -> bool {
@@ -456,7 +456,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests interoperability and generated post/pre-conditions
+    /// Tests interoperability and generated post/pre-conditions.
     #[test] test_exec_spec_interop2 IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             struct A {
@@ -480,7 +480,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests interoperability and generated post/pre-conditions
+    /// Tests interoperability and generated post/pre-conditions.
     #[test] test_exec_spec_interop3 IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             struct MyPair(Seq<u32>, Seq<u32>);
@@ -521,7 +521,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Tests that error spans are accurate
+    /// Tests that error spans are accurate.
     #[test] test_exec_spec_error_span IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             struct MyPair(Seq<u32>, Seq<u32>);
@@ -537,7 +537,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test that linear variables are compiled correctly
+    /// Tests that linear variables are compiled correctly.
     #[test] test_exec_spec_linear IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             struct B;
@@ -568,7 +568,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test complex structs/enums from the X.509 project
+    /// Tests complex structs/enums from the X.509 project.
     #[test] test_exec_spec_certificate IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             pub struct Attribute {
@@ -724,7 +724,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test basic `forall` expressions
+    /// Tests basic `forall` expressions.
     #[test] test_exec_spec_basic_forall IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn zero_vec(a: Seq<u32>) -> bool {
@@ -742,7 +742,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test basic `exists` expressions
+    /// Tests basic `exists` expressions.
     #[test] test_exec_spec_basic_exists IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn non_zero_vec(a: Seq<u32>) -> bool {
@@ -761,7 +761,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test nested `forall`s.
+    /// Tests nested `forall`s.
     #[test] test_exec_spec_nested_foralls IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn distinct(a: Seq<u32>) -> bool {
@@ -780,7 +780,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test nested `exists`s.
+    /// Tests nested `exists`s.
     #[test] test_exec_spec_nested_exists IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn has_duplicate(a: Seq<u32>) -> bool {
@@ -799,7 +799,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Test alternating quantifiers
+    /// Tests alternating quantifiers.
     #[test] test_exec_spec_alt_quants IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn has_unique_maximum(a: Seq<u32>) -> bool {

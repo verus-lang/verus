@@ -1,7 +1,5 @@
-//! This module provides utilities for the compiled
-//! executable code of exec_spec
-//! 
-//! Currently we do not suppport no-alloc or no-std
+//! This module provides runtime utilities for the compiled
+//! executable code of [`builtin_macros::exec_spec`].
 
 #![cfg(all(feature = "alloc", feature = "std"))]
 
@@ -10,8 +8,8 @@ pub use builtin_macros::exec_spec;
 
 verus! {
 
-/// `ToRef` and `ToOwned` are almost the same trait
-/// but separated to avoid type inference ambiguities
+/// [`ToRef`] and [`ToOwned`] are almost the same trait
+/// but separated to avoid type inference ambiguities.
 pub trait ToRef<T: Sized + DeepView>: Sized + DeepView<V = T::V> {
     fn get_ref(self) -> (res: T)
         ensures res.deep_view() == self.deep_view();
@@ -28,21 +26,21 @@ pub trait DeepViewClone: Sized + DeepView {
         ensures res.deep_view() == self.deep_view();
 }
 
-/// Any spec types used in exec_spec! macro
+/// Any spec types used in [`exec_spec`] macro
 /// must implement this trait to indicate
-/// the corresponding exec type (owned and borrowed versions)
+/// the corresponding exec type (owned and borrowed versions).
 pub trait ExecSpecType where
     for <'a> &'a Self::ExecOwnedType: ToRef<Self::ExecRefType<'a>>,
     for <'a> Self::ExecRefType<'a>: ToOwned<Self::ExecOwnedType>,
 {
-    /// Owned version of the exec type
+    /// Owned version of the exec type.
     type ExecOwnedType: DeepView<V = Self>;
 
-    /// Reference version of the exec type
+    /// Reference version of the exec type.
     type ExecRefType<'a>: DeepView<V = Self>;
 }
 
-/// Spec for executable version of equality
+/// Spec for the executable version of equality.
 pub trait ExecSpecEq<'a>: DeepView + Sized {
     type Other<'b>: DeepView<V = Self::V>;
 
@@ -50,19 +48,19 @@ pub trait ExecSpecEq<'a>: DeepView + Sized {
         ensures res == (this.deep_view() =~~= other.deep_view());
 }
 
-/// Spec for executable version of Seq::len
+/// Spec for executable version of [`Seq::len`].
 pub trait ExecSpecLen {
     fn exec_len(&self) -> usize;
 }
 
-/// Spec for executable version of Seq indexing
+/// Spec for executable version of [`Seq`] indexing.
 pub trait ExecSpecIndex<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::V>> {
     type Elem: DeepView;
     fn exec_index(self, index: usize) -> Self::Elem
         requires 0 <= index < self.deep_view().len();
 }
 
-/// Implement various traits for primitive arithmetic types
+/// A macro to implement various traits for primitive arithmetic types.
 macro_rules! impl_primitives {
     ($(,)?) => {};
     ($t:ty $(,$rest:ty)* $(,)?) => {
@@ -123,7 +121,6 @@ impl_primitives! {
     bool, char,
 }
 
-/// Impls for Option<T>
 impl<'a, T: Sized + DeepView> ToRef<&'a Option<T>> for &'a Option<T> {
     #[inline(always)]
     fn get_ref(self) -> &'a Option<T> {
@@ -148,7 +145,6 @@ impl<T: DeepViewClone> DeepViewClone for Option<T> {
     }
 }
 
-/// TODO: currently not supported by verusfmt
 impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where
     &'a T: for <'c> ExecSpecEq<'a, Other<'c> = &'c T>,
 {
@@ -164,7 +160,6 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where
     }
 }
 
-/// Impls for pairs (a, b)
 /// TODO: generalize to more tuple types
 impl<'a, T1: Sized + DeepView, T2: Sized + DeepView> ToRef<&'a (T1, T2)> for &'a (T1, T2) {
     #[inline(always)]
@@ -199,8 +194,8 @@ impl<'a, T1: DeepView, T2: DeepView> ExecSpecEq<'a> for &'a (T1, T2) where
     }
 }
 
-/// In order for Seq<char> to be compiled to String,
-/// this special alias has to be used
+/// We use this special alias to tell the `exec_spec` macro to
+/// compile [`Seq<char>`] to [`String`] instead of [`Vec<char>`].
 pub type SpecString = Seq<char>;
 
 impl ExecSpecType for SpecString {
@@ -240,7 +235,7 @@ impl<'a> ExecSpecEq<'a> for &'a str {
     }
 }
 
-/// Required for comparing, e.g., `Vec<String>`'s
+/// Required for comparing, e.g., [`Vec<String>`]s.
 impl<'a> ExecSpecEq<'a> for &'a String {
     type Other<'b> = &'b String;
 
@@ -271,8 +266,8 @@ impl<'a> ExecSpecIndex<'a> for &'a str {
     }
 }
 
-/// NOTE: can't implement ExecSpecType for Seq<T>
-/// since it conflicts with SpecString = Seq<char>
+/// NOTE: can't implement [`ExecSpecType`] for [`Seq<T>`]
+/// since it conflicts with [`SpecString`] (i.e., [`Seq<char>`]).
 impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
     #[inline(always)]
     fn get_ref(self) -> &'a [T] {
