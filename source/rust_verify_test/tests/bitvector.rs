@@ -975,6 +975,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] div_mod_signed_properties verus_code! {
+        fn div_mod_signed_properties(x: i8, y: i8) {
+            assert(y != 0 ==> (x / y) * y + (x % y) == x) by(bit_vector);
+            assert(x as int / (-1) == -x) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] div0_underspecified verus_code! {
         fn div_0_underspecified(x: u32, y: u32) {
             assert(0u32 / y == 0) by(bit_vector); // FAILS
@@ -1194,6 +1203,104 @@ test_verify_one_file! {
             assert(au8 == x && bu16 == y ==> (au8 << bu16) == (x << y) as u8) by(bit_vector);
             assert(ai16 == x && bu8 == y ==> (ai16 << bu8) == (x << y) as i16) by(bit_vector);
             assert(au16 == x && bu8 == y ==> (au16 << bu8) == (x << y) as u16) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_signed_and_unsigned verus_code! {
+        fn test_signed_comparing_to_unsigned(x: i8, y: i8, a: u8, b: u8) {
+            // + / +
+            assert(x >= 0 && y > 0 && x == a && y == b ==>
+                x / y == a / b && x % y == a % b) by(bit_vector);
+
+            // + / -
+            assert(x >= 0 && y < 0 && x == a && (-y) == b ==>
+                x / y == -(a / b) && x % y == a % b) by(bit_vector);
+
+            // - / + (divisible)
+            assert(x < 0 && y > 0 && (-x) == a && y == b ==>
+                a % b == 0 ==>
+                x / y == -(a / b) && x % y == 0) by(bit_vector);
+
+            // - / + (not divisible)
+            assert(x < 0 && y > 0 && (-x) == a && y == b ==>
+                a % b != 0 ==>
+                x / y == -(a / b) - 1 && x % y == b - (a % b)) by(bit_vector);
+
+            // - / - (divisible)
+            assert(x < 0 && y < 0 && (-x) == a && (-y) == b ==>
+                a % b == 0 ==>
+                x / y == (a / b) && x % y == 0) by(bit_vector);
+
+            // - / - (not divisible)
+            assert(x < 0 && y < 0 && (-x) == a && (-y) == b ==>
+                a % b != 0 ==>
+                x / y == (a / b) + 1 && x % y == b - (a % b)) by(bit_vector);
+        }
+
+        // test various combinations of signedness / bitwidth
+        fn test_i_i(x: i8, y: i8, z: i8, a: i16, b: i16) {
+            // i8 / i8
+            assert(b != 0 && x == a && y == b ==>
+                x / y == a / b) by(bit_vector);
+
+            // i9 / i8
+            assert(b != 0 && x+z == a && y == b ==>
+                (x+z) / y as int == a / b) by(bit_vector);
+
+            // i8 / i9
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x % y == a % b) by(bit_vector);
+
+            assert(b != 0 && x+z == a && y == b ==>
+                (x+z) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
+        }
+
+        fn test_u_i(x: u8, w: u8, y: i8, z: i8, a: i16, b: i16) {
+            assert(b != 0 && x == a && y == b ==>
+                x as int / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x as int % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
+        }
+
+        fn test_i_u(x: i8, w: i8, y: u8, z: u8, a: i16, b: i16) {
+            assert(b != 0 && x == a && y == b ==>
+                x as int / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x as int % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
         }
     } => Ok(())
 }
