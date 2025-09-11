@@ -6,8 +6,8 @@ verus! {
 
 broadcast use super::super::group_vstd_default;
 
-pub open spec fn seq_to_map<V>(s: Seq<V>, off: int) -> Map<int, V> {
-    Map::new(|i: int| off <= i < off + s.len(), |i: int| s[i - off])
+pub open spec fn seq_to_map<V>(s: Seq<V>, off: int) -> IMap<int, V> {
+    IMap::new(|i: int| off <= i < off + s.len(), |i: int| s[i - off])
 }
 
 /** An implementation of a resource for owning a subrange of a sequence.
@@ -76,7 +76,7 @@ pub struct GhostSubseq<V> {
 impl<V> GhostSeqAuth<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.auth@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn id(self) -> int {
@@ -174,7 +174,7 @@ impl<V> GhostSeqAuth<V> {
 impl<V> GhostSubseq<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.frac@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn view(self) -> Seq<V> {
@@ -295,7 +295,7 @@ impl<V> GhostSubseq<V> {
             self.off() == old(self).off(),
             auth.id() == old(auth).id(),
             self@ =~= v,
-            auth@ =~= Map::new(
+            auth@ =~= IMap::new(
                 |i: int| old(auth)@.contains_key(i),
                 |i: int|
                     if self.off() <= i < self.off() + v.len() {
@@ -333,7 +333,7 @@ impl<V> GhostSubseq<V> {
         let tracked mut mselffrac = mself.frac;
 
         let tracked mfrac = mselffrac.split(
-            Set::new(|i: int| mself.off + n <= i < mself.off + mself.len),
+            ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len),
         );
         let tracked result = GhostSubseq {
             off: (mself.off + n) as nat,
@@ -392,7 +392,7 @@ impl<V> GhostSubseq<V> {
     pub proof fn new(off: nat, len: nat, tracked f: GhostSubmap<int, V>) -> (tracked result:
         GhostSubseq<V>)
         requires
-            f@.dom() == Set::new(|i: int| off <= i < off + len),
+            f@.dom() == ISet::new(|i: int| off <= i < off + len),
         ensures
             result.id() == f.id(),
             result.off() == off,
