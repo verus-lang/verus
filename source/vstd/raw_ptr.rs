@@ -421,78 +421,31 @@ impl<T> PointsTo<[T]> {
 }
 
 impl PointsTo<str> {
-    /// The sequence of (possibly uninitialized) memory that this permission gives access to.
-    pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<char>>;
+    /// The (possibly uninitialized) memory that this permission gives access to.
+    pub uninterp spec fn opt_value(&self) -> MemContents<&str>;
 
-    /// Returns `true` if all of the permission's associated memory is initialized.
-    // #[verifier::inline]
+    /// Returns `true` if the permission's associated memory is initialized.
+    #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        forall|i|
-            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+        self.opt_value().is_init()
     }
 
-    /// Returns `true` if any part of the permission's associated memory is uninitialized.
-    // #[verifier::inline]
+    /// Returns `true` if the permission's associated memory is uninitialized.
+    #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        !self.is_init()
+        self.opt_value().is_uninit()
     }
 
-    /// Returns a sequence where for each index,
-    /// if the permission's associated memory at that index is initialized,
-    /// the corresponding index in the sequence holds that value.
-    /// Otherwise, the value at that index is meaningless.
-    // #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<char> {
-        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+    /// If the permission's associated memory is initialized,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &str
+        recommends
+            self.is_init(),
+    {
+        self.opt_value().value()
     }
-
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
-    pub axiom fn is_nonnull(tracked &self)
-        ensures
-            self.ptr()@.addr != 0,
-    ;
-
-    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    pub axiom fn ptr_bounds(tracked &self)
-        ensures
-            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-            self.ptr()@.addr + self.value().len() * size_of::<u8>()
-                <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
-    ;
-
-    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
-    pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to:
-        &Self)
-        requires
-            start_index + len <= self.mem_contents_seq().len(),
-        ensures
-            sub_points_to.ptr() == ptr_mut_from_data::<str>(
-                PtrData {
-                    addr: (self.ptr()@.addr + start_index * size_of::<u8>()) as usize,
-                    provenance: self.ptr()@.provenance,
-                    metadata: len as usize,
-                },
-            ),
-            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
-                start_index as int,
-                start_index as int + len as int,
-            ),
-    ;
-
-    /// Guarantees that the memory ranges associated with two permissions will not overlap,
-    /// since you cannot have two permissions to the same memory.
-    ///
-    /// Note: If S is non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
-    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
-        ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
-    ;
 }
 
 impl<T> MemContents<T> {
@@ -1223,7 +1176,7 @@ impl<'a> SharedReference<'a, str> {
             pt.ptr() == self.ptr(),
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
-            pt.value() == self.value()@,
+            pt.value() == self.value(),
     ;
 }
 
