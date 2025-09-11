@@ -1020,32 +1020,20 @@ impl Visitor {
 // style = outer
 // Call vstd_kind() and check if it's spec/proof
         let mut stability_attrs = vec![];
-        // if !is_trait
-        //     && !self.inside_trait_impl 
-        //     && matches!(vstd_kind(), VstdKind::IsCore) 
-        //     // && !has_stability_attr(attrs)
-        //     && matches!(sig.mode, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)) 
-        // Find a way to skip it for trait impls
-        // if !self.inside_trait_impl 
-        //     && matches!(vstd_kind(), VstdKind::IsCore) 
-            // && !has_stability_attr(attrs)
-        // && !is_trait
-            // && matches!(
-            //     sig.mode,
-            //     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
-            // ) 
-        // {
-        if !is_trait && !self.inside_trait_impl && matches!(vstd_kind(), VstdKind::IsCore) && matches!(
-            sig.mode,
-            FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
-        ) {
-            let stability_tokens = "feature = \"needed for compilation\", since = \"1.88\"".parse().unwrap();
+
+        if !self.inside_trait_impl 
+            // && !is_trait
+            && matches!(vstd_kind(), VstdKind::IsCore) 
+            && !has_stability_attr(attrs)
+            // && matches!(sig.mode, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_))  
+        {
+            let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
             stability_attrs.push(mk_rust_attr(
                 sig.fn_token.span, 
                 "stable", 
                 stability_tokens
             ))
-            // #[stable(feature = "needed for compilation", since = "1.88.0")]
+            // #[stable(feature = "needed_for_compilation", since = "1.88.0")]
         }
 
         sig.publish = Publish::Default;
