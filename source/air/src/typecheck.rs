@@ -151,7 +151,7 @@ fn check_bv_unary_exprs(
                 Ok(Arc::new(TypX::BitVec(high + 1 - lo)))
             }
         }
-        UnaryOp::BitNot => {
+        UnaryOp::BitNot | UnaryOp::BitNeg => {
             let t0 = check_expr(typing, expr)?;
             match get_bv_width(&t0) {
                 Ok(_) => Ok(t0.clone()),
@@ -234,6 +234,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
         ExprX::Unary(UnaryOp::BitNot, e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitNeg, e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitNeg, "bvneg", &e1.clone())
         }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
