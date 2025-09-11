@@ -36,6 +36,13 @@ use vir_macros::ToDebugSNode;
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
 const RLIMIT_MULTIPLIER: u64 = 400_000;
 
+// Depth limit multiplier: max recursion depth as a multiplier of rlimit.
+//
+// This is set to be generous enough for legitimate use cases (like complex mathematical
+// computations) while still preventing stack overflow. Stack overflow typically occurs
+// around 50,000+ recursion levels, so this gives us good protection.
+const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
+
 type Env = ScopeMap<UniqueIdent, Exp>;
 type TypeEnv = ScopeMap<Ident, Typ>;
 
@@ -98,7 +105,7 @@ impl<T> PtrSet<T> {
 
 /// Mutable interpreter state
 struct State {
-    /// Depth of our current recursion; used for formatting log output
+    /// Depth of our current recursion; used for formatting log output and recursion control
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
@@ -163,6 +170,8 @@ struct Ctx<'a> {
     fun_ssts: &'a HashMap<Fun, FunctionSst>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
+    /// Maximum recursion depth to prevent stack overflow
+    max_depth: usize,
     arch: ArchWordBits,
     global: &'a GlobalCtx,
 }
@@ -1057,6 +1066,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.iterations > ctx.max_iterations {
         return Err(error(&exp.span, "assert_by_compute timed out"));
     }
+    if state.depth > ctx.max_depth {
+        return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
+    }
+
     state.log(format!(
         "{}Evaluating {:}",
         "\t".repeat(state.depth),
@@ -1880,7 +1893,9 @@ fn eval_expr_launch(
     };
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
+    // Calculate max recursion depth as a fraction of rlimit
+    let max_depth = (rlimit as f64 * DEPTH_LIMIT_MULTIPLIER as f64) as usize;
+    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, max_depth, arch, global };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
