@@ -736,7 +736,7 @@ macro_rules! imap_internal {
 #[macro_export]
 macro_rules! imap {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::map::imap_internal!($($tail)*))
+        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::map::imap_internal!($($tail)*))
     };
 }
 
