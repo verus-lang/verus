@@ -13,8 +13,8 @@ broadcast use super::super::group_vstd_default;
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
 struct MapCarrier<K, V> {
-    auth: Option<Option<Map<K, V>>>,
-    frac: Option<Map<K, V>>,
+    auth: Option<Option<IMap<K, V>>>,
+    frac: Option<IMap<K, V>>,
 }
 
 impl<K, V> PCM for MapCarrier<K, V> {
@@ -57,13 +57,12 @@ impl<K, V> PCM for MapCarrier<K, V> {
     }
 
     closed spec fn unit() -> Self {
-        MapCarrier { auth: None, frac: Some(Map::empty()) }
+        MapCarrier { auth: None, frac: Some(IMap::empty()) }
     }
 
     proof fn closed_under_incl(a: Self, b: Self) {
         broadcast use lemma_submap_of_trans;
         broadcast use lemma_op_frac_submap_of;
-
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -164,18 +163,18 @@ impl<K, V> GhostMapAuth<K, V> {
     spec fn inv(self) -> bool {
         &&& self.r.value().auth is Some
         &&& self.r.value().auth.unwrap() is Some
-        &&& self.r.value().frac == Some(Map::<K, V>::empty())
+        &&& self.r.value().frac == Some(IMap::<K, V>::empty())
     }
 
     pub closed spec fn id(self) -> Loc {
         self.r.loc()
     }
 
-    pub closed spec fn view(self) -> Map<K, V> {
+    pub closed spec fn view(self) -> IMap<K, V> {
         self.r.value().auth.unwrap().unwrap()
     }
 
-    pub open spec fn dom(self) -> Set<K> {
+    pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
 
@@ -187,7 +186,7 @@ impl<K, V> GhostMapAuth<K, V> {
     }
 
     pub proof fn dummy() -> (tracked result: GhostMapAuth<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(Map::empty());
+        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
         auth
     }
 
@@ -204,13 +203,13 @@ impl<K, V> GhostMapAuth<K, V> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == self.id(),
-            result@ == Map::<K, V>::empty(),
+            result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
         GhostSubmap::<K, V>::empty(self.id())
     }
 
-    pub proof fn insert(tracked &mut self, m: Map<K, V>) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn insert(tracked &mut self, m: IMap<K, V>) -> (tracked result: GhostSubmap<K, V>)
         requires
             old(self)@.dom().disjoint(m.dom()),
         ensures
@@ -236,7 +235,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
         let tracked r_upd = r.update(rr);
 
-        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(Map::empty()) };
+        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(IMap::empty()) };
 
         let frr = MapCarrier { auth: None, frac: r_upd.value().frac };
 
@@ -268,12 +267,12 @@ impl<K, V> GhostMapAuth<K, V> {
         let ra = r.value().auth.unwrap().unwrap();
         let ra_new = ra.remove_keys(f@.dom());
 
-        let rnew = MapCarrier { auth: Some(Some(ra_new)), frac: Some(Map::empty()) };
+        let rnew = MapCarrier { auth: Some(Some(ra_new)), frac: Some(IMap::empty()) };
 
         self.r = r.update(rnew);
     }
 
-    pub proof fn new(m: Map<K, V>) -> (tracked result: (GhostMapAuth<K, V>, GhostSubmap<K, V>))
+    pub proof fn new(m: IMap<K, V>) -> (tracked result: (GhostMapAuth<K, V>, GhostSubmap<K, V>))
         ensures
             result.0.id() == result.1.id(),
             result.0@ == m,
@@ -281,7 +280,7 @@ impl<K, V> GhostMapAuth<K, V> {
     {
         let tracked rr = Resource::alloc(MapCarrier { auth: Some(Some(m)), frac: Some(m) });
 
-        let arr = MapCarrier { auth: Some(Some(m)), frac: Some(Map::empty()) };
+        let arr = MapCarrier { auth: Some(Some(m)), frac: Some(IMap::empty()) };
 
         let frr = MapCarrier { auth: None, frac: Some(m) };
 
@@ -302,11 +301,11 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.loc()
     }
 
-    pub closed spec fn view(self) -> Map<K, V> {
+    pub closed spec fn view(self) -> IMap<K, V> {
         self.r.value().frac.unwrap()
     }
 
-    pub open spec fn dom(self) -> Set<K> {
+    pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
 
@@ -318,14 +317,14 @@ impl<K, V> GhostSubmap<K, V> {
     }
 
     pub proof fn dummy() -> (tracked result: GhostSubmap<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(Map::empty());
+        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
         submap
     }
 
     pub proof fn empty(id: int) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == id,
-            result@ == Map::<K, V>::empty(),
+            result@ == IMap::<K, V>::empty(),
     {
         let tracked r = Resource::create_unit(id);
         GhostSubmap { r }
@@ -388,7 +387,7 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.validate_2(&other.r);
     }
 
-    pub proof fn split(tracked &mut self, s: Set<K>) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostSubmap<K, V>)
         requires
             s <= old(self)@.dom(),
         ensures
@@ -413,7 +412,7 @@ impl<K, V> GhostSubmap<K, V> {
         GhostSubmap { r: r2 }
     }
 
-    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, m: Map<K, V>)
+    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, m: IMap<K, V>)
         requires
             m.dom() <= old(self)@.dom(),
             old(self).id() == old(auth).id(),
@@ -449,7 +448,7 @@ impl<K, V> GhostSubmap<K, V> {
 
         let tracked r_upd = r.update(rr);
 
-        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(Map::empty()) };
+        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(IMap::empty()) };
 
         let frr = MapCarrier { auth: None, frac: r_upd.value().frac };
 
