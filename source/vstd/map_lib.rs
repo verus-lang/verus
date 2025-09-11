@@ -566,7 +566,11 @@ pub broadcast group group_map_union {
 }
 
 /// submap_of (<=) is transitive.
-pub broadcast proof fn lemma_submap_of_trans<K, V, FINITE: Finiteness>(m1: GMap<K, V, FINITE>, m2: GMap<K, V, FINITE>, m3: GMap<K, V, FINITE>)
+pub broadcast proof fn lemma_submap_of_trans<K, V, FINITE: Finiteness>(
+    m1: GMap<K, V, FINITE>,
+    m2: GMap<K, V, FINITE>,
+    m3: GMap<K, V, FINITE>,
+)
     requires
         #[trigger] m1.submap_of(m2),
         #[trigger] m2.submap_of(m3),
