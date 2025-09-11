@@ -31,6 +31,7 @@ use std::iter::FromIterator;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 use vir_macros::ToDebugSNode;
 
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
@@ -42,6 +43,9 @@ const RLIMIT_MULTIPLIER: u64 = 400_000;
 // computations) while still preventing stack overflow. Stack overflow typically occurs
 // around 50,000+ recursion levels, so this gives us good protection.
 const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
+
+// Time-based warning interval in seconds
+const WARNING_INTERVAL_SECS: u64 = 2;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 type TypeEnv = ScopeMap<Ident, Typ>;
@@ -134,6 +138,10 @@ struct State {
     ptr_misses: u64,
     /// Number of calls for each function
     fun_calls: HashMap<Fun, u64>,
+
+    /// Time tracking for warnings
+    start_time: Instant,
+    last_warning_time: Instant,
 }
 
 // Define the function-call cache's API
@@ -141,6 +149,22 @@ impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp, memoize: bool) {
         if self.enable_cache && memoize {
             self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        }
+    }
+
+    /// Check time-based warnings and emit warning if enough time has passed.  Do so only in debug mode.
+    fn check_time_warning(&mut self) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_warning_time).as_secs() >= WARNING_INTERVAL_SECS {
+            let total_time = now.duration_since(self.start_time).as_secs();
+            eprintln!(
+                "note: assert_by_compute has been running for {} seconds (depth: {}, iterations: {})",
+                total_time, self.depth, self.iterations
+            );
+            self.last_warning_time = now;
         }
     }
 
@@ -1069,6 +1093,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.depth > ctx.max_depth {
         return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
     }
+    state.check_time_warning();
 
     state.log(format!(
         "{}Evaluating {:}",
@@ -1873,6 +1898,7 @@ fn eval_expr_launch(
     let cache = HashMap::new();
     let logging = log.is_some();
     let msgs = Vec::new();
+    let now = Instant::now();
     let mut state = State {
         depth: 0,
         env,
@@ -1890,6 +1916,8 @@ fn eval_expr_launch(
         ptr_hits: 0,
         ptr_misses: 0,
         fun_calls: HashMap::new(),
+        start_time: now,
+        last_warning_time: now,
     };
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
