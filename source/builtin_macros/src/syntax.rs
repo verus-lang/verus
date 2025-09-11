@@ -1034,7 +1034,11 @@ impl Visitor {
             //     sig.mode,
             //     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
             // ) 
-        {
+        // {
+        if !is_trait && !self.inside_trait_impl && matches!(vstd_kind(), VstdKind::IsCore) && matches!(
+            sig.mode,
+            FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
+        ) {
             let stability_tokens = "feature = \"needed for compilation\", since = \"1.88\"".parse().unwrap();
             stability_attrs.push(mk_rust_attr(
                 sig.fn_token.span, 
