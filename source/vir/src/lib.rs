@@ -77,3 +77,4 @@ pub mod user_defined_type_invariants;
 pub mod util;
 mod visitor;
 pub mod well_formed;
+mod patterns;

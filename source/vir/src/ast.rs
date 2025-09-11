@@ -632,7 +632,7 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
 pub enum ByRef {
     No,
     ImmutRef,

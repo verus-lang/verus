@@ -58,6 +58,7 @@ pub struct GlobalCtx {
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
+    pub new_mut_ref: bool,
 }
 
 // Context for verifying one function
@@ -271,6 +272,7 @@ impl GlobalCtx {
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
+        new_mut_ref: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -657,6 +659,7 @@ impl GlobalCtx {
             solver,
             check_api_safety,
             axiom_usage_info,
+            new_mut_ref,
         })
     }
 
@@ -686,6 +689,7 @@ impl GlobalCtx {
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
+            new_mut_ref: self.new_mut_ref,
         }
     }
 
