@@ -1793,6 +1793,21 @@ impl Visitor {
                     #vis fn #ident() { panic!() }
                 };
                 item_fn.attrs.extend(attrs.into_iter().cloned());
+
+                let mut stability_attrs = vec![];
+                let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
+                stability_attrs.push(mk_rust_attr(
+                    span, 
+                    "stable", 
+                    stability_tokens
+                ));
+                // item_fn.attrs.extend(vec![mk_rust_attr(
+                //     span, 
+                //     "stable", 
+                //     stability_tokens
+                // )]);
+                item_fn.attrs.extend(stability_attrs);
+
                 item_fn.to_token_stream()
             } else {
                 TokenStream::new()
@@ -1837,6 +1852,21 @@ impl Visitor {
                 #vis fn #ident() #block
             };
             item_fn.attrs.extend(attrs.into_iter().cloned());
+
+            let mut stability_attrs = vec![];
+            let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
+            stability_attrs.push(mk_rust_attr(
+                span, 
+                "stable", 
+                stability_tokens
+            ));
+            // item_fn.attrs.extend(vec![mk_rust_attr(
+            //     span, 
+            //     "stable", 
+            //     stability_tokens
+            // )]);
+            item_fn.attrs.extend(stability_attrs);
+
             if self.rustdoc {
                 crate::rustdoc::process_item_fn_broadcast_group(&mut item_fn);
             }
@@ -4056,6 +4086,20 @@ impl VisitMut for Visitor {
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
         item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+
+        let mut stability_attrs = vec![];
+        if matches!(vstd_kind(), VstdKind::IsCore) 
+            && !has_stability_attr(&item.attrs)
+        {
+            let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
+            stability_attrs.push(mk_rust_attr(
+                item.span(), 
+                "stable", 
+                stability_tokens
+            ))
+        }
+        item.attrs.extend(stability_attrs);
+        
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -4245,6 +4289,10 @@ impl VisitMut for Visitor {
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
         imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
+
+        let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
+        imp.attrs.push(mk_rust_attr(imp.span(), "stable", stability_tokens));
+
         self.filter_attrs(&mut imp.attrs);
         self.inside_trait_impl = imp.trait_.is_some();
         verus_syn::visit_mut::visit_item_impl_mut(self, imp);
@@ -4253,6 +4301,10 @@ impl VisitMut for Visitor {
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
         tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
+
+        let stability_tokens = "feature = \"needed_for_compilation\", since = \"1.88\"".parse().unwrap();
+        tr.attrs.push(mk_rust_attr(tr.span(), "stable", stability_tokens));
+
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         verus_syn::visit_mut::visit_item_trait_mut(self, tr);

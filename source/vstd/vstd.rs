@@ -23,64 +23,112 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod arithmetic;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod array;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod atomic;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod atomic_ghost;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod bits;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod bytes;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod calc_macro;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod cell;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod compute;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod float;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod hash_set;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod invariant;
 #[cfg(verus_keep_ghost)]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod laws_cmp;
 #[cfg(verus_keep_ghost)]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod laws_eq;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod layout;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod logatom;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod map;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod map_lib;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod math;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod modes;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod multiset;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod multiset_lib;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod pcm;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod pcm_lib;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod pervasive;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod proph;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod raw_ptr;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod primitive_int;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod endian;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod relations;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod rwlock;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod seq;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod seq_lib;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod set;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod set_lib;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod shared;
 #[cfg(feature = "alloc")]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod simple_pptr;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod slice;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod state_machine_internal;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod storage_protocol;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod string;
 #[cfg(feature = "std")]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod thread;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod tokens;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod view;
 
 #[cfg(verus_keep_ghost)]
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod std_specs;
 
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod prelude;
 
 use prelude::*;

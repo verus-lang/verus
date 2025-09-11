@@ -2,8 +2,11 @@ use super::multiset::*;
 use super::prelude::*;
 use core::marker::PhantomData;
 
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod frac;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod map;
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod seq;
 
 use verus as verus_;

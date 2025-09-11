@@ -218,6 +218,7 @@ spec fn surj_on<A, B>(f: spec_fn(A) -> B, s: Set<A>) -> bool {
     forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
+#[stable(feature = "needed_for_compilation", since = "1.88.0")]
 pub mod fold {
     //! This module defines a fold function for finite sets and proves a number of associated
     //! lemmas.
