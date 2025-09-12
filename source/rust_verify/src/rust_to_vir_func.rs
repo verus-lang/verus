@@ -1205,6 +1205,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     name: name.clone(),
                     mutable: true,
                     by_ref: vir::ast::ByRef::No,
+                    typ: typ.clone(),
                 }),
             );
             let new_init_expr =

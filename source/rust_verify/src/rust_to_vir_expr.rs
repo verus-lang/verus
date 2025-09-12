@@ -478,6 +478,12 @@ pub(crate) fn pattern_to_vir<'tcx>(
 ) -> Result<vir::ast::Pattern, VirErr> {
     // See rustc_mir_build/src/thir/pattern/mod.rs
 
+    let adjustments: &[PatAdjustment<'tcx>] =
+        bctx.types.pat_adjustments().get(pat.hir_id).map_or(&[], |v| &**v);
+    for adjust in adjustments.iter() {
+        dbg!(&adjust.source);
+    }
+
     let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
     {
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -525,7 +531,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
+    let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
@@ -538,7 +544,8 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 Mutability::Not => false,
                 Mutability::Mut => true,
             };
-            let by_ref = match by_ref {
+
+            let vir_by_ref = match by_ref {
                 ByRef::No => vir::ast::ByRef::No,
                 ByRef::Yes(Mutability::Mut) => {
                     if !bctx.ctxt.cmd_line_args.new_mut_ref {
@@ -549,15 +556,37 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 ByRef::Yes(Mutability::Not) => vir::ast::ByRef::ImmutRef,
             };
 
+            // For a PatKind::Binding node, the HIR node type is always the type of
+            // the bound variable.
+            // However, we want the pattern.typ to be the type that is being matched against,
+            // which is different if there's a nontrivial binding mode.
+            let var_typ = pat_typ.clone();
+            let actual_pat_typ = match by_ref {
+                ByRef::No => var_typ.clone(),
+                ByRef::Yes(Mutability::Mut) => {
+                    match &*var_typ {
+                        TypX::MutRef(t) => t.clone(),
+                        _ => crate::internal_err!(pat.span, "expected &mut type")
+                    }
+                }
+                ByRef::Yes(Mutability::Not) => {
+                    match &*var_typ {
+                        TypX::Decorate(TypDecoration::Ref, None, t) => t.clone(),
+                        _ => crate::internal_err!(pat.span, "expected & type")
+                    }
+                }
+            };
+            pat_typ = actual_pat_typ;
+
             // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
             // mutable reference (or if it contains a nested mutable reference),
             // even if the variable is not marked 'mut'.
-            // Conservatively mark all variables non-mutable for now
+            // Conservatively mark all variables mutable for now
             // TODO(new_mut_ref) be more precise about this.
             let mutable = mutable || bctx.ctxt.cmd_line_args.new_mut_ref;
 
             let name = local_to_var(x, canonical.local_id);
-            let binding = vir::ast::PatternBinding { name, mutable, by_ref };
+            let binding = vir::ast::PatternBinding { name, mutable, by_ref: vir_by_ref, typ: var_typ.clone() };
             match subpat {
                 None => PatternX::Var(binding),
                 Some(subpat) => {

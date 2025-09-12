@@ -2647,7 +2647,7 @@ fn stmt_to_stm(
             }
             let (name, mutable, typ) = match &pattern.x {
                 PatternX::Var(PatternBinding { name, mutable, by_ref: ByRef::No, typ }) => {
-                    (name, mutable,t yp)
+                    (name, mutable, typ)
                 }
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };

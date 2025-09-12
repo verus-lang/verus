@@ -700,16 +700,32 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn visit_pattern_binding(&mut self, pb: &PatternBinding) -> Result<R::Ret<PatternBinding>, Err> {
+        let PatternBinding { name, by_ref, typ, mutable } = pb;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| PatternBinding {
+            name: name.clone(),
+            by_ref: *by_ref,
+            typ: R::get(typ),
+            mutable: *mutable,
+        })
+    }
+
     fn visit_pattern_rec(&mut self, pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
         let typ = self.visit_typ(&pattern.typ)?;
         let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Var(_) => R::ret(|| pattern_new(pattern.x.clone())),
+            PatternX::Wildcard(_) => R::ret(|| pattern_new(pattern.x.clone())),
+            PatternX::Var(binding) => {
+                let binding = self.visit_pattern_binding(binding)?;
+                R::ret(|| pattern_new(PatternX::Var(R::get(binding))))
+            }
             PatternX::Binding { binding, sub_pat } => {
+                let binding = self.visit_pattern_binding(binding)?;
                 let sub_pat = self.visit_pattern(sub_pat)?;
                 R::ret(|| {
                     pattern_new(PatternX::Binding {
-                        binding: binding.clone(),
+                        binding: R::get(binding),
                         sub_pat: R::get(sub_pat),
                     })
                 })

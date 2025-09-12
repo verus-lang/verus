@@ -1812,7 +1812,7 @@ fn check_stmt(
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
-                (PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _ }), None) => {
+                (PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _ }), None) => {
                     typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));
                 }
                 _ => panic!("internal error: unexpected mode = None"),

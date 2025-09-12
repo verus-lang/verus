@@ -914,9 +914,9 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_scope_map, _stmt| Ok(()),
         &mut |_scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable, by_ref: _ })
+                PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ })
                 | PatternX::Binding {
-                    binding: PatternBinding { name, mutable, by_ref: _ },
+                    binding: PatternBinding { name, mutable, by_ref: _, typ },
                     sub_pat: _,
                 } => {
                     let spec = matches!(&modes[name], Mode::Spec);
@@ -926,7 +926,7 @@ pub fn expr_all_bound_vars_with_ownership(
                             out.push(BoundVar {
                                 name: name.clone(),
                                 mutable: *mutable,
-                                typ: pattern.typ.clone(),
+                                typ: typ.clone(),
                             });
                         }
                     }
@@ -956,9 +956,9 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable, by_ref: _ })
+            PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable, by_ref: _ },
+                binding: PatternBinding { name, mutable, by_ref: _, typ },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
@@ -966,7 +966,7 @@ pub fn pattern_all_bound_vars_with_ownership(
                     out.push(BoundVar {
                         name: name.clone(),
                         mutable: *mutable,
-                        typ: pattern.typ.clone(),
+                        typ: typ.clone(),
                     });
                 }
 
@@ -1036,9 +1036,9 @@ fn moves_and_muts_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref })
+            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref, typ: _ })
               | PatternX::Binding {
-                    binding: PatternBinding { name: _, mutable: _, by_ref },
+                    binding: PatternBinding { name: _, mutable: _, by_ref, typ: _ },
                     sub_pat: _,
                 }
             => {

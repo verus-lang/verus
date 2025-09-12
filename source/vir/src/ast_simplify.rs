@@ -265,6 +265,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 name: binding.name.clone(),
                 mutable: binding.mutable,
                 by_ref: ByRef::No,
+                typ: binding.typ.clone(),
             });
             let v_pattern = SpannedTyped::new(&pattern.span, &binding.typ, v_patternx);
             stmts.push(Spanned::new(
