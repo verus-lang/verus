@@ -2530,10 +2530,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     (fun, typ_args.clone())
                 }
                 // TypX::Datatype(Dt::Path(p), typ_args, _impl_paths)
-                //     if p == &vir::path!("vstd" => "raw_ptr", "SharedReference") => 
+                //     if p == &vir::path!("vstd" => "raw_ptr", "SharedReference") =>
                 // {
                 //     let fun = vir::fun!("vstd" => "raw_ptr", "Index", "index");
-                //     (fun, typ_args.clone())                    
+                //     (fun, typ_args.clone())
                 // }
                 TypX::Primitive(vir::ast::Primitive::Array, typ_args) => {
                     let fun = vir::fun!("vstd" => "array", "array_index_get");
