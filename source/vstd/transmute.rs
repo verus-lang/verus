@@ -89,12 +89,12 @@ proof fn u8_decode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
 
 }
 
-pub broadcast axiom fn u8_decode(b: [u8], bytes: Seq<AbstractByte>)
+pub broadcast axiom fn u8_decode(b: &[u8], bytes: Seq<AbstractByte>)
     ensures
-        #![trigger decode::<[u8]>(&b, bytes)]
-        #![trigger encode::<[u8]>(bytes, &b)]
-        decode::<[u8]>(&b, bytes) <==> encode::<[u8]>(bytes, &b),
-        decode::<[u8]>(&b, bytes) <==> u8_decode_eq(b@, bytes),
+        #![trigger decode::<[u8]>(b, bytes)]
+        #![trigger encode::<[u8]>(bytes, b)]
+        decode::<[u8]>(b, bytes) <==> encode::<[u8]>(bytes, b),
+        decode::<[u8]>(b, bytes) <==> u8_decode_eq(b@, bytes),
 ;
 
 } // verus!
