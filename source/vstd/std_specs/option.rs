@@ -13,7 +13,7 @@ pub trait OptionAdditionalFns<T>: Sized {
     // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Some(&self) -> bool;
-    
+
     #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
     // #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
