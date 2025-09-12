@@ -18,7 +18,6 @@
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 #![feature(slice_index_methods)]
-
 #![feature(unsized_fn_params)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -32,6 +31,7 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
+pub mod endian;
 pub mod float;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -54,10 +54,9 @@ pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
+pub mod primitive_int;
 pub mod proph;
 pub mod raw_ptr;
-pub mod primitive_int;
-pub mod endian;
 pub mod relations;
 pub mod rwlock;
 pub mod seq;

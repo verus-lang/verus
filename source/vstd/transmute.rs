@@ -65,8 +65,8 @@ impl PointsTo<str> {
 
 /* [u8] */
 
-pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool 
-    decreases bytes.len()
+pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
+    decreases bytes.len(),
     via u8_decode_decreases
 {
     if bytes.len() == 0 {
@@ -76,9 +76,9 @@ pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
             AbstractByte::Uninit => false,
             AbstractByte::Init(b, _) => {
                 &&& value.len() > 0
-                &&& b == value.first() 
+                &&& b == value.first()
                 &&& u8_decode_eq(value.drop_first(), bytes.drop_first())
-            }
+            },
         }
     }
 }
@@ -86,6 +86,7 @@ pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
 #[verifier::decreases_by]
 proof fn u8_decode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
     broadcast use axiom_seq_subrange_len::<AbstractByte>;
+
 }
 
 pub broadcast axiom fn u8_decode(b: [u8], bytes: Seq<AbstractByte>)
@@ -93,7 +94,7 @@ pub broadcast axiom fn u8_decode(b: [u8], bytes: Seq<AbstractByte>)
         #![trigger decode::<[u8]>(&b, bytes)]
         #![trigger encode::<[u8]>(bytes, &b)]
         decode::<[u8]>(&b, bytes) <==> encode::<[u8]>(bytes, &b),
-        decode::<[u8]>(&b, bytes) <==> u8_decode_eq(b@, bytes)
+        decode::<[u8]>(&b, bytes) <==> u8_decode_eq(b@, bytes),
 ;
 
 } // verus!
