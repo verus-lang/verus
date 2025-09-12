@@ -1,8 +1,11 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
+use rustc_attr_data_structures::AttributeKind;
+use rustc_hir::{Attribute, AttributeMap};
+use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode, ImplItemKind, MaybeOwner};
 use rustc_middle::ty::TyCtxt;
+use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
 struct DefaultCallbacks;
@@ -147,9 +150,25 @@ for all functions (it would only be needed for functions with tracked data in pr
 */
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
+    pub override_stability: bool,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if self.override_stability {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_attr_map = |tcx, owner_id| {
+                    let mut map =
+                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_attr_map)(tcx, owner_id);
+                    if needs_stable_attr(tcx, owner_id) && !has_stable_attr(&map, owner_id) {
+                        map = add_stable_attr(tcx, owner_id, map);
+                    }
+                    map
+                };
+            });
+        }
+    }
+
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -182,7 +201,10 @@ pub(crate) fn run_with_erase_macro_compile(
     compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
-    let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
+    let mut callbacks = CompilerCallbacksEraseMacro {
+        do_compile: compile,
+        override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
+    };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
         rustc_args.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
@@ -359,4 +381,88 @@ pub fn run(
     }
 
     (verifier, stats, Ok(()))
+}
+
+fn stable_attr(span: Span) -> Attribute {
+    use rustc_attr_data_structures::*;
+    Attribute::Parsed(AttributeKind::Stability {
+        stability: Stability {
+            level: StabilityLevel::Unstable {
+                reason: UnstableReason::Default,
+                issue: None,
+                is_soft: false,
+                implied_by: None,
+            },
+            feature: sym::rustc_private,
+        },
+        span,
+    })
+}
+
+fn has_stable_attr(attrmap: &AttributeMap, owner_id: OwnerId) -> bool {
+    let hir_id = HirId::from(owner_id);
+    match attrmap.map.get(&hir_id.local_id) {
+        None => false,
+        Some(attrs) => {
+            attrs.iter().any(|a| matches!(a, Attribute::Parsed(AttributeKind::Stability { .. })))
+        }
+    }
+}
+
+fn add_stable_attr<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owner_id: OwnerId,
+    attrmap: &'tcx AttributeMap,
+) -> &'tcx AttributeMap<'tcx> {
+    let hir_id = HirId::from(owner_id);
+
+    let mut m = AttributeMap {
+        map: attrmap.map.clone(),
+        define_opaque: attrmap.define_opaque.clone(),
+        opt_hash: attrmap.opt_hash.clone(),
+    };
+
+    let mut attrs = match m.map.get(&hir_id.local_id) {
+        None => vec![],
+        Some(attrs) => attrs.to_vec(),
+    };
+
+    let span = tcx.hir_span(hir_id);
+    attrs.push(stable_attr(span));
+
+    m.map.insert(hir_id.local_id, Box::leak(attrs.into_boxed_slice()));
+    Box::leak(Box::new(m))
+
+    /*
+    let max_id = 0;
+    for (id, _) in attrmap.map.iter() {
+        let max_id = std::cmp::max(max_id, id.as_u32());
+    }
+    let local_id = ItemLocalId::from_u32(max_id + 1);
+    let span = tcx.hir_span(owner_id.hir_id);
+    m.map.insert(local_id, stable_attr(span));
+    Box::leak(Box::new(m))
+    */
+}
+
+fn needs_stable_attr<'tcx>(tcx: TyCtxt<'tcx>, owner_id: OwnerId) -> bool {
+    let owner = tcx.hir_owner_node(owner_id);
+    match owner {
+        OwnerNode::Item(_item) => true,
+        OwnerNode::ForeignItem(_item) => false,
+        OwnerNode::TraitItem(_item) => true,
+        OwnerNode::ImplItem(_item) => {
+            let hir_id = HirId::from(owner_id);
+            let parent = tcx.hir_get_parent_item(hir_id);
+            match tcx.hir_owner_node(parent) {
+                OwnerNode::Item(item) => match &item.kind {
+                    ItemKind::Impl(impll) => !impll.of_trait.is_some(),
+                    _ => panic!("add_stable_attr"),
+                },
+                _ => panic!("add_stable_attr"),
+            }
+        }
+        OwnerNode::Crate(_item) => false,
+        OwnerNode::Synthetic => false,
+    }
 }
