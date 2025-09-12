@@ -683,16 +683,23 @@ fn tuple_get_field_expr(
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
-            PatternX::Var { .. } => Ok(vec![stmt.clone()]),
+            PatternX::Var { name: _, mutable: _ } => Ok(vec![stmt.clone()]),
             _ => {
                 let mut stmts: Vec<Stmt> = Vec::new();
                 pattern_to_decls_with_no_initializer(pattern, &mut stmts);
                 Ok(stmts)
             }
         },
-        StmtX::Decl { pattern, mode: _, init: Some(init), els }
-            if !matches!(pattern.x, PatternX::Var { .. }) =>
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_) } => Err(error(
+            &pattern.span,
+            "Verus Internal Error: Decl with else-block but no initializer",
+        )),
+        StmtX::Decl { pattern, mode: _, init: Some(_init), els: None }
+            if matches!(pattern.x, PatternX::Var { name: _, mutable: _ }) =>
         {
+            Ok(vec![stmt.clone()])
+        }
+        StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, &place_to_expr(init));
             decls.extend(temp_decl.into_iter());
@@ -709,7 +716,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
             decls.extend(decls2);
             Ok(decls)
         }
-        _ => Ok(vec![stmt.clone()]),
+        StmtX::Expr(_) => Ok(vec![stmt.clone()]),
     }
 }
 
