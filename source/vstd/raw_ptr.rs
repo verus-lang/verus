@@ -23,7 +23,7 @@ use super::prelude::*;
 use crate::vstd::endian::*;
 use crate::vstd::primitive_int::PrimitiveInt;
 use crate::vstd::seq::*;
-use crate::vstd::slice::spec_slice_len;
+use crate::vstd::slice::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
 
@@ -1274,7 +1274,6 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
-} // verus!
 #[verus_spec(v =>
     with
         Tracked(perm): Tracked<&'a PointsTo<T>>
@@ -1293,3 +1292,5 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
 pub fn ptr_ref_wrapper<'a, T>(ptr: *const T) -> &'a T {
     ptr_ref(ptr, Tracked::assume_new())
 }
+
+} // verus!
