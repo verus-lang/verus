@@ -2645,16 +2645,15 @@ fn stmt_to_stm(
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
-            let (name, mutable) = match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable, by_ref: ByRef::No }) => {
-                    (name, mutable)
+            let (name, mutable, typ) = match &pattern.x {
+                PatternX::Var(PatternBinding { name, mutable, by_ref: ByRef::No, typ }) => {
+                    (name, mutable,t yp)
                 }
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
 
             let rename = state.rename_var_maybe_exp(&name);
             let ident = rename.clone();
-            let typ = pattern.typ.clone();
             let decl = Arc::new(LocalDeclX {
                 ident,
                 typ: typ.clone(),

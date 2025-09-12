@@ -936,12 +936,12 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard(_) => {}
-        PatternX::Var(PatternBinding { name, mutable, by_ref: _ }) => {
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ }) => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
-        PatternX::Binding { binding: PatternBinding { name, mutable, by_ref: _ }, sub_pat } => {
+        PatternX::Binding { binding: PatternBinding { name, mutable, by_ref: _, typ }, sub_pat } => {
             insert_pattern_vars(map, sub_pat, init);
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
         PatternX::Constructor(_, _, binders) => {
             for binder in binders.iter() {

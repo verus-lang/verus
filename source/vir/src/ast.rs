@@ -642,8 +642,9 @@ pub enum ByRef {
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub struct PatternBinding {
     pub name: VarIdent,
-    pub mutable: bool,
     pub by_ref: ByRef,
+    pub typ: Typ,
+    pub mutable: bool,
 }
 
 /// Patterns for match expressions
@@ -654,8 +655,19 @@ pub enum PatternX {
     /// _
     /// True if this is implicitly added from a ..
     Wildcard(bool),
-    /// x or mut x
+    /// Be careful: when binding a variable, the *type of the variable* is found in the
+    /// PatternBinding struct. This can be different than the &pattern.typ which is the
+    /// *type of the value being matched against*.
+    ///
+    /// The specific relation depends on the ByRef:
+    ///
+    /// | ByRef    | pattern.typ | binding.typ |
+    /// |----------|-------------|-------------|
+    /// | No       | T           | T           |
+    /// | ImmutRef | T           | &T          |
+    /// | MutRef   | T           | &mut T      |
     Var(PatternBinding),
+    /// `x @ subpat`
     Binding {
         binding: PatternBinding,
         sub_pat: Pattern,

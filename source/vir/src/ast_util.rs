@@ -1359,7 +1359,7 @@ impl PatternX {
         SpannedTyped::new(
             span,
             typ,
-            PatternX::Var(PatternBinding { name: name.clone(), mutable, by_ref: ByRef::No }),
+            PatternX::Var(PatternBinding { name: name.clone(), mutable, by_ref: ByRef::No, typ: typ.clone() }),
         )
     }
 }
