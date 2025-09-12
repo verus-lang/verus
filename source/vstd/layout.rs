@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
-use super::prelude::*;
 use super::group_vstd_default;
+use super::prelude::*;
 
 verus! {
 
@@ -20,13 +20,11 @@ pub open spec fn is_power_2(n: int) -> bool
     }
 }
 
-pub open spec fn is_power_2_exists (m: int) -> bool 
-{
+pub open spec fn is_power_2_exists(m: int) -> bool {
     exists|i: nat| crate::vstd::arithmetic::power::pow(2, i) == m
 }
 
 // TODO: proof tying is_power_2 and is_power_2_exists together
-
 /// Matches the conditions here: <https://doc.rust-lang.org/stable/std/alloc/struct.Layout.html>
 pub open spec fn valid_layout(size: usize, align: usize) -> bool {
     is_power_2(align as int) && size <= isize::MAX as int - (isize::MAX as int % align as int)
@@ -135,7 +133,7 @@ pub broadcast axiom fn layout_of_primitives()
         size_of::<usize>() * 8 == usize::BITS,
 ;
 
-// The size is a multiple of alignment and alignment is always a power of 2 by 
+// The size is a multiple of alignment and alignment is always a power of 2 by
 // https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
 pub broadcast axiom fn align_properties<T>()
     ensures
@@ -146,17 +144,16 @@ pub broadcast axiom fn align_properties<T>()
 
 // The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
 pub broadcast proof fn align_nonzero<T>()
-    ensures 
+    ensures
         #![trigger align_of::<T>()]
         align_of::<T>() > 0,
 {
-    broadcast use 
-        crate::vstd::arithmetic::power::lemma_pow_positive, 
-        align_properties;
+    broadcast use crate::vstd::arithmetic::power::lemma_pow_positive, align_properties;
+
 }
 
 pub proof fn usize_size_pow2()
-    ensures 
+    ensures
         is_power_2(size_of::<usize>() as int),
 {
     broadcast use group_vstd_default;
