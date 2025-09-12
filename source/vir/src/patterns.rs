@@ -3,7 +3,6 @@ use crate::context::GlobalCtx;
 use crate::messages::{error};
 use std::sync::Arc;
 use crate::def::Spanned;
-use crate::sst_util::subst_typ_for_datatype;
 use crate::ast_util::{mk_eq, mk_ineq, conjoin};
 use crate::ast_util::bool_typ;
 
@@ -104,20 +103,6 @@ fn pattern_to_exprs_rec(
 
             let mut test = test_variant;
 
-            let (dt, typ_args) = match &*place.typ {
-                TypX::Datatype(dt, typ_args, _) => (dt, typ_args),
-                _ => {
-                    return Err(error(
-                        &pattern.span,
-                        "Verus internal error: pattern_to_exprs_rec failed to get Datatype type",
-                    ));
-                }
-            };
-            let datatype = match dt {
-                Dt::Path(p) => Some(&ctx.datatypes[p]),
-                Dt::Tuple(_) => None,
-            };
-
             for binder in patterns.iter() {
                 let field_opr = FieldOpr {
                     datatype: dt.clone(),
@@ -126,16 +111,8 @@ fn pattern_to_exprs_rec(
                     get_variant: false,
                     check: VariantCheck::None,
                 };
-                let field_typ = match datatype {
-                    Some((typ_positives, _variants)) => {
-                        subst_typ_for_datatype(&typ_positives, typ_args, &place.typ)
-                    }
-                    None => {
-                        let idx = binder.name.parse::<usize>().unwrap();
-                        typ_args[idx].clone()
-                    }
-                };
-                let field_place = SpannedTyped::new(&binder.a.span, &field_typ, PlaceX::Field(field_opr, place.clone()));
+                let field_typ = &binder.a.typ;
+                let field_place = SpannedTyped::new(&binder.a.span, field_typ, PlaceX::Field(field_opr, place.clone()));
                 let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
