@@ -473,6 +473,8 @@ fn add_pattern_rec(
     if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
         && !matches!(&pattern.x, PatternX::Wildcard(true))
         && !matches!(&pattern.x, PatternX::Expr(_))
+        && !matches!(&pattern.x, PatternX::ImmutRef(_))
+        && !matches!(&pattern.x, PatternX::MutRef(_))
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
@@ -572,6 +574,13 @@ fn add_pattern_rec(
                 check_expr_has_mode(ctxt, record, typing, mode, expr2, mode)?;
             }
             Ok(())
+        }
+        PatternX::ImmutRef(sub_pat) => {
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
+        }
+        PatternX::MutRef(sub_pat) => {
+            // TODO(new_mut_ref): disallow MutRef in spec code
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
     }
 }
@@ -1360,9 +1369,10 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::AssignToPlace { place, rhs, op: _ } => {
-            if outer_mode != Mode::Exec {
-                return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
-            }
+            // TODO(new_mut_ref): implement the correct mode-checking here
+            //if outer_mode != Mode::Exec {
+            //    return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
+            //}
             check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             check_expr_has_mode(ctxt, record, typing, Mode::Exec, rhs, Mode::Exec)?;
             Ok(Mode::Exec)

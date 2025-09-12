@@ -248,6 +248,12 @@ fn pattern_to_exprs_rec(
             }
             Ok(conjoin(&pattern.span, &v))
         }
+        PatternX::ImmutRef(p) => {
+            pattern_to_exprs_rec(ctx, state, expr, p, decls)
+        }
+        PatternX::MutRef(_p) => {
+            panic!("PatternX::MutRef not expected without `-V new-mut-ref`");
+        }
     }
 }
 
@@ -288,6 +294,9 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         }
         PatternX::Expr(_) => {}
         PatternX::Range(_, _) => {}
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
+            pattern_to_decls_with_no_initializer(p, stmts);
+        }
     }
 }
 
@@ -307,6 +316,7 @@ fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Or(_pat1, _pat2) => true,
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
     }
 }
 

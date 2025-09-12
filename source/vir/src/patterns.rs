@@ -1,12 +1,11 @@
 use crate::ast::*;
 use crate::context::GlobalCtx;
-use crate::messages::{Span, error};
+use crate::messages::{error};
 use std::sync::Arc;
 use crate::def::Spanned;
 use crate::sst_util::subst_typ_for_datatype;
 use crate::ast_util::{mk_eq, mk_ineq, conjoin};
 use crate::ast_util::bool_typ;
-use crate::resolution_inference::ProjectionTyped;
 
 pub fn pattern_to_exprs(
     ctx: &GlobalCtx,
@@ -16,7 +15,7 @@ pub fn pattern_to_exprs(
     decls: &mut Vec<Stmt>,
 ) -> Result<Expr, VirErr> {
     let mut pattern_bound_decls = vec![];
-    let e = pattern_to_exprs_rec(ctx, pattern, place, ByRef::No, &mut pattern_bound_decls)?;
+    let e = pattern_to_exprs_rec(ctx, pattern, place, &mut pattern_bound_decls)?;
 
     for pbd in pattern_bound_decls {
         if has_guard && pbd.mut_ref {
@@ -59,84 +58,13 @@ struct ComputedPatternBinding {
     place: Place,
 }
 
-fn computed(span: &Span, binding: &PatternBinding, place: &Place, ergo: ByRef) -> Result<ComputedPatternBinding, VirErr> {
+fn computed(binding: &PatternBinding, place: &Place) -> Result<ComputedPatternBinding, VirErr> {
     Ok(ComputedPatternBinding {
         name: binding.name.clone(),
         mutable: binding.mutable,
         place: place.clone(),
-        mut_ref: match ergo {
-            ByRef::No => {
-                matches!(binding.by_ref, ByRef::MutRef)
-            }
-            ByRef::ImmutRef => {
-                if matches!(binding.by_ref, ByRef::MutRef) {
-                    // e.g. if you try to match `&Option<u64>` against `Some(ref mut x)`
-                    // this ought to be caught by lifetime checking
-                    return Err(error(
-                        span,
-                        "cannot borrow this as mutable, as it is behind a `&` reference",
-                    ));
-                }
-                false
-            }
-            ByRef::MutRef => true,
-        }
+        mut_ref: matches!(binding.by_ref, ByRef::MutRef)
     })
-}
-
-// TODO(new_mut_ref): need to make sure there aren't any issues with the decorations being wrong
-fn handle_ergo(place: &Place, ergo: ByRef) -> (Place, ByRef) {
-    let mut place = place.clone();
-    let mut ergo = ergo.clone();
-    loop {
-        match &*place.typ {
-            TypX::Decorate(TypDecoration::Ref, None, t) => {
-                place = SpannedTyped::new(&place.span, t, place.x.clone());
-                ergo = ByRef::ImmutRef;
-            }
-            TypX::Decorate(TypDecoration::Box, None, t) => {
-                place = SpannedTyped::new(&place.span, t, place.x.clone());
-            }
-            TypX::MutRef(t) => {
-                place = SpannedTyped::new(&place.span, t, PlaceX::DerefMut(place.clone()));
-                ergo = match ergo {
-                    ByRef::No | ByRef::MutRef => ByRef::MutRef,
-                    ByRef::ImmutRef => ByRef::ImmutRef,
-                };
-            }
-            _ => {
-                return (place, ergo);
-            }
-        }
-    }
-}
-
-/// Similar to above, but operates on the slightly different types used by resolution_inference
-pub(crate) fn handle_ergo_res_inf(projs: &Vec<ProjectionTyped>, typ: &Typ, ergo: ByRef) -> (Vec<ProjectionTyped>, Typ, ByRef) {
-    assert!(ergo != ByRef::ImmutRef);
-    let mut projs = projs.clone();
-    let mut typ = typ.clone();
-    let mut ergo = ergo;
-    loop {
-        match &*typ {
-            TypX::Decorate(TypDecoration::Ref, None, _t) => {
-                ergo = ByRef::ImmutRef;
-                // this is enough, we stop at the first ImmutRef
-                return (projs, typ, ergo);
-            }
-            TypX::Decorate(TypDecoration::Box, None, t) => {
-                typ = t.clone();
-            }
-            TypX::MutRef(t) => {
-                projs.push(ProjectionTyped::DerefMut(t.clone()));
-                typ = t.clone();
-                ergo = ByRef::MutRef;
-            }
-            _ => {
-                return (projs, typ, ergo);
-            }
-        }
-    }
 }
 
 fn read_place(place: &Place) -> Expr {
@@ -148,7 +76,6 @@ fn pattern_to_exprs_rec(
     ctx: &GlobalCtx,
     pattern: &Pattern,
     place: &Place,
-    ergo: ByRef,
     bindings: &mut Vec<ComputedPatternBinding>,
 ) -> Result<Expr, VirErr> {
     let t_bool = Arc::new(TypX::Bool);
@@ -157,21 +84,19 @@ fn pattern_to_exprs_rec(
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Var(binding) => {
-            bindings.push(computed(&pattern.span, binding, place, ergo)?);
+            bindings.push(computed(binding, place)?);
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Binding { binding, sub_pat } => {
-            let pattern_test = pattern_to_exprs_rec(ctx, sub_pat, place, ergo, bindings)?;
+            let pattern_test = pattern_to_exprs_rec(ctx, sub_pat, place, bindings)?;
             // This binding needs to go last in case we have something like this:
             //   `ref mut x @ Some(y)`
             // (which is ok if the y is bound via copy)
             // In this case we need to read `y` before taking the mut ref
-            bindings.push(computed(&pattern.span, binding, place, ergo)?);
+            bindings.push(computed(binding, place)?);
             Ok(pattern_test)
         }
         PatternX::Constructor(dt, variant, patterns) => {
-            let (place, ergo) = handle_ergo(place, ergo);
-
             let expr = read_place(&place);
             let is_variant_opr =
                 UnaryOpr::IsVariant { datatype: dt.clone(), variant: variant.clone() };
@@ -211,7 +136,7 @@ fn pattern_to_exprs_rec(
                     }
                 };
                 let field_place = SpannedTyped::new(&binder.a.span, &field_typ, PlaceX::Field(field_opr, place.clone()));
-                let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, ergo, bindings)?;
+                let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
@@ -248,12 +173,10 @@ fn pattern_to_exprs_rec(
             */
         }
         PatternX::Expr(e) => {
-            // TODO(new_mut_ref) do we need to handle_ergo here?
             let expr = read_place(&place);
             Ok(mk_eq(&pattern.span, &expr, e))
         }
         PatternX::Range(lower, upper) => {
-            // TODO(new_mut_ref) do we need to handle_ergo here?
             let expr = read_place(&place);
             let mut v = vec![];
             if let Some(lower) = lower {
@@ -263,6 +186,17 @@ fn pattern_to_exprs_rec(
                 v.push(mk_ineq(&pattern.span, &expr, upper, *upper_ineq));
             }
             Ok(conjoin(&pattern.span, &v))
+        }
+        PatternX::ImmutRef(sub_pat) => {
+            pattern_to_exprs_rec(ctx, sub_pat, place, bindings)
+        }
+        PatternX::MutRef(sub_pat) => {
+            let deref_place = SpannedTyped::new(
+                &sub_pat.span,
+                &sub_pat.typ,
+                PlaceX::DerefMut(place.clone())
+            );
+            pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings)
         }
     }
 }

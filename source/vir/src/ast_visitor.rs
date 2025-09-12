@@ -737,6 +737,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 })?;
                 R::ret(|| pattern_new(PatternX::Range(R::get_opt(start), R::get_opt(end))))
             }
+            PatternX::ImmutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::ImmutRef(R::get(p))))
+            }
+            PatternX::MutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::MutRef(R::get(p))))
+            }
         }
     }
 
@@ -946,6 +954,9 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         }
         PatternX::Expr(_) => {}
         PatternX::Range(_, _) => {}
+        PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
+            insert_pattern_vars(map, pat1, init);
+        }
     }
 }
 

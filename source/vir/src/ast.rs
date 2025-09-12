@@ -674,6 +674,14 @@ pub enum PatternX {
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
+    /// References, which are often automatically inserted due to "match ergonomics".
+    /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern
+    /// `Some(x)`. In this case it gets elaborated to the VIR pattern:
+    /// `MutRef(Constructor("Some", Var("x")))`.
+    /// The variable "x" will have binding mode ByRef::Mut,
+    /// and ultimately x will have type `&mut T`.
+    MutRef(Pattern),
+    ImmutRef(Pattern),
 }
 
 /// Arms of match expressions

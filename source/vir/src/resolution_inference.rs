@@ -982,7 +982,7 @@ pub fn pattern_all_bound_vars_with_ownership(
                     pattern_all_bound_vars_rec(&binder.a, out, modes);
                 }
             }
-            PatternX::Or(pat1, _pat2) => {
+            PatternX::Or(pat1, _) | PatternX::ImmutRef(pat1) | PatternX::MutRef(pat1) => {
                 pattern_all_bound_vars_rec(&pat1, out, modes);
             }
             PatternX::Expr(_) => {}
@@ -1029,12 +1029,10 @@ fn moves_and_muts_for_pattern(
 ) -> Vec<(Vec<ProjectionTyped>, ByRef)> {
     fn moves_and_muts_for_pattern_rec(
         pattern: &Pattern,
-        projs: &Vec<ProjectionTyped>,
-        typ: &Typ,
+        projs: &mut Vec<ProjectionTyped>,
         out: &mut Vec<(Vec<ProjectionTyped>, ByRef)>,
         datatypes: &HashMap<Path, Datatype>,
         modes: &HashMap<VarIdent, Mode>,
-        ergo: ByRef,
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
@@ -1045,10 +1043,8 @@ fn moves_and_muts_for_pattern(
                 }
             => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
-                match by_ref {
-                    ByRef::No => { out.push((projs.clone(), ergo)); }
-                    ByRef::MutRef => { out.push((projs.clone(), ByRef::MutRef)); }
-                    ByRef::ImmutRef => { }
+                if *by_ref != ByRef::ImmutRef {
+                    out.push((projs.clone(), *by_ref));
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
@@ -1061,32 +1057,8 @@ fn moves_and_muts_for_pattern(
                 };
 
                 if is_irrefutable {
-                    let (mut projs, typ, ergo) = crate::patterns::handle_ergo_res_inf(projs, typ, ergo);
-                    if ergo == ByRef::ImmutRef {
-                        return;
-                    }
-
-                    let (dt, typ_args) = match &*typ {
-                        TypX::Datatype(dt, typ_args, _) => (dt, typ_args),
-                        _ => {
-                            panic!("Verus internal error: pattern_to_exprs_rec failed to get Datatype type");
-                        }
-                    };
-                    let datatype = match dt {
-                        Dt::Path(p) => Some(&datatypes[p]),
-                        Dt::Tuple(_) => None,
-                    };
-
                     for binder in patterns.iter() {
-                        let field_typ = match datatype {
-                            Some(datatype) => {
-                                subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &typ)
-                            }
-                            None => {
-                                let idx = binder.name.parse::<usize>().unwrap();
-                                typ_args[idx].clone()
-                            }
-                        };
+                        let field_typ = binder.a.typ.clone();
                         let proj = ProjectionTyped::StructField(
                             FieldOpr {
                                 datatype: dt.clone(),
@@ -1099,13 +1071,13 @@ fn moves_and_muts_for_pattern(
                         );
 
                         projs.push(proj);
-                        moves_and_muts_for_pattern_rec(&binder.a, &projs, &typ, out, datatypes, modes, ergo);
+                        moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
                         projs.pop();
                     }
                 } else {
                     // TODO(new_mut_ref) this is not quite right, need to check if anything
                     // is actually bound in here, irrefutability issues etc.
-                    out.push((projs.clone(), ergo));
+                    out.push((projs.clone(), ByRef::No));
                 }
             }
             PatternX::Or(_, _) => {
@@ -1113,11 +1085,21 @@ fn moves_and_muts_for_pattern(
                 todo!()
             }
             PatternX::Expr(..) | PatternX::Range(..) => {}
+            PatternX::ImmutRef(_) => {
+                // can skip this, nothing can be moved or mutated from behind an immutable ref
+            }
+            PatternX::MutRef(sub_pat) => {
+                let proj = ProjectionTyped::DerefMut(sub_pat.typ.clone());
+
+                projs.push(proj);
+                moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes);
+                projs.pop();
+            }
         }
     }
 
     let mut out = vec![];
-    moves_and_muts_for_pattern_rec(pattern, &vec![], typ, &mut out, datatypes, modes, ByRef::No);
+    moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes);
     out
 }
 
@@ -1149,10 +1131,6 @@ impl<'a> LocalCollection<'a> {
             self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
         }
         let idx = self.ident_to_idx[&p.local];
-
-        dbg!(&p.local);
-        dbg!(&self.locals[idx].tree);
-        dbg!(&p.projections);
 
         let projections =
             Self::extend_tree(&mut self.locals[idx].tree, &p.projections, &self.datatypes);
