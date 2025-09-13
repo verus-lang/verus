@@ -32,7 +32,6 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use vir::ast::{
     ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun,
     CallTarget, ChainedOp, ComputeMode, Constant, Dt, ExprX, FieldOpr, FunX, HeaderExpr,
@@ -492,6 +491,39 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
                 mk_expr(ExprX::Header(header))
             }
+            SpecItem::InvMaskNone => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpens(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Default::default(),
+                )))
+            }
+            SpecItem::InvMaskAny => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensExcept(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Default::default(),
+                )))
+            }
+            SpecItem::InvMaskList => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let subargs = extract_array(args[0]);
+                let vir_args = vec_map_result(&subargs, |arg| {
+                    expr_to_vir_consume(&bctx, arg, ExprModifier::REGULAR)
+                })?;
+
+                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpens(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Arc::new(vir_args),
+                )))
+            }
+            SpecItem::InvMaskSet => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let set = expr_to_vir_consume(&bctx, args[0], ExprModifier::REGULAR)?;
+                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensSet(set)))
+            }
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
@@ -656,15 +688,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     return malformed_err(expr);
                 };
 
-                static COUNTER: AtomicU64 = AtomicU64::new(1000);
-                let temp_id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                let pred_var = VarIdent(
-                    Arc::new("au_pred".to_string()),
-                    vir::ast::VarIdentDisambiguate::VirTemp(temp_id),
-                );
-
                 let fun_args = expr_to_vir_consume(&bctx, fun_args, outer_modifier)?;
-                let decl_init_expr = bctx.spanned_typed_new(
+                let pred_init = bctx.spanned_typed_new(
                     expr.span,
                     pred_typ,
                     ExprX::Ctor(
@@ -678,27 +703,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ),
                 );
 
-                let decl_pred = vir::ast::StmtX::Decl {
-                    pattern: bctx.spanned_typed_new(
-                        expr.span,
-                        &pred_typ,
-                        vir::ast::PatternX::Var { name: pred_var.clone(), mutable: false },
-                    ),
-                    mode: Some(Mode::Spec),
-                    init: Some(bctx.spanned_typed_new(
-                        expr.span,
-                        &pred_typ,
-                        vir::ast::PlaceX::Temporary(decl_init_expr),
-                    )),
-                    els: None,
-                };
-
                 let info = Arc::new(AtomicCallInfoX {
                     au_typ: au_typ.clone(),
                     x_typ: x_typ.clone(),
                     y_typ: y_typ.clone(),
                     pred_typ: pred_typ.clone(),
-                    pred_var: pred_var.clone(),
                 });
 
                 let (tx, rx) = std::sync::mpsc::channel();
@@ -711,19 +720,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let atomically = Some(actx.clone());
                 let bctx_inner = BodyCtxt { atomically, ..bctx.clone() };
                 let value = expr_to_vir_consume(&bctx_inner, value_expr, outer_modifier)?;
-                let block = bctx.spanned_typed_new(
-                    expr.span,
-                    &value.typ,
-                    ExprX::Block(
-                        Arc::new(vec![bctx.spanned_new(expr.span, decl_pred)]),
-                        Some(value.clone()),
-                    ),
-                );
 
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
                     0 => err_span(arg.span, "function must be called in `atomically` block"),
-                    1 => mk_expr(ExprX::Atomically(info, block)),
+                    1 => mk_expr(ExprX::Atomically(info, pred_init, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,
                         note: "function must be called exactly once in `atomically` block".into(),

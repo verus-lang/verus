@@ -587,6 +587,9 @@ pub trait Fold {
     fn fold_index(&mut self, i: crate::Index) -> crate::Index {
         fold_index(self, i)
     }
+    fn fold_inner_mask(&mut self, i: crate::InnerMask) -> crate::InnerMask {
+        fold_inner_mask(self, i)
+    }
     fn fold_invariant(&mut self, i: crate::Invariant) -> crate::Invariant {
         fold_invariant(self, i)
     }
@@ -861,6 +864,9 @@ pub trait Fold {
     ) -> crate::OpenRestricted {
         fold_open_restricted(self, i)
     }
+    fn fold_outer_mask(&mut self, i: crate::OuterMask) -> crate::OuterMask {
+        fold_outer_mask(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn fold_parenthesized_generic_arguments(
@@ -947,6 +953,9 @@ pub trait Fold {
     fn fold_path_segment(&mut self, i: crate::PathSegment) -> crate::PathSegment {
         fold_path_segment(self, i)
     }
+    fn fold_perm_clause(&mut self, i: crate::PermClause) -> crate::PermClause {
+        fold_perm_clause(self, i)
+    }
     fn fold_perm_tuple(&mut self, i: crate::PermTuple) -> crate::PermTuple {
         fold_perm_tuple(self, i)
     }
@@ -971,6 +980,12 @@ pub trait Fold {
         i: crate::PreciseCapture,
     ) -> crate::PreciseCapture {
         fold_precise_capture(self, i)
+    }
+    fn fold_pred_type_clause(
+        &mut self,
+        i: crate::PredTypeClause,
+    ) -> crate::PredTypeClause {
+        fold_pred_type_clause(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1451,14 +1466,13 @@ where
         paren_token: node.paren_token,
         atomic_update: f.fold_ident(node.atomic_update),
         block_token: node.block_token,
-        pred_type: (node.pred_type).map(|it| ((it).0, f.fold_ident((it).1), (it).2)),
-        old_perms: f.fold_perm_tuple(node.old_perms),
-        arrow_token: node.arrow_token,
-        new_perms: f.fold_perm_tuple(node.new_perms),
-        comma1_token: node.comma1_token,
+        type_clause: (node.type_clause).map(|it| f.fold_pred_type_clause(it)),
+        perm_clause: f.fold_perm_clause(node.perm_clause),
         requires: f.fold_requires(node.requires),
         ensures: f.fold_ensures(node.ensures),
-        comma2_token: node.comma2_token,
+        outer_mask: (node.outer_mask).map(|it| f.fold_outer_mask(it)),
+        inner_mask: (node.inner_mask).map(|it| f.fold_inner_mask(it)),
+        comma_token: node.comma_token,
     }
 }
 pub fn fold_atomically_block<F>(
@@ -3103,6 +3117,16 @@ where
         span: f.fold_span(node.span),
     }
 }
+pub fn fold_inner_mask<F>(f: &mut F, node: crate::InnerMask) -> crate::InnerMask
+where
+    F: Fold + ?Sized,
+{
+    crate::InnerMask {
+        token: node.token,
+        set: f.fold_invariant_name_set(node.set),
+        comma_token: node.comma_token,
+    }
+}
 pub fn fold_invariant<F>(f: &mut F, node: crate::Invariant) -> crate::Invariant
 where
     F: Fold + ?Sized,
@@ -3927,6 +3951,16 @@ where
         path: Box::new(f.fold_path(*node.path)),
     }
 }
+pub fn fold_outer_mask<F>(f: &mut F, node: crate::OuterMask) -> crate::OuterMask
+where
+    F: Fold + ?Sized,
+{
+    crate::OuterMask {
+        token: node.token,
+        set: f.fold_invariant_name_set(node.set),
+        comma_token: node.comma_token,
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn fold_parenthesized_generic_arguments<F>(
@@ -4161,6 +4195,17 @@ where
         arguments: f.fold_path_arguments(node.arguments),
     }
 }
+pub fn fold_perm_clause<F>(f: &mut F, node: crate::PermClause) -> crate::PermClause
+where
+    F: Fold + ?Sized,
+{
+    crate::PermClause {
+        old_perms: f.fold_perm_tuple(node.old_perms),
+        arrow_token: node.arrow_token,
+        new_perms: f.fold_perm_tuple(node.new_perms),
+        comma_token: node.comma_token,
+    }
+}
 pub fn fold_perm_tuple<F>(f: &mut F, node: crate::PermTuple) -> crate::PermTuple
 where
     F: Fold + ?Sized,
@@ -4215,6 +4260,19 @@ where
         lt_token: node.lt_token,
         params: crate::punctuated::fold(node.params, f, F::fold_captured_param),
         gt_token: node.gt_token,
+    }
+}
+pub fn fold_pred_type_clause<F>(
+    f: &mut F,
+    node: crate::PredTypeClause,
+) -> crate::PredTypeClause
+where
+    F: Fold + ?Sized,
+{
+    crate::PredTypeClause {
+        type_token: node.type_token,
+        ident: f.fold_ident(node.ident),
+        comma_token: node.comma_token,
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

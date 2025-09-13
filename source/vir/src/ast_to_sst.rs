@@ -82,6 +82,8 @@ pub(crate) struct State<'a> {
     loop_id_counter: u64,
 
     pub mask: Option<MaskSet>,
+
+    pub au_pred_var: Option<crate::sst::Exp>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +153,7 @@ impl<'a> State<'a> {
             loop_id_counter: 0,
 
             mask: None,
+            au_pred_var: None,
         }
     }
 
@@ -2280,8 +2283,10 @@ pub(crate) fn expr_to_stm_opt(
                 state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::Nondeterministic);
             stms.push(assume_has_typ(&x_temp_var_id, x_typ, &expr.span));
 
+            // generate assumption
+
             let call_req = ExpX::Call(
-                fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::req"),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
                 typ_args.clone(),
                 Arc::new(vec![au_temp_var_exp.clone(), x_temp_var_exp.clone()]),
             );
@@ -2296,52 +2301,137 @@ pub(crate) fn expr_to_stm_opt(
             }));
             stms.push(init_var(&expr.span, &x_var_id, &x_temp_var_exp));
 
+            // check invariant mask
+
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let call_inner_mask = ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
+                typ_args.clone(),
+                Arc::new(vec![au_temp_var_exp.clone()]),
+            );
+
+            let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
+            let inner_mask = MaskSet::arbitrary(&inner_mask_exp);
+
+            if !state.checking_recommends(ctx) {
+                let state_mask = state.mask.as_ref().unwrap();
+                for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            // generate body
+
             state.push_scope();
-            //std::mem::swap(&mut state.mask, &mut inner_mask);
+            let backup_mask = std::mem::replace(&mut state.mask, Some(inner_mask));
+
             let (body_stms, body_exp) = expr_to_stm_opt(ctx, state, body)?;
-            let body_exp = unwrap_or_return_never!(body_exp, body_stms);
-            //std::mem::swap(&mut state.mask, &mut inner_mask);
+            stms.extend(body_stms);
+
+            state.mask = backup_mask;
             state.pop_scope();
 
-            stms.extend(body_stms);
+            let body_exp = unwrap_or_return_never!(body_exp, stms);
+
+            // generate assertion
 
             let (y_var_id, y_var_exp) = state.declare_temp_assign(&expr.span, au_typ);
             stms.push(init_var(&expr.span, &y_var_id, &body_exp));
 
             let call_ens = ExpX::Call(
-                fn_from_path(ctx, "#vstd::atomic::AtomicUpdate::ens"),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
                 typ_args.clone(),
                 Arc::new(vec![au_temp_var_exp, x_temp_var_exp, y_var_exp]),
             );
+
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
             let error = error(&expr.span, "cannot show atomic postcondition hold at end of block");
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone()),
-            ));
+
+            if !state.checking_recommends(ctx) {
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone()),
+                ));
+            }
 
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
-        ExprX::Atomically(info, expr) => {
-            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::Atomically(info, pred_expr, body_expr) => {
+            let AtomicCallInfoX { au_typ, x_typ, y_typ, pred_typ } = info.as_ref();
+
+            let (mut stms, pred_raw_exp) = expr_to_stm_opt(ctx, state, pred_expr)?;
+            let pred_raw_exp = unwrap_or_return_never!(pred_raw_exp, stms);
+            let pred_var_exp = state.make_tmp_var_for_exp(&mut stms, pred_raw_exp);
+            state.au_pred_var = Some(pred_var_exp.clone());
+
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let call_outer_mask = ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::outer_mask"),
+                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
+                Arc::new(vec![pred_var_exp.clone()]),
+            );
+
+            let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
+            let outer_mask = MaskSet::arbitrary(&outer_mask_exp);
+
+            if !state.checking_recommends(ctx) {
+                let state_mask = state.mask.as_ref().unwrap();
+                for assertion in outer_mask.subset_of(ctx, state_mask, &expr.span) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            let backup_mask = std::mem::replace(&mut state.mask, Some(outer_mask));
+            let (body_stms, exp) = expr_to_stm_opt(ctx, state, body_expr)?;
+            stms.extend(body_stms);
+            state.mask = backup_mask;
 
             let value = exp.expect_value();
             let TypX::Datatype(Dt::Tuple(0), ..) = value.typ.as_ref() else {
-                panic!("malformed atomic function call, body does not return unit")
+                panic!("malformed atomic function call, body does not return unit");
             };
 
-            // The atomic update created here is passed straight into a function call
-            // and that function is verified separately only using its specification,
-            // so this value is effectively never used only serves to make sure the
-            // generates VIR-SST program is wellformed
+            let (au_var_id, au_var_exp) =
+                state.declare_temp_var_stm(&expr.span, au_typ, LocalDeclKind::Nondeterministic);
+            stms.push(assume_has_typ(&au_var_id, au_typ, &expr.span));
 
-            let (au_var_id, au_var_exp) = state.declare_temp_var_stm(
+            let call_au_pred = SpannedTyped::new(
                 &expr.span,
-                &info.au_typ,
-                LocalDeclKind::Nondeterministic,
+                pred_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
+                    Arc::new(vec![x_typ.clone(), y_typ.clone(), pred_typ.clone()]),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
             );
 
-            stms.push(assume_has_typ(&au_var_id, &info.au_typ, &expr.span));
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(SpannedTyped::new(
+                    &expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_au_pred, pred_var_exp),
+                )),
+            ));
+
             Ok((stms, ReturnValue::Some(au_var_exp)))
         }
         ExprX::Update(info, x_expr) => {
@@ -2352,7 +2442,10 @@ pub(crate) fn expr_to_stm_opt(
             // assume(pred.ens(x, y))
             //
             // y
-            let AtomicCallInfoX { x_typ, y_typ, pred_typ, pred_var, .. } = info.as_ref();
+
+            let AtomicCallInfoX { x_typ, y_typ, pred_typ, .. } = info.as_ref();
+            let pred_var_exp = state.au_pred_var.as_ref().unwrap().clone();
+            //let pred_var_exp = mk_exp(ExpX::Var(pred_var_id));
 
             let (mut stms, x_raw_exp) = expr_to_stm_opt(ctx, state, x_expr)?;
             let x_raw_exp = unwrap_or_return_never!(x_raw_exp, stms);
@@ -2363,24 +2456,61 @@ pub(crate) fn expr_to_stm_opt(
                 state.declare_temp_var_stm(&expr.span, y_typ, LocalDeclKind::Nondeterministic);
             stms.push(assume_has_typ(&y_var_id, y_typ, &expr.span));
 
-            let pred_var_id = state.get_var_unique_id(pred_var);
-            let pred_var_exp = mk_exp(ExpX::Var(pred_var_id));
+            // check invariant mask
+
+            let int_typ = Arc::new(TypX::Int(IntRange::Int));
+            let int_set_typ = Arc::new(TypX::Datatype(
+                Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
+                Arc::new(vec![int_typ]),
+                Default::default(),
+            ));
+
+            let call_inner_mask = ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::inner_mask"),
+                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
+                Arc::new(vec![pred_var_exp.clone()]),
+            );
+
+            let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
+            let inner_mask = MaskSet::arbitrary(&inner_mask_exp);
+
+            if !state.checking_recommends(ctx) {
+                let state_mask = state.mask.as_ref().unwrap();
+                for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            // generate assertion
 
             let call_req = ExpX::Call(
-                fn_from_path(ctx, "#vstd::atomic::UpdatePredicate::req"),
+                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::req"),
                 Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
                 Arc::new(vec![pred_var_exp.clone(), x_var_exp.clone()]),
             );
+
             let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
-            let error =
-                error(&expr.span, "cannot show atomic precondition holds before update function");
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Assert(state.next_assert_id(), Some(error), call_req),
-            ));
+            if !state.checking_recommends(ctx) {
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(
+                        state.next_assert_id(),
+                        Some(error(
+                            &expr.span,
+                            "cannot show atomic precondition holds before update function",
+                        )),
+                        call_req,
+                    ),
+                ));
+            }
+
+            // generate assumption
 
             let call_ens = ExpX::Call(
-                fn_from_path(ctx, "#vstd::atomic::UpdatePredicate::ens"),
+                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::ens"),
                 Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
                 Arc::new(vec![pred_var_exp, x_var_exp, y_var_exp.clone()]),
             );
@@ -2388,6 +2518,32 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
 
             Ok((stms, ReturnValue::Some(y_var_exp)))
+        }
+        ExprX::InvMask(mask_spec) => {
+            let (span, exprs, compl) = match mask_spec {
+                MaskSpec::InvariantOpens(span, exprs) => (span, exprs, false),
+                MaskSpec::InvariantOpensExcept(span, exprs) => (span, exprs, true),
+                MaskSpec::InvariantOpensSet(expr) => return expr_to_stm_opt(ctx, state, expr),
+            };
+
+            let mut exps = Vec::new();
+            let mut stms = Vec::new();
+
+            for expr in exprs.as_ref() {
+                let (exp_stms, ret_val) = expr_to_stm_opt(ctx, state, expr)?;
+                stms.extend(exp_stms);
+
+                let exp = unwrap_or_return_never!(ret_val, stms);
+                exps.push(exp);
+            }
+
+            let mask = match compl {
+                false => MaskSet::from_list(&exps, span),
+                true => MaskSet::from_list_complement(&exps, span),
+            };
+
+            let exp = mask.to_exp(ctx);
+            Ok((stms, ReturnValue::Some(exp)))
         }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
@@ -2851,32 +3007,6 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
         CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
-}
-
-fn fn_from_path(ctx: &Ctx, path: impl AsRef<str>) -> CallFun {
-    let path = path.as_ref();
-    let mut iter = path.split("::").map(|s| s.trim()).peekable();
-
-    let krate = match iter.peek() {
-        Some(&"#vstd") => {
-            let _ = iter.next();
-            Some(ctx.global.vstd_crate_name.clone())
-        }
-
-        Some(&"#crate") => {
-            let _ = iter.next();
-            Some(ctx.global.crate_name.clone())
-        }
-
-        _ => None,
-    };
-
-    let segments = Arc::new(iter.map(|s| Arc::new(s.to_string())).collect());
-
-    CallFun::Fun(
-        Arc::new(crate::ast::FunX { path: Arc::new(crate::ast::PathX { krate, segments }) }),
-        None,
-    )
 }
 
 pub fn assert_assume_satisfies_user_defined_type_invariant(

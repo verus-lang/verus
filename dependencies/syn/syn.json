@@ -1,5 +1,5 @@
 {
-  "version": "2.0.96+verus",
+  "version": "0.0.0-2025-08-12-1837",
   "types": [
     {
       "ident": "Abi",
@@ -380,34 +380,13 @@
         "block_token": {
           "group": "Brace"
         },
-        "pred_type": {
+        "type_clause": {
           "option": {
-            "tuple": [
-              {
-                "token": "Type"
-              },
-              {
-                "proc_macro2": "Ident"
-              },
-              {
-                "token": "Comma"
-              }
-            ]
+            "syn": "PredTypeClause"
           }
         },
-        "old_perms": {
-          "syn": "PermTuple"
-        },
-        "arrow_token": {
-          "token": "RArrow"
-        },
-        "new_perms": {
-          "syn": "PermTuple"
-        },
-        "comma1_token": {
-          "option": {
-            "token": "Comma"
-          }
+        "perm_clause": {
+          "syn": "PermClause"
         },
         "requires": {
           "syn": "Requires"
@@ -415,7 +394,17 @@
         "ensures": {
           "syn": "Ensures"
         },
-        "comma2_token": {
+        "outer_mask": {
+          "option": {
+            "syn": "OuterMask"
+          }
+        },
+        "inner_mask": {
+          "option": {
+            "syn": "InnerMask"
+          }
+        },
+        "comma_token": {
           "option": {
             "token": "Comma"
           }
@@ -3761,6 +3750,25 @@
       }
     },
     {
+      "ident": "InnerMask",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InnerMask"
+        },
+        "set": {
+          "syn": "InvariantNameSet"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "Invariant",
       "features": {
         "any": []
@@ -5296,6 +5304,25 @@
       }
     },
     {
+      "ident": "OuterMask",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "OuterMask"
+        },
+        "set": {
+          "syn": "InvariantNameSet"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "ParenthesizedGenericArguments",
       "features": {
         "any": [
@@ -5790,6 +5817,28 @@
       }
     },
     {
+      "ident": "PermClause",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "old_perms": {
+          "syn": "PermTuple"
+        },
+        "arrow_token": {
+          "token": "RArrow"
+        },
+        "new_perms": {
+          "syn": "PermTuple"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "PermTuple",
       "features": {
         "any": []
@@ -5869,6 +5918,23 @@
         },
         "gt_token": {
           "token": "Gt"
+        }
+      }
+    },
+    {
+      "ident": "PredTypeClause",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "type_token": {
+          "token": "Type"
+        },
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "comma_token": {
+          "token": "Comma"
         }
       }
     },
@@ -7844,6 +7910,7 @@
     "Implies": "implies",
     "Imply": "==>",
     "In": "in",
+    "InnerMask": "inner_mask",
     "InvAny": "any",
     "InvNone": "none",
     "Invariant": "invariant",
@@ -7874,6 +7941,7 @@
     "Or": "|",
     "OrEq": "|=",
     "OrOr": "||",
+    "OuterMask": "outer_mask",
     "Override": "override",
     "PathSep": "::",
     "Percent": "%",

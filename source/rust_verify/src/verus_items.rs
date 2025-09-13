@@ -106,6 +106,10 @@ pub(crate) enum SpecItem {
     OpensInvariants,
     OpensInvariantsExcept,
     OpensInvariantsSet,
+    InvMaskNone,
+    InvMaskAny,
+    InvMaskList,
+    InvMaskSet,
     Atomically,
     NoUnwind,
     NoUnwindWhen,
@@ -294,6 +298,8 @@ pub(crate) enum AtomicUpdateItem {
     AtomicUpdateReq,
     AtomicUpdateEns,
     AtomicUpdatePred,
+    AtomicUpdateOuterMask,
+    AtomicUpdateInnerMask,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -424,11 +430,17 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
         ("verus::verus_builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
         ("verus::verus_builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
+
         ("verus::verus_builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
         ("verus::verus_builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
         ("verus::verus_builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::verus_builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
         ("verus::verus_builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
+
+        ("verus::verus_builtin::inv_mask_none",           VerusItem::Spec(SpecItem::InvMaskNone)),
+        ("verus::verus_builtin::inv_mask_any",            VerusItem::Spec(SpecItem::InvMaskAny)),
+        ("verus::verus_builtin::inv_mask_list",           VerusItem::Spec(SpecItem::InvMaskList)),
+        ("verus::verus_builtin::inv_mask_set",            VerusItem::Spec(SpecItem::InvMaskSet)),
 
         ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
@@ -573,10 +585,12 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call",  VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
+        ("verus::vstd::atomic::atomically",         VerusItem::Spec(SpecItem::Atomically)),
         ("verus::vstd::atomic::AtomicUpdate::req",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),  Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::ens",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),  Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::pred", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred), Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
-        ("verus::vstd::atomic::atomically",         VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),

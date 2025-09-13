@@ -693,12 +693,30 @@ impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     pub open spec fn ens(self, x: X, y: Y) -> bool {
         self.pred().ens(x, y)
     }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::outer_mask"]
+    pub open spec fn outer_mask(self) -> Set<int> {
+        self.pred().outer_mask()
+    }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::inner_mask"]
+    pub open spec fn inner_mask(self) -> Set<int> {
+        self.pred().inner_mask()
+    }
 }
 
-pub trait UpdatePredicate<X, Y> {
+pub trait UpdatePredicate<X, Y>: Sized {
     spec fn req(self, x: X) -> bool;
 
     spec fn ens(self, x: X, y: Y) -> bool;
+
+    open spec fn outer_mask(self) -> Set<int> {
+        Set::empty()
+    }
+
+    open spec fn inner_mask(self) -> Set<int> {
+        Set::empty()
+    }
 }
 
 impl<X, Y> UpdatePredicate<X, Y> for () {

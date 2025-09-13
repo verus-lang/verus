@@ -321,29 +321,53 @@ impl Debug for Lite<syn::AtomicSpec> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicSpec");
         formatter.field("atomic_update", Lite(&self.value.atomic_update));
-        if let Some(val) = &self.value.pred_type {
+        if let Some(val) = &self.value.type_clause {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print((syn::token::Type, proc_macro2::Ident, syn::token::Comma));
+            struct Print(syn::PredTypeClause);
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some(")?;
-                    Debug::fmt(Lite(&self.0.1), formatter)?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
                     formatter.write_str(")")?;
                     Ok(())
                 }
             }
-            formatter.field("pred_type", Print::ref_cast(val));
+            formatter.field("type_clause", Print::ref_cast(val));
         }
-        formatter.field("old_perms", Lite(&self.value.old_perms));
-        formatter.field("new_perms", Lite(&self.value.new_perms));
-        if self.value.comma1_token.is_some() {
-            formatter.field("comma1_token", &Present);
-        }
+        formatter.field("perm_clause", Lite(&self.value.perm_clause));
         formatter.field("requires", Lite(&self.value.requires));
         formatter.field("ensures", Lite(&self.value.ensures));
-        if self.value.comma2_token.is_some() {
-            formatter.field("comma2_token", &Present);
+        if let Some(val) = &self.value.outer_mask {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::OuterMask);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("outer_mask", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.inner_mask {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::InnerMask);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("inner_mask", Print::ref_cast(val));
+        }
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
         }
         formatter.finish()
     }
@@ -3616,6 +3640,16 @@ impl Debug for Lite<syn::Index> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::InnerMask> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InnerMask");
+        formatter.field("set", Lite(&self.value.set));
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Invariant> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Invariant");
@@ -4973,6 +5007,16 @@ impl Debug for Lite<syn::OpenRestricted> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::OuterMask> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("OuterMask");
+        formatter.field("set", Lite(&self.value.set));
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ParenthesizedGenericArguments> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ParenthesizedGenericArguments");
@@ -5440,6 +5484,17 @@ impl Debug for Lite<syn::PathSegment> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::PermClause> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermClause");
+        formatter.field("old_perms", Lite(&self.value.old_perms));
+        formatter.field("new_perms", Lite(&self.value.new_perms));
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::PermTuple> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("PermTuple");
@@ -5477,6 +5532,13 @@ impl Debug for Lite<syn::PreciseCapture> {
         if !self.value.params.is_empty() {
             formatter.field("params", Lite(&self.value.params));
         }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::PredTypeClause> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PredTypeClause");
+        formatter.field("ident", Lite(&self.value.ident));
         formatter.finish()
     }
 }
@@ -7578,6 +7640,11 @@ impl Debug for Lite<syn::token::In> {
         formatter.write_str("Token![in]")
     }
 }
+impl Debug for Lite<syn::token::InnerMask> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![inner_mask]")
+    }
+}
 impl Debug for Lite<syn::token::InvAny> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![any]")
@@ -7726,6 +7793,11 @@ impl Debug for Lite<syn::token::OrEq> {
 impl Debug for Lite<syn::token::OrOr> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![||]")
+    }
+}
+impl Debug for Lite<syn::token::OuterMask> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![outer_mask]")
     }
 }
 impl Debug for Lite<syn::token::Override> {

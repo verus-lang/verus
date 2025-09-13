@@ -599,6 +599,14 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct PredTypeClause {
+        pub type_token: Token![type],
+        pub ident: Ident,
+        pub comma_token: Token![,],
+    }
+}
+
+ast_struct! {
     pub struct PermTupleField {
         pub ident: Ident,
         pub colon_token: Token![:],
@@ -614,19 +622,43 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct PermClause {
+        pub old_perms: PermTuple,
+        pub arrow_token: Token![->],
+        pub new_perms: PermTuple,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct OuterMask {
+        pub token: Token![outer_mask],
+        pub set: InvariantNameSet,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InnerMask {
+        pub token: Token![inner_mask],
+        pub set: InvariantNameSet,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct AtomicSpec {
         pub atomically_token: Token![atomically],
         pub paren_token: token::Paren,
         pub atomic_update: Ident,
         pub block_token: token::Brace,
-        pub pred_type: Option<(Token![type], Ident, Token![,])>,
-        pub old_perms: PermTuple,
-        pub arrow_token: Token![->],
-        pub new_perms: PermTuple,
-        pub comma1_token: Option<Token![,]>,
+        pub type_clause: Option<PredTypeClause>,
+        pub perm_clause: PermClause,
         pub requires: Requires,
         pub ensures: Ensures,
-        pub comma2_token: Option<Token![,]>,
+        pub outer_mask: Option<OuterMask>,
+        pub inner_mask: Option<InnerMask>,
+        pub comma_token: Option<Token![,]>,
     }
 }
 
@@ -753,7 +785,9 @@ pub mod parsing {
                 || input.peek(Token![via])
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
-                || input.peek(Token![opens_invariants]))
+                || input.peek(Token![opens_invariants])
+                || input.peek(Token![outer_mask])
+                || input.peek(Token![inner_mask]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -1656,6 +1690,28 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PredTypeClause {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PredTypeClause {
+                type_token: input.parse()?,
+                ident: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<PredTypeClause> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![type]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for PermTupleField {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(PermTupleField {
@@ -1678,34 +1734,79 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermClause {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PermClause {
+                old_perms: input.parse()?,
+                arrow_token: input.parse()?,
+                new_perms: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for OuterMask {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(OuterMask {
+                token: input.parse()?,
+                set: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<OuterMask> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![outer_mask]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InnerMask {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(InnerMask {
+                token: input.parse()?,
+                set: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<InnerMask> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![inner_mask]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let parens;
             let curlys;
-
-            let atomic_spec = AtomicSpec {
+            Ok(AtomicSpec {
                 atomically_token: input.parse()?,
                 paren_token: parenthesized!(parens in input),
                 atomic_update: parens.parse()?,
                 block_token: braced!(curlys in input),
-                pred_type: if curlys.peek(Token![type]) {
-                    let colon = curlys.parse()?;
-                    let ident = curlys.parse()?;
-                    let comma = curlys.parse()?;
-                    Some((colon, ident, comma))
-                } else {
-                    None
-                },
-                old_perms: curlys.parse()?,
-                arrow_token: curlys.parse()?,
-                new_perms: curlys.parse()?,
-                comma1_token: curlys.parse()?,
+                type_clause: curlys.parse()?,
+                perm_clause: curlys.parse()?,
                 requires: curlys.parse()?,
                 ensures: curlys.parse()?,
-                comma2_token: input.parse()?,
-            };
-
-            Ok(atomic_spec)
+                outer_mask: curlys.parse()?,
+                inner_mask: curlys.parse()?,
+                comma_token: input.parse()?,
+            })
         }
     }
 
@@ -2335,6 +2436,15 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PredTypeClause {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.type_token.to_tokens(tokens);
+            self.ident.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for PermTupleField {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.ident.to_tokens(tokens);
@@ -2376,6 +2486,34 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermClause {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.old_perms.to_tokens(tokens);
+            self.arrow_token.to_tokens(tokens);
+            self.new_perms.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for OuterMask {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.set.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InnerMask {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.set.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for AtomicSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.atomically_token.to_tokens(tokens);
@@ -2384,14 +2522,15 @@ mod printing {
             });
 
             self.block_token.surround(tokens, |tokens| {
-                self.old_perms.to_tokens(tokens);
-                self.arrow_token.to_tokens(tokens);
-                self.new_perms.to_tokens(tokens);
-                self.comma1_token.to_tokens(tokens);
+                self.type_clause.to_tokens(tokens);
+                self.perm_clause.to_tokens(tokens);
                 self.requires.to_tokens(tokens);
                 self.ensures.to_tokens(tokens);
-                self.comma2_token.to_tokens(tokens);
+                self.outer_mask.to_tokens(tokens);
+                self.inner_mask.to_tokens(tokens);
             });
+
+            self.comma_token.to_tokens(tokens);
         }
     }
 }

@@ -306,6 +306,37 @@ pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
     unimplemented!();
 }
 
+// TODO: These `inv_mask` functions are essentially a copy
+// of the `opens_invariants` functions defined above
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_none"]
+#[verifier::proof]
+pub fn inv_mask_none<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_any"]
+#[verifier::proof]
+pub fn inv_mask_any<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list"]
+#[verifier::proof]
+pub fn inv_mask_list<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_set"]
+#[verifier::proof]
+pub fn inv_mask_set<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::assume_"]
 #[verifier::proof]

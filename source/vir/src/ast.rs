@@ -794,7 +794,6 @@ pub struct AtomicCallInfoX {
     pub x_typ: Typ,
     pub y_typ: Typ,
     pub pred_typ: Typ,
-    pub pred_var: VarIdent,
 }
 
 /// Expression, similar to rustc_hir::Expr
@@ -937,10 +936,11 @@ pub enum ExprX {
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Open Atomic Update
     OpenAtomicUpdate(Expr, VarBinder<Typ>, bool, Expr),
-    /// Atomic function call update marker
-    Atomically(AtomicCallInfo, Expr),
+    /// Atomic function call
+    Atomically(AtomicCallInfo, Expr, Expr),
     /// Atomic function call update marker
     Update(AtomicCallInfo, Expr),
+    InvMask(MaskSpec),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue

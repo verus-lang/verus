@@ -68,6 +68,7 @@ a.struct[title="struct syn::token::Impl"],
 a.struct[title="struct syn::token::Implies"],
 a.struct[title="struct syn::token::Imply"],
 a.struct[title="struct syn::token::In"],
+a.struct[title="struct syn::token::InnerMask"],
 a.struct[title="struct syn::token::InvAny"],
 a.struct[title="struct syn::token::InvNone"],
 a.struct[title="struct syn::token::Invariant"],
@@ -98,6 +99,7 @@ a.struct[title="struct syn::token::OpensInvariants"],
 a.struct[title="struct syn::token::Or"],
 a.struct[title="struct syn::token::OrEq"],
 a.struct[title="struct syn::token::OrOr"],
+a.struct[title="struct syn::token::OuterMask"],
 a.struct[title="struct syn::token::Override"],
 a.struct[title="struct syn::token::PathSep"],
 a.struct[title="struct syn::token::Percent"],
@@ -234,6 +236,7 @@ a.struct[title="struct syn::token::Impl"]::before,
 a.struct[title="struct syn::token::Implies"]::before,
 a.struct[title="struct syn::token::Imply"]::before,
 a.struct[title="struct syn::token::In"]::before,
+a.struct[title="struct syn::token::InnerMask"]::before,
 a.struct[title="struct syn::token::InvAny"]::before,
 a.struct[title="struct syn::token::InvNone"]::before,
 a.struct[title="struct syn::token::Invariant"]::before,
@@ -264,6 +267,7 @@ a.struct[title="struct syn::token::OpensInvariants"]::before,
 a.struct[title="struct syn::token::Or"]::before,
 a.struct[title="struct syn::token::OrEq"]::before,
 a.struct[title="struct syn::token::OrOr"]::before,
+a.struct[title="struct syn::token::OuterMask"]::before,
 a.struct[title="struct syn::token::Override"]::before,
 a.struct[title="struct syn::token::PathSep"]::before,
 a.struct[title="struct syn::token::Percent"]::before,
@@ -611,6 +615,10 @@ a.struct[title="struct syn::token::In"]::before {
 	content: "Token![in]";
 }
 
+a.struct[title="struct syn::token::InnerMask"]::before {
+	content: "Token![inner_mask]";
+}
+
 a.struct[title="struct syn::token::InvAny"]::before {
 	content: "Token![any]";
 }
@@ -729,6 +737,10 @@ a.struct[title="struct syn::token::OrEq"]::before {
 
 a.struct[title="struct syn::token::OrOr"]::before {
 	content: "Token![||]";
+}
+
+a.struct[title="struct syn::token::OuterMask"]::before {
+	content: "Token![outer_mask]";
 }
 
 a.struct[title="struct syn::token::Override"]::before {
@@ -1163,9 +1175,11 @@ a.struct[title="struct syn::token::Yield"]::after {
 
 a.struct[title="struct syn::token::AssumeSpecification"]::after,
 a.struct[title="struct syn::token::DefaultEnsures"]::after,
+a.struct[title="struct syn::token::InnerMask"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,
 a.struct[title="struct syn::token::NoUnwind"]::after,
 a.struct[title="struct syn::token::OpensInvariants"]::after,
+a.struct[title="struct syn::token::OuterMask"]::after,
 a.struct[title="struct syn::token::ProofFn"]::after,
 a.struct[title="struct syn::token::SizeOf"]::after {
 	content: ".........";

@@ -793,6 +793,8 @@ define_keywords! {
     "group"       pub struct BroadcastGroup
     "assume_specification" pub struct AssumeSpecification
     "atomically"  pub struct Atomically
+    "outer_mask"  pub struct OuterMask
+    "inner_mask"  pub struct InnerMask
 }
 
 define_punctuation! {
@@ -1084,6 +1086,8 @@ macro_rules! Token {
     [proof_fn]    => { $crate::token::ProofFn };
     [assume_specification]   => { $crate::token::AssumeSpecification };
     [atomically]  => { $crate::token::Atomically };
+    [outer_mask]  => { $crate::token::OuterMask };
+    [inner_mask]  => { $crate::token::InnerMask };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };
     [<==>]        => { $crate::token::Equiv };

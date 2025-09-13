@@ -547,6 +547,9 @@ pub trait Visit<'ast> {
     fn visit_index(&mut self, i: &'ast crate::Index) {
         visit_index(self, i);
     }
+    fn visit_inner_mask(&mut self, i: &'ast crate::InnerMask) {
+        visit_inner_mask(self, i);
+    }
     fn visit_invariant(&mut self, i: &'ast crate::Invariant) {
         visit_invariant(self, i);
     }
@@ -773,6 +776,9 @@ pub trait Visit<'ast> {
     fn visit_open_restricted(&mut self, i: &'ast crate::OpenRestricted) {
         visit_open_restricted(self, i);
     }
+    fn visit_outer_mask(&mut self, i: &'ast crate::OuterMask) {
+        visit_outer_mask(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_parenthesized_generic_arguments(
@@ -856,6 +862,9 @@ pub trait Visit<'ast> {
     fn visit_path_segment(&mut self, i: &'ast crate::PathSegment) {
         visit_path_segment(self, i);
     }
+    fn visit_perm_clause(&mut self, i: &'ast crate::PermClause) {
+        visit_perm_clause(self, i);
+    }
     fn visit_perm_tuple(&mut self, i: &'ast crate::PermTuple) {
         visit_perm_tuple(self, i);
     }
@@ -871,6 +880,9 @@ pub trait Visit<'ast> {
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_precise_capture(&mut self, i: &'ast crate::PreciseCapture) {
         visit_precise_capture(self, i);
+    }
+    fn visit_pred_type_clause(&mut self, i: &'ast crate::PredTypeClause) {
+        visit_pred_type_clause(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1345,18 +1357,19 @@ where
     skip!(node.paren_token);
     v.visit_ident(&node.atomic_update);
     skip!(node.block_token);
-    if let Some(it) = &node.pred_type {
-        skip!((it).0);
-        v.visit_ident(&(it).1);
-        skip!((it).2);
+    if let Some(it) = &node.type_clause {
+        v.visit_pred_type_clause(it);
     }
-    v.visit_perm_tuple(&node.old_perms);
-    skip!(node.arrow_token);
-    v.visit_perm_tuple(&node.new_perms);
-    skip!(node.comma1_token);
+    v.visit_perm_clause(&node.perm_clause);
     v.visit_requires(&node.requires);
     v.visit_ensures(&node.ensures);
-    skip!(node.comma2_token);
+    if let Some(it) = &node.outer_mask {
+        v.visit_outer_mask(it);
+    }
+    if let Some(it) = &node.inner_mask {
+        v.visit_inner_mask(it);
+    }
+    skip!(node.comma_token);
 }
 pub fn visit_atomically_block<'ast, V>(v: &mut V, node: &'ast crate::AtomicallyBlock)
 where
@@ -3135,6 +3148,14 @@ where
     skip!(node.index);
     v.visit_span(&node.span);
 }
+pub fn visit_inner_mask<'ast, V>(v: &mut V, node: &'ast crate::InnerMask)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_invariant_name_set(&node.set);
+    skip!(node.comma_token);
+}
 pub fn visit_invariant<'ast, V>(v: &mut V, node: &'ast crate::Invariant)
 where
     V: Visit<'ast> + ?Sized,
@@ -3938,6 +3959,14 @@ where
     skip!(node.in_token);
     v.visit_path(&*node.path);
 }
+pub fn visit_outer_mask<'ast, V>(v: &mut V, node: &'ast crate::OuterMask)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    v.visit_invariant_name_set(&node.set);
+    skip!(node.comma_token);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_parenthesized_generic_arguments<'ast, V>(
@@ -4214,6 +4243,15 @@ where
     v.visit_ident(&node.ident);
     v.visit_path_arguments(&node.arguments);
 }
+pub fn visit_perm_clause<'ast, V>(v: &mut V, node: &'ast crate::PermClause)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    v.visit_perm_tuple(&node.old_perms);
+    skip!(node.arrow_token);
+    v.visit_perm_tuple(&node.new_perms);
+    skip!(node.comma_token);
+}
 pub fn visit_perm_tuple<'ast, V>(v: &mut V, node: &'ast crate::PermTuple)
 where
     V: Visit<'ast> + ?Sized,
@@ -4260,6 +4298,14 @@ where
         v.visit_captured_param(it);
     }
     skip!(node.gt_token);
+}
+pub fn visit_pred_type_clause<'ast, V>(v: &mut V, node: &'ast crate::PredTypeClause)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.type_token);
+    v.visit_ident(&node.ident);
+    skip!(node.comma_token);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]

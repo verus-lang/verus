@@ -550,6 +550,40 @@ impl Visitor {
         }
     }
 
+    fn inv_name_set_to_mask_expr(&mut self, set: InvariantNameSet) -> TokenStream {
+        match set {
+            InvariantNameSet::Any(any) => {
+                quote_spanned_builtin!(verus_builtin, any.span() =>
+                    #verus_builtin::inv_mask_any()
+                )
+            }
+
+            InvariantNameSet::None(none) => {
+                quote_spanned_builtin!(verus_builtin, none.span() =>
+                    #verus_builtin::inv_mask_none()
+                )
+            }
+
+            InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list([#exprs])
+                )
+            }
+
+            InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                self.visit_expr_mut(&mut expr);
+
+                quote_spanned_builtin!(verus_builtin, expr.span() =>
+                    #verus_builtin::inv_mask_set(#expr)
+                )
+            }
+        }
+    }
+
     fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) -> Vec<Stmt> {
         let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Vec::new() };
         let full_span = atomic_spec.span();
@@ -577,21 +611,22 @@ impl Visitor {
 
         let AtomicSpec {
             atomic_update,
-            pred_type,
-            old_perms,
-            new_perms,
+            type_clause,
+            perm_clause,
             requires,
             ensures,
+            outer_mask,
+            inner_mask,
             ..
         } = atomic_spec;
 
         let mut old_ty = TokenStream::new();
         let mut new_ty = TokenStream::new();
-        old_perms.to_type_tokens(&mut old_ty);
-        new_perms.to_type_tokens(&mut new_ty);
+        perm_clause.old_perms.to_type_tokens(&mut old_ty);
+        perm_clause.new_perms.to_type_tokens(&mut new_ty);
 
-        let pred_ident = match pred_type {
-            Some((_type, ident, _comma)) => ident,
+        let pred_ident = match type_clause {
+            Some(clause) => clause.ident,
             None => {
                 let mut pred_name = sig.ident.to_string().to_case(Case::Pascal);
                 pred_name.push_str("AtomicUpdatePredicate");
@@ -660,8 +695,8 @@ impl Visitor {
 
         let mut old_val = TokenStream::new();
         let mut new_val = TokenStream::new();
-        old_perms.to_value_tokens(&mut old_val);
-        new_perms.to_value_tokens(&mut new_val);
+        perm_clause.old_perms.to_value_tokens(&mut old_val);
+        perm_clause.new_perms.to_value_tokens(&mut new_val);
 
         let mut atomic_req = TokenStream::new();
         let mut atomic_ens = TokenStream::new();
@@ -680,40 +715,98 @@ impl Visitor {
             atomic_ens = replace_self_with_ident(atomic_ens, ident);
         }
 
+        let mut impl_members = quote_spanned!(full_span =>
+            open spec fn req(self, #old_val: #old_ty) -> bool {
+                let ( #args_pat_tokens ) = self.data;
+                #atomic_req
+            }
+
+            open spec fn ens(self, #old_val: #old_ty, #new_val: #new_ty) -> bool {
+                let ( #args_pat_tokens ) = self.data;
+                #atomic_ens
+            }
+        );
+
+        // The `outer_mask` and `inner_mask` functions have a default implementation,
+        // so we can select the default behaviour by not generating anything
+
+        if let Some(outer_mask) = outer_mask {
+            let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
+            let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
+                open spec fn outer_mask(self) -> #vstd::set::Set<vstd::prelude::int> {
+                    #mask_expr
+                }
+            );
+
+            fn_tokens.to_tokens(&mut impl_members);
+        }
+
+        if let Some(inner_mask) = inner_mask {
+            let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
+            let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
+                open spec fn inner_mask(self) -> #vstd::set::Set<vstd::prelude::int> {
+                    #mask_expr
+                }
+            );
+
+            fn_tokens.to_tokens(&mut impl_members);
+        }
+
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
             impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
-            for #pred_ident #generics #where_clause {
-                open spec fn req(self, #old_val: #old_ty) -> bool {
-                    let ( #args_pat_tokens ) = self.data;
-                    #atomic_req
-                }
-
-                open spec fn ens(self, #old_val: #old_ty, #new_val: #new_ty) -> bool {
-                    let ( #args_pat_tokens ) = self.data;
-                    #atomic_ens
-                }
-            }
+            for #pred_ident #generics #where_clause { #impl_members }
         ));
 
         sig.inputs.push(update_arg);
 
-        let mut expr_tokens = quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
-            #builtin::assume_(
-                #builtin::spec_eq(
-                    #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
-                    #pred_ident { data: ( #args_pat_tokens ) },
-                )
-            )
-        );
+        let EraseGhost::Keep = self.erase_ghost else {
+            return Vec::new();
+        };
+
+        let out_stmts = vec![
+            Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
+                    #builtin::assume_(
+                        #builtin::spec_eq(
+                            #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
+                            #pred_ident { data: ( #args_pat_tokens ) },
+                        )
+                    )
+                )),
+                Some(Semi { spans: [full_span] }),
+            ),
+            // todo: this should use a builtin function instead of "assert_"
+            // so the error message can be more helpful
+            Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
+                    #builtin::assert_(
+                        vstd::set::Set::spec_le(
+                            #vstd::atomic::AtomicUpdate::inner_mask( #atomic_update ),
+                            #vstd::atomic::AtomicUpdate::outer_mask( #atomic_update ),
+                        )
+                    )
+                )),
+                Some(Semi { spans: [full_span] }),
+            ),
+        ];
 
         // We should always be in exec mode here so this should always run
         if self.inside_ghost == 0 {
-            expr_tokens = quote_spanned!(full_span =>
-                #[verifier::proof_block] { #expr_tokens ; }
-            );
+            let mut stmt_tokens = TokenStream::new();
+            for stmt in out_stmts {
+                stmt.to_tokens(&mut stmt_tokens);
+            }
+
+            return vec![Stmt::Expr(
+                Expr::Verbatim(quote_spanned!(full_span =>
+                    #[verifier::proof_block]
+                    { #stmt_tokens }
+                )),
+                Some(Semi { spans: [full_span] }),
+            )];
         }
 
-        vec![Stmt::Expr(Expr::Verbatim(expr_tokens), Some(Semi { spans: [full_span] }))]
+        out_stmts
     }
 
     fn take_sig_specs<TType: ToTokens>(

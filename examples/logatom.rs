@@ -10,6 +10,8 @@ pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
         (z: i32) -> (w: i32),
         requires z == 5,
         ensures w == 7,
+        outer_mask [ 2_int, 3_int ],
+        inner_mask [ 2_int ],
     },
     requires x == 2,
     ensures y == 3,
@@ -24,6 +26,8 @@ pub fn middle(x: i32) -> (y: i32)
         (z: i32) -> (w: i32),
         requires z == 5,
         ensures w == 7,
+        outer_mask any,
+        inner_mask [ 2_int, 3_int ],
     },
     requires x == 2,
 {

@@ -1733,7 +1733,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
-        ExprX::Atomically(_info, _e) => {
+        ExprX::Atomically(_info, _p, _e) => {
             // todo: fix mode check
 
             //let mut typing = typing.push_block_ghostness(Ghost::Ghost);
@@ -1748,6 +1748,10 @@ fn check_expr_handle_mut_arg(
 
             check_expr_has_mode(ctxt, record, typing, Mode::Proof, e, Mode::Proof)?;
             Ok(Mode::Proof)
+        }
+        ExprX::InvMask(_mask) => {
+            // todo: do we need to check the mask?
+            Ok(Mode::Spec)
         }
         ExprX::AirStmt(_) => Ok(Mode::Exec),
         ExprX::NeverToAny(e) => {
