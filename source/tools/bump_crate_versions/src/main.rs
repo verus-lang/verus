@@ -1,16 +1,24 @@
 use std::{fs, path::Path, process::Stdio, sync::LazyLock};
 use toml_edit::DocumentMut;
 use regex::Regex;
+use clap::Parser as ClapParser;
 
-/*
- * This tool scans for modified crates in the Verus repository and updates the version numbers
- * in their respective Cargo.toml files. In cases where one crate depends on another, we also
- * update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
- * is modified, we also update the version in the cargo-verus template.  The code is optimized
- * for readability and maintainability, rather than performance.
- *
- * Usage: Run this tool from the root of the Verus repository.
- */
+
+/// This tool scans for modified crates in the Verus repository and updates the version numbers
+/// in their respective Cargo.toml files. In cases where one crate depends on another, we also
+/// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
+/// is modified, we also update the version in the cargo-verus template.  The code is optimized
+/// for readability and maintainability, rather than performance.
+///
+/// Usage: Run this tool from the root of the Verus repository.
+
+#[derive(ClapParser)]
+#[command(version, about)]
+struct Args {
+    /// If set, update the versions and dependencies, but run `cargo publish` in dry-run mode
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+}
 
 // Path to cargo-verus's main file, where we have a static string
 // indicating which version of vstd to use
@@ -31,6 +39,7 @@ static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
         now.hour() * 100 + now.minute()
     )
 });
+
 
 #[derive(Clone)]
 struct Crate {
@@ -115,6 +124,24 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>) {
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
+fn publish(dir: &Path, dry_run: bool) {
+    use std::process::Command;
+
+    let mut cmd = Command::new("cargo");
+    cmd.arg("publish");
+    if dry_run {
+        cmd.arg("--dry-run");
+    }
+    let status = cmd
+        .current_dir(dir)
+        .status()
+        .expect("Failed to execute cargo publish");
+
+    if !status.success() {
+        panic!("cargo publish failed for {}", dir.display());
+    }
+}
+
 fn update_cargo_verus_template() {
     let main = Path::new(CARGO_VERUS_MAIN);
     let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
@@ -133,6 +160,8 @@ fn update_cargo_verus_template() {
 }
 
 fn main() {
+    let  args = Args::parse();
+
     println!("Scanning for modified crates...");
     let crates = vec![
         Crate {
@@ -184,5 +213,10 @@ fn main() {
             println!("Updating dependencies for {}", krate.name);
             update_toml_dependencies(&Path::new(&krate.path), &modified_crates);
         }
+    }
+
+    for krate in modified_crates {
+        println!("Publishing modified crate {}", krate.name);
+        publish(&Path::new(&krate.path), args.dry_run);
     }
 }
