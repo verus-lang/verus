@@ -1740,12 +1740,9 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
-        ExprX::Atomically(_info, _p, _e) => {
-            // todo: fix mode check
-
-            //let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            //check_expr(ctxt, record, &mut typing, Mode::Proof, e)?;
-
+        ExprX::Atomically(_info, _p, e) => {
+            let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+            check_expr(ctxt, record, &mut typing, Mode::Proof, e)?;
             Ok(Mode::Proof)
         }
         ExprX::Update(_info, e) => {
@@ -1756,8 +1753,12 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Proof, e, Mode::Proof)?;
             Ok(Mode::Proof)
         }
-        ExprX::InvMask(_mask) => {
-            // todo: do we need to check the mask?
+        ExprX::InvMask(mask_spec) => {
+            for expr in mask_spec.exprs().iter() {
+                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, expr, Mode::Spec)?;
+            }
+
             Ok(Mode::Spec)
         }
         ExprX::AirStmt(_) => Ok(Mode::Exec),
@@ -1856,7 +1857,6 @@ fn check_stmt(
                 && mode != Mode::Exec
                 && init.is_some()
             {
-                dbg!(&stmt);
                 return Err(error(&stmt.span, "exec code cannot initialize non-exec variables"));
             }
             if !mode_le(outer_mode, mode) {

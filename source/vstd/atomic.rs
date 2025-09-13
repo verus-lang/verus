@@ -755,36 +755,12 @@ pub fn open_atomic_update_end<Y>(_y: Y) {
     unimplemented!();
 }
 
-// #[macro_export]
-// macro_rules! open_atomic_update {
-//     ($au:expr, $x:pat => $body:block) => {
-//         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-//             //#[cfg(verus_keep_ghost_body)]
-//             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-//             let y = $body;
-//             //#[cfg(verus_keep_ghost_body)]
-//             $crate::vstd::atomic::open_atomic_update_end(y);
-//         }
-//     }
-// }
-// #[macro_export]
-// macro_rules! open_atomic_update_in_proof {
-//     ($au:expr, $x:pat => $body:block) => {
-//         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-//             //#[cfg(verus_keep_ghost_body)]
-//             let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-//             let y = $body;
-//             //#[cfg(verus_keep_ghost_body)]
-//             $crate::vstd::atomic::open_atomic_update_end(y);
-//         }
-//     }
-// }
 #[macro_export]
 macro_rules! open_atomic_update {
     ($($tail:tt)*) => {
         #[cfg(verus_keep_ghost_body)]
         ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
-            $crate::vstd::atomic::open_atomic_update_internal!($($tail)*)
+            $crate::vstd::atomic::open_atomic_update_either_internal!($($tail)*)
         )
     };
 }
@@ -793,26 +769,13 @@ macro_rules! open_atomic_update {
 macro_rules! open_atomic_update_in_proof {
     ($($tail:tt)*) => {
         ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
-            $crate::vstd::atomic::open_atomic_update_in_proof_internal!($($tail)*)
+            $crate::vstd::atomic::open_atomic_update_either_internal!($($tail)*)
         )
     };
 }
 
 #[macro_export]
-macro_rules! open_atomic_update_internal {
-    ($au:expr, $x:pat => $body:block) => {
-        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
-            #[cfg(verus_keep_ghost_body)]
-            let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-            let y = $body;
-            #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::atomic::open_atomic_update_end(y);
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! open_atomic_update_in_proof_internal {
+macro_rules! open_atomic_update_either_internal {
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
@@ -825,7 +788,7 @@ macro_rules! open_atomic_update_in_proof_internal {
 }
 
 #[doc(hidden)]
-pub use {open_atomic_update_internal, open_atomic_update_in_proof_internal};
+pub use {open_atomic_update_either_internal};
 pub use {open_atomic_update, open_atomic_update_in_proof};
 
 impl<T> PAtomicPtr<T> {

@@ -1624,6 +1624,26 @@ impl Visitor {
         }
     }
 
+    fn rewrite_macro_call(&mut self, mac: &mut verus_syn::Macro) {
+        if self.inside_ghost > 0 {
+            if let Some(x) = mac.path.segments.first_mut() {
+                let mut ident = x.ident.to_string();
+                // NOTE: This is currently hardcoded for the macros
+                //  * `open_local_invariant`,
+                //  * `open_atomic_invariant`, and
+                //  * `open_atomic_update`
+                // but this could be extended to rewrite other macro
+                // names depending on proof vs exec mode.
+                if let "open_local_invariant" | "open_atomic_invariant" | "open_atomic_update" =
+                    ident.as_str()
+                {
+                    ident.push_str("_in_proof");
+                    x.ident = Ident::new(&ident, x.span());
+                }
+            }
+        };
+    }
+
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
         let span = stmt.span();
         match stmt {
@@ -1650,6 +1670,10 @@ impl Visitor {
                     );
                     (true, vec![block])
                 }
+            }
+            Stmt::Macro(macro_stmt) => {
+                self.rewrite_macro_call(&mut macro_stmt.mac);
+                (false, vec![])
             }
             _ => (false, vec![]),
         }
@@ -3449,7 +3473,10 @@ impl Visitor {
 
         let span = atomically.span();
         let AtomicallyBlock { update_binder, mut body, .. } = atomically;
+
+        self.inside_ghost += 1;
         self.visit_block_mut(&mut body);
+        self.inside_ghost -= 1;
 
         let extra_arg = match self.erase_ghost {
             EraseGhost::Keep => quote_spanned_vstd!(vstd, span =>
@@ -3962,24 +3989,7 @@ impl VisitMut for Visitor {
         self.assign_to = is_assign_to;
 
         if let Expr::Macro(macro_expr) = expr {
-            if is_inside_ghost {
-                if let Some(x) = macro_expr.mac.path.segments.first_mut() {
-                    let mut ident = x.ident.to_string();
-                    // NOTE: This is currently hardcoded for the macros
-                    //  * `open_local_invariant`,
-                    //  * `open_atomic_invariant`, and
-                    //  * `open_atomic_update`
-                    // but this could be extended to rewrite other macro
-                    // names depending on proof vs exec mode.
-                    if matches!(
-                        ident.as_str(),
-                        "open_local_invariant" | "open_atomic_invariant" | "open_atomic_update"
-                    ) {
-                        ident.push_str("_in_proof");
-                        x.ident = Ident::new(&ident, x.span());
-                    }
-                }
-            }
+            self.rewrite_macro_call(&mut macro_expr.mac);
         }
 
         let do_replace = match &expr {

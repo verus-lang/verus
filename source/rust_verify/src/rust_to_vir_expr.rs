@@ -1815,10 +1815,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     match &expr.kind {
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
-                invariant_block_to_vir(bctx, expr, modifier)
-            } else if is_open_au_block(bctx, expr)? {
-                open_au_block_to_vir(bctx, expr, modifier)
-            } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
+                return invariant_block_to_vir(bctx, expr, modifier);
+            }
+
+            if is_open_au_block(bctx, expr)? {
+                return open_au_block_to_vir(bctx, expr, modifier);
+            }
+
+            if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, current_modifier)?;
                 let tracked = match g_attr {
@@ -1831,15 +1835,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         return err_span(expr.span, "unexpected ghost block wrapper");
                     }
                 };
-                mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block })
-            } else {
-                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier)?;
-                if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
-                    mk_expr(ExprX::ProofInSpec(block))
-                } else {
-                    Ok(ExprOrPlace::Expr(block))
-                }
+                return mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block });
             }
+
+            let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier)?;
+            if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
+                return mk_expr(ExprX::ProofInSpec(block));
+            }
+
+            Ok(ExprOrPlace::Expr(block))
         }
         ExprKind::Call(fun, args_slice) => {
             let res = match &fun.kind {

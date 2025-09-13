@@ -42,7 +42,7 @@ test_verify_one_file! {
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, n => {
-                n += 3;
+                n += 3_i32;
                 n
             });
         }
@@ -54,7 +54,7 @@ test_verify_one_file! {
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, mut n => {
-                n += 3;
+                n += 3_i32;
                 n
             });
         }
