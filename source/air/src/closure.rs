@@ -545,7 +545,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let typ = match op {
                 UnaryOp::Not => Arc::new(TypX::Bool),
                 UnaryOp::BitExtract(high, lo) => Arc::new(TypX::BitVec(high + 1 - lo)),
-                UnaryOp::BitNot => ts[0].0.clone(),
+                UnaryOp::BitNot | UnaryOp::BitNeg => ts[0].0.clone(),
                 UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => match &*ts[0].0 {
                     TypX::BitVec(n) => Arc::new(TypX::BitVec(n + w)),
                     _ => panic!("internal error during processing bit extend"),
@@ -573,10 +573,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 | BinaryOp::BitSub
                 | BinaryOp::BitMul
                 | BinaryOp::BitUDiv
+                | BinaryOp::BitSDiv
+                | BinaryOp::BitSRem
                 | BinaryOp::LShr
                 | BinaryOp::AShr
                 | BinaryOp::Shl
-                | BinaryOp::BitUMod => {
+                | BinaryOp::BitURem => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }

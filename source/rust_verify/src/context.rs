@@ -37,6 +37,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
+    pub(crate) next_read_kind_id: std::rc::Rc<std::cell::Cell<u64>>,
 }
 
 #[derive(Clone)]
@@ -91,6 +92,12 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
         let mut r = self.erasure_info.borrow_mut();
         r.bodies.push((local_def_id, c));
+    }
+
+    pub(crate) fn unique_read_kind_id(&self) -> u64 {
+        let c = self.next_read_kind_id.get();
+        self.next_read_kind_id.set(c + 1);
+        c
     }
 }
 

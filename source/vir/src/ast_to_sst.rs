@@ -86,7 +86,7 @@ pub(crate) struct State<'a> {
     pub au_pred_var: Option<crate::sst::Exp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum ReturnValue {
     Some(Exp),
     ImplicitUnit(Span),
@@ -2740,12 +2740,28 @@ pub(crate) fn expr_to_stm_opt(
             let expr = place_to_expr(place);
             expr_to_stm_opt(ctx, state, &expr)
         }
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+            let (mut stms, exp1) = expr_to_stm_opt(ctx, state, e1)?;
+            let exp1 = unwrap_or_return_never!(exp1, stms);
+
+            let (mut stms2, exp2) = expr_to_stm_opt(ctx, state, e2)?;
+            let _exp2 = unwrap_or_return_never!(exp2, stms);
+
+            stms.append(&mut stms2);
+            Ok((stms, ReturnValue::Some(exp1)))
+        }
     }
 }
 
 fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
     let expr = place_to_expr(place);
     let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
+    if stms.len() > 0 {
+        dbg!(&place);
+        dbg!(&expr);
+        dbg!(&stms);
+        dbg!(&exp);
+    }
     assert!(stms.len() == 0);
     match exp {
         ReturnValue::Some(e) => Ok(e),

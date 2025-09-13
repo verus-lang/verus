@@ -82,6 +82,7 @@ fn expr_get_early_exits_rec(
             | ExprX::BorrowMutPhaseOne(_)
             | ExprX::BorrowMutPhaseTwo(..)
             | ExprX::ReadPlace(..)
+            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

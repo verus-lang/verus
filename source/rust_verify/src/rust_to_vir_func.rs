@@ -29,8 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
-    Visibility,
+    KrateX, Mode, Opaqueness, ParamX, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -1178,6 +1177,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 unwrapped_info: None,
             },
         );
+
+        // TODO(new_mut_ref): be more precise here
+        // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
+        let is_mut_var = is_mut_var || (ctxt.cmd_line_args.new_mut_ref && param_mode != Mode::Spec);
+
         if is_mut_var {
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
@@ -1194,6 +1198,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 vir_param.clone(),
                 is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
             ));
+            // TODO(new_mut_ref): resolve_inference expects no shadowing
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
@@ -1485,10 +1490,10 @@ pub(crate) fn check_item_fn<'tcx>(
         body
     } else {
         body.map(move |body| {
-            SpannedTyped::new(
-                &body.span.clone(),
-                &body.typ.clone(),
-                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body)),
+            ctxt.spanned_typed_new_vir(
+                &body.span,
+                &body.typ,
+                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body.clone())),
             )
         })
     };

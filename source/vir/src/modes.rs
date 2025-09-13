@@ -1,7 +1,8 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    Pattern, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -128,12 +129,16 @@ pub(crate) struct TypeInvInfo {
     pub field_loc_needs_check: HashMap<crate::messages::AstId, bool>,
 }
 
+pub type ReadKindFinals = HashMap<u64, ReadKind>;
+
 // Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
     // Modes of InferSpecForLoopIter
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
     type_inv_info: TypeInvInfo,
+    read_kind_finals: ReadKindFinals,
+    var_modes: HashMap<VarIdent, Mode>,
 }
 
 #[derive(Debug)]
@@ -443,6 +448,7 @@ fn add_pattern(
     for decl in decls {
         let PatternBoundDecl { span: _, name, mode } = decl;
         typing.insert(&name, mode);
+        record.var_modes.insert(name.clone(), mode);
     }
     Ok(())
 }
@@ -1370,6 +1376,7 @@ fn check_expr_handle_mut_arg(
                     if let Some(span) = typing.to_be_inferred(xl) {
                         let mode = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode);
+                        record.var_modes.insert(xl.clone(), mode);
                         record.erasure_modes.var_modes.push((span, mode));
                     }
                 }
@@ -1795,8 +1802,21 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
-        ExprX::ReadPlace(place, _read_type) => {
-            Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
+        ExprX::ReadPlace(place, read_kind) => {
+            let mode = check_place(ctxt, record, typing, outer_mode, place, false)?;
+
+            // TODO(new_mut_ref) this is not aggressive enough about marking stuff as spec;
+            // we also need to take the expected mode into account
+            let final_read_kind = match mode {
+                Mode::Spec => ReadKind::Spec,
+                _ => read_kind.preliminary_kind,
+            };
+            record.read_kind_finals.insert(read_kind.id, final_read_kind);
+
+            Ok(mode)
+        }
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
+            panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
         }
     };
     Ok((mode?, None))
@@ -1868,10 +1888,12 @@ fn check_function(
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
+    new_mut_ref: bool,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
     record.type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+    record.var_modes = HashMap::new();
 
     let mut fun_typing0 = typing.push_var_scope();
 
@@ -2059,12 +2081,24 @@ fn check_function(
         record.infer_spec_for_loop_iter_modes = None;
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+            let functionx = &mut Arc::make_mut(&mut *function).x;
             crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                &mut Arc::make_mut(&mut *function).x,
+                functionx,
                 &record.type_inv_info,
                 &ctxt.funs,
                 &ctxt.datatypes,
             )?;
+            if new_mut_ref {
+                if functionx.body.is_some() {
+                    functionx.body = Some(crate::resolution_inference::infer_resolution(
+                        &functionx.params,
+                        functionx.body.as_ref().unwrap(),
+                        &record.read_kind_finals,
+                        &ctxt.datatypes,
+                        &record.var_modes,
+                    ));
+                }
+            }
         }
     }
     drop(fun_typing);
@@ -2073,7 +2107,10 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    new_mut_ref: bool,
+) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -2102,7 +2139,13 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
-    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None, type_inv_info };
+    let mut record = Record {
+        erasure_modes,
+        infer_spec_for_loop_iter_modes: None,
+        type_inv_info,
+        read_kind_finals: HashMap::new(),
+        var_modes: HashMap::new(),
+    };
     let mut state = State {
         vars: ScopeMap::new(),
         in_forall_stmt: false,
@@ -2119,11 +2162,11 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         ctxt.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
             typing.atomic_insts.as_ref().expect("atomic_insts").validate(&function.span, true)?;
         } else {
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
         }
     }
-    Ok((Arc::new(kratex), record.erasure_modes))
+    Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
 }

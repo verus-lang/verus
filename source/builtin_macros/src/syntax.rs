@@ -3342,7 +3342,7 @@ impl Visitor {
             self.inside_ghost += 1;
             if self.erase_ghost.keep() {
                 stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                    #builtin::dummy_capture_consume(_verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it)
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
                 ));
             }
             if let Some(t) = &opts.req_ens {
@@ -3426,7 +3426,7 @@ impl Visitor {
             }
             *expr = if self.erase_ghost.keep() {
                 Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                    { let _verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it = #builtin::dummy_capture_new(); #new_expr }
+                    { let _verus_internal_identifier_for_closures = #builtin::dummy_capture_new(); #new_expr }
                 ))
             } else {
                 new_expr

@@ -233,6 +233,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :qid prelude_mut_ref_update_current_future
             :skolemid skolem_prelude_mut_ref_update_current_future
         )))
+        (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
+            (=>
+                (has_type m (MUTREF d t))
+                (has_type ([mut_ref_current] m) t)
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_current] m))
+            :qid prelude_mut_ref_current_has_type
+            :skolemid skolem_prelude_mut_ref_current_has_type
+        )))
+          (axiom (forall ((m [Poly]) (d [decoration]) (t [typ])) (!
+            (=>
+                (has_type m (MUTREF d t))
+                (has_type ([mut_ref_future] m) t)
+            )
+            :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
+            :qid prelude_mut_ref_current_has_type
+            :skolemid skolem_prelude_mut_ref_current_has_type
+        )))
 
         // The sized-ness of a type is determined by its decoration.
         // Ref, Box, etc. are all sized.
