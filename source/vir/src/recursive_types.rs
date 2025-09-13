@@ -129,6 +129,9 @@ fn check_well_founded_typ(
         TypX::MutRef(t) => {
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
     }
 }
 
@@ -179,6 +182,9 @@ fn check_positive_uses(
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
         TypX::Float(..) => Ok(()),
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
         TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
