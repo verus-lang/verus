@@ -1094,8 +1094,6 @@ impl<'a, T> SharedReference<'a, T> {
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
-            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<T>() as usize == 0,
     {
         &*self.0
     }
@@ -1128,6 +1126,12 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     {
         self.0
     }
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_aligned(tracked self)
+        ensures
+            self.ptr()@.addr % align_of::<T>() as usize == 0,
+    ;
     // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
     //         pt.ptr() == self.ptr(),
@@ -1142,8 +1146,6 @@ impl<'a, T> SharedReference<'a, [T]> {
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
-            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<[T]>() as usize == 0,
     {
         self.0.as_ptr()
     }
@@ -1178,8 +1180,6 @@ impl<'a> SharedReference<'a, str> {
     pub const fn as_ptr(self) -> (ptr: *const u8)
         ensures
             ptr == self.ptr() as *const u8,
-            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<str>() as usize == 0,
     {
         self.0.as_ptr()
     }
