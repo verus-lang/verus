@@ -308,6 +308,14 @@ impl<T> PointsTo<[T]> {
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
     }
 
+    pub open spec fn is_init_prefix(&self, len: int) -> bool 
+        recommends
+            len < self.mem_contents_seq().len()
+    {
+        forall |i|
+            0 <= i < len ==> self.mem_contents_seq().index(i).is_init()
+    }
+
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
     // #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
@@ -347,6 +355,22 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr + self.value().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
+
+    pub proof fn ptr_idx_in_bounds(
+        tracked &self,
+        idx: int
+    )
+        requires
+            size_of::<T>() != 0,
+            0 <= idx <= self.value().len(),
+        ensures
+            self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int + self.value().len() * (size_of::<T>() as int),
+    {
+        self.ptr_bounds();
+        assert(self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int + self.value().len() * (size_of::<T>() as int)) by (nonlinear_arith)
+            requires
+                0 <= idx <= self.value().len();
+    }
 
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
@@ -1167,6 +1191,10 @@ impl<'a> SharedReference<'a, str> {
     pub const fn as_ptr(self) -> (ptr: *const u8)
         ensures
             ptr == self.ptr() as *const u8,
+            // the pointer points to the first byte of the u8 slice: https://doc.rust-lang.org/core/primitive.str.html#method.as_ptr
+            ptr@.addr == ptr@.provenance.start_addr(),
+            // str layout is same as [u8]: https://doc.rust-lang.org/beta/reference/type-layout.html#str-layout
+            ptr@.provenance.start_addr() % align_of::<u8>() as usize == 0
     {
         self.0.as_ptr()
     }
