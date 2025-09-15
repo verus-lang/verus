@@ -94,7 +94,7 @@ pub trait ExIterator {
     type Item;
 
     fn next(&mut self) -> Option<Self::Item>
-        // ensures 
+        // ensures
         //     self@.pos == old(self@).pos + 1
     ;
 }
@@ -116,7 +116,7 @@ pub trait ExIterator {
 //     uninterp spec fn view(&self) -> V;
 
 //     proof fn good_next() -> (b: bool)
-//         ensures 
+//         ensures
 //             next.call_ensures(x, y) == b
 // }
 
