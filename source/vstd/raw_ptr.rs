@@ -1111,6 +1111,8 @@ impl<'a, T> SharedReference<'a, T> {
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
+            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+            ptr@.addr % align_of::<T>() as usize == 0
     {
         &*self.0
     }
@@ -1157,6 +1159,8 @@ impl<'a, T> SharedReference<'a, [T]> {
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
+            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+            ptr@.addr % align_of::<[T]>() as usize == 0
     {
         self.0.as_ptr()
     }
@@ -1191,10 +1195,8 @@ impl<'a> SharedReference<'a, str> {
     pub const fn as_ptr(self) -> (ptr: *const u8)
         ensures
             ptr == self.ptr() as *const u8,
-            // the pointer points to the first byte of the u8 slice: https://doc.rust-lang.org/core/primitive.str.html#method.as_ptr
-            ptr@.addr == ptr@.provenance.start_addr(),
-            // str layout is same as [u8]: https://doc.rust-lang.org/beta/reference/type-layout.html#str-layout
-            ptr@.provenance.start_addr() % align_of::<u8>() as usize == 0
+            // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+            ptr@.addr % align_of::<str>() as usize == 0
     {
         self.0.as_ptr()
     }
