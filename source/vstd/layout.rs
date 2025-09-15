@@ -211,7 +211,7 @@ pub broadcast axiom fn layout_of_str()
         #![trigger size_of::<str>()]
         #![trigger align_of::<str>()]
         size_of::<str>() == size_of::<[u8]>(),
-        align_of::<str>() == align_of::<[u8]>()
+        align_of::<str>() == align_of::<[u8]>(),
 ;
 
 pub broadcast group group_align_properties {

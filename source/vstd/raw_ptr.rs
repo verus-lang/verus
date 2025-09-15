@@ -308,12 +308,11 @@ impl<T> PointsTo<[T]> {
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
     }
 
-    pub open spec fn is_init_prefix(&self, len: int) -> bool 
+    pub open spec fn is_init_prefix(&self, len: int) -> bool
         recommends
-            len < self.mem_contents_seq().len()
+            len < self.mem_contents_seq().len(),
     {
-        forall |i|
-            0 <= i < len ==> self.mem_contents_seq().index(i).is_init()
+        forall|i| 0 <= i < len ==> self.mem_contents_seq().index(i).is_init()
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
@@ -1096,7 +1095,7 @@ impl<'a, T> SharedReference<'a, T> {
         ensures
             ptr == self.ptr() as *const T,
             // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<T>() as usize == 0
+            ptr@.addr % align_of::<T>() as usize == 0,
     {
         &*self.0
     }
@@ -1144,7 +1143,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             ptr == self.ptr() as *const T,
             // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<[T]>() as usize == 0
+            ptr@.addr % align_of::<[T]>() as usize == 0,
     {
         self.0.as_ptr()
     }
@@ -1180,7 +1179,7 @@ impl<'a> SharedReference<'a, str> {
         ensures
             ptr == self.ptr() as *const u8,
             // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-            ptr@.addr % align_of::<str>() as usize == 0
+            ptr@.addr % align_of::<str>() as usize == 0,
     {
         self.0.as_ptr()
     }
