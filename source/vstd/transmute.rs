@@ -22,6 +22,7 @@ pub uninterp spec fn decode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> b
 /// Can the given bytes always be encoded to the given value?
 pub uninterp spec fn encode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
+// can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
 impl<T> PointsTo<T> {
     // TODO: version for nondeterministic targets
     pub axiom fn transmute<U>(tracked self, tracked target: U) -> (tracked ret: PointsTo<U>)
