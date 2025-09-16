@@ -33,7 +33,7 @@ pub open spec fn valid_layout(size: usize, align: usize) -> bool {
 #[cfg_attr(not(verus_verify_core), deprecated = "is_sized is now defunct; lemmas that require V to be sized should now use the trait bound `V: Sized` instead of is_sized<V>")]
 pub uninterp spec fn is_sized<V: ?Sized>() -> bool;
 
-pub uninterp spec fn size_of<V: ?Sized>() -> nat;
+pub uninterp spec fn size_of<V>() -> nat;
 
 pub uninterp spec fn align_of<V: ?Sized>() -> nat;
 
@@ -198,9 +198,7 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#slice-layout)).
 pub broadcast axiom fn layout_of_slices<T>()
     ensures
-        #![trigger size_of::<[T]>()]
         #![trigger align_of::<[T]>()]
-        size_of::<[T]>() == size_of::<T>(),
         align_of::<[T]>() == align_of::<T>(),
 ;
 
@@ -208,9 +206,7 @@ pub broadcast axiom fn layout_of_slices<T>()
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
 pub broadcast axiom fn layout_of_str()
     ensures
-        #![trigger size_of::<str>()]
         #![trigger align_of::<str>()]
-        size_of::<str>() == size_of::<[u8]>(),
         align_of::<str>() == align_of::<[u8]>(),
 ;
 
