@@ -35,7 +35,14 @@ pub uninterp spec fn is_sized<V: ?Sized>() -> bool;
 
 pub uninterp spec fn size_of<V>() -> nat;
 
-pub uninterp spec fn align_of<V: ?Sized>() -> nat;
+pub uninterp spec fn align_of<V>() -> nat;
+
+// compiler wants &V instead of V -- complains about V not being Sized
+/// Spec for: https://doc.rust-lang.org/std/mem/fn.size_of_val.html
+pub uninterp spec fn spec_size_of_val<V: ?Sized>(val: &V) -> nat;
+
+/// Spec for: https://doc.rust-lang.org/std/mem/fn.align_of_val.html
+pub uninterp spec fn spec_align_of_val<V: ?Sized>(val: &V) -> nat;
 
 // Naturally, the size of any executable type is going to fit into a `usize`.
 // What I'm not sure of is whether it will be possible to "reason about" arbitrarily
@@ -66,6 +73,22 @@ pub open spec fn align_of_as_usize<V>() -> usize
     align_of::<V>() as usize
 }
 
+#[verifier::inline]
+pub open spec fn size_of_val_as_usize<V: ?Sized>(val: &V) -> usize
+    recommends
+        spec_size_of_val::<V>(val) as usize as int == spec_size_of_val::<V>(val),
+{
+    spec_size_of_val::<V>(val) as usize
+}
+
+#[verifier::inline]
+pub open spec fn align_of_val_as_usize<V: ?Sized>(val: &V) -> usize
+    recommends
+        spec_align_of_val::<V>(val) as usize as int == spec_align_of_val::<V>(val),
+{
+    spec_align_of_val::<V>(val) as usize
+}
+
 #[verifier::when_used_as_spec(size_of_as_usize)]
 pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
     ensures
@@ -78,6 +101,22 @@ pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
 pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
     ensures
         u as nat == align_of::<V>(),
+    opens_invariants none
+    no_unwind
+;
+
+#[verifier::when_used_as_spec(size_of_val_as_usize)]
+pub assume_specification<V: ?Sized>[ core::mem::size_of_val::<V> ](val: &V) -> (u: usize)
+    ensures
+        u as nat == spec_size_of_val::<V>(val),
+    opens_invariants none
+    no_unwind
+;
+
+#[verifier::when_used_as_spec(align_of_val_as_usize)]
+pub assume_specification<V: ?Sized>[ core::mem::align_of_val::<V> ](val: &V) -> (u: usize)
+    ensures
+        u as nat == spec_align_of_val::<V>(val),
     opens_invariants none
     no_unwind
 ;
@@ -196,18 +235,18 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
 
 /// Slices have the same layout as the underlying type.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#slice-layout)).
-pub broadcast axiom fn layout_of_slices<T>()
+pub broadcast axiom fn layout_of_slices<T>(x: &[T])
     ensures
-        #![trigger align_of::<[T]>()]
-        align_of::<[T]>() == align_of::<T>(),
+        #![trigger spec_align_of_val::<[T]>(x)]
+        spec_align_of_val::<[T]>(x) == align_of::<T>(),
 ;
 
-/// `str` has the same layout as `[u8]`.
+/// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
-pub broadcast axiom fn layout_of_str()
+pub broadcast axiom fn layout_of_str(x: &str)
     ensures
-        #![trigger align_of::<str>()]
-        align_of::<str>() == align_of::<[u8]>(),
+        #![trigger spec_align_of_val::<str>(x)]
+        spec_align_of_val::<str>(x) == align_of::<u8>(),
 ;
 
 pub broadcast group group_align_properties {

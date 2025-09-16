@@ -1120,6 +1120,12 @@ impl<'a, T> SharedReference<'a, T> {
             pt.is_init(),
             pt.value() == self.value(),
     ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_aligned(tracked self)
+        ensures
+            self.ptr()@.addr % align_of::<T>() as usize == 0,
+    ;
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
@@ -1142,12 +1148,6 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     {
         self.0
     }
-
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    pub axiom fn ptr_aligned(tracked self)
-        ensures
-            self.ptr()@.addr % align_of::<T>() as usize == 0,
-    ;
     // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
     //         pt.ptr() == self.ptr(),
@@ -1189,6 +1189,12 @@ impl<'a, T> SharedReference<'a, [T]> {
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
     ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_aligned(tracked self)
+        ensures
+            self.ptr()@.addr % align_of_val::<[T]>(self.value()) == 0,
+    ;
 }
 
 impl<'a> SharedReference<'a, str> {
@@ -1206,6 +1212,12 @@ impl<'a> SharedReference<'a, str> {
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value(),
+    ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_aligned(tracked self)
+        ensures
+            self.ptr()@.addr % align_of_val::<str>(self.value()) == 0,
     ;
 }
 
