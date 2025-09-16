@@ -355,6 +355,22 @@ impl<T> PointsTo<[T]> {
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
 
+    pub proof fn ptr_idx_in_bounds(tracked &self, idx: int)
+        requires
+            size_of::<T>() != 0,
+            0 <= idx <= self.value().len(),
+        ensures
+            self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int
+                + self.value().len() * (size_of::<T>() as int),
+    {
+        self.ptr_bounds();
+        assert(self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int
+            + self.value().len() * (size_of::<T>() as int)) by (nonlinear_arith)
+            requires
+                0 <= idx <= self.value().len(),
+        ;
+    }
+
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
