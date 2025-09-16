@@ -15,6 +15,7 @@ pub enum AbstractByte {
 
 pub uninterp spec fn can_be_decoded<T: ?Sized>() -> bool;
 
+// compiler wants &T instead of T, complains about T not being Sized
 /// Can 'value' be decoded to the given bytes?
 pub uninterp spec fn decode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
 
