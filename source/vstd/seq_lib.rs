@@ -555,7 +555,7 @@ impl<A> Seq<A> {
             self.to_iset().finite(),
     {
         self.to_set_ensures();
-        assert( self.to_set().congruent(self.to_iset()) );
+        assert(self.to_set().congruent(self.to_iset()));
         Set::congruent_infiniteness(self.to_set(), self.to_iset());
     }
 
@@ -1072,7 +1072,7 @@ impl<A> Seq<A> {
             self.len() == self.to_iset().len(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_lemmas, super::set::GSet::congruent_len };
+        broadcast use {super::set::group_set_lemmas, super::set::GSet::congruent_len};
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -1085,7 +1085,7 @@ impl<A> Seq<A> {
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
         }
-        assert( self.to_set().congruent(self.to_iset()) );
+        assert(self.to_set().congruent(self.to_iset()));
     }
 
     /// The cardinality of a set of elements is always less than or
