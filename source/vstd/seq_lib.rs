@@ -539,6 +539,26 @@ impl<A> Seq<A> {
         }
     }
 
+    pub open spec fn to_iset(self) -> ISet<A> {
+        ISet::new(|a: A| self.contains(a))
+    }
+
+    pub broadcast proof fn to_iset_ensures(self)
+        ensures
+            #![trigger(self.to_iset())]
+            // to_iset works for all indices
+            forall|i|
+                0 <= i < self.len() ==> #[trigger] self.to_iset().contains(self[i]),
+            // to_iset finds everything .contains finds
+            forall|a| #[trigger] self.to_iset().contains(a) <==> self.contains(a),
+            // finite
+            self.to_iset().finite(),
+    {
+        self.to_set_ensures();
+        assert( self.to_set().congruent(self.to_iset()) );
+        Set::congruent_infiniteness(self.to_set(), self.to_iset());
+    }
+
     /// Converts a sequence into a multiset
     pub closed spec fn to_multiset(self) -> Multiset<A>
         decreases self.len(),
@@ -1049,9 +1069,10 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         ensures
             self.len() == self.to_set().len(),
+            self.len() == self.to_iset().len(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_lemmas;
+        broadcast use {super::set::group_set_lemmas, super::set::GSet::congruent_len };
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -1064,6 +1085,7 @@ impl<A> Seq<A> {
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
         }
+        assert( self.to_set().congruent(self.to_iset()) );
     }
 
     /// The cardinality of a set of elements is always less than or
@@ -3044,6 +3066,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
+        seq.to_iset().congruent(seq_to_set_rec(seq)),
     decreases seq.len(),
 {
     broadcast use super::set::group_set_lemmas;
@@ -3707,6 +3730,7 @@ pub broadcast group group_filter_ensures {
 
 pub broadcast group group_seq_lib_default {
     Seq::to_set_ensures,
+    Seq::to_iset_ensures,
     group_filter_ensures,
     Seq::add_empty_left,
     Seq::add_empty_right,
