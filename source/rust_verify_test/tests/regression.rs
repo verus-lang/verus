@@ -1538,3 +1538,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] overlapping_labels_between_block_and_loop verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            'a: loop
+            {
+                'a: {
+                    break 'a;
+                }
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
+}
