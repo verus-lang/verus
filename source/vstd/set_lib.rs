@@ -62,12 +62,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
         self.contains(max) && forall|x: A|
             self.contains(x) && #[trigger] leq(max, x) ==> #[trigger] leq(x, max)
     }
-}
 
-//////////////////////////////////////////////////////////////////////////////
-// FINITE set properties
-//////////////////////////////////////////////////////////////////////////////
-impl<A> Set<A> {
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
         decreases self.len(),
@@ -80,7 +75,12 @@ impl<A> Set<A> {
             Seq::<A>::empty().push(x) + self.remove(x).to_seq()
         }
     }
+}
 
+//////////////////////////////////////////////////////////////////////////////
+// FINITE set properties
+//////////////////////////////////////////////////////////////////////////////
+impl<A> Set<A> {
     /// Converts a set into a sequence sorted by the given ordering function `leq`
     pub open spec fn to_sorted_seq(self, leq: spec_fn(A, A) -> bool) -> Seq<A> {
         self.to_seq().sort_by(leq)
@@ -962,19 +962,21 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 
-proof fn lemma_to_seq_to_set_id_recursive<A>(set: Set<A>, elem: A)
-    requires
-        set.finite(),
-    ensures
-        set.contains(elem) <==> set.to_seq().contains(elem),
-    decreases set.len(),
-{
-    broadcast use {super::seq::group_seq_axioms, super::seq_lib::group_seq_properties};
+impl<A, FINITE: Finiteness> GSet<A, FINITE> {
+    proof fn lemma_to_seq_to_set_id_recursive(set: Self, elem: A)
+        requires
+            set.finite(),
+        ensures
+            set.contains(elem) <==> set.to_seq().contains(elem),
+        decreases set.len(),
+    {
+        broadcast use {super::seq::group_seq_axioms, super::seq_lib::group_seq_properties};
 
-    let c = set.choose();
-    if elem != c {
-        if set.contains(elem) || set.to_seq().contains(elem) {
-            lemma_to_seq_to_set_id_recursive(set.remove(c), elem);
+        let c = set.choose();
+        if elem != c {
+            if set.contains(elem) || set.to_seq().contains(elem) {
+                Self::lemma_to_seq_to_set_id_recursive(set.remove(c), elem);
+            }
         }
     }
 }
@@ -982,8 +984,6 @@ proof fn lemma_to_seq_to_set_id_recursive<A>(set: Set<A>, elem: A)
 impl<A> Set<A> {
     /// Conversion to a sequence and back to a set is the identity function.
     pub broadcast proof fn lemma_to_seq_to_set_id(self)
-        requires
-            self.finite(),
         ensures
             #[trigger] self.to_seq().to_set() =~= self,
         decreases self.len(),
@@ -1003,15 +1003,46 @@ impl<A> Set<A> {
             let inner = self.remove(elem).to_seq().to_set().insert(elem);
 
             assert forall|x| #![auto] outer.contains(x) implies inner.contains(x) by {
-                lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
+                Set::lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
             }
             assert forall|x| #![auto] inner.contains(x) implies outer.contains(x) by {
-                lemma_to_seq_to_set_id_recursive(self, x);
+                Set::lemma_to_seq_to_set_id_recursive(self, x);
                 assert(exists|i|
                     #![auto]
                     Set::range(0, self.to_seq().len() as int).contains(i) && self.to_seq()[i] == x);  // witness
             }
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
+        }
+    }
+}
+
+impl<A> ISet<A> {
+    pub broadcast proof fn lemma_to_seq_to_iset_id(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().to_iset() =~= self,
+        decreases self.len(),
+    {
+        broadcast use super::seq::axiom_seq_empty;
+        if self.len() == 0 {
+            assert( self.to_seq() == Seq::<A>::empty() );
+            assert(forall |e| !self.to_seq().contains(e) );
+            assert(self.to_seq().to_iset() =~= ISet::<A>::empty());
+        } else {
+            let elem = self.choose();
+            self.remove(elem).lemma_to_seq_to_iset_id();
+            let outer = self.to_seq().to_iset();
+            let inner = self.remove(elem).to_seq().to_iset().insert(elem);
+
+            assert forall|x| #![auto] outer.contains(x) implies inner.contains(x) by {
+                ISet::lemma_to_seq_to_set_id_recursive(self, x);
+                ISet::lemma_to_seq_to_set_id_recursive(self.remove(elem), x);
+            }
+            assert forall|x| #![auto] inner.contains(x) implies outer.contains(x) by {
+                ISet::lemma_to_seq_to_set_id_recursive(self, x);
+            }
+            assert(self.to_seq().to_iset() =~= self.remove(elem).to_seq().to_iset().insert(elem));
         }
     }
 }
