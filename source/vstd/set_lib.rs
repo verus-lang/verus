@@ -1025,9 +1025,10 @@ impl<A> ISet<A> {
         decreases self.len(),
     {
         broadcast use super::seq::axiom_seq_empty;
+
         if self.len() == 0 {
-            assert( self.to_seq() == Seq::<A>::empty() );
-            assert(forall |e| !self.to_seq().contains(e) );
+            assert(self.to_seq() == Seq::<A>::empty());
+            assert(forall|e| !self.to_seq().contains(e));
             assert(self.to_seq().to_iset() =~= ISet::<A>::empty());
         } else {
             let elem = self.choose();
