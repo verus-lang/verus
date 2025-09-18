@@ -241,6 +241,14 @@ impl<T> PointsTo<T> {
             self@.ptr@.addr != 0,
     ;
 
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self@.ptr@.addr as nat % align_of::<T>() == 0,
+    ;
+
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
     /// Note that this is a `proof` function, i.e.,
@@ -698,10 +706,7 @@ impl PointsToRaw {
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
     ///
     /// In combination with PointsToRaw::empty(),
-    /// this lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
-    /// (even null).
-    /// Admittedly, this does violate ['strict provenance'](https://doc.rust-lang.org/std/ptr/#using-strict-provenance);
-    /// but that's ok. It is still allowed in Rust's more permissive semantics.
+    /// this lets us create a PointsTo for a ZST for _any_ aligned pointer (any address and provenance, even null).
     pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             start as int % align_of::<V>() as int == 0,
