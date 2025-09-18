@@ -120,3 +120,14 @@ test_verify_one_file! {
         assert!(err.errors.iter().find(|p| p.message == "`impl Trait` in type aliases is unstable").is_some());
     }
 }
+
+test_verify_one_file! {
+    #[test] test_ensures_name_collision verus_code! {
+        fn test_fn() -> (test_fn: i32)
+            ensures
+                test_fn == 42,
+        {
+            42
+        }
+    } => Ok(())
+}
