@@ -26,28 +26,68 @@ verus! {
 /// `new()` and `resolve()` are exec-mode, there is no ambiguity about which `new()`
 /// call corresponds to a particular `resolve()` value.
 pub struct Prophecy<T> {
-    v: Ghost<T>,
+    ps: ProphecySeq<T>,
 }
 
 impl<T> Prophecy<T> where T: Structural {
     /// The prophecized value.
     pub closed spec fn view(self) -> T {
-        self.v@
+        if self.ps@.len() > 0 {
+            self.ps@[0]
+        } else {
+            arbitrary()
+        }
     }
 
     /// Allocate a new prophecy variable.
     #[inline(always)]
     pub exec fn new() -> (result: Self) {
-        Prophecy::<T> { v: Ghost(arbitrary()) }
+        Prophecy::<T> { ps: ProphecySeq::<T>::new() }
     }
 
     /// Resolve the prophecy variable to a concrete value.
     /// This consumes `self`, so it can only be called once.
     #[inline(always)]
-    #[verifier::external_body]
     pub exec fn resolve(self, v: &T)
         ensures
             self@ == v,
+    {
+        broadcast use super::seq::group_seq_axioms;
+        let mut mself = self;
+        mself.ps.resolve(v);
+    }
+}
+
+/// [`ProphecySeq::<T>`] represents a sequence of predictions of type T.
+/// It can be allocated by calling [`ProphecySeq::<T>::new()`] in exec mode,
+/// and it can be resolved iteratively by calling [`ProphecySeq::<T>::resolve()`]
+/// in exec mode to resolve the next element of the sequence.  This mirrors
+/// the notion of typed sequence prophecies from section 2.3 of the paper
+/// [_The Future is Ours: Prophecy Variables in Separation Logic_](https://plv.mpi-sws.org/prophecies/paper.pdf).
+pub struct ProphecySeq<T> {
+    vs: Ghost<Seq<T>>,
+}
+
+impl<T> ProphecySeq<T> where T: Structural {
+    /// The prophecized sequence of values.
+    pub closed spec fn view(self) -> Seq<T> {
+        self.vs@
+    }
+
+    /// Allocate a new sequence-prophecy variable.
+    #[inline(always)]
+    pub exec fn new() -> (result: Self) {
+        ProphecySeq::<T> { vs: Ghost(arbitrary()) }
+    }
+
+    /// Resolve the next element in the sequence prophecy variable
+    /// to a concrete value.  The remaining prophecy variable becomes
+    /// the prediction of the subsequent elements of the sequence.
+    #[inline(always)]
+    #[verifier::external_body]
+    pub exec fn resolve(&mut self, v: &T)
+        ensures
+            old(self)@ == seq![*v] + self@,
     {
     }
 }
