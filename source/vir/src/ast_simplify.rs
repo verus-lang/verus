@@ -16,8 +16,8 @@ use crate::ast::{
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
 use crate::ast_util::{
-    conjoin, disjoin, if_then_else, mk_block, mk_eq, mk_ineq, place_to_expr,
-    typ_args_for_datatype_typ, unit_typ, wrap_in_trigger,
+    conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
+    wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -372,10 +372,15 @@ fn simplify_one_expr(
                     *autospec,
                 ),
                 Arc::new(vec![]),
+                None,
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
+        ExprX::Call(
+            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage),
+            args,
+            post_args,
+        ) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
@@ -395,6 +400,7 @@ fn simplify_one_expr(
             } else {
                 args.clone()
             };
+
             let call = ExprX::Call(
                 CallTarget::Fun(
                     kind.clone(),
@@ -404,6 +410,7 @@ fn simplify_one_expr(
                     *autospec_usage,
                 ),
                 args,
+                post_args.clone(),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
@@ -637,22 +644,6 @@ fn simplify_one_expr(
                 _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),
             }
         }
-        ExprX::BorrowMut(place) => {
-            let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone()));
-            let borrow_phase_one = SpannedTyped::new(
-                &expr.span,
-                &mut_ref_typ,
-                ExprX::BorrowMutPhaseOne(place.clone()),
-            );
-            let (stmt, e) = temp_expr(state, &borrow_phase_one);
-            let borrow_phase_two = SpannedTyped::new(
-                &expr.span,
-                &unit_typ(),
-                ExprX::BorrowMutPhaseTwo(place.clone(), e.clone()),
-            );
-            let borrow_phase_two = Spanned::new(expr.span.clone(), StmtX::Expr(borrow_phase_two));
-            Ok(mk_block(&expr.span, vec![stmt, borrow_phase_two], Some(e)))
-        }
         _ => Ok(expr.clone()),
     }
 }
@@ -780,6 +771,7 @@ fn mk_closure_req_call(
                 Arc::new(vec![]),
             ),
             Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
+            None,
         ),
     )
 }
@@ -804,6 +796,7 @@ fn mk_closure_ens_call(
                 Arc::new(vec![]),
             ),
             Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            None,
         ),
     )
 }
