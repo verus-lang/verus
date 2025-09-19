@@ -25,7 +25,7 @@ pub uninterp spec fn encode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> b
 // can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
 impl<T> PointsTo<T> {
     // TODO: version for nondeterministic targets
-    pub axiom fn transmute<U>(tracked self, tracked target: U) -> (tracked ret: PointsTo<U>)
+    pub axiom fn transmute<U>(tracked &self, tracked target: U) -> (tracked ret: &PointsTo<U>)
         requires
             self.is_init(),
             can_be_decoded::<T>(),
@@ -49,7 +49,7 @@ pub broadcast axiom fn str_can_be_decoded()
 ;
 
 impl PointsTo<str> {
-    pub axiom fn transmute(tracked self, target: &[u8]) -> (tracked ret: PointsTo<[u8]>)
+    pub axiom fn transmute(tracked &self, target: &[u8]) -> (tracked ret: &PointsTo<[u8]>)
         requires
             self.is_init(),
             can_be_decoded::<str>(),
