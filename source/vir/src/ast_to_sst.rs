@@ -1453,12 +1453,29 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
 
+            // Handle two-phase borrow; see the explanation in expr_get_call
+            let mut second_phase: Vec<Stm> = Vec::new();
+
             let mut sequr = Sequencer::new();
             for binder in binders.iter() {
-                let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
-                maybe_return_never!(sequr.push(stms0, e0, LocalDeclKind::TempViaAssign));
+                let arg = &binder.a;
+                let kind = LocalDeclKind::TempViaAssign;
+                match &arg.x {
+                    ExprX::TwoPhaseBorrowMut(_) => {
+                        let bor_sst = borrow_mut_to_sst(ctx, state, arg)?;
+                        let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
+                        let early_return =
+                            sequr.push(phase1_stms, ReturnValue::Some(mut_ref_exp), kind);
+                        assert!(early_return.is_none());
+                        second_phase.push(phase2_stm);
+                    }
+                    _ => {
+                        let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
+                        maybe_return_never!(sequr.push(stms0, e0, kind));
+                    }
+                }
             }
-            let (stms, exps) = sequr.into_stms_exps(state);
+            let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
 
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for (binder, e1) in binders.iter().zip(exps.into_iter()) {

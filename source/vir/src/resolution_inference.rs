@@ -455,6 +455,8 @@ impl<'a> Builder<'a> {
                 }
 
                 for p in two_phase_delayed_mutations.into_iter() {
+                    // The point we mark here is after the arguments execute,
+                    // but before the call executes.
                     self.push_instruction(
                         bb,
                         AstPosition::AfterArguments(span_id),
@@ -465,10 +467,36 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             ExprX::Ctor(_dt, _id, binders, opt_place) => {
-                // TODO(new_mut_ref): handle two-phase borrows
+                let mut two_phase_delayed_mutations = vec![];
+
+                // TODO(new_mut_ref): tests for two-phase borrows
+
                 for b in binders.iter() {
-                    bb = self.build(&b.a, bb)?;
+                    let e = &b.a;
+                    match &e.x {
+                        ExprX::TwoPhaseBorrowMut(p) => {
+                            let (p, bb) = self.build_place(p, bb)?;
+                            if let Some(p) = p {
+                                two_phase_delayed_mutations.push(p);
+                            }
+                        }
+                        _ => {
+                            bb = self.build(e, bb)?;
+                        }
+                    }
                 }
+
+                for p in two_phase_delayed_mutations.into_iter() {
+                    // Convenentially, we can just put these mutations after the Ctor call itself
+                    // since the Ctor is a trivial operation, i.e., we don't need a special
+                    // place for the "post_args" like we do with calls.
+                    self.push_instruction(
+                        bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::Mutate(p),
+                    );
+                }
+
                 if opt_place.is_some() {
                     todo!()
                 }

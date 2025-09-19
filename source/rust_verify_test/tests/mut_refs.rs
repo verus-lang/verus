@@ -79,8 +79,9 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): failing because of interactions between Ctors and two-phase-borrows
-    #[ignore] #[test] test_paren_ctors_with_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] test_paren_ctors_with_mut_refs ["new-mut-ref"] => verus_code! {
+        struct Pair<A, B>(A, B);
+
         fn test_mut_ref_in_pair() {
             let mut u: u64 = 20;
             let u_ref: Pair<&mut u64, u64> = Pair(&mut u, 70);
@@ -2661,4 +2662,74 @@ test_verify_one_file_with_options! {
         }
     //} => Err(err) => assert_rust_error_msg(err, "cannot use `j` because it was mutably borrowed")
     } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_ctor ["new-mut-ref"] => verus_code! {
+        struct Pair<A, B>(A, B);
+
+        fn test1() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            let x: Pair<&mut u64, u64> = Pair(a_ref, *a_ref);
+
+            assert(*x.0 == 24);
+            assert(x.1 == 24);
+
+            *x.0 = 50;
+
+            assert(a == 50);
+        }
+
+        fn test1_fails() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            let x: Pair<&mut u64, u64> = Pair(a_ref, *a_ref);
+
+            assert(*x.0 == 24);
+            assert(x.1 == 24);
+
+            *x.0 = 50;
+
+            assert(a == 50);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_tuple ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            let x: (&mut u64, u64) = (a_ref, *a_ref);
+
+            assert(*x.0 == 24);
+            assert(x.1 == 24);
+
+            *x.0 = 50;
+
+            assert(a == 50);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*a_ref` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] two_phase_struct ["new-mut-ref"] => verus_code! {
+        struct Pair<'a> {
+            a_ref: &'a mut u64,
+            a: u64,
+        }
+
+        fn test1() {
+            let mut a = 24;
+            let mut a_ref = &mut a;
+
+            let x = Pair { a_ref: a_ref, a: *a_ref };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `*a_ref` because it was mutably borrowed")
 }
