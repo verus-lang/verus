@@ -254,12 +254,14 @@ impl<T> PointsTo<T> {
             self.ptr()@.addr != 0,
     ;
 
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     ///
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self@.ptr@.addr as nat % align_of::<T>() == 0,
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
     ;
 
     /// "Forgets" about the value stored behind the pointer.
@@ -347,6 +349,17 @@ impl<T> PointsTo<[T]> {
             size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
+    ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            forall|v: &[T]|
+                v@ == self.value() ==> self.ptr()@.addr as nat % spec_align_of_val::<[T]>(v) == 0,
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -477,6 +490,16 @@ impl PointsTo<str> {
     {
         self.opt_value().value()
     }
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+    ;
 }
 
 impl<T> MemContents<T> {
@@ -1125,12 +1148,6 @@ impl<'a, T> SharedReference<'a, T> {
             pt.is_init(),
             pt.value() == self.value(),
     ;
-
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    pub axiom fn ptr_aligned(tracked self)
-        ensures
-            self.ptr()@.addr % align_of::<T>() as usize == 0,
-    ;
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
@@ -1139,7 +1156,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     pub uninterp spec fn ptr(self) -> *const T;
 
     #[verifier::external_body]
-    pub fn new(t: &'a T) -> (s: Self)
+    pub const fn new(t: &'a T) -> (s: Self)
         ensures
             s.value() == t,
     {
@@ -1194,12 +1211,6 @@ impl<'a, T> SharedReference<'a, [T]> {
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
     ;
-
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    pub axiom fn ptr_aligned(tracked self)
-        ensures
-            self.ptr()@.addr % align_of_val::<[T]>(self.value()) == 0,
-    ;
 }
 
 impl<'a> SharedReference<'a, str> {
@@ -1217,12 +1228,6 @@ impl<'a> SharedReference<'a, str> {
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value(),
-    ;
-
-    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
-    pub axiom fn ptr_aligned(tracked self)
-        ensures
-            self.ptr()@.addr % align_of_val::<str>(self.value()) == 0,
     ;
 }
 
