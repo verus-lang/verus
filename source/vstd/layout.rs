@@ -131,13 +131,35 @@ pub assume_specification<V: ?Sized>[ core::mem::align_of_val::<V> ](val: &V) -> 
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
 #[verifier::external_body]
 #[inline(always)]
-pub exec fn layout_for_type_is_valid<V>()
+pub const exec fn layout_for_type_is_valid<V>()
     ensures
         valid_layout(size_of::<V>() as usize, align_of::<V>() as usize),
         size_of::<V>() as usize as nat == size_of::<V>(),
         align_of::<V>() as usize as nat == align_of::<V>(),
         align_of::<V>() != 0,
         size_of::<V>() % align_of::<V>() == 0,
+    opens_invariants none
+    no_unwind
+{
+}
+
+/// Lemma to learn that the (size, alignment) of a (possibly not Sized) value is a valid "layout".
+/// See [`valid_layout`] for the exact conditions.
+///
+/// Also exports that size is a multiple of alignment ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size)).
+///
+/// Note that, unusually for a lemma, this is an `exec`-mode function. (This is necessary to
+/// ensure that the types are really compilable, as ghost code can reason about "virtual" types
+/// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
+#[verifier::external_body]
+#[inline(always)]
+pub const exec fn layout_for_val_is_valid<V: ?Sized>(val: Tracked<&V>)
+    ensures
+        valid_layout(spec_size_of_val::<V>(val@) as usize, spec_align_of_val::<V>(val@) as usize),
+        spec_size_of_val::<V>(val@) as usize as nat == spec_size_of_val::<V>(val@),
+        spec_align_of_val::<V>(val@) as usize as nat == spec_align_of_val::<V>(val@),
+        spec_align_of_val::<V>(val@) != 0,
+        spec_size_of_val::<V>(val@) % spec_align_of_val::<V>(val@) == 0,
     opens_invariants none
     no_unwind
 {
