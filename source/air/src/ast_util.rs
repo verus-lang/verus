@@ -311,3 +311,15 @@ pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
 pub fn mk_unnamed_axiom(expr: Expr) -> Decl {
     Arc::new(DeclX::Axiom(Axiom { named: None, expr: expr.clone() }))
 }
+
+pub fn mk_bit_vec<S: ToString>(n: S, w: u32) -> Expr {
+    Arc::new(ExprX::Const(Constant::BitVec(Arc::new(n.to_string()), w)))
+}
+
+pub fn mk_bit_vec_zero(w: u32) -> Expr {
+    mk_bit_vec("0", w)
+}
+
+pub fn mk_bit_vec_one(w: u32) -> Expr {
+    mk_bit_vec("1", w)
+}

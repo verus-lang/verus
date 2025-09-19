@@ -150,6 +150,7 @@ impl Printer {
                 let sop = match op {
                     UnaryOp::Not => "not",
                     UnaryOp::BitNot => "bvnot",
+                    UnaryOp::BitNeg => "bvneg",
                     UnaryOp::BitExtract(_, _) => "extract",
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",
@@ -210,7 +211,9 @@ impl Printer {
                     BinaryOp::BitSub => str_to_node("bvsub"),
                     BinaryOp::BitMul => str_to_node("bvmul"),
                     BinaryOp::BitUDiv => str_to_node("bvudiv"),
-                    BinaryOp::BitUMod => str_to_node("bvurem"),
+                    BinaryOp::BitURem => str_to_node("bvurem"),
+                    BinaryOp::BitSDiv => str_to_node("bvsdiv"),
+                    BinaryOp::BitSRem => str_to_node("bvsrem"),
                     BinaryOp::BitULt => str_to_node("bvult"),
                     BinaryOp::BitUGt => str_to_node("bvugt"),
                     BinaryOp::BitULe => str_to_node("bvule"),

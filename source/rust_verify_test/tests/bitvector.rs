@@ -942,6 +942,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] div_signed_euclidean verus_code! {
+        fn div_signed_euclidean() {
+           assert(7i32 / 3i32 == 2i32) by(bit_vector);
+           assert(7i32 / 3i32 == 2i32);
+
+           assert(-7i32 / 3i32 == -3i32) by(bit_vector);
+           assert(-7i32 / 3i32 == -3i32);
+
+           assert(7i32 / -3i32 == -2i32) by(bit_vector);
+           assert(7i32 / -3i32 == -2i32);
+
+           assert(-7i32 / -3i32 == 3i32) by(bit_vector);
+           assert(-7i32 / -3i32 == 3i32);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] div_signed_overflow verus_code! {
+        fn div_signed_overflow() {
+            assert(-128i8 / -1i8 == 128) by(bit_vector);
+            assert(-128i8 / -1i8 == 128);
+
+            assert(-32768i16 / -1i16 == 32768) by(bit_vector);
+            assert(-32768i16 / -1i16 == 32768);
+
+            assert(-2147483648i32 / -1i32 == 2147483648) by(bit_vector);
+            assert(-2147483648i32 / -1i32 == 2147483648);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] div_mod_signed_properties verus_code! {
+        fn div_mod_signed_properties(x: i8, y: i8) {
+            assert(y != 0 ==> (x / y) * y + (x % y) == x) by(bit_vector);
+            assert(y != 0 ==> (x % y) >= 0) by(bit_vector);
+            assert(y > 0 ==> (x % y) < y) by(bit_vector);
+            assert(y < 0 ==> (x % y) < -y) by(bit_vector);
+            assert(x as int / (-1) == -x) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] div0_underspecified verus_code! {
         fn div_0_underspecified(x: u32, y: u32) {
             assert(0u32 / y == 0) by(bit_vector); // FAILS
@@ -953,6 +998,24 @@ test_verify_one_file! {
             assert(x == 0 && y == 0 ==> x/y == 0xffffffff) by(bit_vector); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] mod_signed_euclidean verus_code! {
+        fn mod_signed_euclidean() {
+           assert(7i32 % 3i32 == 1i32) by(bit_vector);
+           assert(7i32 % 3i32 == 1i32);
+
+           assert(-7i32 % 3i32 == 2i32) by(bit_vector);
+           assert(-7i32 % 3i32 == 2i32);
+
+           assert(7i32 % -3i32 == 1i32) by(bit_vector);
+           assert(7i32 % -3i32 == 1i32);
+
+           assert(-7i32 % -3i32 == 2i32) by(bit_vector);
+           assert(-7i32 % -3i32 == 2i32);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1083,31 +1146,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// TODO once signed division/mod are supported,
-// we can remove these 2 tests and un-ignore the more complete ones below
 test_verify_one_file! {
-    #[test] test_by_equating_div_unsigned_only verus_code! {
-        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
-            assert(y != 0 ==> au == x && bu == y ==> (au as int) / (bu as int) == x / y) by(bit_vector);
-            assert(y != 0 ==> au == x && (bu + bu2) == y ==> (au as int) / ((bu + bu2) as int) == x / y) by(bit_vector);
-            assert(y != 0 ==> (au + au2) == x && bu == y ==> ((au + au2) as int) / (bu as int) == x / y) by(bit_vector);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_by_equating_mod_unsigned_only verus_code! {
-        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
-            assert(y != 0 ==> au == x && bu == y ==> (au as int) % (bu as int) == x % y) by(bit_vector);
-            assert(y != 0 ==> au == x && (bu + bu2) == y ==> (au as int) % ((bu + bu2) as int) == x % y) by(bit_vector);
-            assert(y != 0 ==> (au + au2) == x && bu == y ==> ((au + au2) as int) % (bu as int) == x % y) by(bit_vector);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[ignore] #[test] test_by_equating_div verus_code! {
-        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
+    #[test] test_by_equating_div verus_code! {
+        fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) / (bi as int) == x / y) by(bit_vector);
             assert(y != 0 ==> ai == x && bu == y ==> (ai as int) / (bu as int) == x / y) by(bit_vector);
             assert(y != 0 ==> au == x && bi == y ==> (au as int) / (bi as int) == x / y) by(bit_vector);
@@ -1125,8 +1166,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_by_equating_mod verus_code! {
-        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, x: u32, y: u32) {
+    #[test] test_by_equating_mod verus_code! {
+        fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) % (bi as int) == x % y) by(bit_vector);
             assert(y != 0 ==> ai == x && bu == y ==> (ai as int) % (bu as int) == x % y) by(bit_vector);
             assert(y != 0 ==> au == x && bi == y ==> (au as int) % (bi as int) == x % y) by(bit_vector);
@@ -1165,6 +1206,104 @@ test_verify_one_file! {
             assert(au8 == x && bu16 == y ==> (au8 << bu16) == (x << y) as u8) by(bit_vector);
             assert(ai16 == x && bu8 == y ==> (ai16 << bu8) == (x << y) as i16) by(bit_vector);
             assert(au16 == x && bu8 == y ==> (au16 << bu8) == (x << y) as u16) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_signed_and_unsigned verus_code! {
+        fn test_signed_comparing_to_unsigned(x: i8, y: i8, a: u8, b: u8) {
+            // + / +
+            assert(x >= 0 && y > 0 && x == a && y == b ==>
+                x / y == a / b && x % y == a % b) by(bit_vector);
+
+            // + / -
+            assert(x >= 0 && y < 0 && x == a && (-y) == b ==>
+                x / y == -(a / b) && x % y == a % b) by(bit_vector);
+
+            // - / + (divisible)
+            assert(x < 0 && y > 0 && (-x) == a && y == b ==>
+                a % b == 0 ==>
+                x / y == -(a / b) && x % y == 0) by(bit_vector);
+
+            // - / + (not divisible)
+            assert(x < 0 && y > 0 && (-x) == a && y == b ==>
+                a % b != 0 ==>
+                x / y == -(a / b) - 1 && x % y == b - (a % b)) by(bit_vector);
+
+            // - / - (divisible)
+            assert(x < 0 && y < 0 && (-x) == a && (-y) == b ==>
+                a % b == 0 ==>
+                x / y == (a / b) && x % y == 0) by(bit_vector);
+
+            // - / - (not divisible)
+            assert(x < 0 && y < 0 && (-x) == a && (-y) == b ==>
+                a % b != 0 ==>
+                x / y == (a / b) + 1 && x % y == b - (a % b)) by(bit_vector);
+        }
+
+        // test various combinations of signedness / bitwidth
+        fn test_i_i(x: i8, y: i8, z: i8, a: i16, b: i16) {
+            // i8 / i8
+            assert(b != 0 && x == a && y == b ==>
+                x / y == a / b) by(bit_vector);
+
+            // i9 / i8
+            assert(b != 0 && x+z == a && y == b ==>
+                (x+z) / y as int == a / b) by(bit_vector);
+
+            // i8 / i9
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x % y == a % b) by(bit_vector);
+
+            assert(b != 0 && x+z == a && y == b ==>
+                (x+z) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
+        }
+
+        fn test_u_i(x: u8, w: u8, y: i8, z: i8, a: i16, b: i16) {
+            assert(b != 0 && x == a && y == b ==>
+                x as int / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x as int % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
+        }
+
+        fn test_i_u(x: i8, w: i8, y: u8, z: u8, a: i16, b: i16) {
+            assert(b != 0 && x == a && y == b ==>
+                x as int / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) / y as int == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int / (y+z) == a / b) by(bit_vector);
+
+            assert(b != 0 && x == a && y == b ==>
+                x as int % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x+w == a && y == b ==>
+                (x+w) % y as int == a % b) by(bit_vector);
+
+            assert(b != 0 && x == a && (y+z) == b ==>
+                x as int % (y+z) == a % b) by(bit_vector);
         }
     } => Ok(())
 }

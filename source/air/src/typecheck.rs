@@ -151,7 +151,7 @@ fn check_bv_unary_exprs(
                 Ok(Arc::new(TypX::BitVec(high + 1 - lo)))
             }
         }
-        UnaryOp::BitNot => {
+        UnaryOp::BitNot | UnaryOp::BitNeg => {
             let t0 = check_expr(typing, expr)?;
             match get_bv_width(&t0) {
                 Ok(_) => Ok(t0.clone()),
@@ -234,6 +234,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
         ExprX::Unary(UnaryOp::BitNot, e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitNeg, e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitNeg, "bvneg", &e1.clone())
         }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
@@ -345,8 +348,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitUMod, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUMod, "bvmod", &[e1.clone(), e2.clone()])
+        ExprX::Binary(BinaryOp::BitURem, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitURem, "bvurem", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitAnd, "&", &[e1.clone(), e2.clone()])
@@ -364,7 +367,13 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_exprs(typing, BinaryOp::BitMul, "bvmul", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUDiv, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitUDiv, "bvudiv", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSDiv, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSDiv, "bvsdiv", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSRem, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSRem, "bvsrem", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::LShr, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::LShr, ">> (lshr)", &[e1.clone(), e2.clone()])

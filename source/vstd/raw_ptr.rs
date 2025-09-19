@@ -254,6 +254,16 @@ impl<T> PointsTo<T> {
             self.ptr()@.addr != 0,
     ;
 
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+    ;
+
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
     /// Note that this is a `proof` function, i.e.,
@@ -308,6 +318,13 @@ impl<T> PointsTo<[T]> {
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
     }
 
+    pub open spec fn is_init_prefix(&self, len: int) -> bool
+        recommends
+            len < self.mem_contents_seq().len(),
+    {
+        forall|i| 0 <= i < len ==> self.mem_contents_seq().index(i).is_init()
+    }
+
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
     // #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
@@ -334,6 +351,17 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr != 0,
     ;
 
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            forall|v: &[T]|
+                v@ == self.value() ==> self.ptr()@.addr as nat % spec_align_of_val::<[T]>(v) == 0,
+    ;
+
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(
         tracked &self,
@@ -347,6 +375,22 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr + self.value().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
+
+    pub proof fn ptr_idx_in_bounds(tracked &self, idx: int)
+        requires
+            size_of::<T>() != 0,
+            0 <= idx <= self.value().len(),
+        ensures
+            self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int
+                + self.value().len() * (size_of::<T>() as int),
+    {
+        self.ptr_bounds();
+        assert(self.ptr()@.addr as int + idx * (size_of::<T>() as int) <= self.ptr()@.addr as int
+            + self.value().len() * (size_of::<T>() as int)) by (nonlinear_arith)
+            requires
+                0 <= idx <= self.value().len(),
+        ;
+    }
 
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
@@ -446,6 +490,16 @@ impl PointsTo<str> {
     {
         self.opt_value().value()
     }
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+    ;
 }
 
 impl<T> MemContents<T> {
@@ -882,10 +936,7 @@ impl PointsToRaw {
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
     ///
     /// In combination with PointsToRaw::empty(),
-    /// this lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
-    /// (even null).
-    /// Admittedly, this does violate ['strict provenance'](https://doc.rust-lang.org/std/ptr/#using-strict-provenance);
-    /// but that's ok. It is still allowed in Rust's more permissive semantics.
+    /// this lets us create a PointsTo for a ZST for _any_ aligned pointer (any address and provenance, even null).
     pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             start as int % align_of::<V>() as int == 0,
@@ -1105,7 +1156,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     pub uninterp spec fn ptr(self) -> *const T;
 
     #[verifier::external_body]
-    pub fn new(t: &'a T) -> (s: Self)
+    pub const fn new(t: &'a T) -> (s: Self)
         ensures
             s.value() == t,
     {
