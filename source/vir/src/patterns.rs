@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::context::GlobalCtx;
-use crate::messages::{error};
+use crate::messages::{error, Span};
 use std::sync::Arc;
 use crate::def::Spanned;
 use crate::ast_util::{mk_eq, mk_ineq, conjoin};
@@ -14,7 +14,7 @@ pub fn pattern_to_exprs(
     decls: &mut Vec<Stmt>,
 ) -> Result<Expr, VirErr> {
     let mut pattern_bound_decls = vec![];
-    let e = pattern_to_exprs_rec(ctx, pattern, place, &mut pattern_bound_decls)?;
+    let e = pattern_to_exprs_rec(ctx, pattern, place, &mut pattern_bound_decls, false)?;
 
     for pbd in pattern_bound_decls {
         if has_guard && pbd.mut_ref {
@@ -71,11 +71,23 @@ fn read_place(place: &Place) -> Expr {
                 UnfinalizedReadKind { preliminary_kind: ReadKind::ImmutBor, id: 0 }))
 }
 
+fn err_if_bad_binding(span: &Span, in_immut: bool, by_ref: ByRef) -> Result<(), VirErr> {
+    // extra sanity check, should be caught by lifetime checking, though
+    if in_immut && matches!(by_ref, ByRef::MutRef) {
+        return Err(error(
+            span,
+            "cannot borrow this place as mutable, as it is behind a `&` reference",
+        ));
+    }
+    Ok(())
+}
+
 fn pattern_to_exprs_rec(
     ctx: &GlobalCtx,
     pattern: &Pattern,
     place: &Place,
     bindings: &mut Vec<ComputedPatternBinding>,
+    in_immut: bool,
 ) -> Result<Expr, VirErr> {
     let t_bool = Arc::new(TypX::Bool);
     match &pattern.x {
@@ -83,11 +95,13 @@ fn pattern_to_exprs_rec(
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Var(binding) => {
+            err_if_bad_binding(&pattern.span, in_immut, binding.by_ref)?;
             bindings.push(computed(binding, place)?);
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Binding { binding, sub_pat } => {
-            let pattern_test = pattern_to_exprs_rec(ctx, sub_pat, place, bindings)?;
+            err_if_bad_binding(&pattern.span, in_immut, binding.by_ref)?;
+            let pattern_test = pattern_to_exprs_rec(ctx, sub_pat, place, bindings, in_immut)?;
             // This binding needs to go last in case we have something like this:
             //   `ref mut x @ Some(y)`
             // (which is ok if the y is bound via copy)
@@ -113,7 +127,7 @@ fn pattern_to_exprs_rec(
                 };
                 let field_typ = &binder.a.typ;
                 let field_place = SpannedTyped::new(&binder.a.span, field_typ, PlaceX::Field(field_opr, place.clone()));
-                let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings)?;
+                let pattern_test = pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings, in_immut)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
@@ -165,7 +179,7 @@ fn pattern_to_exprs_rec(
             Ok(conjoin(&pattern.span, &v))
         }
         PatternX::ImmutRef(sub_pat) => {
-            pattern_to_exprs_rec(ctx, sub_pat, place, bindings)
+            pattern_to_exprs_rec(ctx, sub_pat, place, bindings, true)
         }
         PatternX::MutRef(sub_pat) => {
             let deref_place = SpannedTyped::new(
@@ -173,7 +187,48 @@ fn pattern_to_exprs_rec(
                 &sub_pat.typ,
                 PlaceX::DerefMut(place.clone())
             );
-            pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings)
+            pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
+    }
+}
+
+// TODO(new_mut_ref): account for Copy types
+pub(crate) fn pattern_has_move(pattern: &Pattern) -> bool {
+    match &pattern.x {
+        PatternX::Wildcard(_) => false,
+        PatternX::Var(binding) => matches!(binding.by_ref, ByRef::No),
+        PatternX::Binding { binding, sub_pat } => matches!(binding.by_ref, ByRef::No) || pattern_has_move(sub_pat),
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                if pattern_has_move(&binder.a) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatternX::Or(pat1, pat2) => pattern_has_move(pat1) || pattern_has_move(pat2),
+        PatternX::Expr(_e) => false,
+        PatternX::Range(_lower, _upper) => false,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p),
+    }
+}
+
+pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
+    match &pattern.x {
+        PatternX::Wildcard(_) => false,
+        PatternX::Var(binding) => matches!(binding.by_ref, ByRef::MutRef),
+        PatternX::Binding { binding, sub_pat } => matches!(binding.by_ref, ByRef::MutRef) || pattern_has_mut(sub_pat),
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                if pattern_has_mut(&binder.a) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatternX::Or(pat1, pat2) => pattern_has_mut(pat1) || pattern_has_mut(pat2),
+        PatternX::Expr(_e) => false,
+        PatternX::Range(_lower, _upper) => false,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_mut(p),
     }
 }

@@ -1031,7 +1031,6 @@ pub fn pattern_all_bound_vars_with_ownership(
 /// let (x, _) = y.1; // moves y.1.0
 /// ```
 
-
 fn moves_and_muts_for_place_being_matched(
     pattern: &Pattern,
     fpt: &FlattenedPlaceTyped,
@@ -1104,8 +1103,13 @@ fn moves_and_muts_for_pattern(
                     }
                 } else {
                     // TODO(new_mut_ref) this is not quite right, need to check if anything
-                    // is actually bound in here, irrefutability issues etc.
-                    out.push((projs.clone(), ByRef::No));
+                    // is actually bound in here, irrefutability issues, Copy,
+                    // what if there's a mixture of muts and moves
+                    if crate::patterns::pattern_has_move(pattern) {
+                        out.push((projs.clone(), ByRef::No));
+                    } else if crate::patterns::pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(_, _) => {
