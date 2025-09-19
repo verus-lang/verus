@@ -186,10 +186,10 @@ fn vstd_kind() -> VstdKind {
                     return VstdKind::Imported;
                 } else if &s == "IsCore" {
                     return VstdKind::IsCore;
-                } else if &s == "ImportsCore" {
+                } else if &s == "ImportedViaCore" {
                     return VstdKind::ImportedViaCore;
                 } else {
-                    panic!("The environment variable VSTD_KIND was set but its value is invalid. Allowed values are 'IsVstd', 'NoVstd', 'Imported', 'IsCore', and 'ImportsCore'");
+                    panic!("The environment variable VSTD_KIND was set but its value ('{:}') is invalid. Allowed values are 'IsVstd', 'NoVstd', 'Imported', 'IsCore', and 'ImportedViaCore'", s);
                 }
             }
             _ => { }
