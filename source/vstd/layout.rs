@@ -92,7 +92,7 @@ pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
 /// that exceed these bounds.) Despite being `exec`-mode, it is a no-op.
 #[verifier::external_body]
 #[inline(always)]
-pub exec fn layout_for_type_is_valid<V>()
+pub const exec fn layout_for_type_is_valid<V>()
     ensures
         valid_layout(size_of::<V>() as usize, align_of::<V>() as usize),
         size_of::<V>() as usize as nat == size_of::<V>(),
