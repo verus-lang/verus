@@ -23,7 +23,7 @@ pub trait ToOwned<T: Sized + DeepView>: Sized + DeepView<V = T::V> {
     ;
 }
 
-/// Cloned object have the same deep view
+/// Cloned objects have the same deep view
 pub trait DeepViewClone: Sized + DeepView {
     fn deep_clone(&self) -> (res: Self)
         ensures
