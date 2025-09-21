@@ -646,9 +646,6 @@ impl Visitor {
             let pat_type = match &fn_arg.kind {
                 FnArgKind::Typed(pat_type) => pat_type,
                 FnArgKind::Receiver(receiver) => {
-                    // dbg!(receiver);
-                    // dbg!(&self.inside_impl);
-
                     let ident = Ident::new("this", receiver.self_token.span());
                     let (pat_type, lifetime) = self.resolve_receiver(receiver, &ident);
                     self_ident = Some(ident);

@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs ignore --- incomplete feature
 use vstd::prelude::*;
 use vstd::*;
 
@@ -44,7 +43,7 @@ pub fn middle(x: i32) -> (y: i32)
 pub fn atomic_call() {
     let x = 2;
     let y = middle(x) atomically |update| {
-        let z = 5;
+        let tracked z = 5;
         assert(z == 5);
         let w = update(z);
         assert(w == 7);

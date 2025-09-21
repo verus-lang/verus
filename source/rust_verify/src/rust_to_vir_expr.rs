@@ -2295,14 +2295,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             let ctor_opt = resolve_ctor(bctx.ctxt.tcx, res);
             match (res, ctor_opt) {
-                (Res::Local(id), _) => match tcx.hir_node(id) {
-                    Node::Pat(pat) => Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
-                        expr.span,
-                        &expr_typ()?,
-                        PlaceX::Local(pat_to_var(pat)?),
-                    ))),
-                    node => unsupported_err!(expr.span, format!("Path {:?}", node)),
-                },
+                (Res::Local(id), _) => {
+                    let actx = bctx.atomically.as_deref();
+                    if actx.is_some_and(|actx| actx.update_binder == id) {
+                        return err_span(expr.span, "update function must be called directly");
+                    }
+
+                    match tcx.hir_node(id) {
+                        Node::Pat(pat) => Ok(ExprOrPlace::Place(bctx.spanned_typed_new(
+                            expr.span,
+                            &expr_typ()?,
+                            PlaceX::Local(pat_to_var(pat)?),
+                        ))),
+                        node => unsupported_err!(expr.span, format!("Path {:?}", node)),
+                    }
+                }
                 (_, Some((ctor, ctor_kind))) => {
                     if ctor_kind != CtorKind::Const {
                         unsupported_err!(

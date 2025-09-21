@@ -19,8 +19,11 @@ test_verify_one_file! {
     #[test] open_atomic_update_proof_simple_ok
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
-            open_atomic_update!(au, n => {
-                n + 3
+            open_atomic_update!(au, x => {
+                assert(x == 2);
+                let y = x + 3;
+                assert(y == 5);
+                y
             });
         }
     } => Ok(())
@@ -31,6 +34,7 @@ test_verify_one_file! {
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, n => {
+                assert(n == 2);
                 n + 7
             });
         }
@@ -115,6 +119,20 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] open_atomic_update_spec_fail
+    CUSTOM_PREDICATE.to_owned() + verus_code_str! {
+        spec fn function(au: AtomicUpdate<i32, i32, MyPredicate>) {
+            open_atomic_update!(au, x => {
+                assert(x == 2);
+                let tracked y = x + 3;
+                assert(y == 5);
+                y
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot open atomic update in spec mode")
+}
+
 const ATOMIC_FUNCTION: &'static str = verus_code_str! {
     use vstd::*;
     use vstd::prelude::*;
@@ -143,29 +161,10 @@ test_verify_one_file! {
         proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
             assert forall |a: u32| au.req(a) <==> a == 2 by {}
             assert forall |a: u32, b: u32| au.ens(a, b) <==> b == 5 by {}
+            assert (au.outer_mask().is_empty()) by {}
+            assert (au.inner_mask().is_empty()) by {}
         }
     } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] atomic_call_missing_update
-    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
-        exec fn function() {
-            atomic_function() atomically |update| {};
-        }
-    } => Err(err) => assert_vir_error_msg(err, "function must be called in `atomically` block")
-}
-
-test_verify_one_file! {
-    #[test] atomic_call_too_many_updates
-    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
-        exec fn function() {
-            atomic_function() atomically |update| {
-                update(3);
-                update(4);
-            };
-        }
-    } => Err(err) => assert_vir_error_msg(err, "function must be called exactly once in `atomically` block")
 }
 
 test_verify_one_file! {
@@ -260,7 +259,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atomic_call_missing_update_args
+    #[test] atomic_call_missing_update
     ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
         exec fn function() {
             atomic_function(2) atomically |update| {};
@@ -269,7 +268,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] atomic_call_too_many_updates_args
+    #[test] atomic_call_too_many_updates
     ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
         exec fn function() {
             atomic_function(2) atomically |update| {
@@ -278,6 +277,24 @@ test_verify_one_file! {
             };
         }
     } => Err(err) => assert_vir_error_msg(err, "function must be called exactly once in `atomically` block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_bad_update_use
+    ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
+        exec fn function() {
+            let tracked mut num = 2;
+            atomic_function(2) atomically |update| {
+                assert(num == 2);
+
+                let f = update;
+                num = f(num);
+
+                assert(num == 5);
+            };
+            assert(num == 5);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "update function must be called directly")
 }
 
 test_verify_one_file! {
@@ -335,4 +352,65 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_mask_simple_ok
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires x == 2,
+                ensures y == 5,
+                outer_mask [1_int, 2_int, 3_int],
+                inner_mask [1_int, 2_int],
+            },
+        {
+            open_atomic_update!(au, mut n => {
+                assert(n == 2);
+                proof { n += 3_u32; };
+                assert(n == 5);
+                n
+            });
+        }
+
+        proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
+            assert forall |a: u32| au.req(a) <==> a == 2 by {}
+            assert forall |a: u32, b: u32| au.ens(a, b) <==> b == 5 by {}
+            assert (au.outer_mask() == set![1_int, 2_int, 3_int]) by {}
+            assert (au.inner_mask() == set![1_int, 2_int]) by {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_invalid_mask_pair
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires x == 2,
+                ensures y == 5,
+                outer_mask [1_int, 2_int],
+                inner_mask [1_int, 2_int, 3_int],
+            },
+        {
+            open_atomic_update!(au, mut n => {
+                assert(n == 2);
+                proof { n += 3_u32; };
+                assert(n == 5);
+                n
+            });
+        }
+    } => Err(..) // todo
 }

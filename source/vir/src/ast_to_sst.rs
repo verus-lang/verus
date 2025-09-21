@@ -83,7 +83,7 @@ pub(crate) struct State<'a> {
 
     pub mask: Option<MaskSet>,
 
-    pub au_pred_var: Option<crate::sst::Exp>,
+    pub au_var_exp: Option<crate::sst::Exp>,
 }
 
 #[derive(Clone, Debug)]
@@ -153,7 +153,7 @@ impl<'a> State<'a> {
             loop_id_counter: 0,
 
             mask: None,
-            au_pred_var: None,
+            au_var_exp: None,
         }
     }
 
@@ -2256,15 +2256,15 @@ pub(crate) fn expr_to_stm_opt(
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::OpenAtomicUpdate(au_expr, x_bind, x_mut, body) => {
-            // let au_temp = $au_expr;
-            // let tmp_x = new existential;
+            // let au_tmp = $au_expr;
+            // let x_tmp = new existential;
             //
-            // assume(req(au_temp, tmp_x));
+            // assume(req(au_tmp, x_tmp));
             //
-            // let $mut $x = tmp_x;
+            // let $mut $x = x_tmp;
             // let y = $body;
             //
-            // assert(ens(au_temp, tmp_x, y));
+            // assert(ens(au_tmp, x_tmp, y));
 
             let (mut stms, au_raw_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
             let au_raw_exp = unwrap_or_return_never!(au_raw_exp, stms);
@@ -2274,9 +2274,7 @@ pub(crate) fn expr_to_stm_opt(
                 panic!("atomic update should be a datatype")
             };
 
-            let (au_temp_var_id, au_temp_var_exp) =
-                state.declare_temp_assign(&au_expr.span, au_typ);
-            stms.push(init_var(&au_expr.span, &au_temp_var_id, &au_raw_exp));
+            let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_exp);
 
             let x_typ = &x_bind.a;
             let (x_temp_var_id, x_temp_var_exp) =
@@ -2341,11 +2339,9 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             let body_exp = unwrap_or_return_never!(body_exp, stms);
+            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
 
             // generate assertion
-
-            let (y_var_id, y_var_exp) = state.declare_temp_assign(&expr.span, au_typ);
-            stms.push(init_var(&expr.span, &y_var_id, &body_exp));
 
             let call_ens = ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
@@ -2366,12 +2362,50 @@ pub(crate) fn expr_to_stm_opt(
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Atomically(info, pred_expr, body_expr) => {
-            let AtomicCallInfoX { au_typ, x_typ, y_typ, pred_typ } = info.as_ref();
+            // let pred = $pred_expr;
+            // let au = new existential;
+            // assume(pred(au) == pred);
+            //
+            // () = $body;
+            //
+            // au
+
+            let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, .. } = info.as_ref();
+
+            // construct predicate type
 
             let (mut stms, pred_raw_exp) = expr_to_stm_opt(ctx, state, pred_expr)?;
             let pred_raw_exp = unwrap_or_return_never!(pred_raw_exp, stms);
             let pred_var_exp = state.make_tmp_var_for_exp(&mut stms, pred_raw_exp);
-            state.au_pred_var = Some(pred_var_exp.clone());
+
+            // construct atomic update
+
+            let (au_var_id, au_var_exp) =
+                state.declare_temp_var_stm(&expr.span, au_typ, LocalDeclKind::Nondeterministic);
+            stms.push(assume_has_typ(&au_var_id, au_typ, &expr.span));
+
+            let call_au_pred = SpannedTyped::new(
+                &expr.span,
+                pred_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(SpannedTyped::new(
+                    &expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_au_pred, pred_var_exp),
+                )),
+            ));
+
+            let backup_au_var = state.au_var_exp.replace(au_var_exp.clone());
+
+            // check invariant mask
 
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
@@ -2381,9 +2415,9 @@ pub(crate) fn expr_to_stm_opt(
             ));
 
             let call_outer_mask = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::outer_mask"),
-                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
-                Arc::new(vec![pred_var_exp.clone()]),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                au_typ_args.clone(),
+                Arc::new(vec![au_var_exp.clone()]),
             );
 
             let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
@@ -2399,6 +2433,8 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
 
+            // generate body
+
             let backup_mask = std::mem::replace(&mut state.mask, Some(outer_mask));
             let (body_stms, exp) = expr_to_stm_opt(ctx, state, body_expr)?;
             stms.extend(body_stms);
@@ -2409,43 +2445,22 @@ pub(crate) fn expr_to_stm_opt(
                 panic!("malformed atomic function call, body does not return unit");
             };
 
-            let (au_var_id, au_var_exp) =
-                state.declare_temp_var_stm(&expr.span, au_typ, LocalDeclKind::Nondeterministic);
-            stms.push(assume_has_typ(&au_var_id, au_typ, &expr.span));
-
-            let call_au_pred = SpannedTyped::new(
-                &expr.span,
-                pred_typ,
-                ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::pred"),
-                    Arc::new(vec![x_typ.clone(), y_typ.clone(), pred_typ.clone()]),
-                    Arc::new(vec![au_var_exp.clone()]),
-                ),
-            );
-
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_au_pred, pred_var_exp),
-                )),
-            ));
-
+            state.au_var_exp = backup_au_var;
             Ok((stms, ReturnValue::Some(au_var_exp)))
         }
         ExprX::Update(info, x_expr) => {
-            // let x = $x_expr
-            // let y = new existential
+            // let x = $x_expr;
+            // let y = new existential;
             //
-            // assert(pred.req(x))
-            // assume(pred.ens(x, y))
+            // assert(req(au, x));
+            // assume(ens(au, x, y));
             //
             // y
 
-            let AtomicCallInfoX { x_typ, y_typ, pred_typ, .. } = info.as_ref();
-            let pred_var_exp = state.au_pred_var.as_ref().unwrap().clone();
-            //let pred_var_exp = mk_exp(ExpX::Var(pred_var_id));
+            let AtomicCallInfoX { au_typ_args, x_typ, y_typ, .. } = info.as_ref();
+            let Some(au_var_exp) = state.au_var_exp.clone() else {
+                panic!("update function outside of atomically block");
+            };
 
             let (mut stms, x_raw_exp) = expr_to_stm_opt(ctx, state, x_expr)?;
             let x_raw_exp = unwrap_or_return_never!(x_raw_exp, stms);
@@ -2466,9 +2481,9 @@ pub(crate) fn expr_to_stm_opt(
             ));
 
             let call_inner_mask = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::inner_mask"),
-                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
-                Arc::new(vec![pred_var_exp.clone()]),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
+                au_typ_args.clone(),
+                Arc::new(vec![au_var_exp.clone()]),
             );
 
             let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
@@ -2487,9 +2502,9 @@ pub(crate) fn expr_to_stm_opt(
             // generate assertion
 
             let call_req = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::req"),
-                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
-                Arc::new(vec![pred_var_exp.clone(), x_var_exp.clone()]),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
+                au_typ_args.clone(),
+                Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
             );
 
             let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
@@ -2510,10 +2525,11 @@ pub(crate) fn expr_to_stm_opt(
             // generate assumption
 
             let call_ens = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::UpdatePredicate::ens"),
-                Arc::new(vec![pred_typ.clone(), x_typ.clone(), y_typ.clone()]),
-                Arc::new(vec![pred_var_exp, x_var_exp, y_var_exp.clone()]),
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                au_typ_args.clone(),
+                Arc::new(vec![au_var_exp, x_var_exp, y_var_exp.clone()]),
             );
+
             let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
             stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
 

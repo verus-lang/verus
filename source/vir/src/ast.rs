@@ -791,6 +791,7 @@ pub type AtomicCallInfo = Arc<AtomicCallInfoX>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct AtomicCallInfoX {
     pub au_typ: Typ,
+    pub au_typ_args: Typs,
     pub x_typ: Typ,
     pub y_typ: Typ,
     pub pred_typ: Typ,

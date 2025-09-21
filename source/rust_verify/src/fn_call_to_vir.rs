@@ -705,6 +705,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let info = Arc::new(AtomicCallInfoX {
                     au_typ: au_typ.clone(),
+                    au_typ_args: au_typ_args.clone(),
                     x_typ: x_typ.clone(),
                     y_typ: y_typ.clone(),
                     pred_typ: pred_typ.clone(),
