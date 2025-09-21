@@ -53,6 +53,7 @@ impl<T> Prophecy<T> where T: Structural {
             self@ == v,
     {
         broadcast use super::seq::group_seq_axioms;
+
         let mut mself = self;
         mself.ps.resolve(v);
     }
