@@ -830,7 +830,28 @@ impl Visitor {
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(ret) => Some((ret.1.clone(), ty.clone())),
+                    Some(ret) => {
+                        let original_pattern = ret.1.clone();
+                        let mut pattern = ret.1.clone();
+                        // Check if the pattern name conflicts with the function name
+                        let was_renamed = if let Pat::Ident(pat_ident) = &pattern {
+                            if pat_ident.ident.to_string() == sig.ident.to_string() {
+                                pattern = Pat::Verbatim(
+                                    quote_spanned! {pattern.span() => __verus_tmp_ret},
+                                );
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        Some((
+                            pattern,
+                            ty.clone(),
+                            if was_renamed { Some(original_pattern) } else { None },
+                        ))
+                    }
                 }
             }
         };
@@ -976,7 +997,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        if let Some((p, _)) = &ret_pat {
+        if let Some((p, _, _)) = &ret_pat {
             if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
                 stmts.push(err_stmt);
             }
@@ -984,8 +1005,8 @@ impl Visitor {
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat,
-            None,
+            ret_pat.as_ref().map(|(pat, ty, _)| (pat.clone(), ty.clone())),
+            ret_pat.as_ref().and_then(|(_, _, original_pat)| original_pat.clone()),
             sig_span,
             is_impl_fn,
             false,
@@ -3027,7 +3048,7 @@ impl Visitor {
             self.inside_ghost += 1;
             if self.erase_ghost.keep() {
                 stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                    #builtin::dummy_capture_consume(_verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it)
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
                 ));
             }
             if let Some(t) = &opts.req_ens {
@@ -3111,7 +3132,7 @@ impl Visitor {
             }
             *expr = if self.erase_ghost.keep() {
                 Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                    { let _verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it = #builtin::dummy_capture_new(); #new_expr }
+                    { let _verus_internal_identifier_for_closures = #builtin::dummy_capture_new(); #new_expr }
                 ))
             } else {
                 new_expr

@@ -1525,3 +1525,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
 }
+
+test_verify_one_file! {
+    #[test] test_modules_nested_in_items_external_code code! {
+        async fn test() {
+            let x = || {
+                mod m {
+                    fn foo() {
+                    }
+                }
+            };
+        }
+    } => Ok(())
+}
