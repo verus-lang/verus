@@ -206,16 +206,18 @@ pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
-// impl<T> View for PointsTo<T> {
-//     type V = PointsToData<T>;
-//     open spec fn view(&self) -> Self::V {
-//         PointsToData {
-//             ptr: self.ptr(),
-//             opt_value: self.mem_contents_seq()
-//         }
-//     }
-//     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
-// }
+impl<T> View for PointsTo<T> {
+    type V = PointsToData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: self.ptr(),
+            opt_value: self.opt_value()
+        }
+    }
+    // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
+}
+
 impl<T> PointsTo<T> {
     /// The (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn opt_value(&self) -> MemContents<T>;
