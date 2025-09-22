@@ -15,15 +15,17 @@ pub enum AbstractByte {
 
 pub uninterp spec fn can_be_decoded<T: ?Sized>() -> bool;
 
+// compiler wants &T instead of T, complains about T not being Sized
 /// Can 'value' be decoded to the given bytes?
 pub uninterp spec fn decode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
 
 /// Can the given bytes always be encoded to the given value?
 pub uninterp spec fn encode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
+// can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
 impl<T> PointsTo<T> {
     // TODO: version for nondeterministic targets
-    pub axiom fn transmute<U>(tracked self, tracked target: U) -> (tracked ret: PointsTo<U>)
+    pub axiom fn transmute<U>(tracked &self, tracked target: U) -> (tracked ret: &PointsTo<U>)
         requires
             self.is_init(),
             can_be_decoded::<T>(),
@@ -47,7 +49,7 @@ pub broadcast axiom fn str_can_be_decoded()
 ;
 
 impl PointsTo<str> {
-    pub axiom fn transmute(tracked self, target: &[u8]) -> (tracked ret: PointsTo<[u8]>)
+    pub axiom fn transmute(tracked &self, target: &[u8]) -> (tracked ret: &PointsTo<[u8]>)
         requires
             self.is_init(),
             can_be_decoded::<str>(),
@@ -58,6 +60,7 @@ impl PointsTo<str> {
         ensures
             ret.is_init(),
             ret.value() == target@,
+            ret.phy() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
     ;

@@ -210,12 +210,10 @@ impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData {
-            ptr: self.ptr(),
-            opt_value: self.opt_value()
-        }
+        PointsToData { ptr: self.ptr(), opt_value: self.opt_value() }
     }
     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
+
 }
 
 impl<T> PointsTo<T> {
@@ -256,12 +254,14 @@ impl<T> PointsTo<T> {
             self.ptr()@.addr != 0,
     ;
 
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
     /// Guarantee that the `PointsTo` points to an aligned address.
     ///
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self@.ptr@.addr as nat % align_of::<T>() == 0,
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
     ;
 
     /// "Forgets" about the value stored behind the pointer.
@@ -306,6 +306,11 @@ impl<T> PointsTo<[T]> {
     /// The sequence of (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
 
+    // We would like to use align_of_val and size_of_val for the value that this permission corresponds to,
+    // but value() has type Seq<T>, which is not associated with an alignment or a size.
+    /// The physical value associated with this permission.
+    pub uninterp spec fn phy(&self) -> &[T];
+
     // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
@@ -316,6 +321,14 @@ impl<T> PointsTo<[T]> {
     pub open spec fn is_init(&self) -> bool {
         forall|i|
             0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+    }
+
+    /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
+    pub open spec fn is_init_subrange(&self, start_index: int, len: int) -> bool
+        recommends
+            start_index + len < self.mem_contents_seq().len(),
+    {
+        forall|i| start_index <= i < len ==> self.mem_contents_seq().index(i).is_init()
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
@@ -339,9 +352,19 @@ impl<T> PointsTo<[T]> {
     // See https://doc.rust-lang.org/std/ptr/#safety
     pub axiom fn is_nonnull(tracked &self)
         requires
-            size_of::<T>() != 0,
+            spec_size_of_val::<[T]>(self.phy()) != 0,
         ensures
             self.ptr()@.addr != 0,
+    ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as nat % spec_align_of_val::<[T]>(self.phy()) == 0,
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -351,7 +374,7 @@ impl<T> PointsTo<[T]> {
     // TODO: do I need this requires?
 
         requires
-            size_of::<T>() != 0,
+            spec_size_of_val::<[T]>(self.phy()) != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.value().len() * size_of::<T>()
@@ -374,6 +397,10 @@ impl<T> PointsTo<[T]> {
                 },
             ),
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
+                start_index as int,
+                start_index as int + len as int,
+            ),
+            sub_points_to.phy()@ == self.phy()@.subrange(
                 start_index as int,
                 start_index as int + len as int,
             ),
@@ -456,6 +483,27 @@ impl PointsTo<str> {
     {
         self.opt_value().value()
     }
+
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
+    pub axiom fn is_nonnull(tracked &self)
+        requires
+            spec_size_of_val::<str>(self.value()) != 0,
+        ensures
+            self.ptr()@.addr != 0,
+    ;
+
+    // https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    // https://doc.rust-lang.org/std/ptr/index.html#alignment
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+    ;
 }
 
 impl<T> MemContents<T> {
@@ -1112,7 +1160,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     pub uninterp spec fn ptr(self) -> *const T;
 
     #[verifier::external_body]
-    pub fn new(t: &'a T) -> (s: Self)
+    pub const fn new(t: &'a T) -> (s: Self)
         ensures
             s.value() == t,
     {
@@ -1126,6 +1174,12 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     {
         self.0
     }
+
+    // References must be nonnull - https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_nonnull(tracked self)
+        ensures
+            self.ptr()@.addr != 0,
+    ;
     // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
     //         pt.ptr() == self.ptr(),
@@ -1166,6 +1220,7 @@ impl<'a, T> SharedReference<'a, [T]> {
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
+            pt.phy() == self.value(),
     ;
 }
 
