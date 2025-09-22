@@ -210,12 +210,10 @@ impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData {
-            ptr: self.ptr(),
-            opt_value: self.opt_value()
-        }
+        PointsToData { ptr: self.ptr(), opt_value: self.opt_value() }
     }
     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
+
 }
 
 impl<T> PointsTo<T> {
