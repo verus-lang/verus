@@ -1435,6 +1435,14 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, FINITE1: Finiteness, FINITE2: 
     }
 }
 
+pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
+ensures
+    a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
+{
+    lemma_set_disjoint_lens(a, b);
+    assert((a + b).to_infinite() == a.generic_union(b));
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
@@ -1566,6 +1574,7 @@ pub broadcast group group_set_properties {
     lemma_set_difference2,
     lemma_set_disjoint,
     lemma_set_disjoint_lens,
+    lemma_set_disjoint_lens_finite,
     lemma_set_intersect_union_lens,
     lemma_set_difference_len,
     // REVIEW: exclude from broadcast group if trigger is too free
