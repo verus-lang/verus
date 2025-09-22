@@ -346,7 +346,7 @@ impl<T> PointsTo<[T]> {
     // See https://doc.rust-lang.org/std/ptr/#safety
     pub axiom fn is_nonnull(tracked &self)
         requires
-            size_of::<T>() != 0,
+            forall|v: &[T]| v@ == self.value() ==> spec_size_of_val::<[T]>(v) != 0,
         ensures
             self.ptr()@.addr != 0,
     ;
@@ -1170,6 +1170,12 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     {
         self.0
     }
+
+    // References must be nonnull - https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
+    pub axiom fn ptr_nonnull(tracked self)
+        ensures
+            self.ptr()@.addr != 0,
+    ;
     // pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
     //         pt.ptr() == self.ptr(),
