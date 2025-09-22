@@ -257,6 +257,10 @@ impl<V> GhostSubseq<V> {
             && self.frac@[self.off + i] == auth@[self.off + i] by {
             assert(self.frac@.contains_key(self.off + i));
         };
+        // Flake in test-and-release-macos?
+        assert forall|i: int| 0 <= i < self@.len() implies #[trigger] auth@.contains_key(
+            self.off() + i,
+        ) && auth@[self.off() + i] == self@[i] by {}
     }
 
     pub proof fn update(
