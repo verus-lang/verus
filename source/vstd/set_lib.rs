@@ -1436,8 +1436,8 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, FINITE1: Finiteness, FINITE2: 
 }
 
 pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
-ensures
-    a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
+    ensures
+        a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
 {
     lemma_set_disjoint_lens(a, b);
     assert((a + b).to_infinite() == a.generic_union(b));
