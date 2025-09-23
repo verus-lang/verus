@@ -13,14 +13,14 @@ pub enum AbstractByte {
     Init(u8, Option<Provenance>),
 }
 
-pub uninterp spec fn can_be_decoded<T: ?Sized>() -> bool;
+pub uninterp spec fn can_be_encoded<T: ?Sized>() -> bool;
 
 // compiler wants &T instead of T, complains about T not being Sized
-/// Can 'value' be decoded to the given bytes?
-pub uninterp spec fn decode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
+/// Can 'value' be encoded to the given bytes?
+pub uninterp spec fn encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
 
-/// Can the given bytes always be encoded to the given value?
-pub uninterp spec fn encode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
+/// Can the given bytes always be decoded to the given value?
+pub uninterp spec fn decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
 // can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
 impl<T> PointsTo<T> {
@@ -28,11 +28,11 @@ impl<T> PointsTo<T> {
     pub axiom fn transmute_shared<'a, U>(tracked &'a self, tracked target: U) -> (tracked ret: & 'a PointsTo<U>)
         requires
             self.is_init(),
-            can_be_decoded::<T>(),
+            can_be_encoded::<T>(),
             forall|bytes|
-                #![trigger decode(&self.value(), bytes)]
-                #![trigger encode(bytes, &target)]
-                decode(&self.value(), bytes) ==> encode(bytes, &target),
+                #![trigger encode(&self.value(), bytes)]
+                #![trigger decode(bytes, &target)]
+                encode(&self.value(), bytes) ==> decode(bytes, &target),
         ensures
             ret.is_init(),
             ret.value() == target,
@@ -43,20 +43,20 @@ impl<T> PointsTo<T> {
 
 /* str */
 
-pub broadcast axiom fn str_can_be_decoded()
+pub broadcast axiom fn str_can_be_encoded()
     ensures
-        #[trigger] can_be_decoded::<str>(),
+        #[trigger] can_be_encoded::<str>(),
 ;
 
 impl PointsTo<str> {
     pub axiom fn transmute_shared<'a>(tracked &'a self, target: &[u8]) -> (tracked ret: &'a PointsTo<[u8]>)
         requires
             self.is_init(),
-            can_be_decoded::<str>(),
+            can_be_encoded::<str>(),
             forall|bytes|
-                #![trigger decode(self.value(), bytes)]
-                #![trigger encode(bytes, target)]
-                decode(self.value(), bytes) ==> encode(bytes, target),
+                #![trigger encode(self.value(), bytes)]
+                #![trigger decode(bytes, target)]
+                encode(self.value(), bytes) ==> decode(bytes, target),
         ensures
             ret.is_init(),
             ret.value() == target@,
@@ -68,9 +68,9 @@ impl PointsTo<str> {
 
 /* [u8] */
 
-pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
+pub open spec fn u8_encode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
     decreases bytes.len(),
-    via u8_decode_decreases
+    via u8_encode_decreases
 {
     if bytes.len() == 0 {
         value.len() == 0
@@ -80,24 +80,24 @@ pub open spec fn u8_decode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
             AbstractByte::Init(b, _) => {
                 &&& value.len() > 0
                 &&& b == value.first()
-                &&& u8_decode_eq(value.drop_first(), bytes.drop_first())
+                &&& u8_encode_eq(value.drop_first(), bytes.drop_first())
             },
         }
     }
 }
 
 #[verifier::decreases_by]
-proof fn u8_decode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
+proof fn u8_encode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
     broadcast use axiom_seq_subrange_len::<AbstractByte>;
 
 }
 
-pub broadcast axiom fn u8_decode(b: &[u8], bytes: Seq<AbstractByte>)
+pub broadcast axiom fn u8_encode(b: &[u8], bytes: Seq<AbstractByte>)
     ensures
-        #![trigger decode::<[u8]>(b, bytes)]
-        #![trigger encode::<[u8]>(bytes, b)]
-        decode::<[u8]>(b, bytes) <==> encode::<[u8]>(bytes, b),
-        decode::<[u8]>(b, bytes) <==> u8_decode_eq(b@, bytes),
+        #![trigger encode::<[u8]>(b, bytes)]
+        #![trigger decode::<[u8]>(bytes, b)]
+        encode::<[u8]>(b, bytes) <==> decode::<[u8]>(bytes, b),
+        encode::<[u8]>(b, bytes) <==> u8_encode_eq(b@, bytes),
 ;
 
 } // verus!
