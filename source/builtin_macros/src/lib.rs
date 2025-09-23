@@ -389,7 +389,7 @@ To add a contrib proc macro, complete the following steps:
   builtin_macros/src/contrib/mod.rs (example: `pub mod auto_spec;`)
 - Add a short macro declaration below, calling into your file in builtin_macros/src/contrib
   for any complex work (i.e. the macro declaration below should have a body of at most a few lines)
-- Add a "pub use" to vstd/contrib/mod.rs (example: `pub use builtin_macros::auto_spec;`)
+- Add a "pub use" to vstd/contrib/mod.rs (example: `pub use verus_builtin_macros::auto_spec;`)
 
 If your macro needs to manipulate function signatures or function bodies,
 it's generally cleaner to write this manipulation on the verus_syn representation of the function
