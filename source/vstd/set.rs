@@ -901,7 +901,7 @@ pub broadcast proof fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>)
 }
 
 /// An infinite set `s` contains the element `s.choose()`.
-pub broadcast proof fn axiom_set_choose_finite<A>(s: Set<A>)
+pub broadcast proof fn axiom_set_choose_infinite<A>(s: Set<A>)
     requires
         !s.finite(),
     ensures
@@ -1018,7 +1018,7 @@ pub broadcast group group_set_axioms {
     axiom_set_union_finite,
     axiom_set_intersect_finite,
     axiom_set_difference_finite,
-    axiom_set_choose_finite,
+    axiom_set_choose_infinite,
     axiom_set_empty_len,
     axiom_set_insert_len,
     axiom_set_remove_len,
@@ -1039,7 +1039,7 @@ macro_rules! set_internal {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
     };
 }
 

@@ -10,7 +10,9 @@ use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
+use crate::rust_to_vir_base::{
+    def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_to_vir, mk_visibility,
+};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -67,7 +69,6 @@ fn check_item<'tcx>(
 
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
         let def_id = body_id.hir_id.owner.to_def_id();
-        let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
         if vattrs.size_of_global {
             return Ok(()); // handled earlier
         }
@@ -150,8 +151,7 @@ fn check_item<'tcx>(
 
             return Ok(());
         }
-        if path.segments.iter().find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_")).is_some()
-        {
+        if vattrs.structural_const_wrapper {
             ctxt.erasure_info
                 .borrow_mut()
                 .ignored_functions
@@ -360,7 +360,8 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &Context<'tcx>) -> Path {
 pub fn crate_to_vir<'a, 'tcx>(
     ctxt: &mut Context<'tcx>,
     imported: &Vec<Krate>,
-) -> Result<(Krate, CrateItems), VirErr> {
+    crate_items: &CrateItems,
+) -> Result<Krate, VirErr> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -389,8 +390,6 @@ pub fn crate_to_vir<'a, 'tcx>(
         .trait_id_set
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
-    let crate_items = crate::external::get_crate_items(ctxt)?;
-
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {
         if let MaybeOwner::Owner(owner) = owner_opt {
@@ -418,7 +417,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     let mut used_modules = HashSet::<Path>::new();
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
-            VerifOrExternal::VerusAware { module_path } => {
+            VerifOrExternal::VerusAware { module_path, const_directive: _, external_body: _ } => {
                 used_modules.insert(module_path.clone());
             }
             _ => {}
@@ -439,13 +438,18 @@ pub fn crate_to_vir<'a, 'tcx>(
                 OwnerNode::Item(
                     item @ Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. },
                 ) => {
-                    let path =
-                        def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
-                    if used_modules.contains(&path) {
-                        vir.modules.push(ctxt.spanned_new(
-                            item.span,
-                            vir::ast::ModuleX { path: path.clone(), reveals: None },
-                        ));
+                    let path = def_id_to_vir_path_option(
+                        ctxt.tcx,
+                        Some(&ctxt.verus_items),
+                        owner_id.to_def_id(),
+                    );
+                    if let Some(path) = path {
+                        if used_modules.contains(&path) {
+                            vir.modules.push(ctxt.spanned_new(
+                                item.span,
+                                vir::ast::ModuleX { path: path.clone(), reveals: None },
+                            ));
+                        }
                     }
                 }
                 _ => {}
@@ -462,7 +466,7 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     for crate_item in crate_items.items.iter() {
         match &crate_item.verif {
-            VerifOrExternal::VerusAware { module_path } => {
+            VerifOrExternal::VerusAware { module_path, const_directive: _, external_body: _ } => {
                 match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
                         let item = ctxt.tcx.hir_item(item_id);
@@ -539,5 +543,5 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
 
-    Ok((Arc::new(vir), crate_items))
+    Ok(Arc::new(vir))
 }

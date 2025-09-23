@@ -1,13 +1,13 @@
-use syn_verus::visit_mut::VisitMut;
-use syn_verus::{Block, Expr, ImplItem, Item, parse_quote_spanned, spanned::Spanned};
+use verus_syn::visit_mut::VisitMut;
+use verus_syn::{Block, Expr, ImplItem, Item, parse_quote_spanned, spanned::Spanned};
 
 struct Visitor;
 
-fn is_verus_proof_stmt(stmt: &syn_verus::Stmt) -> bool {
+fn is_verus_proof_stmt(stmt: &verus_syn::Stmt) -> bool {
     // remove proof-related macros (similar to dual_spec macro)
-    use syn_verus::{Expr, ExprUnary, UnOp};
+    use verus_syn::{Expr, ExprUnary, UnOp};
     match stmt {
-        syn_verus::Stmt::Expr(e, _) => match e {
+        verus_syn::Stmt::Expr(e, _) => match e {
             Expr::Assume(..) => true,
             Expr::Assert(..) => true,
             Expr::AssertForall(..) => true,
@@ -20,8 +20,8 @@ fn is_verus_proof_stmt(stmt: &syn_verus::Stmt) -> bool {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        syn_verus::visit_mut::visit_expr_mut(self, expr);
-        use syn_verus::{BinOp, Expr, ExprBinary};
+        verus_syn::visit_mut::visit_expr_mut(self, expr);
+        use verus_syn::{BinOp, Expr, ExprBinary};
         let span = expr.span();
         match expr {
             Expr::Binary(ExprBinary { op, left, right, .. }) => {
@@ -44,14 +44,14 @@ impl VisitMut for Visitor {
 
     fn visit_block_mut(&mut self, block: &mut Block) {
         block.stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
-        syn_verus::visit_mut::visit_block_mut(self, block);
+        verus_syn::visit_mut::visit_block_mut(self, block);
     }
 }
 
 fn auto_spec_fn(
     span: proc_macro2::Span,
-    attrs: &mut Vec<syn_verus::Attribute>,
-    sig: &mut syn_verus::Signature,
+    attrs: &mut Vec<verus_syn::Attribute>,
+    sig: &mut verus_syn::Signature,
     mut block: Block,
 ) {
     attrs.push(parse_quote_spanned!(span => #[verifier::allow_in_spec]));

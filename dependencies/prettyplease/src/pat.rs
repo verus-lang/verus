@@ -4,7 +4,7 @@ use crate::iter::IterDelimited;
 use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn_verus::{
+use verus_syn::{
     FieldPat, Pat, PatIdent, PatOr, PatParen, PatReference, PatRest, PatSlice, PatStruct, PatTuple,
     PatTupleStruct, PatType, PatWild,
 };

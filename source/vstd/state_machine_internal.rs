@@ -1,4 +1,4 @@
-//! Helper utilities used by the `state_machine_macros` codegen.
+//! Helper utilities used by the `verus_state_machines_macros` codegen.
 #![allow(unused_imports)]
 #![doc(hidden)]
 

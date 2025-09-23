@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use builtin::*;
+use verus_builtin::*;
 
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;

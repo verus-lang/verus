@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
-use builtin::*;
-use builtin_macros::*;
+use verus_builtin::*;
+use verus_builtin_macros::*;
 
 // IMO 1988, #6.
 // Let a and b be positive integers such that (a^2 + b^2) / (ab + 1) is an integer.

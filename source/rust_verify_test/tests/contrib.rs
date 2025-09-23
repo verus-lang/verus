@@ -59,7 +59,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_auto_spec_missing_use  ["no-auto-import-builtin"] => verus_code! {
+    #[test] test_auto_spec_missing_use  ["no-auto-import-verus_builtin"] => verus_code! {
         // fails if we don't say "use vstd::contrib::auto_spec;"
         #[auto_spec]
         fn foo(x: u32) -> u32 {

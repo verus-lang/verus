@@ -1,9 +1,9 @@
 [package]
-name = "syn_verus"
-version = "2.0.96" # don't forget to update html_root_url and syn.json
-authors = ["David Tolnay <dtolnay@gmail.com>"]
+name = "verus_syn"
+version = "0.0.0-2025-08-12-1837" # don't forget to update html_root_url and syn.json
+authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 categories = ["development-tools::procedural-macro-helpers", "parser-implementations"]
-description = "Parser for Rust source code"
+description = "Parser for Rust source code extended to support Verus"
 documentation = "https://docs.rs/syn"
 edition = "2021"
 include = [
@@ -35,7 +35,7 @@ proc-macro = ["proc-macro2/proc-macro", "quote?/proc-macro"]
 # test = ["syn-test-suite/all-features"]
 
 [dependencies]
-proc-macro2 = { version = "1.0.91", default-features = false }
+proc-macro2 = { version = "1.0.95", default-features = false, features = ["span-locations"] }
 quote = { version = "1.0.35", optional = true, default-features = false }
 unicode-ident = "1"
 

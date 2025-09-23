@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    PatternX, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{is_unit, undecorate_typ};
 use crate::def::Spanned;
@@ -56,7 +56,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args) => {
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
@@ -155,7 +155,7 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
                 PatternX::Var { name: ident.clone(), mutable: false },
             ),
             mode: None,
-            init: Some(expr.clone()),
+            init: Some(PlaceX::temporary(expr.clone())),
             els: None,
         };
         stmts.insert(0, Spanned::new(expr.span.clone(), decl));

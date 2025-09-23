@@ -54,7 +54,7 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) => true,
+        TypX::Bool | TypX::Int(_) | TypX::Float(_) => true,
         TypX::ConstInt(_) | TypX::ConstBool(_) | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
@@ -126,6 +126,9 @@ fn check_well_founded_typ(
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
+        TypX::MutRef(t) => {
+            check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
+        }
     }
 }
 
@@ -175,6 +178,7 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
+        TypX::Float(..) => Ok(()),
         TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
@@ -276,6 +280,10 @@ fn check_positive_uses(
         TypX::ConstInt(_) => Ok(()),
         TypX::ConstBool(_) => Ok(()),
         TypX::Air(_) => Ok(()),
+        TypX::MutRef(t) => {
+            check_positive_uses(datatype, global, local, polarity, t)?;
+            Ok(())
+        }
     }
 }
 

@@ -231,6 +231,7 @@ pub enum LocalDeclKind {
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
+    BorrowMut,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
@@ -288,6 +289,8 @@ pub struct FuncCheckSst {
     pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
+    /// LocalDeclKind::Decreases have an assignment that must be carried into loop_isolation(false):
+    pub local_decls_decreases_init: Stms,
     pub statics: Arc<Vec<Fun>>,
 }
 

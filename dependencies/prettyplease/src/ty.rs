@@ -4,7 +4,7 @@ use crate::iter::IterDelimited;
 use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn_verus::{
+use verus_syn::{
     Abi, BareFnArg, BareVariadic, ReturnType, Type, TypeArray, TypeBareFn, TypeGroup,
     TypeImplTrait, TypeInfer, TypeMacro, TypeNever, TypeParen, TypePath, TypePtr, TypeReference,
     TypeSlice, TypeTraitObject, TypeTuple,
@@ -69,7 +69,7 @@ impl Printer {
         self.return_type(&ty.output);
     }
 
-    fn type_spec_fn(&mut self, ty: &syn_verus::TypeFnSpec) {
+    fn type_spec_fn(&mut self, ty: &verus_syn::TypeFnSpec) {
         self.word("FnSpec(");
         self.cbox(INDENT);
         self.zerobreak();
@@ -185,9 +185,9 @@ impl Printer {
 
     #[cfg(feature = "verbatim")]
     fn type_verbatim(&mut self, tokens: &TokenStream) {
-        use syn_verus::parse::{Parse, ParseStream, Result};
-        use syn_verus::punctuated::Punctuated;
-        use syn_verus::{token, FieldsNamed, Token, TypeParamBound};
+        use verus_syn::parse::{Parse, ParseStream, Result};
+        use verus_syn::punctuated::Punctuated;
+        use verus_syn::{token, FieldsNamed, Token, TypeParamBound};
 
         enum TypeVerbatim {
             Ellipsis,
@@ -258,7 +258,7 @@ impl Printer {
             }
         }
 
-        let ty: TypeVerbatim = match syn_verus::parse2(tokens.clone()) {
+        let ty: TypeVerbatim = match verus_syn::parse2(tokens.clone()) {
             Ok(ty) => ty,
             Err(_) => unimplemented!("Type::Verbatim `{}`", tokens),
         };

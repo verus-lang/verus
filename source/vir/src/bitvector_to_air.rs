@@ -14,7 +14,8 @@ use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
 use air::ast_util::{
-    bool_typ, mk_and, mk_implies, mk_ite, mk_or, mk_unnamed_axiom, mk_xor, str_typ, string_var,
+    bool_typ, mk_and, mk_bit_vec_one, mk_bit_vec_zero, mk_implies, mk_ite, mk_or, mk_unnamed_axiom,
+    mk_xor, str_typ, string_var,
 };
 use air::scope_map::ScopeMap;
 use num_bigint::BigInt;
@@ -339,6 +340,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let bv_expr = bv_exp_to_expr(ctx, state, arg)?;
                 do_clip(state, &arg.span, bv_expr, *int_range)
             }
+            UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
@@ -355,6 +357,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
+            }
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                panic!("mut-ref operation not allowed in bitvector query")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
@@ -1053,102 +1058,128 @@ fn do_div_or_mod_then_clip(
     bv_rhs: &BvExpr,
     int_range: Option<IntRange>,
 ) -> Result<BvExpr, VirErr> {
-    let (lhs_w, lhs_extend) = bv_lhs.bv_typ.expect_bv(span)?;
-    let (rhs_w, rhs_extend) = bv_rhs.bv_typ.expect_bv(span)?;
+    let (bv_lhs, bv_rhs) = make_same_bv_typ(span, bv_lhs.clone(), bv_rhs.clone())?;
+    let (w, extend) = bv_lhs.bv_typ.expect_bv(span)?;
 
     let lhs_expr = bv_lhs.expr.clone();
     let rhs_expr = bv_rhs.expr.clone();
 
-    match (lhs_extend, rhs_extend) {
-        (Extend::Zero, Extend::Zero) => {
+    let bv_expr = match (arith_op, extend) {
+        (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
                 ArithOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                ArithOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
+                ArithOp::EuclideanMod => air::ast::BinaryOp::BitURem,
                 _ => unreachable!(),
             };
 
             // When dealing with only unsigned, we always have
             // 0 <= a / b <= a
-            // So w = max(lhs_w, rhs_w) is big enough to hold
+            // So the existing width is big enough to hold
             // both operands and the result.
-            let w = std::cmp::max(lhs_w, rhs_w);
-
-            let lhs_expr = extend_bv_expr(&lhs_expr, lhs_extend, lhs_w, w);
-            let rhs_expr = extend_bv_expr(&rhs_expr, rhs_extend, rhs_w, w);
-
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
-
-            let bv_expr = BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) };
-
-            match int_range {
-                None => Ok(bv_expr),
-                Some(ir) => do_clip(state, span, bv_expr, ir),
-            }
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
-        _ => {
-            return Err(error(span, format!("not yet supported: div/mod for signed arithmetic")));
+        (ArithOp::EuclideanDiv, Extend::Sign) => {
+            // Euclidean division for signed integers in the theory of bit-vectors.
+            //
+            // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
+            //
+            // Implementation and proof in z3py:
+            //
+            //     def div_ite(numer, denom):
+            //         numer = SignExt(1, numer)
+            //         denom = SignExt(1, denom)
+            //         q = numer / denom
+            //         r = SRem(numer, denom)
+            //         return If(r < 0, If(denom > 0, q - 1, q + 1), q)
+            //
+            //     a, b = BitVecs("a b", 8)
+            //     bit_div = BV2Int(div_ite(a, b), is_signed=True)
+            //     int_div = BV2Int(a, is_signed=True) / BV2Int(b, is_signed=True)
+            //
+            //     prove(Implies(b != 0, bit_div == int_div))
 
-            /*
-            None of z3's bv operations give us what we need.
-            Good luck!
+            // Extend to avoid overflow.
+            let numer = extend_bv_expr(&lhs_expr, extend, w, w + 1);
+            let denom = extend_bv_expr(&rhs_expr, extend, w, w + 1);
 
-            Verus Euclidean Mod:
-                   7    %   3     ==  1
-                   (-7) %   3     ==  2
-                   7    %   (-3)  ==  1
-                   (-7) %   (-3)  ==  2
+            // Compute quotient and remainder.
+            let q =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSDiv, numer.clone(), denom.clone()));
+            let r =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSRem, numer.clone(), denom.clone()));
 
-            Verus Euclidean Div:
-                   7    /   3     ==  2
-                   (-7) /   3     ==  -3
-                   7    /   (-3)  ==  -2
-                   (-7) /   (-3)  ==  3
+            // Adjust quotient based on signs of remainder and denominator.
+            let zero = mk_bit_vec_zero(w + 1);
+            let one = mk_bit_vec_one(w + 1);
+            let r_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, r.clone(), zero.clone()));
+            let denom_positive =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSGt, denom.clone(), zero.clone()));
+            let q_minus_1 =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSub, q.clone(), one.clone()));
+            let q_plus_1 =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAdd, q.clone(), one.clone()));
+            let expr = mk_ite(&r_negative, &mk_ite(&denom_positive, &q_minus_1, &q_plus_1), &q);
 
-            z3 operations:
-                Using bvsrem:
-                   7     %  3     ==  1
-                   (-7)  %  3     ==  -1
-                   7     %  (-3)  ==  1
-                   (-7)  %  (-3)  ==  -1
-
-                Using bvsmod:
-                   7     %  3     ==  1
-                   (-7)  %  3     ==  2
-                   7     %  (-3)  ==  -2
-                   (-7)  %  (-3)  ==  -1
-
-                Using bvsdiv:
-                   7     /  3     ==  2
-                   (-7)  /  (-3)  ==  -2
-                   7     /  (-3)  ==  -2
-                   (-7)  /  3     ==  2
-
-            Try it yourself:
-
-            (simplify (bvsrem #x07 #x03))
-            (simplify (bvsrem (bvneg #x07) #x03))
-            (simplify (bvsrem #x07 (bvneg #x03)))
-            (simplify (bvsrem (bvneg #x07) (bvneg #x03)))
-
-            (simplify (bvsmod #x07 #x03))
-            (simplify (bvsmod (bvneg #x07) #x03))
-            (simplify (bvsmod #x07 (bvneg #x03)))
-            (simplify (bvsmod (bvneg #x07) (bvneg #x03)))
-
-            (simplify (bvsdiv #x07 #x03))
-            (simplify (bvsdiv (bvneg #x07) #x03))
-            (simplify (bvsdiv #x07 (bvneg #x03)))
-            (simplify (bvsdiv (bvneg #x07) (bvneg #x03)))
-            */
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
+        (ArithOp::EuclideanMod, Extend::Sign) => {
+            // Euclidean modulus for signed integers in the theory of bit-vectors.
+            //
+            // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
+            //
+            // Implementation and proof in z3py:
+            //
+            //    def abs_ite(n):
+            //        return If(n < 0, -n, n)
+            //
+            //    def rem_ite(n, denom):
+            //        r = SRem(n, denom)
+            //        return If(r < 0, r + abs_ite(denom), r)
+            //
+            //    x, y = BitVecs("x y", 8)
+            //    bit_mod = BV2Int(rem_ite(x, y))
+            //    int_mod = BV2Int(x, is_signed=True) % BV2Int(y, is_signed=True)
+            //
+            //    prove(Implies(y != 0, bit_mod == int_mod), show=True, smtlib2_log="rem_ite.smt2")
+
+            // Compute signed remainder in bit-vector theory.
+            let numer = lhs_expr;
+            let denom = rhs_expr;
+            let r =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSRem, numer.clone(), denom.clone()));
+
+            // Absolute value of denominator.
+            let zero = mk_bit_vec_zero(w);
+            let denom_is_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, denom.clone(), zero.clone()));
+            let neg_denom = Arc::new(ExprX::Unary(air::ast::UnaryOp::BitNeg, denom.clone()));
+            let abs_denom = mk_ite(&denom_is_negative, &neg_denom, &denom);
+
+            // If remainder is negative, add abs(denom) to it.
+            let r_is_negative =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitSLt, r.clone(), zero.clone()));
+            let r_plus_abs_denom =
+                Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAdd, r.clone(), abs_denom.clone()));
+            let expr = mk_ite(&r_is_negative, &r_plus_abs_denom, &r);
+
+            BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Sign) }
+        }
+        _ => unreachable!(),
+    };
+
+    match int_range {
+        None => Ok(bv_expr),
+        Some(ir) => do_clip(state, span, bv_expr, ir),
     }
 }
 
 fn test_eq_0(span: &Span, exp: &BvExpr) -> Result<Expr, VirErr> {
     let (width, _) = exp.bv_typ.expect_bv(span)?;
-    let zero = Arc::new(ExprX::Const(Constant::BitVec(Arc::new("0".to_string()), width)));
+    let zero = mk_bit_vec_zero(width);
     let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, exp.expr.clone(), zero));
     Ok(eq)
 }

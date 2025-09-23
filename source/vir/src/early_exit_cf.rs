@@ -56,9 +56,9 @@ fn expr_get_early_exits_rec(
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
             | ExprX::Loc(..)
-            | ExprX::Call(CallTarget::Fun(..), _)
-            | ExprX::Call(CallTarget::FnSpec(..), _)
-            | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
+            | ExprX::Call(CallTarget::Fun(..), _, _)
+            | ExprX::Call(CallTarget::FnSpec(..), _, _)
+            | ExprX::Call(CallTarget::BuiltinSpecFun(..), _, _)
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
@@ -68,12 +68,17 @@ fn expr_get_early_exits_rec(
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
             | ExprX::Assign { .. }
+            | ExprX::AssignToPlace { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
             | ExprX::ProofInSpec(..)
             | ExprX::NeverToAny { .. }
             | ExprX::Nondeterministic { .. }
+            | ExprX::TwoPhaseBorrowMut(_)
+            | ExprX::BorrowMut(_)
+            | ExprX::ReadPlace(..)
+            | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
@@ -87,6 +92,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
+            | ExprX::AssumeResolved(..)
             | ExprX::RevealString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,

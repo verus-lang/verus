@@ -7,7 +7,6 @@
     feature(proc_macro_diagnostic)
 )]
 
-#[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
 
@@ -104,6 +103,18 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
+/// Like verus!, but for use inside a (non-trait) impl
+#[proc_macro]
+pub fn verus_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, false)
+}
+
+/// Like verus!, but for use inside a trait impl
+#[proc_macro]
+pub fn verus_trait_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    syntax::rewrite_impl_items(input, cfg_erase(), true, true)
+}
+
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_expr(EraseGhost::Keep, true, input)
@@ -149,6 +160,63 @@ pub(crate) fn cfg_erase() -> EraseGhost {
     EraseGhost::EraseAll
 }
 
+#[derive(Clone, Copy)]
+enum VstdKind {
+    /// The current crate is vstd.
+    IsVstd,
+    /// There is no vstd (only verus_builtin). Really only used for testing.
+    NoVstd,
+    /// Imports the vstd crate like usual.
+    Imported,
+    /// Embed vstd and verus_builtin as modules, necessary for verifying the `core` library.
+    IsCore,
+    /// For other crates in stdlib verification that import core
+    ImportedViaCore,
+}
+
+fn vstd_kind() -> VstdKind {
+    static VSTD_KIND: OnceLock<VstdKind> = OnceLock::new();
+    *VSTD_KIND.get_or_init(|| {
+        match std::env::var("VSTD_KIND") {
+            Ok(s) => {
+                if &s == "IsVstd" {
+                    return VstdKind::IsVstd;
+                } else if &s == "NoVstd" {
+                    return VstdKind::NoVstd;
+                } else if &s == "Imported" {
+                    return VstdKind::Imported;
+                } else if &s == "IsCore" {
+                    return VstdKind::IsCore;
+                } else if &s == "ImportsCore" {
+                    return VstdKind::ImportedViaCore;
+                } else {
+                    panic!("The environment variable VSTD_KIND was set but its value is invalid. Allowed values are 'IsVstd', 'NoVstd', 'Imported', 'IsCore', and 'ImportsCore'");
+                }
+            }
+            _ => { }
+        }
+
+        // When building vstd normally through cargo, we won't get a VSTD_KIND env var,
+        // but we can use CARGO_PGK_NAME instead.
+        let is_vstd = std::env::var("CARGO_PKG_NAME").map_or(false, |s| s == "vstd");
+        if is_vstd {
+            return VstdKind::IsVstd;
+        }
+
+        // For tests, which don't go through the verus binary, we infer the mode from
+        // these cfg options
+        if cfg_verify_core() {
+            return VstdKind::IsCore;
+        }
+        if cfg_no_vstd() {
+            return VstdKind::NoVstd;
+        }
+
+        // If none of the above, we assume a normal build
+        return VstdKind::Imported;
+    })
+}
+
 #[cfg(verus_keep_ghost)]
 pub(crate) fn cfg_verify_core() -> bool {
     static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
@@ -177,29 +245,30 @@ pub(crate) fn cfg_verify_core() -> bool {
 }
 
 #[cfg(verus_keep_ghost)]
-pub(crate) fn cfg_verify_vstd() -> bool {
-    static CFG_VERIFY_VSTD: OnceLock<bool> = OnceLock::new();
-    *CFG_VERIFY_VSTD.get_or_init(|| {
-        let ts: proc_macro::TokenStream = quote::quote! { ::core::module_path!() }.into();
-        let str_ts = match ts.expand_expr() {
+fn cfg_no_vstd() -> bool {
+    static CFG_VERIFY_CORE: OnceLock<bool> = OnceLock::new();
+    *CFG_VERIFY_CORE.get_or_init(|| {
+        let ts: proc_macro::TokenStream = quote::quote! { ::core::cfg!(verus_no_vstd) }.into();
+        let bool_ts = match ts.expand_expr() {
             Ok(name) => name.to_string(),
             _ => {
-                panic!("cfg_verify_core call failed")
+                panic!("cfg_no_vstd call failed")
             }
         };
-        str_ts.starts_with("\"vstd::")
+        match bool_ts.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => {
+                panic!("cfg_no_vstd call failed")
+            }
+        }
     })
 }
 
-// For not(verus_keep_ghost), we can't use the ideal implementation (above). The following works
-// as long as IS_VSTD is set whenever it's necessary. If we fail to set it, then
-// the CI should fail to build Verus.
-
-static IS_VSTD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
+// Because 'expand_expr' is unstable, we need a different impl when `not(verus_keep_ghost)`.
 #[cfg(not(verus_keep_ghost))]
-pub(crate) fn cfg_verify_vstd() -> bool {
-    IS_VSTD.load(std::sync::atomic::Ordering::Relaxed)
+fn cfg_no_vstd() -> bool {
+    false
 }
 
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
@@ -242,12 +311,6 @@ pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_
 
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    struct_decl_inv::struct_decl_inv(input)
-}
-
-#[proc_macro]
-pub fn struct_with_invariants_vstd(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    IS_VSTD.store(true, std::sync::atomic::Ordering::Relaxed);
     struct_decl_inv::struct_decl_inv(input)
 }
 
@@ -329,12 +392,12 @@ To add a contrib proc macro, complete the following steps:
 - Add a "pub use" to vstd/contrib/mod.rs (example: `pub use builtin_macros::auto_spec;`)
 
 If your macro needs to manipulate function signatures or function bodies,
-it's generally cleaner to write this manipulation on the syn_verus representation of the function
+it's generally cleaner to write this manipulation on the verus_syn representation of the function
 before it is transformed by `verus!`, rather than trying to manipulate the more complicated output
-of `verus!`.  To work with the syn_verus representation, complete this additional step:
+of `verus!`.  To work with the verus_syn representation, complete this additional step:
 - In builtin_macros/src/contrib/mod.rs,
   edit contrib_preprocess_item and/or contrib_preprocess_impl_item to match on your macro name and
-  call into your code that processes the syn_verus item or impl_item.  Example:
+  call into your code that processes the verus_syn item or impl_item.  Example:
   `"auto_spec" => auto_spec::auto_spec_item(item, tokens, new_items),`.
   Your code can then edit the item/impl_item in place.
   It can also optionally emit new items/impl_items by adding them to new_items.

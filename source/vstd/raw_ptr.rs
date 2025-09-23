@@ -143,7 +143,7 @@ pub ghost enum MemContents<T> {
 /// If `opt_value` is `Uninit`, then we have no knowledge about what's in memory,
 /// and we assume `ptr` points to uninitialized memory.
 /// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
-//  but we don't know, so we have to pretend they're uninitialized.)
+///  but we don't know, so we have to pretend they're uninitialized.)
 pub ghost struct PointsToData<T> {
     pub ptr: *mut T,
     pub opt_value: MemContents<T>,
@@ -155,6 +155,10 @@ impl<T: ?Sized> View for *mut T {
     uninterp spec fn view(&self) -> Self::V;
 }
 
+/// Compares the address and metadata of two pointers.
+///
+/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: ?Sized>[ <*mut T as PartialEq<*mut T>>::eq ](
     x: &*mut T,
     y: &*mut T,
@@ -172,6 +176,10 @@ impl<T: ?Sized> View for *const T {
     }
 }
 
+/// Compares the address and metadata of two pointers.
+///
+/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
     x: &*const T,
     y: &*const T,
@@ -231,6 +239,14 @@ impl<T> PointsTo<T> {
             size_of::<T>() != 0,
         ensures
             self@.ptr@.addr != 0,
+    ;
+
+    /// Guarantee that the `PointsTo` points to an aligned address.
+    ///
+    // Note that even for ZSTs, pointers need to be aligned.
+    pub axiom fn is_aligned(tracked &self)
+        ensures
+            self@.ptr@.addr as nat % align_of::<T>() == 0,
     ;
 
     /// "Forgets" about the value stored behind the pointer.
@@ -690,10 +706,7 @@ impl PointsToRaw {
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
     ///
     /// In combination with PointsToRaw::empty(),
-    /// this lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
-    /// (even null).
-    /// Admittedly, this does violate ['strict provenance'](https://doc.rust-lang.org/std/ptr/#using-strict-provenance);
-    /// but that's ok. It is still allowed in Rust's more permissive semantics.
+    /// this lets us create a PointsTo for a ZST for _any_ aligned pointer (any address and provenance, even null).
     pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             start as int % align_of::<V>() as int == 0,
@@ -779,6 +792,7 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
         size != 0,
     ensures
         pt.1@.is_range(pt.0.addr() as int, size as int),
+        pt.0.addr() + size <= usize::MAX + 1,
         pt.2@@ == (DeallocData {
             addr: pt.0.addr(),
             size: size as nat,

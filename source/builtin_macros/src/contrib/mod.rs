@@ -1,7 +1,7 @@
 pub mod auto_spec;
 
 use proc_macro2::TokenStream;
-use syn_verus::{Attribute, ImplItem, Item, Meta, Path};
+use verus_syn::{Attribute, ImplItem, Item, Meta, Path};
 
 fn item_attrs(item: &Item) -> Option<&Vec<Attribute>> {
     match item {
@@ -78,12 +78,12 @@ fn collect_attrs(attrs: Option<&Vec<Attribute>>) -> Vec<(String, Option<TokenStr
     attr_infos
 }
 
-// It's often more useful to apply a macro to a syn_verus::Item before it's transformed
+// It's often more useful to apply a macro to a verus_syn::Item before it's transformed
 // by "verus!" into a verbose syn encoding.
 // For example, we may want to look for "proof { ... }" blocks or change the mode of a Fn,
-// and it's better to do these directly in syn_verus syntax than to try to reverse engineer
+// and it's better to do these directly in verus_syn syntax than to try to reverse engineer
 // the syn encoding of these features.
-// Therefore, we give contrib macros a chance to preprocess the syn_verus code here.
+// Therefore, we give contrib macros a chance to preprocess the verus_syn code here.
 
 // Unfortunately, name resolution hasn't run on item's attributes yet,
 // so we don't have a good way to identify which macro is which.

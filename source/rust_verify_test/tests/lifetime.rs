@@ -21,7 +21,20 @@ test_verify_one_file! {
             consume(a);
             consume(a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
+}
+
+test_verify_one_file! {
+    #[test] consume_twice_call verus_code! {
+        tracked struct X { }
+
+        proof fn take_two(tracked a: X, tracked b: X) {
+        }
+
+        proof fn foo(tracked x: X) {
+            take_two(x, x);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -30,7 +43,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked a: A) -> int {
             consume(a) + consume(a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -41,7 +54,7 @@ test_verify_one_file! {
             consume(a);
             consume(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -53,7 +66,7 @@ test_verify_one_file! {
             consume(x);
             consume(b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -63,7 +76,7 @@ test_verify_one_file! {
             consume(a);
             a
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -72,7 +85,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked a: A) -> (tracked b: (A, A)) {
             (a, a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -82,7 +95,7 @@ test_verify_one_file! {
         proof fn test1<A>(tracked x: A) -> (tracked b: P<A, A>) {
             P { a: x, b: x }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -92,7 +105,7 @@ test_verify_one_file! {
         proof fn h<A>(tracked a: A) {
             g(f(a), f(a))
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -124,7 +137,7 @@ test_verify_one_file! {
             consume(p.a);
             consume(p.a);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -135,7 +148,7 @@ test_verify_one_file! {
             consume(p.a);
             consume(p);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of partially moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {
@@ -149,12 +162,12 @@ test_verify_one_file! {
             x
         }
         proof fn test<A>(tracked x: A) {
-            // Note that builtin::is_variant is a spec function but
+            // Note that verus_builtin::is_variant is a spec function but
             // allows proof arguments
-            let s = builtin::is_variant(id(Option::Some(x)), "None");
-            let s = builtin::is_variant(id(Option::Some(x)), "None");
+            let s = verus_builtin::is_variant(id(Option::Some(x)), "None");
+            let s = verus_builtin::is_variant(id(Option::Some(x)), "None");
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -168,10 +181,10 @@ test_verify_one_file! {
             x
         }
         proof fn test<A>(tracked x: A) {
-            let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
-            let s = builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
+            let s = verus_builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
+            let s = verus_builtin::get_variant_field::<_, A>(id(Option::Some(x)), "Some", "0");
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -180,7 +193,7 @@ test_verify_one_file! {
         proof fn g(tracked x: &mut u8, tracked y: &mut u8) {
             f(x, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -202,7 +215,7 @@ test_verify_one_file! {
             let tracked mut y = b;
             borrow(&mut x, &mut x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -215,7 +228,7 @@ test_verify_one_file! {
                 f(x.get(), x.get())
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -227,7 +240,7 @@ test_verify_one_file! {
                 f(x.borrow_mut(), x.borrow_mut());
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -252,7 +265,7 @@ test_verify_one_file! {
                 consume(a);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -265,7 +278,7 @@ test_verify_one_file! {
                 consume(a);
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -278,7 +291,7 @@ test_verify_one_file! {
             }
             a2
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -292,7 +305,7 @@ test_verify_one_file! {
             }
             consume(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {
@@ -303,7 +316,7 @@ test_verify_one_file! {
             if b { s = S {}; }
             s
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `s` is possibly-uninitialized")
 }
 
 test_verify_one_file! {
@@ -314,7 +327,7 @@ test_verify_one_file! {
             match b { _ if true => { s = S {}; } _ => {} }
             s
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `s` is possibly-uninitialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `s` is possibly-uninitialized")
 }
 
 test_verify_one_file! {
@@ -322,7 +335,7 @@ test_verify_one_file! {
         proof fn f<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             y
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
@@ -334,7 +347,7 @@ test_verify_one_file! {
         proof fn g<'a, 'b>(tracked x: &'a u32, tracked y: &'a u32, tracked z: &'b u32) -> tracked &'b u32 {
             f(z, z, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
@@ -469,7 +482,7 @@ test_verify_one_file! {
         proof fn f(tracked x: S<Q, u8>) -> tracked (S<Q, u8>, S<Q, u8>) {
             (x, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -524,7 +537,7 @@ test_verify_one_file! {
             assert(a@ == 7);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -559,7 +572,7 @@ test_verify_one_file! {
             // a reference &'a to &'static)
             let y = vstd::modes::tracked_static_ref(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "borrowed data escapes outside of function")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -573,7 +586,7 @@ test_verify_one_file! {
             let _ = pptr.take(Tracked(&mut perm)); // this should invalidate the &perm borrow
             let z: u64 = *x; // but x is still available here
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `perm` as mutable because it is also borrowed as immutable")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `perm` as mutable because it is also borrowed as immutable")
 }
 
 test_verify_one_file! {
@@ -587,7 +600,7 @@ test_verify_one_file! {
             pptr.free(Tracked(perm));
             let z: u64 = *x; // but x is still available here
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot move out of `perm` because it is borrowed")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `perm` because it is borrowed")
 }
 
 test_verify_one_file! {
@@ -603,7 +616,7 @@ test_verify_one_file! {
             let z = y.clone();
             z
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -619,7 +632,7 @@ test_verify_one_file! {
             let z = y.clone();
             z
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -634,7 +647,7 @@ test_verify_one_file! {
             //let z = y.clone();
             y
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot return value referencing local variable `x`")
+    } => Err(err) => assert_rust_error_msg(err, "cannot return value referencing local variable `x`")
 }
 
 test_verify_one_file! {
@@ -758,7 +771,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of partially moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {
@@ -805,7 +818,7 @@ test_verify_one_file! {
             let ghost g = { let tracked z = Tracked(x); Tracked(x) };
             Tracked(x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
 }
 
 test_verify_one_file! {
@@ -890,7 +903,7 @@ test_verify_one_file! {
                 l.use_shared();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg(err, "as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -916,7 +929,7 @@ test_verify_one_file! {
 
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -942,7 +955,7 @@ test_verify_one_file! {
 
             assert(!b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -974,7 +987,7 @@ test_verify_one_file! {
 
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -1007,7 +1020,7 @@ test_verify_one_file! {
 
             assert(!b);
         }
-    } => Err(err) => assert_vir_error_msg(err, "used binding `t` isn't initialized")
+    } => Err(err) => assert_rust_error_msg(err, "used binding `t` isn't initialized")
 }
 
 test_verify_one_file! {
@@ -1049,5 +1062,505 @@ test_verify_one_file! {
         }
 
         pub struct Container<T: Borrowable>(T);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] two_phase verus_code! {
+        use vstd::seq::*;
+
+        struct X {
+            u: u64,
+        }
+
+        impl X {
+            uninterp spec fn seq(&self) -> Seq<u64>;
+
+            #[verifier::external_body]
+            fn len(&self) -> (l: u64)
+                ensures l == self.seq().len()
+            {
+                unimplemented!();
+            }
+
+            #[verifier::external_body]
+            fn push(&mut self, elem: u64)
+                ensures
+                    self.seq() == old(self).seq().push(elem)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x.push(x.len());
+            assert(x.seq() == x1.push(x1.len() as u64));
+        }
+
+        fn test_fail(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x.push(x.len());
+            assert(x.seq() == x1.push(x1.len() as u64));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] two_phase_with_overloaded_compound_assignment_operator verus_code! {
+        use vstd::seq::*;
+
+        struct X {
+            u: u64,
+        }
+
+        impl X {
+            uninterp spec fn seq(&self) -> Seq<u64>;
+
+            #[verifier::external_body]
+            fn len(&self) -> (l: u64)
+                ensures l == self.seq().len()
+            {
+                unimplemented!();
+            }
+        }
+
+        impl std::ops::AddAssign<u64> for X {
+            #[verifier::external_body]
+            fn add_assign(&mut self, rhs: u64)
+                ensures self.seq() == old(self).seq().push(rhs)
+            {
+                unimplemented!();
+            }
+        }
+
+        fn test(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x += x.len();
+            assert(x.seq() == x1.push(x1.len() as u64));
+        }
+
+        fn test_fail(x: X) {
+            let mut x = x;
+            let ghost x1 = x.seq();
+            x += x.len();
+            assert(x.seq() == x1.push(x1.len() as u64));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: &mut dereference in this position (note: &mut dereference is implicit here)")
+}
+
+test_verify_one_file! {
+    #[test] regression_issue835 verus_code! {
+        pub const B: u64 = 7;
+
+        fn test(a: usize) {
+            proof {
+                if a <= B {
+                } else {
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_issue959 verus_code! {
+        pub struct S<'a> {
+            pub data: &'a u8,
+        }
+
+        type Res<'a, T> = Result<(S<'a>, T), Err>;
+
+        enum Result<A, B> {
+            Ok(A),
+            Err(B),
+        }
+
+        pub enum Err {
+            A,
+        }
+
+        fn test<'a>(s: S<'a>) -> Res<'a, u8> {
+            let cls = |s: S<'a>| -> Res<'a, u8> { ok(s) };
+            Result::Ok((s, 0))
+        }
+
+        fn ok<'a>(s: S<'a>) -> Res<'a, u8> {
+            Result::Ok((s, 0))
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_issue959_fails verus_code! {
+        pub struct S<'a> {
+            pub data: &'a u8,
+        }
+
+        type Res<'a, T> = Result<(S<'a>, T), Err>;
+
+        enum Result<A, B> {
+            Ok(A),
+            Err(B),
+        }
+
+        pub enum Err {
+            A,
+        }
+
+        fn test<'a>(s: S<'a>) -> Res<'a, u8> {
+            let cls = |s: S| -> Res<'a, u8> { ok(s) };
+            Result::Ok((s, 0))
+        }
+
+        fn ok<'a>(s: S<'a>) -> Res<'a, u8> {
+            Result::Ok((s, 0))
+        }
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
+}
+
+test_verify_one_file! {
+    #[test] regression_issue1296 verus_code! {
+        use vstd::prelude::*;
+
+        pub trait A {
+            type Iter<'a>: B<'a, E = Self::E> where Self: 'a;
+            type E;
+
+            fn things<'a>(&'a mut self) -> Result<Self::Iter<'a>, Self::E>;
+        }
+
+        pub trait B<'a> {
+            type E;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] dst_fields verus_code! {
+        use vstd::prelude::*;
+
+        struct Dst {
+            x: u64,
+            y: [u64],
+        }
+
+        fn test(dst: &Dst) {
+            let ghost r = dst.x;
+        }
+
+        fn test2(slice: &[u64]) {
+            let ghost r = slice[20];
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] consts_issue1791 verus_code! {
+        pub fn hello() -> [u64; 2]
+        {
+            S::A
+        }
+
+        pub fn hello2() -> u64
+        {
+            S::X
+        }
+
+        pub struct S {}
+
+        impl S {
+            pub const X: u64 = 42;
+
+            pub const A: [u64; 2] = [1, 2];
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_specification_on_external_function verus_code! {
+        struct X {
+            u: u64
+        }
+
+        uninterp spec fn foo(x: X) -> bool;
+        uninterp spec fn bar(x: X) -> bool;
+
+        fn exec_foo(x: X) {
+        }
+
+        // REVIEW: reconsider if this should be allowed
+
+        #[verifier::external]
+        fn test(x: X)
+            requires foo(x) && bar(x),
+        {
+            exec_foo(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields verus_code! {
+        struct X {
+            u: u64,
+        }
+
+        // REVIEW: consider requiring structs to be marked 'tracked' or 'ghost' to have
+        // tracked/ghost fields
+        // (note: the reason this test works is that, even though the struct is exec,
+        // it is used in a tracked-mode way)
+        struct S {
+            ghost x: X,
+            ghost y: X,
+        }
+
+        proof fn test(tracked x: X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x, y: x };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields verus_code! {
+        struct X {
+            u: u64,
+        }
+
+        struct S {
+            tracked x: X,
+            tracked y: X,
+        }
+
+        proof fn test(tracked x: X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x, y: x };
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields_2 verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S {
+            ghost x: Y,
+            ghost y: Y,
+        }
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x.y, y: x.y };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields_2 verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S {
+            tracked x: Y,
+            tracked y: Y,
+        }
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S { x: x.y, y: x.y };
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot move out of `x.y` which is behind a shared reference",
+        "cannot move out of `x.y` which is behind a shared reference",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_ghost_fields_fn_style verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S(ghost Y, ghost Y);
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S(x.y, x.y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_struct_tracked_fields_fn_style verus_code! {
+        struct Y {
+            u: u64,
+        }
+
+        struct X {
+            u: u64,
+            y: Y,
+        }
+
+        struct S(tracked Y, tracked Y);
+
+        proof fn test(tracked x: &X) {
+            // this is ok, both uses of x are in ghost position
+            let tracked s = S(x.y, x.y);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot move out of `x.y` which is behind a shared reference",
+        "cannot move out of `x.y` which is behind a shared reference",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] external_body_that_uses_external_structs verus_code! {
+        #[verifier::external_body]
+        struct X(u64, u64);
+
+        #[verifier::external]
+        struct Y(u64, u64);
+
+        #[verifier::external_body]
+        struct X1 { a: u64, b: u64 }
+
+        #[verifier::external]
+        struct Y1 { a: u64, b: u64 }
+
+        #[verifier::external_body]
+        fn test() {
+            let x = X(3, 4);
+            let y = Y(5, 6);
+            let x1 = X1 { a: 13, b: 14 };
+            let y1 = Y1 { a: 15, b: 16 };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] generic_fn_value_issue1763 verus_code! {
+        pub trait Tr {
+            fn trait_func(&self) -> bool;
+        }
+
+        pub trait Sr {
+            fn trait_func_s(&self) -> bool;
+        }
+
+        impl<T: Tr + ?Sized> Sr for T {
+            fn trait_func_s(&self) -> (r: bool)
+                ensures r == true,
+            {
+                true
+            }
+        }
+
+        fn test<T: Tr + ?Sized>(t: &T, b: bool) {
+            let the_fn = T::trait_func_s;
+            assert(call_ensures(the_fn, (t,), b) ==> b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_as_field_and_receiver_issue1604 verus_code! {
+        use vstd::prelude::*;
+
+        struct X {
+            arr: [u8; 10]
+        }
+
+        pub fn test_arr(arr: &mut [u8; 10], order: usize) -> Result<u8, ()>  {
+            let val = *arr.get(order).ok_or(())?;
+            Ok(val)
+        }
+
+        impl X {
+            pub fn test(&mut self, order: usize) -> Result<u8, ()>  {
+                let val = *self.arr.get(order).ok_or(())?;
+                Ok(val)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] use_arc_as_receiver_issue1311 verus_code! {
+        use std::sync::Arc;
+        use vstd::prelude::*;
+
+        pub struct Foo {
+        }
+
+        impl Foo {
+            pub fn get(&self, args: &u8) -> (out: u8) { 0 }
+        }
+
+        fn main() {
+            let foo = Foo { };
+            let shared_foo = Arc::new(foo);
+            let v = shared_foo.get(&20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_depending_on_view_issue966 verus_code! {
+        use vstd::prelude::*;
+
+        trait VerusClone: View + Sized {
+            fn verus_clone(&self) -> (r: Self)
+                ensures self@ == r@;
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn vec_filter<V: VerusClone>(v: Vec<V>, f: impl Fn(&V)->bool, f_spec: spec_fn(V)->bool) -> (r: Vec<V>)
+            requires forall|v: V| #[trigger] f.requires((&v,)), forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+        {
+            let mut r = Vec::new();
+            let mut i = 0;
+            while i < v.len()
+                invariant
+                    forall|v: V| #[trigger] f.requires((&v,)),
+                    i <= v.len(),
+                    forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
+            {
+                let ghost pre_r = r@.to_multiset();
+                assert(
+                    v@.subrange(0, i as int + 1)
+                    =~=
+                    v@.subrange(0, i as int).push(v@[i as int]));
+                if f(&v[i]) {
+                    r.push(v[i].verus_clone());
+                }
+
+                i += 1;
+            }
+            r
+        }
     } => Ok(())
 }
