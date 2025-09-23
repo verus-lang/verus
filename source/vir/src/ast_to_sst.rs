@@ -578,6 +578,8 @@ impl Sequencer {
     /// Upon completion, turn all the inputted data into (Stms, Exps) that can be evaluated
     /// in that order.
     fn into_stms_exps(self, state: &mut State) -> (Vec<Stm>, Vec<Exp>) {
+        assert!(self.stms.len() == self.exps.len() || self.stms.len() == self.exps.len() + 1);
+
         let mut largest_idx_with_stm = None;
         for i in (0..self.stms.len()).rev() {
             if self.stms[i].len() > 0 {
@@ -615,6 +617,17 @@ impl Sequencer {
         assert!(exps.len() == 2);
         (stms, exps[0].clone(), exps[1].clone())
     }
+
+    /// Use this when there are extra Stms at the end that don't go with any of the
+    /// expressions
+    /// i.e. if we have
+    ///    stms[0], exps[0], stms[1], exps[1], ... stms[n], exps[n], stms[n+1]
+    /// Then pass stms[n+1] as the argument to this function
+    fn into_stms_exps_with_extra(self, state: &mut State, stms: Vec<Stm>) -> (Vec<Stm>, Vec<Exp>) {
+        let mut s = self;
+        s.stms.push(stms);
+        s.into_stms_exps(state)
+    }
 }
 
 enum ReturnedCall {
@@ -636,7 +649,7 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(target, args) => match target {
+        ExprX::Call(target, args, post_args) => match target {
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -664,17 +677,59 @@ fn expr_get_call(
                 }
 
                 let mut sequr = Sequencer::new();
+
+                // Suppose have as arguments:
+                //   TwoPhaseMutBorrow(p1)
+                //   TwoPhaseMutBorrow(p2)
+                //
+                // Then the "second phase" of these arguments goes after the argument evaluation.
+                // So the result would look like:
+                //
+                //  eval p1
+                //  eval p2
+                //  Phase2 mutation for p1
+                //  Phase2 mutation for p2
+                //  post_args
+                //  execute the "call"
+                //
+                // Note that the "post_args" may contain AssumeResolved statements inserted
+                // by the resolution inference; these are supposed to go after the phase2
+                // mutations.
+
+                // delayed "phase2" Stms
+                let mut second_phase: Vec<Stm> = Vec::new();
+
                 for arg in args.iter() {
-                    let (stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                     let poly =
                         crate::poly::arg_is_poly(ctx, &function.x.kind, function.x.mode, &arg.typ);
                     let kind = LocalDeclKind::StmCallArg { native: !poly };
-                    let early_return = sequr.push(stms0, e0, kind);
-                    if let Some(stms) = early_return {
-                        return Ok(Some((stms, ReturnedCall::Never)));
-                    }
+
+                    match &arg.x {
+                        ExprX::TwoPhaseBorrowMut(_) => {
+                            let bor_sst = borrow_mut_to_sst(ctx, state, arg)?;
+                            let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
+                            let early_return =
+                                sequr.push(phase1_stms, ReturnValue::Some(mut_ref_exp), kind);
+                            assert!(early_return.is_none());
+                            second_phase.push(phase2_stm);
+                        }
+                        _ => {
+                            let (stms0, e0) = expr_to_stm_opt(ctx, state, &arg)?;
+                            let early_return = sequr.push(stms0, e0, kind);
+                            if let Some(stms) = early_return {
+                                return Ok(Some((stms, ReturnedCall::Never)));
+                            }
+                        }
+                    };
                 }
-                let (stms, exps) = sequr.into_stms_exps(state);
+
+                if let Some(post_args) = post_args {
+                    let (mut stms0, e0) = expr_to_stm_opt(ctx, state, post_args)?;
+                    assert!(matches!(e0, ReturnValue::ImplicitUnit(_)));
+                    second_phase.append(&mut stms0);
+                }
+
+                let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
 
                 use crate::ast::{CallTargetKind, FunctionKind};
                 let is_trait_default =
@@ -721,7 +776,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _)
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
             if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
@@ -1277,7 +1332,8 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(CallTarget::FnSpec(e0), args) => {
+        ExprX::Call(CallTarget::FnSpec(e0), args, post_args) => {
+            assert!(post_args.is_none());
             let (mut check_stms, e0) = expr_to_pure_exp_check(ctx, state, e0)?;
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1288,7 +1344,8 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, ReturnValue::Some(mk_exp(call))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args, post_args) => {
+            assert!(post_args.is_none());
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1310,7 +1367,7 @@ pub(crate) fn expr_to_stm_opt(
                 ))),
             ))
         }
-        ExprX::Call(CallTarget::Fun(..), _) => {
+        ExprX::Call(CallTarget::Fun(..), _, _) => {
             match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (
@@ -1396,12 +1453,29 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
 
+            // Handle two-phase borrow; see the explanation in expr_get_call
+            let mut second_phase: Vec<Stm> = Vec::new();
+
             let mut sequr = Sequencer::new();
             for binder in binders.iter() {
-                let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
-                maybe_return_never!(sequr.push(stms0, e0, LocalDeclKind::TempViaAssign));
+                let arg = &binder.a;
+                let kind = LocalDeclKind::TempViaAssign;
+                match &arg.x {
+                    ExprX::TwoPhaseBorrowMut(_) => {
+                        let bor_sst = borrow_mut_to_sst(ctx, state, arg)?;
+                        let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
+                        let early_return =
+                            sequr.push(phase1_stms, ReturnValue::Some(mut_ref_exp), kind);
+                        assert!(early_return.is_none());
+                        second_phase.push(phase2_stm);
+                    }
+                    _ => {
+                        let (stms0, e0) = expr_to_stm_opt(ctx, state, &binder.a)?;
+                        maybe_return_never!(sequr.push(stms0, e0, kind));
+                    }
+                }
             }
-            let (stms, exps) = sequr.into_stms_exps(state);
+            let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase);
 
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for (binder, e1) in binders.iter().zip(exps.into_iter()) {
@@ -2511,33 +2585,14 @@ pub(crate) fn expr_to_stm_opt(
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
         ExprX::BorrowMut(_place) => {
-            panic!("BorrowMut should have been removed in simplify");
+            let bor_sst = borrow_mut_to_sst(ctx, state, expr)?;
+            let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
+            let mut stms = phase1_stms;
+            stms.push(phase2_stm);
+            Ok((stms, ReturnValue::Some(mut_ref_exp)))
         }
-        ExprX::BorrowMutPhaseOne(place) => {
-            let place_exp = place_to_exp(ctx, state, place)?;
-
-            let (var_ident, mut_ref_exp) =
-                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::BorrowMut);
-            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
-
-            let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
-            let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
-
-            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
-
-            Ok((vec![stm, assume_stm], ReturnValue::Some(mut_ref_exp)))
-        }
-        ExprX::BorrowMutPhaseTwo(place, mut_ref_expr) => {
-            let expr = SpannedTyped::new(
-                &expr.span,
-                &expr.typ,
-                ExprX::AssignToPlace {
-                    place: place.clone(),
-                    rhs: crate::ast_util::mk_mut_ref_future(&expr.span, mut_ref_expr),
-                    op: None,
-                },
-            );
-            expr_to_stm_opt(ctx, state, &expr)
+        ExprX::TwoPhaseBorrowMut(_place) => {
+            panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
         ExprX::AssumeResolved(e, typ) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
@@ -2565,15 +2620,81 @@ pub(crate) fn expr_to_stm_opt(
     }
 }
 
+/// Stms and Exps needed to execute a 2-phase borrow.
+struct BorrowMutSst {
+    /// Stms to execute "phase 1".
+    phase1_stms: Vec<Stm>,
+    /// Stm to execute "phase 2". It needs to be safe to delay this.
+    phase2_stm: Stm,
+    /// Exp representing the mutable borrow.
+    /// This will always be a (non-mutable) temp variable.
+    mut_ref_exp: Exp,
+}
+
+/// Given a mutable borrow expr (either BorrowMut or TwoPhaseBorrowMut), lowers it to the
+/// SST semantics. The SST semantics include two phases:
+///
+///  - Phase 1: Evaluate the "place" and construct a mutable borrow such that
+///    (mut_ref_current == the current value of the place) and mut_ref_future is arbitrary.
+///
+///  - Phase 2: Update the value of the "place" to be the mut_ref_future value.
+///
+/// For a "normal" borrow, these phases are executed together, and for a "two phase borrow",
+/// they are executed apart. So for example, if we have a two-phase borrow in:
+///
+/// ```rust
+/// let mut a = ...;
+/// foo(&mut a, a.x); // imagine this is de-sugared from `a.foo(a.x)` or something that
+///                   // actually creates a two-phase borrow
+/// ```
+///
+/// The first phase would be the evaluation of `&mut a`, while the second phase (updating
+/// the value of local variable `a`) would take place *after* the evaluation of `a.x`.
+/// Thus, when `a.x` is executed, we correctly read the pre-borrow value of `a`.
+
+fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<BorrowMutSst, VirErr> {
+    let place = match &expr.x {
+        ExprX::BorrowMut(p) => p,
+        ExprX::TwoPhaseBorrowMut(p) => p,
+        _ => panic!("borrow_mut_to_sst must be called for BorrowMut or TwoPhaseBorrowMut"),
+    };
+
+    let place_exp = place_to_exp(ctx, state, place)?;
+
+    // phase 1
+    let (var_ident, mut_ref_exp) =
+        state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::BorrowMut);
+    let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+
+    let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
+    let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
+    let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+
+    let phase1_stms = vec![has_typ_stm, assume_stm];
+
+    // phase 2
+
+    let future_expx = ExpX::Unary(UnaryOp::MutRefFuture, mut_ref_exp.clone());
+    let t = match &*expr.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let future_exp = SpannedTyped::new(&expr.span, &t, future_expx);
+
+    let loc_expr = place_to_expr_loc(place);
+    let (lhs_stms, lhs_exp) = expr_to_stm_opt(ctx, state, &loc_expr)?;
+    assert!(lhs_stms.len() == 0);
+    let lhs_exp = lhs_exp.expect_value();
+
+    let assignx = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: future_exp };
+    let assign = Spanned::new(expr.span.clone(), assignx);
+
+    Ok(BorrowMutSst { phase1_stms, phase2_stm: assign, mut_ref_exp })
+}
+
 fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
     let expr = place_to_expr(place);
     let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
-    if stms.len() > 0 {
-        dbg!(&place);
-        dbg!(&expr);
-        dbg!(&stms);
-        dbg!(&exp);
-    }
     assert!(stms.len() == 0);
     match exp {
         ReturnValue::Some(e) => Ok(e),
