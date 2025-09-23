@@ -2463,6 +2463,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
+            // For any mutable param `x` to the function, we might refer to either
+            // *x or *old(x) within the loop body or invariants.
+            // Thus, we need to create a 'pre' snapshot and havoc all these variables
+            // so that we can refer to either version of the variable within the body.
+            if loop_isolation {
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+            }
+
             let mut local = state.local_shared.clone();
             if loop_isolation {
                 for (x, typ) in typ_inv_vars.iter() {
@@ -2476,13 +2484,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            // For any mutable param `x` to the function, we might refer to either
-            // *x or *old(x) within the loop body or invariants.
-            // Thus, we need to create a 'pre' snapshot and havoc all these variables
-            // so that we can refer to either version of the variable within the body.
-            if loop_isolation {
-                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
-            }
             for (x, typ) in typ_inv_vars.iter() {
                 if state.may_be_used_in_old.contains(x) {
                     air_body.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(x))));
