@@ -2153,3 +2153,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] lemma_decreases_generic verus_code! {
+        use vstd::prelude::*;
+
+        pub open spec fn test<T>(s:Seq<T>) -> int
+            decreases s
+        {
+            if s.len() == 0 {
+                0
+            }
+            else {
+                test(s.drop_last())
+            }
+        }
+    } => Ok(())
+}
