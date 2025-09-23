@@ -933,7 +933,7 @@ pub fn prune_krate_for_module_or_krate(
     }
     for d in &krate.datatypes {
         match &d.x.owning_module {
-            Some(path) if is_root_module(path) => {
+            Some(path) if is_root_module(path) && fun.is_none() => {
                 // our datatype
                 let t = ReachedType::Datatype(d.x.name.clone());
                 reach(&mut state.reached_types, &mut state.worklist_types, &t);
