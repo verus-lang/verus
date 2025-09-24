@@ -178,7 +178,7 @@ impl<T: ?Sized> View for *const T {
 
 /// Compares the address and metadata of two pointers.
 ///
-/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// Note that this does NOT compare provenance, which does not exist in the runtime
 /// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
     x: &*const T,
