@@ -112,6 +112,7 @@ enum TypeKind {
 
 /// Converts a spec type to exec type via `<T as ExecSpecType>::Exec`.
 fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
+    let span = typ.span();
     match typ {
         // Treat Seq<T> as a special case since
         // we don't implement ExecSpecType for it (to avoid
@@ -122,8 +123,8 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                     let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
                     let param = compile_type(type_arg, TypeKind::Owned)?;
                     return match ctx {
-                        TypeKind::Owned => Ok(quote! { Vec<#param> }),
-                        TypeKind::Ref => Ok(quote! { &[#param] }),
+                        TypeKind::Owned => Ok(quote_spanned! { span => Vec<#param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &[#param] }),
                     };
                 } else if type_path.path.segments[0].ident.to_string() == "Option" {
                     // TODO: implement ExecSpecType for Option<T> so that
@@ -131,8 +132,8 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                     let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
                     let param = compile_type(type_arg, TypeKind::Owned)?;
                     return match ctx {
-                        TypeKind::Owned => Ok(quote! { Option<#param> }),
-                        TypeKind::Ref => Ok(quote! { &Option<#param> }),
+                        TypeKind::Owned => Ok(quote_spanned! { span => Option<#param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &Option<#param> }),
                     };
                 }
             }
@@ -147,8 +148,8 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                 .map(|ty| compile_type(ty, TypeKind::Owned))
                 .collect::<Result<Vec<_>, Error>>()?;
             return match ctx {
-                TypeKind::Owned => Ok(quote! { (#(#types,)*) }),
-                TypeKind::Ref => Ok(quote! { &(#(#types,)*) }),
+                TypeKind::Owned => Ok(quote_spanned! { span => (#(#types,)*) }),
+                TypeKind::Ref => Ok(quote_spanned! { span => &(#(#types,)*) }),
             };
         }
 
@@ -159,10 +160,10 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     // ExecSpecType implemented
     Ok(match ctx {
         TypeKind::Owned => {
-            quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecOwnedType }
+            quote_spanned! { span => <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecOwnedType }
         }
         TypeKind::Ref => {
-            quote! { <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecRefType<'_> }
+            quote_spanned! { span => <#typ as vstd::contrib::exec_spec::ExecSpecType>::ExecRefType<'_> }
         }
     })
 }
@@ -180,6 +181,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     // Generate the fields
     let exec_fields = match &item_struct.fields {
         Fields::Named(fields_named) => {
+            let span = fields_named.span();
             let fields = fields_named
                 .named
                 .iter()
@@ -187,88 +189,110 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                     let vis = &field.vis;
                     let field_name = field.ident.as_ref().unwrap();
                     let field_type = compile_type(&field.ty, TypeKind::Owned)?;
-                    Ok(quote! { #vis #field_name: #field_type })
+                    let span = field.span();
+                    Ok(quote_spanned! { span => #vis #field_name: #field_type })
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            quote! { { #(#fields,)* } }
+            quote_spanned! { span => { #(#fields,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
+            let span = fields_unnamed.span();
             let fields = fields_unnamed
                 .unnamed
                 .iter()
                 .map(|field| {
                     let vis = &field.vis;
                     let field_type = compile_type(&field.ty, TypeKind::Owned)?;
-                    Ok(quote! { #vis #field_type })
+                    let span = field.span();
+                    Ok(quote_spanned! { span => #vis #field_type })
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            quote! { ( #(#fields,)* ) ; }
+            quote_spanned! { span => ( #(#fields,)* ) ; }
         }
-        Fields::Unit => quote! { ; },
+        Fields::Unit => {
+            let span = item_struct.span();
+            quote_spanned! { span => ; }
+        }
     };
 
     // Generate the body of fn view
     let view_body = match &item_struct.fields {
         Fields::Named(fields_named) => {
+            let span = fields_named.span();
             let field_views = fields_named.named.iter().map(|field| {
                 let field_name = &field.ident;
-                quote! { #field_name: self.#field_name.deep_view() }
+                let span = field.span();
+                quote_spanned! { span => #field_name: self.#field_name.deep_view() }
             });
 
-            quote! { #spec_name { #(#field_views,)* } }
+            quote_spanned! { span => #spec_name { #(#field_views,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
-            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+            let span = fields_unnamed.span();
+            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                 let i = Index::from(i);
-                quote! { self.#i.deep_view() }
+                let span = field.span();
+                quote_spanned! { span => self.#i.deep_view() }
             });
 
-            quote! { #spec_name(#(#field_views,)*) }
+            quote_spanned! { span => #spec_name(#(#field_views,)*) }
         }
-        Fields::Unit => quote! { #spec_name },
+        Fields::Unit => {
+            let span = item_struct.span();
+            quote_spanned! { span => #spec_name }
+        }
     };
 
     // Generate body of the DeepViewClone impl
     let clone_body = match &item_struct.fields {
         Fields::Named(fields_named) => {
+            let span = fields_named.span();
             let field_views = fields_named.named.iter().map(|field| {
                 let field_name = &field.ident;
-                quote! { #field_name: self.#field_name.deep_clone() }
+                let span = field.span();
+                quote_spanned! { span => #field_name: self.#field_name.deep_clone() }
             });
 
-            quote! { #exec_name { #(#field_views,)* } }
+            quote_spanned! { span => #exec_name { #(#field_views,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
-            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+            let span = fields_unnamed.span();
+            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                 let i = Index::from(i);
-                quote! { self.#i.deep_clone() }
+                let span = field.span();
+                quote_spanned! { span => self.#i.deep_clone() }
             });
 
-            quote! { #exec_name(#(#field_views,)*) }
+            quote_spanned! { span => #exec_name(#(#field_views,)*) }
         }
-        Fields::Unit => quote! { #exec_name },
+        Fields::Unit => {
+            let span = item_struct.span();
+            quote_spanned! { span => #exec_name }
+        }
     };
 
     let vis = &item_struct.vis;
 
     // Only open the view if the struct and all fields are public
+    let span = item_struct.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_struct.vis {
         if item_struct
             .fields
             .iter()
             .all(|field| if let Visibility::Public(..) = field.vis { true } else { false })
         {
-            quote! { open }
+            quote_spanned! { span => open }
         } else {
-            quote! { closed }
+            quote_spanned! { span => closed }
         }
     } else {
-        quote! { closed }
+        quote_spanned! { span => closed }
     };
 
-    Ok(quote! {
+    let span = item_struct.span();
+    Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_struct
 
@@ -326,19 +350,20 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             let name = &variant.ident;
 
             Ok(match &variant.fields {
-                Fields::Unit => quote! { #name },
                 Fields::Named(fields_named) => {
+                    let span = fields_named.span();
                     let fields = fields_named
                         .named
                         .iter()
                         .map(|field| {
                             let field_name = field.ident.as_ref().unwrap();
                             let typ = compile_type(&field.ty, TypeKind::Owned)?;
-                            Ok(quote! { #field_name: #typ })
+                            let span = field.span();
+                            Ok(quote_spanned! { span => #field_name: #typ })
                         })
                         .collect::<Result<Vec<_>, Error>>()?;
 
-                    quote! {
+                    quote_spanned! { span =>
                         #name {
                             #(#fields,)*
                         }
@@ -350,9 +375,14 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                         .iter()
                         .map(|field| compile_type(&field.ty, TypeKind::Owned))
                         .collect::<Result<Vec<_>, Error>>()?;
-                    quote! {
+                    let span = fields_unnamed.span();
+                    quote_spanned! { span =>
                         #name(#(#fields,)*)
                     }
+                }
+                Fields::Unit => {
+                    let span = variant.span();
+                    quote_spanned! { span => #name }
                 }
             })
         })
@@ -365,30 +395,37 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 
             // Generate match arms for each variant
             match &variant.fields {
-                Fields::Unit => quote! {
-                    #exec_name::#variant_name => #spec_name::#variant_name
-                },
                 Fields::Named(fields_named) => {
+                    let span = fields_named.span();
                     let field_names = fields_named.named.iter().map(|field| &field.ident);
                     let field_views = fields_named.named.iter().map(|field| {
                         let field_name = &field.ident;
-                        quote! { #field_name: #field_name.deep_view() }
+                        let span = field.span();
+                        quote_spanned! { span => #field_name: #field_name.deep_view() }
                     });
 
-                    quote! { #exec_name::#variant_name { #(#field_names,)* } => #spec_name::#variant_name { #(#field_views,)* } }
+                    quote_spanned! { span => #exec_name::#variant_name { #(#field_names,)* } => #spec_name::#variant_name { #(#field_views,)* } }
                 }
                 Fields::Unnamed(fields_unnamed) => {
+                    let span = fields_unnamed.span();
                     let field_names = fields_unnamed.unnamed.iter()
                         .enumerate()
                         .map(|(i, field)| Ident::new(&format!("f{}", i), field.span()))
                         .collect::<Vec<_>>();
 
-                    let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+                    let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                         let field_name = &field_names[i];
-                        quote! { #field_name.deep_view() }
+                        let span = field.span();
+                        quote_spanned! { span => #field_name.deep_view() }
                     });
 
-                    quote! { #exec_name::#variant_name(#(#field_names,)*) => #spec_name::#variant_name(#(#field_views,)*) }
+                    quote_spanned! { span => #exec_name::#variant_name(#(#field_names,)*) => #spec_name::#variant_name(#(#field_views,)*) }
+                }
+                Fields::Unit => {
+                    let span = variant.span();
+                    quote_spanned! { span =>
+                        #exec_name::#variant_name => #spec_name::#variant_name
+                    }
                 }
             }
         });
@@ -400,43 +437,52 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 
             // Generate match arms for each variant
             match &variant.fields {
-                Fields::Unit => quote! {
-                    #exec_name::#variant_name => #exec_name::#variant_name
-                },
                 Fields::Named(fields_named) => {
+                    let span = fields_named.span();
                     let field_names = fields_named.named.iter().map(|field| &field.ident);
                     let field_views = fields_named.named.iter().map(|field| {
                         let field_name = &field.ident;
-                        quote! { #field_name: #field_name.deep_clone() }
+                        let span = field.span();
+                        quote_spanned! { span => #field_name: #field_name.deep_clone() }
                     });
 
-                    quote! { #exec_name::#variant_name { #(#field_names,)* } => #exec_name::#variant_name { #(#field_views,)* } }
+                    quote_spanned! { span => #exec_name::#variant_name { #(#field_names,)* } => #exec_name::#variant_name { #(#field_views,)* } }
                 }
                 Fields::Unnamed(fields_unnamed) => {
+                    let span = fields_unnamed.span();
                     let field_names = fields_unnamed.unnamed.iter()
                         .enumerate()
                         .map(|(i, field)| Ident::new(&format!("f{}", i), field.span()))
                         .collect::<Vec<_>>();
 
-                    let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+                    let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
                         let field_name = &field_names[i];
-                        quote! { #field_name.deep_clone() }
+                        let span = field.span();
+                        quote_spanned! { span => #field_name.deep_clone() }
                     });
 
-                    quote! { #exec_name::#variant_name(#(#field_names,)*) => #exec_name::#variant_name(#(#field_views,)*) }
+                    quote_spanned! { span => #exec_name::#variant_name(#(#field_names,)*) => #exec_name::#variant_name(#(#field_views,)*) }
+                }
+                Fields::Unit => {
+                    let span = variant.span();
+                    quote_spanned! { span =>
+                        #exec_name::#variant_name => #exec_name::#variant_name
+                    }
                 }
             }
         });
 
     let vis = &item_enum.vis;
 
+    let span = item_enum.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_enum.vis {
-        quote! { open }
+        quote_spanned! { span => open }
     } else {
-        quote! { closed }
+        quote_spanned! { span => closed }
     };
 
-    Ok(quote! {
+    let span = item_enum.span();
+    Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_enum
 
@@ -505,16 +551,18 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
         .map(|(name, typ)| {
             ctx.add((*name).clone(), VarMode::Ref);
             let typ = compile_type(typ, TypeKind::Ref)?;
-            Ok(quote! { #name: #typ })
+            let span = name.span();
+            Ok(quote_spanned! { span => #name: #typ })
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Compile return type
+    let span = item_fn.sig.output.span();
     let ret_type = match &item_fn.sig.output {
-        ReturnType::Default => quote! { () },
+        ReturnType::Default => quote_spanned! { span => () },
         ReturnType::Type(_, _, _, ty) => {
             let typ = compile_type(ty, TypeKind::Owned)?;
-            quote! { #typ }
+            quote_spanned! { span => #typ }
         }
     };
 
@@ -531,29 +579,33 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     let bindings = spec_params
         .iter()
         .map(|(name, typ)| {
-            quote! {
+            let span = name.span();
+            quote_spanned! { span =>
                 let #name: #typ = #name.deep_view();
             }
         })
         .collect::<Vec<_>>();
 
+    let span = item_fn.sig.spec.span();
     let mut requires = if let Some(recommends) = &item_fn.sig.spec.recommends {
         let requires = recommends.exprs.exprs.iter().map(|expr| {
-            quote! {
+            let span = expr.span();
+            quote_spanned! { span =>
                 ({ #(#bindings)* #expr })
             }
         });
 
-        quote! {
+        quote_spanned! { span =>
             #(#requires,)*
         }
     } else {
-        quote! { true }
+        quote_spanned! { span => true }
     };
 
     let decreases = if let Some(decreases) = &item_fn.sig.spec.decreases {
         let decrease_exprs = decreases.decreases.exprs.exprs.iter().map(|expr| {
-            quote! {
+            let span = expr.span();
+            quote_spanned! { span =>
                 ({ #(#bindings)* #expr })
             }
         });
@@ -561,7 +613,8 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
         // When clauses are put into the requires clause
         // since it is only supported in spec mode
         if let Some((_, when_expr)) = &decreases.when {
-            requires = quote! {
+            let span = when_expr.span();
+            requires = quote_spanned! { span =>
                 ({ #(#bindings)* #when_expr }), #requires
             };
         }
@@ -570,20 +623,22 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
             return Err(Error::new_spanned(decreases, "via clause is not supported"));
         }
 
-        quote! {
+        quote_spanned! { span =>
             decreases #(#decrease_exprs),*
         }
     } else {
-        quote! {}
+        quote_spanned! { span => }
     };
 
     let args_deep_view = spec_params.iter().map(|(name, _)| {
-        quote! { #name.deep_view() }
+        let span = name.span();
+        quote_spanned! { span => #name.deep_view() }
     });
 
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
-    let sig = quote! {
+    let span = item_fn.sig.span();
+    let sig = quote_spanned! { span =>
         #vis fn #exec_name(
             #(#params,)*
         ) -> (res: #ret_type)
@@ -1714,7 +1769,8 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    Ok(quote! {
+    let span = item_fn.span();
+    Ok(quote_spanned! { span =>
         #item_fn
 
         #(#trigger_fns)*
