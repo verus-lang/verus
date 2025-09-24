@@ -1373,6 +1373,7 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        crate::contrib::contrib_preprocess_items(items);
         self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
@@ -1847,6 +1848,7 @@ impl Visitor {
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        crate::contrib::contrib_preprocess_impl_items(items);
         self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
