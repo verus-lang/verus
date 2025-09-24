@@ -5,10 +5,10 @@ use std::rc::Rc;
 use proc_macro::TokenStream;
 use proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
 use quote::{quote, quote_spanned};
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::spanned::Spanned;
-use syn_verus::token::Comma;
-use syn_verus::{
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::spanned::Spanned;
+use verus_syn::token::Comma;
+use verus_syn::{
     Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
     ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
     ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
@@ -79,7 +79,7 @@ fn prefix_nth_segment(path: &Path, prefix: &str, n: usize) -> Result<Path, Error
 struct Items(Vec<Item>);
 
 impl Parse for Items {
-    fn parse(input: ParseStream) -> syn_verus::parse::Result<Items> {
+    fn parse(input: ParseStream) -> verus_syn::parse::Result<Items> {
         let mut items = Vec::new();
         while !input.is_empty() {
             items.push(input.parse()?);
@@ -92,7 +92,7 @@ impl Parse for Items {
 struct Exprs(Vec<Expr>);
 
 impl Parse for Exprs {
-    fn parse(input: ParseStream) -> syn_verus::parse::Result<Exprs> {
+    fn parse(input: ParseStream) -> verus_syn::parse::Result<Exprs> {
         let mut exprs = Vec::new();
         while !input.is_empty() {
             exprs.push(input.parse()?);
@@ -1185,7 +1185,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 let spec_args = &expr_macro.mac.tokens;
 
                 // Parse the seq! macro call arguments
-                let args = syn_verus::parse2::<Exprs>(spec_args.clone())?;
+                let args = verus_syn::parse2::<Exprs>(spec_args.clone())?;
 
                 // Compile each argument
                 let args = args
@@ -1799,19 +1799,14 @@ pub fn exec_spec(input: TokenStream) -> TokenStream {
         .0
         .into_iter()
         .map(|item| match compile_item(item) {
-            Ok(ts) => {
-                // println!("######## compiled item ########");
-                // println!("{}", ts);
-                // println!("###############################");
-                Ok(ts)
-            }
+            Ok(ts) => Ok(ts),
             Err(err) => Err(err.to_compile_error().into()),
         })
         .collect::<Result<Vec<_>, _>>();
 
     match res {
         Ok(ts) => quote! {
-            ::builtin_macros::verus! { #(#ts)* }
+            ::verus_builtin_macros::verus! { #(#ts)* }
         }
         .into(),
         Err(err) => err,
