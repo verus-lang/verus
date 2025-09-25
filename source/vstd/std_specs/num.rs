@@ -169,6 +169,14 @@ macro_rules! num_specs {
                 ensures
                     // checked_div is the same as checked_div_euclid for unsigned ints
                     result == checked_div(lhs, rhs);
+
+            #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::unchecked_mul](x: $uN, y: $uN) -> $uN
+                requires 
+                    x * y <= <$uN>::MAX,
+                returns
+                    (x * y) as $uN,
+            ;
         }
 
         // Signed ints (i8, i16, etc.)
