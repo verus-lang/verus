@@ -2,6 +2,7 @@
 
 use super::group_vstd_default;
 use super::prelude::*;
+use crate::vstd::arithmetic::power::*;
 
 verus! {
 
@@ -21,10 +22,66 @@ pub open spec fn is_power_2(n: int) -> bool
 }
 
 pub open spec fn is_power_2_exists(m: int) -> bool {
-    exists|i: nat| crate::vstd::arithmetic::power::pow(2, i) == m
+    exists|i: nat| pow(2, i) == m
 }
 
-// TODO: proof tying is_power_2 and is_power_2_exists together
+pub broadcast proof fn is_power_2_equiv() 
+    ensures
+        forall |n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+{
+    assert forall |n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
+        is_power_2_equiv_forward(n);
+    }
+
+    assert forall |n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
+        broadcast use lemma_pow_positive;
+        is_power_2_equiv_reverse(n);
+    }
+}
+
+proof fn is_power_2_equiv_forward(n: int)
+    requires
+        is_power_2(n),
+    ensures
+        is_power_2_exists(n),
+    decreases
+        n,
+{
+    reveal(is_power_2);
+    reveal(pow);
+
+    if n == 1 {
+        broadcast use lemma_pow0;
+        assert(pow(2, 0) == n);
+    } else {
+        is_power_2_equiv_forward(n/2);
+        let exp = choose |i: nat| pow(2, i) == n/2;
+        assert(pow(2, exp + 1) == 2 * pow(2, exp));
+    }
+}
+
+proof fn is_power_2_equiv_reverse(n: int)
+    requires 
+        n > 0,
+        is_power_2_exists(n),
+    ensures
+        is_power_2(n),
+    decreases
+        n,
+{
+    reveal(is_power_2);
+    reveal(pow);
+
+    let exp = choose |i: nat| pow(2, i) == n;
+
+    if exp == 0 {
+        broadcast use lemma_pow0;
+    } else {
+        assert(pow(2, (exp - 1) as nat) == n/2);
+        is_power_2_equiv_reverse(n/2);
+    }
+}
+
 /// Matches the conditions here: <https://doc.rust-lang.org/stable/std/alloc/struct.Layout.html>
 pub open spec fn valid_layout(size: usize, align: usize) -> bool {
     is_power_2(align as int) && size <= isize::MAX as int - (isize::MAX as int % align as int)
