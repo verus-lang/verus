@@ -337,6 +337,13 @@ impl<T> PointsTo<[T]> {
         !self.is_init()
     }
 
+    /// Returns `true` if all of the permission's associated memory is uninitialized.
+    // #[verifier::inline]
+    pub open spec fn is_fully_uninit(&self) -> bool {
+        forall|i|
+            0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_uninit()
+    }
+
     /// Returns a sequence where for each index,
     /// if the permission's associated memory at that index is initialized,
     /// the corresponding index in the sequence holds that value.
