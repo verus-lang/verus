@@ -438,7 +438,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _, _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
@@ -700,7 +700,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| {
             ft(&expr.typ);
             match &expr.x {
-                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _) => {
+                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _, _) => {
                     for typ in ts.iter() {
                         ft(typ);
                     }
@@ -933,7 +933,7 @@ pub fn prune_krate_for_module_or_krate(
     }
     for d in &krate.datatypes {
         match &d.x.owning_module {
-            Some(path) if is_root_module(path) => {
+            Some(path) if is_root_module(path) && fun.is_none() => {
                 // our datatype
                 let t = ReachedType::Datatype(d.x.name.clone());
                 reach(&mut state.reached_types, &mut state.worklist_types, &t);
