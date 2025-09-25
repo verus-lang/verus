@@ -134,6 +134,7 @@ fn zst_test() {
 Currently, these use-cases aren't supported because `PointsTo` enforces both non-nullness
 and alignment.
 */
+
 // ptr |--> Init(v) means:
 //   bytes in this memory are consistent with value v
 //   and we have all the ghost state associated with type V
