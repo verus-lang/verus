@@ -1,4 +1,4 @@
-use std::iter;
+use std::{iter::{self, Skip}, path::Iter};
 
 use vstd::prelude::*;
 
@@ -6,6 +6,9 @@ verus!{
 
 pub trait Iterator {
     type Item;
+
+    /// This iterator obeys the specifications below on `next`
+    spec fn obeys_iter_laws(&self) -> bool;
 
     /// Seq that will be returned
     #[verifier::prophetic]
@@ -18,7 +21,9 @@ pub trait Iterator {
 
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.completes() == old(self).completes(),
+            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
+            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
                     self.seq() == old(self).seq().drop_first()
@@ -67,6 +72,10 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
 
 impl<'a, T> Iterator for VecIterator<'a, T> {
     type Item = &'a T;
+
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
 
     closed spec fn seq(&self) -> Seq<Self::Item> {
         self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
@@ -143,7 +152,6 @@ impl<T, Pred> ProphSeq<T, Pred>
 }
 
 /* map iterator */
-
 ghost struct MapIteratorPred<Iter, F> {
     iter: Iter,
     f: F,
@@ -183,17 +191,19 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
         0 <= self.idx@ <= self.prophs@.pred().iter.seq().len()
           && self.iter.seq() =~= self.prophs@.pred().iter.seq().skip(self.idx@)
           && self.prophs@.pred().f == self.f
-          && (forall |i| 0 <= i < self.iter.seq().len() ==> call_requires(self.f, (self.iter.seq()[i], )))
+          && (forall |i| #![auto] 0 <= i < self.iter.seq().len() ==> call_requires(self.f, (self.iter.seq()[i], )))
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.seq().len() ==> !self.prophs@.has_resolved(i))
+          && self.iter.obeys_iter_laws()
     }
 
     fn new(iter: Iter, f: F) -> (s: Self)
         requires
-            forall |i| 0 <= i < iter.seq().len() ==>
+            iter.obeys_iter_laws(),
+            forall |i| #![auto] 0 <= i < iter.seq().len() ==>
                 call_requires(f, (iter.seq()[i], ))
         ensures
             s.seq().len() <= iter.seq().len(),
-            forall |i| 0 <= i < s.seq().len() ==>
+            forall |i| #![auto] 0 <= i < s.seq().len() ==>
                 call_ensures(f, (iter.seq()[i],), s.seq()[i]),
             s.completes() ==> iter.completes() && s.seq().len() == iter.seq().len(),
     {
@@ -268,6 +278,10 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
 {
     type Item = Item;
 
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
+
     #[verifier::prophetic]
     closed spec fn seq(&self) -> Seq<Self::Item> {
         unwrap_up_to_first_none(self.seq_of_options())
@@ -302,6 +316,7 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
     }
 }
 
+
 // take
 
 struct TakeIterator<Iter> {
@@ -310,20 +325,35 @@ struct TakeIterator<Iter> {
 }
 
 impl<Iter: Iterator> TakeIterator<Iter> {
+    //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations
+    #[verifier::prophetic]
+    closed spec fn take_inv(self) -> bool {
+        self.iter.obeys_iter_laws()
+    }
+
     fn new(iter: Iter, count: usize) -> (s: Self)
+        requires
+            iter.obeys_iter_laws(),
         ensures
             s.seq() == (if iter.seq().len() < count { iter.seq() } else { iter.seq().take(count as int) }),
             s.completes() <==> iter.completes() || iter.seq().len() >= count,
+            s.obeys_iter_laws(),
     {
-        TakeIterator {
+        let t= TakeIterator {
             iter: iter,
             count_remaining: count,
-        }
+        };
+        assert(t.take_inv());
+        t
     }
 }
 
 impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
     type Item = Iter::Item;
+
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
 
     #[verifier::prophetic]
     closed spec fn seq(&self) -> Seq<Self::Item> {
@@ -336,6 +366,7 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
+        assume(self.take_inv());
         if self.count_remaining == 0 {
             None
         } else {
@@ -352,7 +383,17 @@ struct SkipIterator<Iter> {
 }
 
 impl<Iter: Iterator> SkipIterator<Iter> {
+    //#[verifier::type_invariant] // fake this due to limitations
+    #[verifier::prophetic]
+    closed spec fn skip_inv(self) -> bool {
+        self.iter.obeys_iter_laws()
+    }
+}
+
+impl<Iter: Iterator> SkipIterator<Iter> {
     fn new(iter: Iter, count: usize) -> (s: Self)
+        requires
+            iter.obeys_iter_laws(),
         ensures
             s.seq() == (if iter.seq().len() < count { seq![] } else { iter.seq().skip(count as int) }),
             s.completes() <==> iter.completes(),
@@ -363,6 +404,7 @@ impl<Iter: Iterator> SkipIterator<Iter> {
         while i < count
             invariant
                 i <= count,
+                iter0.obeys_iter_laws(),
                 iter0.seq() == (if iter.seq().len() < i { seq![] } else { iter.seq().skip(i as int) }),
                 iter0.completes() <==> iter.completes(),
                 iter.seq().len() < i ==> iter.completes(),
@@ -372,14 +414,20 @@ impl<Iter: Iterator> SkipIterator<Iter> {
             i += 1;
         }
         
-        SkipIterator {
+        let s = SkipIterator {
             iter: iter0,
-        }
+        };
+        assert(s.skip_inv());
+        s
     }
 }
 
 impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
     type Item = Iter::Item;
+
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
 
     #[verifier::prophetic]
     closed spec fn seq(&self) -> Seq<Self::Item> {
@@ -392,30 +440,46 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
+        assume(self.skip_inv());
         self.iter.next()
     }
 }
 
 // reverse iterator
-
 struct ReverseIterator<Iter> {
     iter: Iter,
 }
 
+impl<Iter: Iterator> ReverseIterator<Iter> {
+    //#[verifier::type_invariant] // fake this due to limitations
+    #[verifier::prophetic]
+    closed spec fn reverse_inv(self) -> bool {
+        self.iter.obeys_iter_laws()
+    }
+}
+
 impl<Iter: Iterator + DoubleEndedIterator> ReverseIterator<Iter> {
     fn new(iter: Iter) -> (s: Self)
+        requires
+            iter.obeys_iter_laws(),
         ensures
             s.seq() == iter.seq().reverse(),
             s.completes() <==> iter.completes(),
     {
-        ReverseIterator {
+        let r = ReverseIterator {
             iter: iter,
-        }
+        };
+        assert(r.reverse_inv());
+        r
     }
 }
 
 impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
     type Item = Iter::Item;
+
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
 
     #[verifier::prophetic]
     closed spec fn seq(&self) -> Seq<Self::Item> {
@@ -434,6 +498,7 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
 
 impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterator<Iter> {
     fn next_back(&mut self) -> (ret: Option<Self::Item>) {
+        assume(self.reverse_inv());
         self.iter.next()
     }
 }
@@ -442,6 +507,8 @@ impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterat
 
 #[verifier::exec_allows_no_decreases_clause]
 fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
+    requires
+        iter.obeys_iter_laws(),
     ensures s@ == iter.seq(),
         iter.completes(),
 {
@@ -449,6 +516,7 @@ fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
     let mut v = vec![];
     loop
         invariant
+            iter0.obeys_iter_laws(),
             v@ + iter0.seq() =~= iter.seq(),
             iter.completes() == iter0.completes(),
     {
@@ -573,5 +641,6 @@ fn all_true_caller(v: &Vec<bool>)
         }
     }
 }
+
 }
 
