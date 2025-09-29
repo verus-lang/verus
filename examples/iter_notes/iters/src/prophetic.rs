@@ -1,3 +1,5 @@
+use std::iter;
+
 use vstd::prelude::*;
 
 verus!{
@@ -543,5 +545,33 @@ fn test_loop() {
     }
 }
 
+fn all_true<'a, I: Iterator<Item=&'a bool>>(iter: &mut I) -> (r: bool)
+    requires
+        old(iter).completes(),
+    ensures
+        r == forall |i| 0 <= i < old(iter).seq().len() ==> *#[trigger]old(iter).seq()[i]
+{
+    // TODO
+    assume(false);
+    true
+}
+
+fn all_true_caller(v: &Vec<bool>)
+    requires
+        v@.len() == 10,
+{
+    let mut iter: VecIterator<bool> = vec_iter(v);
+    let ghost iter_snapshot = iter;
+    assert(iter.seq() == v@.map(|i, v| &v));
+    let b = all_true(&mut iter);
+    proof {
+        if b {
+            // Note: We have to mention the iter_snapshot-based trigger to get the "real"
+            //       assertion on the following line to go through
+            assert(forall |i| 0 <= i < v@.len() ==> v@[i] == *iter_snapshot.seq()[i]);
+            assert(forall |i| 0 <= i < v@.len() ==> v@[i]);
+        }
+    }
+}
 }
 
