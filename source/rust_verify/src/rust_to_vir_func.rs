@@ -161,6 +161,7 @@ fn handle_autospec<'tcx>(
                 decrease_by: None,
                 fndef_axioms: None,
                 mask_spec: None,
+                atomic_update: None,
                 unwind_spec: None,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
@@ -1504,6 +1505,8 @@ pub(crate) fn check_item_fn<'tcx>(
     let (ensure0, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.0);
     let (ensure1, _ns_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.1);
 
+    let atomic_update = header.atomic_update;
+
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         sig.span,
         &visibility,
@@ -1543,6 +1546,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        atomic_update,
         unwind_spec: header.unwind_spec,
         item_kind: ItemKind::Function,
         attrs: fattrs,
@@ -1626,6 +1630,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -1723,6 +1728,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2263,6 +2269,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
@@ -2383,6 +2390,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: ItemKind::Function,
         attrs: Default::default(),

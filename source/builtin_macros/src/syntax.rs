@@ -584,7 +584,12 @@ impl Visitor {
         }
     }
 
-    fn handle_atomic_spec(&mut self, sig: &mut Signature, vis: Option<&Visibility>) -> Vec<Stmt> {
+    fn handle_atomic_spec(
+        &mut self,
+        sig: &mut Signature,
+        vis: Option<&Visibility>,
+        stmts: &mut Vec<Stmt>,
+    ) -> Vec<Stmt> {
         let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Vec::new() };
         let full_span = atomic_spec.span();
 
@@ -756,6 +761,13 @@ impl Visitor {
 
         sig.inputs.push(update_arg);
 
+        stmts.push(Stmt::Expr(
+            Expr::Verbatim(quote_spanned_builtin!(builtin, full_span =>
+                #builtin::atomic_spec( #atomic_update )
+            )),
+            Some(Semi { spans: [full_span] }),
+        ));
+
         let EraseGhost::Keep = self.erase_ghost else {
             return Vec::new();
         };
@@ -772,19 +784,17 @@ impl Visitor {
                 )),
                 Some(Semi { spans: [full_span] }),
             ),
-            // todo: this should use a builtin function instead of "assert_"
-            // so the error message can be more helpful
-            Stmt::Expr(
-                Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
-                    #builtin::assert_(
-                        vstd::set::Set::spec_le(
-                            #vstd::atomic::AtomicUpdate::inner_mask( #atomic_update ),
-                            #vstd::atomic::AtomicUpdate::outer_mask( #atomic_update ),
-                        )
-                    )
-                )),
-                Some(Semi { spans: [full_span] }),
-            ),
+            // Stmt::Expr(
+            //     Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
+            //         #builtin::assert_(
+            //             vstd::set::Set::spec_le(
+            //                 #vstd::atomic::AtomicUpdate::inner_mask( #atomic_update ),
+            //                 #vstd::atomic::AtomicUpdate::outer_mask( #atomic_update ),
+            //             )
+            //         )
+            //     )),
+            //     Some(Semi { spans: [full_span] }),
+            // ),
         ];
 
         // We should always be in exec mode here so this should always run
@@ -1101,7 +1111,7 @@ impl Visitor {
 
         // The statements generated here are appended later not to interfere
         // with requires, ensures, etc.
-        let atomic_spec_stmts = self.handle_atomic_spec(sig, vis);
+        let atomic_spec_stmts = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {

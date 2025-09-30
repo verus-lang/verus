@@ -513,6 +513,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     decrease_when: None,
                     decrease_by: None,
                     fndef_axioms: None,
+                    atomic_update: None,
                     mask_spec: None,
                     unwind_spec: None,
                     item_kind: default_function.x.item_kind,

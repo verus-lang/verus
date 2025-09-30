@@ -75,6 +75,7 @@ pub struct Header {
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
+    pub atomic_update: Option<Expr>,
     pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
     pub open_visibility_qualifier: Option<Visibility>,
@@ -94,6 +95,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
+    let mut atomic_update: Option<Expr> = None;
     let mut unwind_spec: Option<UnwindSpec> = None;
     let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
@@ -247,6 +249,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         }
                         invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
                     }
+                    HeaderExprX::AtomicSpec(e) => {
+                        if atomic_update.is_some() {
+                            return Err(error(&stmt.span, "only one atomic spec allowed"));
+                        }
+                        atomic_update = Some(e.clone());
+                    }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {
                             None => {}
@@ -312,6 +320,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         decrease_when,
         decrease_by,
         invariant_mask,
+        atomic_update,
         unwind_spec,
         extra_dependencies,
         open_visibility_qualifier,
@@ -478,6 +487,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         decrease_by,
         fndef_axioms: _,
         mask_spec,
+        atomic_update: _,
         unwind_spec,
         item_kind: _,
         attrs: _,

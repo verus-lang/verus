@@ -1259,6 +1259,7 @@ where
         decrease_by: _,
         fndef_axioms,
         mask_spec,
+        atomic_update,
         unwind_spec,
         item_kind: _,
         attrs: _,
@@ -1305,6 +1306,9 @@ where
         Some(MaskSpec::InvariantOpensSet(e)) => {
             expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
         }
+    }
+    if let Some(e) = atomic_update {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
     }
     match unwind_spec {
         None => {}
@@ -1545,6 +1549,7 @@ where
         decrease_by,
         fndef_axioms,
         mask_spec,
+        atomic_update,
         unwind_spec,
         item_kind,
         attrs,
@@ -1633,6 +1638,10 @@ where
             Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?))
         }
     };
+    let atomic_update = match atomic_update {
+        None => None,
+        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?),
+    };
     let unwind_spec = match unwind_spec {
         None => None,
         Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
@@ -1680,6 +1689,7 @@ where
         decrease_when,
         decrease_by,
         fndef_axioms,
+        atomic_update,
         mask_spec,
         unwind_spec,
         item_kind,

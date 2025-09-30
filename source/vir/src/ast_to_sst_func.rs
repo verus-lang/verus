@@ -765,6 +765,15 @@ pub fn func_def_to_sst(
         .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
     state.mask = Some(mask_sst);
 
+    // Atomic spec
+    if let Some(au_expr) = &function.x.atomic_update {
+        let (mut au_stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
+        let au_exp = au_ret_val.expect_value();
+        //let au_exp = state.make_tmp_var_for_exp(&mut au_stms, au_exp);
+        req_stms.append(&mut au_stms);
+        state.au_var_exp_to_resolve = Some(au_exp);
+    }
+
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
@@ -808,7 +817,7 @@ pub fn func_def_to_sst(
     }
 
     // AST --> SST
-    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
+    let mut stm = expr_to_one_stm_with_post(ctx, &mut state, &body, &function.span)?;
 
     // TODO handle via the Lowerer
     if ctx.checking_spec_preconditions() && !inherit {
@@ -902,8 +911,8 @@ pub fn function_to_sst(
     )?;
     ctx.fun = None;
 
-    let exec_proof_check = match (function.x.mode, function.x.body.is_some(), function.x.item_kind)
-    {
+    let has_body = function.x.body.is_some();
+    let exec_proof_check = match (function.x.mode, has_body, function.x.item_kind) {
         (Mode::Exec | Mode::Proof, true, _) | (Mode::Spec, true, ItemKind::Const) => {
             ctx.fun = mk_fun_ctx(&function, false);
             let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, false)?;
@@ -916,7 +925,7 @@ pub fn function_to_sst(
     let recommends_check = match function.x.mode {
         Mode::Spec if !verifying_owning_bucket => None,
         Mode::Spec if !is_recursive && !function.x.attrs.check_recommends => None,
-        _ if function.x.body.is_some() => {
+        _ if has_body => {
             // We eagerly generate SST for recommends_check even if we might not use it.
             // Experiments with veritas indicate that this generally causes < 1% overhead.
             ctx.fun = mk_fun_ctx(&function, true);
@@ -937,7 +946,7 @@ pub fn function_to_sst(
     };
 
     let has = FunctionSstHas {
-        has_body: function.x.body.is_some(),
+        has_body,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,

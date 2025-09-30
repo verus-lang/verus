@@ -1230,6 +1230,7 @@ impl HeaderExprX {
             | HeaderExprX::InvariantOpens(_, _)
             | HeaderExprX::InvariantOpensExcept(_, _)
             | HeaderExprX::InvariantOpensSet(_)
+            | HeaderExprX::AtomicSpec(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)

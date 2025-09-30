@@ -532,6 +532,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                 // extract_ensures does most of the necessary work, so we can return at this point
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
+            SpecItem::AtomicSpec => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                unsupported_err_unless!(args_len == 1, expr.span, "expected atomic spec", &args);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let expr = expr_to_vir_consume(&bctx, args[0], ExprModifier::REGULAR)?;
+                mk_expr_span(args[0].span, ExprX::Header(Arc::new(HeaderExprX::AtomicSpec(expr))))
+            }
             SpecItem::Decreases => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);

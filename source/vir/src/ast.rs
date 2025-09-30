@@ -594,6 +594,8 @@ pub enum HeaderExprX {
     InvariantOpensExcept(Span, Exprs),
     /// The function might open the following invariants, specified as a set
     InvariantOpensSet(Expr),
+    /// Atomic update
+    AtomicSpec(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -1293,6 +1295,7 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    pub atomic_update: Option<Expr>,
     /// UnwindSpec that specifies if the function is allowed to unwind
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static

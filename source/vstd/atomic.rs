@@ -681,6 +681,12 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     pub closed spec fn pred(self) -> Pred {
         self.pred
     }
+
+    #[verifier::external_body]
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
+    pub closed spec fn resolves(self) -> bool {
+        arbitrary()
+    }
 }
 
 impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {

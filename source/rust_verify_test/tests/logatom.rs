@@ -412,5 +412,58 @@ test_verify_one_file! {
                 n
             });
         }
-    } => Err(..) // todo
+
+        pub exec fn caller()
+            opens_invariants any
+        {
+            let tracked mut val = 2;
+            atomic_function() atomically |upd| {
+                val = upd(val);
+            }
+        }
+    } => Err(err) => {
+        // todo: this should emit a note from the recommends check
+        // that the mask pair is inverted
+
+        assert!(!err.errors.is_empty());
+        assert!(!err.notes.is_empty());
+    }
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_not_resolved
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires x == 2,
+                ensures y == 5,
+            },
+        {}
+    } => Err(err) => assert_vir_error_msg(err, "cannot show atomic update resolves at end of function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_not_resolved_cheat
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires x == 2,
+                ensures y == 5,
+            },
+        {
+            assume(au.resolves());
+        }
+    } => Ok(())
 }

@@ -16,6 +16,7 @@ pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
     ensures y == 3,
 {
     let tracked _: vstd::atomic::AtomicUpdate<i32, i32, FunPred<'a, T>> = au;
+    assume(au.resolves());
     return x + 1;
 }
 

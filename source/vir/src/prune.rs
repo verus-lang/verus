@@ -389,6 +389,25 @@ fn reach_set_ops(state: &mut State, ctxt: &Ctxt) {
     reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
 }
 
+fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
+    let base_path = Arc::new(crate::ast::PathX {
+        krate: Some(ctxt.vstd_crate_name.clone()),
+        segments: Arc::new(vec![
+            Arc::new("atomic".to_owned()),
+            Arc::new("AtomicUpdate".to_owned()),
+        ]),
+    });
+
+    for method in ["req", "ens", "pred", "resolves", "outer_mask", "inner_mask"] {
+        let ident = Arc::new(method.to_owned());
+        let path = base_path.push_segment(ident);
+        let fun = Arc::new(FunX { path });
+        reach_function(ctxt, state, &fun);
+    }
+
+    reach_set_ops(state, &ctxt);
+}
+
 fn maybe_reach_set_ops_for_call(
     state: &mut State,
     callee_name: &Fun,
@@ -432,6 +451,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
                 reach_seq_funs(ctxt, state);
             }
+            if function.x.atomic_update.is_some() {
+                reach_atomic_update_ops(state, ctxt);
+            }
 
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
@@ -471,22 +493,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_set_ops(state, &ctxt);
                     }
                     ExprX::OpenAtomicUpdate(..) | ExprX::Atomically(..) => {
-                        let path = Arc::new(crate::ast::PathX {
-                            krate: Some(ctxt.vstd_crate_name.clone()),
-                            segments: Arc::new(vec![
-                                Arc::new("atomic".to_owned()),
-                                Arc::new("AtomicUpdate".to_owned()),
-                            ]),
-                        });
-
-                        for method in ["req", "ens", "outer_mask", "inner_mask"] {
-                            let ident = Arc::new(method.to_owned());
-                            let path = path.push_segment(ident);
-                            let fun = Arc::new(FunX { path });
-                            reach_function(ctxt, state, &fun);
-                        }
-
-                        reach_set_ops(state, &ctxt);
+                        reach_atomic_update_ops(state, &ctxt);
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(Dt::Path(crate::def::option_type_path()));

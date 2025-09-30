@@ -83,6 +83,10 @@ pub(crate) struct State<'a> {
 
     pub mask: Option<MaskSet>,
 
+    pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
+
+    // This variable is bound by the `atomically |update| { ... }` block
+    // and read by the corresponding `update` function.
     pub au_var_exp: Option<crate::sst::Exp>,
 }
 
@@ -96,7 +100,7 @@ pub(crate) enum ReturnValue {
 impl ReturnValue {
     /// Turn implicit unit into an "explicit unit", i.e., an
     /// sst Exp representing the unit value; meanwhile, return None for Never.
-    fn to_value(self) -> Option<Exp> {
+    pub(crate) fn to_value(self) -> Option<Exp> {
         match self {
             ReturnValue::Some(e) => Some(e),
             ReturnValue::ImplicitUnit(span) => Some(sst_unit_value(&span)),
@@ -104,7 +108,7 @@ impl ReturnValue {
         }
     }
 
-    fn expect_value(self) -> Exp {
+    pub(crate) fn expect_value(self) -> Exp {
         match self {
             ReturnValue::Some(e) => e,
             ReturnValue::ImplicitUnit(span) => sst_unit_value(&span),
@@ -151,8 +155,8 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
-
             mask: None,
+            au_var_exp_to_resolve: None,
             au_var_exp: None,
         }
     }
@@ -783,6 +787,37 @@ pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
     if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
 }
 
+fn assert_atomic_update_resolves(
+    ctx: &Ctx,
+    state: &mut State,
+    stms: &mut Vec<Stm>,
+) {
+    if state.checking_recommends(ctx) {
+        return;
+    }
+
+    let Some(au_exp) = &state.au_var_exp_to_resolve else { return };
+
+    let span = &au_exp.span;
+    let TypX::Datatype(_, typ_args, _) = au_exp.typ.as_ref() else {
+        panic!("atomic update should be a datatype")
+    };
+
+    let call_resolves = ExpX::Call(
+        ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+        typ_args.clone(),
+        Arc::new(vec![au_exp.clone()]),
+    );
+
+    let call_resolves = SpannedTyped::new(span, &Arc::new(TypX::Bool), call_resolves);
+    let error = error(span, "cannot show atomic update resolves at end of function");
+
+    stms.push(Spanned::new(
+        span.clone(),
+        StmX::Assert(state.next_assert_id(), Some(error), call_resolves),
+    ));
+}
+
 /// Convert the expression to a Stm, and assert the post-conditions for
 /// the final returned expression.
 pub(crate) fn expr_to_one_stm_with_post(
@@ -806,6 +841,8 @@ pub(crate) fn expr_to_one_stm_with_post(
             // Emit the postcondition for the common case where the function body
             // terminates with an expression to be returned (or an implicit
             // return value of 'unit').
+
+            assert_atomic_update_resolves(ctx, state, &mut stms);
 
             stms.push(Spanned::new(
                 expr.span.clone(),
@@ -835,6 +872,7 @@ pub(crate) fn expr_to_one_stm_with_post(
             // function.
         }
     };
+
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
@@ -2343,21 +2381,33 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate assertion
 
-            let call_ens = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
-                typ_args.clone(),
-                Arc::new(vec![au_temp_var_exp, x_temp_var_exp, y_var_exp]),
-            );
-
-            let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
-            let error = error(&expr.span, "cannot show atomic postcondition hold at end of block");
-
             if !state.checking_recommends(ctx) {
+                let call_ens = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                    typ_args.clone(),
+                    Arc::new(vec![au_temp_var_exp.clone(), x_temp_var_exp, y_var_exp]),
+                );
+
+                let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
+                let error =
+                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+
                 stms.push(Spanned::new(
                     expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(error), call_ens.clone()),
+                    StmX::Assert(state.next_assert_id(), Some(error), call_ens),
                 ));
             }
+
+            // mark as resolved
+
+            let call_resolves = ExpX::Call(
+                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+                typ_args.clone(),
+                Arc::new(vec![au_temp_var_exp]),
+            );
+
+            let call_resolves = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
 
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
@@ -2489,6 +2539,24 @@ pub(crate) fn expr_to_stm_opt(
             let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
             let inner_mask = MaskSet::arbitrary(&inner_mask_exp);
 
+            if state.checking_recommends(ctx) {
+                let call_outer_mask = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                );
+
+                let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
+                let outer_mask = MaskSet::arbitrary(&outer_mask_exp);
+
+                for assertion in inner_mask.subset_of(ctx, &outer_mask, &expr.span) {
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
             if !state.checking_recommends(ctx) {
                 let state_mask = state.mask.as_ref().unwrap();
                 for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
@@ -2580,6 +2648,8 @@ pub(crate) fn expr_to_stm_opt(
                         crate::def::POSTCONDITION_FAILURE.to_string(),
                         "at this exit".to_string(),
                     );
+
+                    assert_atomic_update_resolves(ctx, state, &mut stms);
 
                     stms.push(Spanned::new(
                         expr.span.clone(),
