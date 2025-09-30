@@ -16,6 +16,7 @@ mod atomic_ghost;
 mod attr_block_trait;
 mod attr_rewrite;
 mod calc_macro;
+mod contrib;
 mod enum_synthesize;
 mod fndecl;
 mod is_variant;
@@ -387,3 +388,48 @@ pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 /*** End of verus small macro definition for executable items ***/
+
+/*** Start of contrib proc macros
+(unfortunately, proc macros must reside at the root of the crate)
+
+To add a contrib proc macro, complete the following steps:
+- Add a file in builtin_macros/src/contrib/ that contains the bulk of the macro implementation
+  (example: builtin_macros/src/contrib/auto_spec.rs)
+- Declare the file as a submodule of builtin_macros::contrib by adding "pub mod ..." to the top of
+  builtin_macros/src/contrib/mod.rs (example: `pub mod auto_spec;`)
+- Add a short macro declaration below, calling into your file in builtin_macros/src/contrib
+  for any complex work (i.e. the macro declaration below should have a body of at most a few lines)
+- Add a "pub use" to vstd/contrib/mod.rs (example: `pub use verus_builtin_macros::auto_spec;`)
+
+If your macro needs to manipulate function signatures or function bodies,
+it's generally cleaner to write this manipulation on the verus_syn representation of the function
+before it is transformed by `verus!`, rather than trying to manipulate the more complicated output
+of `verus!`.  To work with the verus_syn representation, complete this additional step:
+- In builtin_macros/src/contrib/mod.rs,
+  edit contrib_preprocess_item and/or contrib_preprocess_impl_item to match on your macro name and
+  call into your code that processes the verus_syn item or impl_item.  Example:
+  `"auto_spec" => auto_spec::auto_spec_item(item, tokens, new_items),`.
+  Your code can then edit the item/impl_item in place.
+  It can also optionally emit new items/impl_items by adding them to new_items.
+***/
+
+/// This copies the body of an exec function into a "returns" clause,
+/// so that the exec function will be also usable as a spec function.
+/// For example,
+///   `#[vstd::contrib::auto_spec] fn f(u: u8) -> u8 { u / 2 }`
+/// becomes:
+///   `#[verifier::allow_in_spec] fn f(u: u8) -> u8 returns (u / 2) { u / 2 }`
+/// The macro performs some limited fixups, such as removing proof blocks
+/// and turning +, -, and * into add, sub, mul.
+/// However, only a few such fixups are currently implemented and not all exec bodies
+/// will be usable as return clauses, so this macro will not work on all exec functions.
+#[proc_macro_attribute]
+pub fn auto_spec(
+    _args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    // All the work is done in the preprocesssing; this just double-checks name resolution
+    input
+}
+
+/*** End of contrib macros ***/

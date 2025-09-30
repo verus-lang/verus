@@ -1147,7 +1147,28 @@ impl Visitor {
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(ret) => Some((ret.1.clone(), ty.clone())),
+                    Some(ret) => {
+                        let original_pattern = ret.1.clone();
+                        let mut pattern = ret.1.clone();
+                        // Check if the pattern name conflicts with the function name
+                        let was_renamed = if let Pat::Ident(pat_ident) = &pattern {
+                            if pat_ident.ident.to_string() == sig.ident.to_string() {
+                                pattern = Pat::Verbatim(
+                                    quote_spanned! {pattern.span() => __verus_tmp_ret},
+                                );
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        Some((
+                            pattern,
+                            ty.clone(),
+                            if was_renamed { Some(original_pattern) } else { None },
+                        ))
+                    }
                 }
             }
         };
@@ -1293,7 +1314,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        if let Some((p, _)) = &ret_pat {
+        if let Some((p, _, _)) = &ret_pat {
             if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
                 stmts.push(err_stmt);
             }
@@ -1301,8 +1322,8 @@ impl Visitor {
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat,
-            None,
+            ret_pat.as_ref().map(|(pat, ty, _)| (pat.clone(), ty.clone())),
+            ret_pat.as_ref().and_then(|(_, _, original_pat)| original_pat.clone()),
             sig_span,
             is_impl_fn,
             false,
@@ -1695,6 +1716,7 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        crate::contrib::contrib_preprocess_items(items);
         self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
@@ -2170,6 +2192,7 @@ impl Visitor {
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        crate::contrib::contrib_preprocess_impl_items(items);
         self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
@@ -5385,116 +5408,7 @@ pub(crate) fn for_loop_spec_attr(
 // Try to put the original tokens back together here.
 #[cfg(verus_keep_ghost)]
 pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
-    let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
-    let pun = |t: &TokenTree| match t {
-        TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
-        _ => None,
-    };
-    let ident = |t: &TokenTree| match t {
-        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
-        _ => None,
-    };
-    let adjacent = |s1: Span, s2: Span| {
-        let l1 = s1.end();
-        let l2 = s2.start();
-        s1.source().file() == s2.source().file() && l1.eq(&l2)
-    };
-    fn mk_joint_punct(t: Option<(char, proc_macro::Spacing, Span)>) -> TokenTree {
-        let (op, _, span) = t.unwrap();
-        let mut punct = Punct::new(op, Joint);
-        punct.set_span(span);
-        TokenTree::Punct(punct)
-    }
-    let mut i = 0;
-    let mut till = if tokens.len() >= 2 { tokens.len() - 2 } else { 0 };
-    while i < till {
-        let t0 = pun(&tokens[i]);
-        let t1_ident = ident(&tokens[i + 1]);
-        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
-            (Some(('!', Alone, s1)), Some(("is", s2))) => {
-                if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
-                    tokens.remove(i + 1);
-                    i += 1;
-                    till -= 1;
-                    continue;
-                }
-            }
-            (Some(('!', Alone, s1)), Some(("has", s2))) => {
-                if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
-                    tokens.remove(i + 1);
-                    i += 1;
-                    till -= 1;
-                    continue;
-                }
-            }
-            _ => {}
-        }
-        let t1_pun = pun(&tokens[i + 1]);
-        let t2 = pun(&tokens[i + 2]);
-        let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
-        match (t0, t1_pun, t2, t3) {
-            (
-                Some(('<', Joint, _)),
-                Some(('=', Alone, s1)),
-                Some(('=', Joint, s2)),
-                Some(('>', Alone, _)),
-            )
-            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('!', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('>', Alone, s2)), _)
-            | (Some(('<', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
-            | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
-                if adjacent(s1, s2) {
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                }
-            }
-            (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
-                if adjacent(s1, s2) {
-                    tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                }
-            }
-            (
-                Some(('=', Alone, _)),
-                Some(('~', Alone, _)),
-                Some(('~', Alone, s2)),
-                Some(('=', Alone, s3)),
-            )
-            | (
-                Some(('!', Alone, _)),
-                Some(('~', Alone, _)),
-                Some(('~', Alone, s2)),
-                Some(('=', Alone, s3)),
-            ) => {
-                if adjacent(s2, s3) {
-                    tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                    tokens[i + 2] = mk_joint_punct(t2);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    for tt in &mut tokens {
-        match tt {
-            TokenTree::Group(group) => {
-                let mut new_group = Group::new(group.delimiter(), rejoin_tokens(group.stream()));
-                new_group.set_span(group.span());
-                *group = new_group;
-            }
-            _ => {}
-        }
-    }
-    use std::iter::FromIterator;
-    proc_macro::TokenStream::from_iter(tokens.into_iter())
+    verus_syn::rejoin_tokens(stream.into()).into()
 }
 
 #[cfg(not(verus_keep_ghost))]

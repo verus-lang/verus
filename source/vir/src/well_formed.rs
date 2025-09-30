@@ -316,7 +316,7 @@ fn check_one_expr(
         ExprX::ConstVar(x, _) => {
             check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args, _post_args) => {
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}

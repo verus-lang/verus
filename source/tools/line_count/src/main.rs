@@ -1516,16 +1516,16 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                     .unwrap_or(false)
                 {
                     let source_toks = &m.mac.tokens;
-                    let macro_content: File =
-                        verus_syn::parse2(source_toks.clone()).map_err(|e| {
-                            dbg!(&e.span().start(), &e.span().end());
-                            format!(
-                                "failed to parse file {}: {} {:?}",
-                                input_path.display(),
-                                e,
-                                e.span()
-                            )
-                        })?;
+                    let rejoined_toks = verus_syn::rejoin_tokens(source_toks.clone());
+                    let macro_content: File = verus_syn::parse2(rejoined_toks).map_err(|e| {
+                        dbg!(&e.span().start(), &e.span().end());
+                        format!(
+                            "failed to parse file {}: {} {:?}",
+                            input_path.display(),
+                            e,
+                            e.span()
+                        )
+                    })?;
                     visitor.inside_verus_macro_or_verify_or_consider += 1;
                     visitor.visit_file(&macro_content);
                     visitor.inside_verus_macro_or_verify_or_consider -= 1;

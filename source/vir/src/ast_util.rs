@@ -1306,6 +1306,15 @@ impl PlaceX {
     pub fn temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
+
+    pub fn uses_temporary(&self) -> bool {
+        match self {
+            PlaceX::Local(_) => false,
+            PlaceX::DerefMut(p) => p.x.uses_temporary(),
+            PlaceX::Field(_opr, p) => p.x.uses_temporary(),
+            PlaceX::Temporary(_) => true,
+        }
+    }
 }
 
 pub fn place_to_expr(place: &Place) -> Expr {

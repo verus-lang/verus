@@ -204,6 +204,7 @@ struct FlattenedPlace {
 enum AstPosition {
     Before(AstId),
     After(AstId),
+    AfterArguments(AstId),
 }
 
 struct Instruction {
@@ -430,20 +431,72 @@ impl<'a> Builder<'a> {
             | ExprX::AirStmt(..)
             | ExprX::Nondeterministic
             | ExprX::AssumeResolved(..) => Ok(bb),
-            ExprX::Call(_call_target, es) => {
+            ExprX::Call(_call_target, es, post_args) => {
+                assert!(post_args.is_none());
                 // TODO(new_mut_ref): account for unwinding
 
                 // Can skip the expression in CallTarget because
-                // it can only be for FnSpec which is always/ a pure spec expression
+                // it can only be for FnSpec which is always a pure spec expression
+
+                let mut two_phase_delayed_mutations = vec![];
+
                 for e in es.iter() {
-                    bb = self.build(e, bb)?;
+                    match &e.x {
+                        ExprX::TwoPhaseBorrowMut(p) => {
+                            let (p, bb) = self.build_place(p, bb)?;
+                            if let Some(p) = p {
+                                two_phase_delayed_mutations.push(p);
+                            }
+                        }
+                        _ => {
+                            bb = self.build(e, bb)?;
+                        }
+                    }
                 }
+
+                for p in two_phase_delayed_mutations.into_iter() {
+                    // The point we mark here is after the arguments execute,
+                    // but before the call executes.
+                    self.push_instruction(
+                        bb,
+                        AstPosition::AfterArguments(span_id),
+                        InstructionKind::Mutate(p),
+                    );
+                }
+
                 Ok(bb)
             }
             ExprX::Ctor(_dt, _id, binders, opt_place) => {
+                let mut two_phase_delayed_mutations = vec![];
+
+                // TODO(new_mut_ref): tests for two-phase borrows
+
                 for b in binders.iter() {
-                    bb = self.build(&b.a, bb)?;
+                    let e = &b.a;
+                    match &e.x {
+                        ExprX::TwoPhaseBorrowMut(p) => {
+                            let (p, bb) = self.build_place(p, bb)?;
+                            if let Some(p) = p {
+                                two_phase_delayed_mutations.push(p);
+                            }
+                        }
+                        _ => {
+                            bb = self.build(e, bb)?;
+                        }
+                    }
                 }
+
+                for p in two_phase_delayed_mutations.into_iter() {
+                    // Convenentially, we can just put these mutations after the Ctor call itself
+                    // since the Ctor is a trivial operation, i.e., we don't need a special
+                    // place for the "post_args" like we do with calls.
+                    self.push_instruction(
+                        bb,
+                        AstPosition::After(span_id),
+                        InstructionKind::Mutate(p),
+                    );
+                }
+
                 if opt_place.is_some() {
                     todo!()
                 }
@@ -632,6 +685,11 @@ impl<'a> Builder<'a> {
             ExprX::AssignToPlace { place, rhs, op: Some(_) } => {
                 todo!()
             }
+            ExprX::TwoPhaseBorrowMut(p) => {
+                // These must be handled contextually, so the recursion should skip over
+                // these nodes.
+                panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
+            }
             ExprX::BorrowMut(p) => {
                 let (p, bb) = self.build_place(p, bb)?;
                 if let Some(p) = p {
@@ -642,9 +700,6 @@ impl<'a> Builder<'a> {
                     );
                 }
                 Ok(bb)
-            }
-            ExprX::BorrowMutPhaseOne(..) | ExprX::BorrowMutPhaseTwo(..) => {
-                panic!("BorrowMutPhaseOne/BorrowMutPhaseTwo shouldn't be created yet");
             }
             ExprX::ReadPlace(p, unfinal_read_kind) => {
                 if self.is_move(unfinal_read_kind) {
@@ -1814,14 +1869,18 @@ fn get_resolutions_for_place(
 
 /// Returns the given expression with AssumeResolved expressions inserted.
 fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert>) -> Expr {
-    let mut id_map = HashMap::<AstId, (Vec<FlattenedPlace>, Vec<FlattenedPlace>, bool)>::new();
+    let mut id_map = HashMap::<
+        AstId,
+        (Vec<FlattenedPlace>, Vec<FlattenedPlace>, Vec<FlattenedPlace>, bool),
+    >::new();
     for r in resolutions.into_iter() {
         let ast_id = match r.position {
             AstPosition::Before(ast_id) => ast_id,
             AstPosition::After(ast_id) => ast_id,
+            AstPosition::AfterArguments(ast_id) => ast_id,
         };
         if !id_map.contains_key(&ast_id) {
-            id_map.insert(ast_id, (vec![], vec![], false));
+            id_map.insert(ast_id, (vec![], vec![], vec![], false));
         }
 
         let entry = id_map.get_mut(&ast_id).unwrap();
@@ -1833,6 +1892,9 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             AstPosition::After(ast_id) => {
                 entry.1.push(r.place);
             }
+            AstPosition::AfterArguments(ast_id) => {
+                entry.2.push(r.place);
+            }
         };
     }
 
@@ -1841,7 +1903,7 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         &mut VisitorScopeMap::new(),
         &mut id_map,
         &|id_map, scope_map, expr: &Expr| {
-            if let Some((befores, afters, seen_yet)) = id_map.get_mut(&expr.span.id) {
+            if let Some((befores, afters, after_args, seen_yet)) = id_map.get_mut(&expr.span.id) {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
                 }
@@ -1849,20 +1911,25 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
 
                 let befores_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, befores);
                 let afters_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, afters);
+                let after_args_exprs =
+                    filter_and_make_assumes(cfg, &expr.span, scope_map, after_args);
 
-                let mut e = expr.clone();
-                e = apply_before_exprs(e, befores_exprs);
-                e = apply_after_exprs(e, afters_exprs);
+                let e = expr.clone();
+                let e = apply_after_args_exprs(e, after_args_exprs);
+                let e = apply_before_exprs(e, befores_exprs);
+                let e = apply_after_exprs(e, afters_exprs);
+
                 Ok(e)
             } else {
                 Ok(expr.clone())
             }
         },
         &|id_map, scope_map, stmt| {
-            if let Some((befores, afters, seen_yet)) = id_map.get_mut(&stmt.span.id) {
+            if let Some((befores, afters, after_args, seen_yet)) = id_map.get_mut(&stmt.span.id) {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
                 }
+                assert!(after_args.len() == 0);
                 *seen_yet = true;
 
                 let befores_exprs = filter_and_make_assumes(cfg, &stmt.span, scope_map, befores);
@@ -1962,4 +2029,31 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         &expr.typ,
         ExprX::UseLeftWhereRightCanHaveNoAssignments(expr.clone(), e),
     )
+}
+
+fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
+    if exprs.len() == 0 {
+        return expr;
+    }
+    match &expr.x {
+        ExprX::Call(ct, args, None) => {
+            let mut stmts = vec![];
+            for e in exprs.into_iter() {
+                stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+            }
+            let block = SpannedTyped::new(
+                &expr.span,
+                &crate::ast_util::unit_typ(),
+                ExprX::Block(Arc::new(stmts), None),
+            );
+            SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Call(ct.clone(), args.clone(), Some(block)),
+            )
+        }
+        _ => {
+            panic!("apply_after_args_exprs expected ExprX::Call");
+        }
+    }
 }

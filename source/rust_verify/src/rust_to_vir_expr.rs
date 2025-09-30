@@ -30,7 +30,7 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
@@ -881,7 +881,7 @@ fn invariant_block_to_vir<'tcx>(
     // to use the open_atomic_invariant! macro.
 
     let body = match &expr.kind {
-        ExprKind::Block(body, _) => body,
+        ExprKind::Block(body, None) => body,
         _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
@@ -922,7 +922,7 @@ fn invariant_block_to_vir<'tcx>(
     }
 
     let vir_body = match mid_stmt.kind {
-        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, _), .. }) => {
+        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
                 slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
@@ -1309,7 +1309,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             .immut_bor(bctx);
             Ok(ExprOrPlace::Expr(new_expr))
         }
-        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
+        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { allow_two_phase_borrow })) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 // Rust often inserts &mut* adjustments in argument positions.
                 // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
@@ -1323,7 +1323,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     if inner_inner_ty != adjustment.target {
                         panic!("Verus Internal Error: Implicit &mut * expected the same type");
                     }
-                    // TODO: we need to improve this condition to work for tracked code
+                    // TODO(new_mut_ref): we need to improve this condition to work for tracked code
                     if bctx.in_ghost {
                         return expr_to_vir_with_adjustments(
                             bctx,
@@ -1343,7 +1343,12 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustment_idx - 1,
                 )?
                 .to_place();
-                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place)))
+                Ok(ExprOrPlace::Expr(borrow_mut_vir(
+                    bctx,
+                    expr.span,
+                    &place,
+                    *allow_two_phase_borrow,
+                )))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -1471,7 +1476,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
-                let x = ExprX::Call(call_target, args);
+                let x = ExprX::Call(call_target, args, None);
                 let expr_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
@@ -1813,7 +1818,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     match &expr.kind {
-        ExprKind::Block(body, _) => {
+        ExprKind::Block(body, label) => {
+            unsupported_err_unless!(label.is_none(), expr.span, "block with label");
             if is_invariant_block(bctx, expr)? {
                 return invariant_block_to_vir(bctx, expr, modifier);
             }
@@ -2063,7 +2069,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                         expr.span,
                         &expr_typ,
-                        ExprX::Call(target, Arc::new(vir_args)),
+                        ExprX::Call(target, Arc::new(vir_args), None),
                     )))
                 }
             }
@@ -2115,7 +2121,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     autospec_usage,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args))
+                mk_expr(ExprX::Call(call_target, args, None))
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
@@ -2181,7 +2187,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 let place = expr_to_vir(bctx, e, modifier)?.to_place();
-                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place)))
+                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No)))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -2770,7 +2776,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-            mk_expr(ExprX::Call(call_target, args))
+            mk_expr(ExprX::Call(call_target, args, None))
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
@@ -3118,7 +3124,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let index_set = bctx.spanned_typed_new(
             lhs.span,
             &mk_tuple_typ(&Arc::new(vec![])),
-            ExprX::Call(call_target, args),
+            ExprX::Call(call_target, args, None),
         );
         // lhs is not recorded and so explicitly add it here.
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -3630,7 +3636,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 autospec_usage,
             );
             let args = Arc::new(vec![src_vir.clone()]);
-            let x = ExprX::Call(call_target, args);
+            let x = ExprX::Call(call_target, args, None);
             let expr_typ = typ_of_node(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
 
             if clip {
@@ -3786,7 +3792,6 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
-    //
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
@@ -3805,7 +3810,12 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
 }
 
-fn borrow_mut_vir(bctx: &BodyCtxt, span: Span, place: &Place) -> vir::ast::Expr {
+fn borrow_mut_vir(
+    bctx: &BodyCtxt,
+    span: Span,
+    place: &Place,
+    allow_two_phase: AllowTwoPhase,
+) -> vir::ast::Expr {
     // In general, `&mut *x` does NOT cancel itself out;
     // this is a reborrow which has nontrivial semantics.
     // However, if x is a temporary, then it's ok.
@@ -3820,7 +3830,16 @@ fn borrow_mut_vir(bctx: &BodyCtxt, span: Span, place: &Place) -> vir::ast::Expr 
         _ => {}
     }
 
-    let x = ExprX::BorrowMut(place.clone());
+    let x = match allow_two_phase {
+        AllowTwoPhase::Yes => {
+            if place.x.uses_temporary() {
+                ExprX::BorrowMut(place.clone())
+            } else {
+                ExprX::TwoPhaseBorrowMut(place.clone())
+            }
+        }
+        AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
+    };
     let typ = Arc::new(TypX::MutRef(place.typ.clone()));
     bctx.spanned_typed_new(span, &typ, x)
 }

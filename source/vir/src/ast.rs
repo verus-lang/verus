@@ -820,7 +820,9 @@ pub enum ExprX {
     /// Mutable reference (location)
     Loc(Expr),
     /// Call to a function passing some expression arguments
-    Call(CallTarget, Exprs),
+    /// The optional expression is to be executed *after* the arguments but *before* the call.
+    /// This is used for two-phase borrows.
+    Call(CallTarget, Exprs, Option<Expr>),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
@@ -971,14 +973,18 @@ pub enum ExprX {
     NeverToAny(Expr),
     /// nondeterministic choice
     Nondeterministic,
-    /// BorrowMut performs BorrowMutPhaseOne and BorrowMutPhaseTwo together.
-    /// However, the two phases can be split up to do a 2-phase borrow.
+    /// Creates a mutable borrow from the given place
     BorrowMut(Place),
-    /// Phase 1: Create the mut_ref value with the prophetic future value
-    BorrowMutPhaseOne(Place),
-    /// Phase 2: Update the original place to be equal to the prophecized value.
-    /// The Expr argument here is the expression returned by the PhaseOne (of type &mut T)
-    BorrowMutPhaseTwo(Place, Expr),
+    /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
+    /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
+    ///
+    /// This node can only appear as an argument to a Call or to a Ctor;
+    /// the semantics of a TwoPhaseBorrowMut node are contextual.
+    /// It is the structure of the parent node that determines where the "second phase"
+    /// of the borrow is.
+    TwoPhaseBorrowMut(Place),
+    /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
+    /// (resolution_inference.rs)
     AssumeResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
@@ -1011,7 +1017,7 @@ pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
-    /// TODO(mut_refs): Decide: is this only for single-variant structs?
+    /// TODO(mut_refs): Decide: is this only for single-variant structs? What about unions?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),

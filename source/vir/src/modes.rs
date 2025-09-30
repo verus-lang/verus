@@ -888,6 +888,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Call(
             CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
             es,
+            None,
         ) => {
             // es = [FnProof, (...args...)]
             assert!(es.len() == 2);
@@ -913,7 +914,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(*ret_mode)
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match ctxt.funs.get(x) {
@@ -1026,7 +1027,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(function.x.ret.x.mode)
         }
-        ExprX::Call(CallTarget::FnSpec(e0), es) => {
+        ExprX::Call(CallTarget::FnSpec(e0), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1036,7 +1037,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1044,6 +1045,9 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, arg, Mode::Spec)?;
             }
             Ok(Mode::Spec)
+        }
+        ExprX::Call(_, _, Some(_)) => {
+            return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
         ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(ctxt, record, typing, outer_mode, e))?;
@@ -1772,10 +1776,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
-        ExprX::BorrowMutPhaseOne(_) | ExprX::BorrowMutPhaseTwo(_, _) => {
-            panic!("BorrowmutPhaseOne / BorrowMutPhaseTwo should not exist yet");
-        }
-        ExprX::BorrowMut(place) => {
+        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
