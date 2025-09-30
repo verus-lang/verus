@@ -3,6 +3,8 @@
 use super::group_vstd_default;
 use super::prelude::*;
 use crate::vstd::arithmetic::power::*;
+use crate::vstd::arithmetic::power2::*;
+use crate::vstd::bits::*;
 
 verus! {
 
@@ -278,6 +280,35 @@ pub proof fn usize_size_pow2()
 
     assert(is_power_2(4)) by (compute);
     assert(is_power_2(8)) by (compute);
+}
+
+pub proof fn usize_max_bitwise()
+    ensures
+        // We use a funky expression here, rather than the more natural expression: usize::MAX == (1usize << usize::BITS) - 1.
+        // This is because the above left shift will overflow usize and thus is not compatible with bit vector.
+        usize::MAX == (1usize << (usize::BITS - 1)) + ((1usize << (usize::BITS - 1)) - 1)
+{
+    assert((1u32 << 31) + ((1u32 << 31) - 1) == (0x1_0000_0000 - 1)) by(bit_vector);
+    assert((1u64 << 63) + ((1u64 << 63) - 1) == (0x1_0000_0000_0000_0000 - 1)) by(bit_vector);
+}
+
+pub proof fn usize_max_bounds()
+    ensures
+        (usize::MAX as nat) < pow2(usize::BITS as nat)
+{ 
+    usize_max_bitwise();
+    assert(1usize << (usize::BITS - 1) == 1 * pow2((usize::BITS - 1) as nat)) by {
+        lemma_u64_pow2_no_overflow((u64::BITS - 1) as nat);
+        lemma_u64_shl_is_mul(1u64, (u64::BITS - 1) as u64);
+        assert(1u64 << (u64::BITS - 1) == 1 * pow2((u64::BITS - 1) as nat));
+        lemma_u32_pow2_no_overflow((u32::BITS - 1) as nat);
+        lemma_u32_shl_is_mul(1u32, (u32::BITS - 1) as u32);
+        assert(1u32 << (u32::BITS - 1) == 1 * pow2((u32::BITS - 1) as nat));
+    }
+    assert(usize::MAX == pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1);
+    assert(pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1 < pow2(usize::BITS as nat)) by {
+        broadcast use lemma_pow2_unfold;
+    }
 }
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
