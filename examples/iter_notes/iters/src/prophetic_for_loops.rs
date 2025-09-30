@@ -31,7 +31,14 @@ pub trait Iterator {
                 } else {
                     self.seq() === old(self).seq() && ret === None && self.completes() && self.loop_ensures()
                 }
-            });
+            }),
+            ({
+                let d1 = old(self).decrease();
+                let d2 = self.decrease();
+                self.obeys_iter_laws() && ret is Some && d1 is Some && d2 is Some
+                ==> decreases_to!(d1->0 => d2->0)
+            }),
+    ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
 
@@ -126,10 +133,22 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     fn next(&mut self) -> (ret: Option<Self::Item>) {
         //proof { use_type_invariant(&*self); }
         assume(self.vec_iterator_type_inv());
+        assume(self.i == 5);
+        assume(self.j == 10);
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
-            return Some(&self.v[i]);
+            assert(old(self).decrease() is Some);
+            assert(    self.decrease() is Some);
+            assert(old(self).decrease() matches Some(x) && x == 5);
+            assert(    self.decrease() matches Some(x) && x == 4);
+            assert(old(self).decrease()->0 > self.decrease()->0 >= 0);
+            let ret = Some(&self.v[i]);
+            let ghost d1 = old(self).decrease();
+            let ghost d2 = self.decrease();
+            assert(self.obeys_iter_laws() && ret is Some && d1 is Some && d2 is Some);
+            assert(decreases_to!(d1->0 => d2->0));
+            return ret;
         } else {
             return None;
         }
@@ -219,7 +238,7 @@ impl<T, Pred> ProphSeq<T, Pred>
 }
 
 /* map iterator */
-/*
+
 ghost struct MapIteratorPred<Iter, F> {
     iter: Iter,
     f: F,
@@ -710,7 +729,7 @@ fn all_true_caller(v: &Vec<bool>)
     }
 }
 */
-
+/*
 fn for_loop_test() {
 
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -769,8 +788,6 @@ fn for_loop_test() {
             }
         }
     };
-    
-
 }
 
 }
