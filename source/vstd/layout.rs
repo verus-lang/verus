@@ -27,16 +27,17 @@ pub open spec fn is_power_2_exists(m: int) -> bool {
     exists|i: nat| pow(2, i) == m
 }
 
-pub broadcast proof fn is_power_2_equiv() 
+pub broadcast proof fn is_power_2_equiv()
     ensures
-        forall |n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        forall|n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
 {
-    assert forall |n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
+    assert forall|n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
         is_power_2_equiv_forward(n);
     }
 
-    assert forall |n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
+    assert forall|n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
         broadcast use lemma_pow_positive;
+
         is_power_2_equiv_reverse(n);
     }
 }
@@ -46,41 +47,41 @@ proof fn is_power_2_equiv_forward(n: int)
         is_power_2(n),
     ensures
         is_power_2_exists(n),
-    decreases
-        n,
+    decreases n,
 {
     reveal(is_power_2);
     reveal(pow);
 
     if n == 1 {
         broadcast use lemma_pow0;
+
         assert(pow(2, 0) == n);
     } else {
-        is_power_2_equiv_forward(n/2);
-        let exp = choose |i: nat| pow(2, i) == n/2;
+        is_power_2_equiv_forward(n / 2);
+        let exp = choose|i: nat| pow(2, i) == n / 2;
         assert(pow(2, exp + 1) == 2 * pow(2, exp));
     }
 }
 
 proof fn is_power_2_equiv_reverse(n: int)
-    requires 
+    requires
         n > 0,
         is_power_2_exists(n),
     ensures
         is_power_2(n),
-    decreases
-        n,
+    decreases n,
 {
     reveal(is_power_2);
     reveal(pow);
 
-    let exp = choose |i: nat| pow(2, i) == n;
+    let exp = choose|i: nat| pow(2, i) == n;
 
     if exp == 0 {
         broadcast use lemma_pow0;
+
     } else {
-        assert(pow(2, (exp - 1) as nat) == n/2);
-        is_power_2_equiv_reverse(n/2);
+        assert(pow(2, (exp - 1) as nat) == n / 2);
+        is_power_2_equiv_reverse(n / 2);
     }
 }
 
@@ -284,18 +285,20 @@ pub proof fn usize_size_pow2()
 
 pub proof fn usize_max_bitwise()
     ensures
-        // We use a funky expression here, rather than the more natural expression: usize::MAX == (1usize << usize::BITS) - 1.
-        // This is because the above left shift will overflow usize and thus is not compatible with bit vector.
-        usize::MAX == (1usize << (usize::BITS - 1)) + ((1usize << (usize::BITS - 1)) - 1)
+// We use a funky expression here, rather than the more natural expression: usize::MAX == (1usize << usize::BITS) - 1.
+// This is because the above left shift will overflow usize and thus is not compatible with bit vector.
+
+        usize::MAX == (1usize << (usize::BITS - 1)) + ((1usize << (usize::BITS - 1)) - 1),
 {
-    assert((1u32 << 31) + ((1u32 << 31) - 1) == (0x1_0000_0000 - 1)) by(bit_vector);
-    assert((1u64 << 63) + ((1u64 << 63) - 1) == (0x1_0000_0000_0000_0000 - 1)) by(bit_vector);
+    assert((1u32 << 31) + ((1u32 << 31) - 1) == (0x1_0000_0000 - 1)) by (bit_vector);
+    assert((1u64 << 63) + ((1u64 << 63) - 1) == (0x1_0000_0000_0000_0000 - 1)) by (bit_vector);
 }
 
 pub proof fn usize_max_bounds()
     ensures
-        (usize::MAX as nat) < pow2(usize::BITS as nat)
-{ 
+        (usize::MAX as nat) < pow2(usize::BITS as nat),
+        (usize::MAX as nat) < pow(256, size_of::<usize>()),
+{
     usize_max_bitwise();
     assert(1usize << (usize::BITS - 1) == 1 * pow2((usize::BITS - 1) as nat)) by {
         lemma_u64_pow2_no_overflow((u64::BITS - 1) as nat);
@@ -306,9 +309,27 @@ pub proof fn usize_max_bounds()
         assert(1u32 << (u32::BITS - 1) == 1 * pow2((u32::BITS - 1) as nat));
     }
     assert(usize::MAX == pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1);
-    assert(pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1 < pow2(usize::BITS as nat)) by {
+    assert(pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1 < pow2(
+        usize::BITS as nat,
+    )) by {
         broadcast use lemma_pow2_unfold;
+
     }
+
+    assert(8 * size_of::<usize>() == usize::BITS) by {
+        broadcast use layout_of_primitives;
+
+    }
+    assert(pow2(usize::BITS as nat) == pow(2, usize::BITS as nat)) by {
+        broadcast use lemma_pow2;
+
+    }
+    assert(pow(2, 8 * size_of::<usize>()) == pow(pow(2, 8), size_of::<usize>())) by {
+        broadcast use lemma_pow_multiplies;
+
+    }
+    assert(pow(2, 8) == 256) by (compute);
+    assert(pow2(usize::BITS as nat) == pow(256, size_of::<usize>()));
 }
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).

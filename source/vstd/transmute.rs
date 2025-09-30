@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 
-use crate::vstd::group_vstd_default;
 use super::arithmetic::power::*;
 use super::arithmetic::power2::*;
 use super::endian::*;
@@ -8,11 +7,11 @@ use super::layout::*;
 use super::prelude::*;
 use super::raw_ptr::*;
 use super::seq::*;
+use crate::vstd::group_vstd_default;
 
 verus! {
 
 broadcast use {group_layout_axioms, group_vstd_default};
-
 // https://github.com/minirust/minirust/blob/master/spec/mem/interface.md#abstract-bytes
 // https://github.com/minirust/minirust/blob/master/spec/lang/representation.md
 
@@ -113,8 +112,8 @@ pub open spec fn nat_to_bytes(n: nat, size: nat) -> Seq<AbstractByte> where
 
 pub broadcast proof fn nat_to_bytes_len_size(n: nat, size: nat)
     ensures
-        #[trigger] nat_to_bytes(n, size).len() == size
-    decreases size
+        #[trigger] nat_to_bytes(n, size).len() == size,
+    decreases size,
 {
     if size == 0 {
     } else {
@@ -136,18 +135,17 @@ pub open spec fn bytes_to_nat(b: Seq<AbstractByte>) -> Option<nat> where
         };
         match (least, rest) {
             (AbstractByte::Init(v, _), Some(n)) => Some(v as nat + n * u8::base()),
-            _ => None
+            _ => None,
         }
     }
 }
 
 pub broadcast proof fn nat_to_bytes_to_nat(n: nat, size: nat)
     requires
-        n < pow(u8::base() as int, size)
+        n < pow(u8::base() as int, size),
     ensures
-        #[trigger] bytes_to_nat(nat_to_bytes(n, size)) == Some(n)
-    decreases
-        nat_to_bytes(n, size).len()
+        #[trigger] bytes_to_nat(nat_to_bytes(n, size)) == Some(n),
+    decreases nat_to_bytes(n, size).len(),
 {
     reveal(pow);
     if nat_to_bytes(n, size).len() == 0 {
@@ -162,7 +160,9 @@ pub broadcast proof fn nat_to_bytes_to_nat(n: nat, size: nat)
         assert(n / u8::base() < pow(u8::base() as int, (size - 1) as nat));
         nat_to_bytes_to_nat(n / u8::base(), (size - 1) as nat);
         assert(bytes_to_nat(rest) == Some(n / u8::base()));
-        assert(bytes_to_nat(bytes) == Some(((n % u8::base()) as u8) as nat + (n / u8::base()) * u8::base()));
+        assert(bytes_to_nat(bytes) == Some(
+            ((n % u8::base()) as u8) as nat + (n / u8::base()) * u8::base(),
+        ));
     }
 }
 
@@ -175,7 +175,7 @@ impl Encoding for usize {
         if bytes.len() == size_of::<Self>() {
             match bytes_to_nat(bytes) {
                 Some(n) => Some(n as Self),
-                None => None
+                None => None,
             }
         } else {
             None
@@ -184,17 +184,9 @@ impl Encoding for usize {
 
     proof fn encoding_props() {
         broadcast use nat_to_bytes_len_size, nat_to_bytes_to_nat;
+
         assert forall|v, bytes| Self::encode(v, bytes) implies Self::decode(bytes) == Some(v) by {
             usize_max_bounds();
-            assert(8 * size_of::<usize>() == usize::BITS);
-            assert(pow2(usize::BITS as nat) == pow(2, usize::BITS as nat)) by {
-                broadcast use lemma_pow2;
-            }
-            assert(pow(2, 8 * size_of::<usize>()) == pow(pow(2, 8), size_of::<usize>())) by {
-                broadcast use lemma_pow_multiplies;
-            }
-            assert(pow(2, 8) == u8::base()) by (compute);
-            assert(pow2(usize::BITS as nat) == pow(u8::base() as int, size_of::<usize>()));
             assert(v < pow(u8::base() as int, size_of::<usize>()));
         }
     }
