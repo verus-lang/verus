@@ -504,7 +504,7 @@ fn e13_pass() {
 
                     proof fn forall_lemma() {
                         // NB: The original version here fails with:
-                        // "Could not automatically infer triggers for this quantifer."
+                        // "Could not automatically infer triggers for this quantifier."
                         // We decided that this use case -- a forall that can be proven but
                         // never used (in any reasonable setting because no way is Chris
                         // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
@@ -793,7 +793,7 @@ test_verify_one_file_with_options! {
                 reveal_with_fuel(fibo, 11);
             }
 
-            // TODO(chris): "Could not automatically infer triggers for this quantifer." but there's fibo
+            // TODO(chris): "Could not automatically infer triggers for this quantifier." but there's fibo
             // RIGHT THERE! Error should say "matching loop" instead.
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
