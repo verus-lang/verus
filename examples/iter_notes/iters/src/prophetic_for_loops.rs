@@ -791,6 +791,9 @@ fn for_loop_test() {
             }
         }
     };
+
+    // Make sure our invariant was useful
+    assert(w@ == v@);
 }
 }
 
