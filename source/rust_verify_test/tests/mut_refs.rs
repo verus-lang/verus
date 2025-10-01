@@ -2733,3 +2733,20 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*a_ref` because it was mutably borrowed")
 }
+
+test_verify_one_file_with_options! {
+    #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
+        struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
+
+        fn test1() {
+            let pair = (2, 3);
+            let mut big_pair = (4, &pair);
+            let mut big = BigStruct(&mut big_pair);
+
+            *big.0 = (5, &pair);
+
+            assert(has_resolved(big.0));
+            assert(mut_ref_current(big.0) == mut_ref_future(big.0));
+        }
+    } => Ok(())
+}
