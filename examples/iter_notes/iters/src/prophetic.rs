@@ -37,7 +37,9 @@ pub trait Iterator {
 pub trait DoubleEndedIterator : Iterator {
     fn next_back(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.completes() == old(self).completes(),
+            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
+            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
                     self.seq() == old(self).seq().drop_last()
@@ -492,6 +494,7 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
+        assume(self.reverse_inv());
         self.iter.next_back()
     }
 }

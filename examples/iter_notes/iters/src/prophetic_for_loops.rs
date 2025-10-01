@@ -36,9 +36,6 @@ pub trait Iterator {
 
     /******* Mechanisms that support ergonomic `for` loops *********/
 
-    // REVIEW: Do we need this?  Or can we use iter.seq().len()?
-    //         I think we still need something like this, since
-    //         iter.seq().len() is prophetic
     type Decrease;
 
     /// Optional invariant about the iterator.
@@ -58,21 +55,27 @@ pub trait Iterator {
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<Self::Decrease>;
 
-    /// If there will be Some next value, and we can make a useful guess as to what the next value
-    /// will be, return Some of it.
-    /// Otherwise, return None.
+    // REVIEW: BP: With the prophetic encoding, I don't think we need this;
+    //             There's a generic peek next based on trying to look at seq().first().
+    // If there will be Some next value, and we can make a useful guess as to what the next value
+    // will be, return Some of it.
+    // Otherwise, return None.
     // TODO: in the long term, we could have VIR insert an assertion (or warning)
-    // that ghost_peek_next returns non-null if it is used in the invariants.
+    // that peek_next returns non-null if it is used in the invariants.
     // (this will take a little bit of engineering since the syntax macro blindly inserts
-    // let bindings using ghost_peek_next, even if they aren't needed, and we only learn
+    // let bindings using peek_next, even if they aren't needed, and we only learn
     // what is actually needed later in VIR.)
-    spec fn peek_next(&self) -> Option<Self::Item>;
+    //spec fn peek_next(&self) -> Option<Self::Item>;
+
 }
 
 pub trait DoubleEndedIterator : Iterator {
+
     fn next_back(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.completes() == old(self).completes(),
+            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
+            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
                     self.seq() == old(self).seq().drop_last()
@@ -171,21 +174,21 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         }
     }
 
-    closed spec fn loop_ensures(&self) -> bool {
-        self.i == self.j
+    open spec fn loop_ensures(&self) -> bool {
+        self.front() == self.back()
     }
 
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
-        Some((self.j - self.i) as int)
+    open spec fn decrease(&self) -> Option<Self::Decrease> {
+        Some((self.back() - self.front()) as int)
     }
 
-    closed spec fn peek_next(&self) -> Option<Self::Item> {
-        if self.i < self.j {
-            Some(&self.v[self.i as int])
-        } else {
-            None
-        }
-    }
+    // open spec fn peek_next(&self) -> Option<Self::Item> {
+    //     if self.front() < self.back() {
+    //         Some(&self.elts()[self.front() as int])
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
@@ -243,7 +246,9 @@ impl<T, Pred> ProphSeq<T, Pred>
             self.proph_elem(i) == Some(t);
 }
 
+
 /* map iterator */
+
 /*
 ghost struct MapIteratorPred<Iter, F> {
     iter: Iter,
@@ -278,6 +283,10 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
         Iter: Iterator,
         F: Fn(Iter::Item) -> Item
 {
+    pub closed spec fn inner(self) -> Iter {
+        self.iter
+    }
+
     //#[verifier::type_invariant] // fake this due to limitations
     #[verifier::prophetic]
     closed spec fn map_iterator_type_inv(self) -> bool {
@@ -385,7 +394,10 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.seq().len() ==> self.prophs@.proph_elem(i).is_some())
     }
 
-    fn next(&mut self) -> (ret: Option<Self::Item>) {
+    fn next(&mut self) -> (ret: Option<Self::Item>) 
+        ensures
+            self.inner() == old(self).inner(),
+    {
         assume(self.map_iterator_type_inv());
 
         match self.iter.next() {
@@ -406,6 +418,38 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
             }
         }
     }
+
+    type Decrease = Iter::Decrease;
+
+    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
+       // TODO: We shouldn't need this when the type invariant is working
+       //&&& self.map_iterator_type_inv()
+       &&& init matches Some(init) ==>
+                self.inner().loop_invariant(Some(&init.inner()))
+    }
+
+    open spec fn loop_ensures(&self) -> bool {
+        self.inner().loop_ensures()
+    }
+
+    open spec fn decrease(&self) -> Option<Self::Decrease> {
+        self.inner().decrease()
+    }
+
+    open spec fn peek_next(&self) -> Option<Self::Item> {
+        if self.seq().len() > 0 {
+            Some(self.seq().first())
+        } else {
+            None
+        }
+        // match self.inner().peek_next() {
+        //     Some(next) => {
+        //         self.iter.peek_next()
+        //     },
+        //     None => None,
+        // }
+    }
+
 }
 
 
@@ -743,7 +787,7 @@ fn for_loop_test() {
     let i = vec_iter(&v);
     assert(i.loop_invariant(Some(&i)));
 
-
+    let mut count: u128 = 0;
     // Verus will desugar this: 
     //
     // for x in y: v 
@@ -766,9 +810,12 @@ fn for_loop_test() {
                     y.loop_invariant(Some(&VERUS_snapshot)),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = y.peek_next().unwrap_or(arbitrary());
+                      let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
+                      //let x = y.peek_next().unwrap_or(arbitrary());
+
                       // inv
-                      w@ + y.seq().map_values(|r:&u8| *r) == v@
+                      w@ + y.seq().map_values(|r:&u8| *r) == v@ &&
+                      count == w.len() <= u64::MAX
                     }),
                 ensures
                     y.loop_ensures(),
@@ -787,6 +834,7 @@ fn for_loop_test() {
                 let () = {
                     // body
                     w.push(*x);
+                    count += 1;
                 };
             }
         }
@@ -794,6 +842,7 @@ fn for_loop_test() {
 
     // Make sure our invariant was useful
     assert(w@ == v@);
+    assert(count == v.len());
 }
 }
 
