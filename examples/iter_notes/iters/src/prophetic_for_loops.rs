@@ -29,14 +29,8 @@ pub trait Iterator {
                     &&& self.seq() == old(self).seq().drop_first()
                     &&& ret == Some(old(self).seq()[0])
                 } else {
-                    self.seq() === old(self).seq() && ret === None && self.completes() && self.loop_ensures()
+                    self.seq() === old(self).seq() && ret === None && self.completes()
                 }
-            }),
-            ({
-                let d1 = old(self).decrease();
-                let d2 = self.decrease();
-                self.obeys_iter_laws() && ret is Some && d1 is Some && d2 is Some
-                ==> decreases_to!(d1->0 => d2->0)
             }),
     ;
 
@@ -93,13 +87,26 @@ pub trait DoubleEndedIterator : Iterator {
 /* vec iterator */
 
 pub struct VecIterator<'a, T> {
-    pub v: &'a Vec<T>,
-    pub i: usize,
-    pub j: usize,
+    v: &'a Vec<T>,
+    i: usize,
+    j: usize,
 }
 
-impl<'a, T> VecIterator<'a, T> {
-    pub open spec fn vec_iterator_type_inv(self) -> bool {
+impl <'a, T> VecIterator<'a, T> {
+    pub closed spec fn front(self) -> usize {
+        self.i
+    }
+    
+    pub closed spec fn back(self) -> usize {
+        self.j
+    }
+
+    pub closed spec fn elts(self) -> Seq<T> {
+        self.v@
+    }
+
+    #[verifier::type_invariant]
+    pub closed spec fn vec_iterator_type_inv(self) -> bool {
         self.i <= self.j <= self.v.len()
     }
 }
@@ -108,9 +115,9 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
         iter.seq() == v@.map(|i, v| &v),
         iter.vec_iterator_type_inv(),
-        iter.i == 0,
-        iter.j == v.len(),
-        iter.v == v,
+        iter.front() == 0,
+        iter.back() == v.len(),
+        iter.elts() == v@,
 {
     VecIterator { v: v, i: 0, j: v.len() }
 }
@@ -130,24 +137,21 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         true
     }
 
-    fn next(&mut self) -> (ret: Option<Self::Item>) {
-        //proof { use_type_invariant(&*self); }
-        assume(self.vec_iterator_type_inv());
-        assume(self.i == 5);
-        assume(self.j == 10);
+    fn next(&mut self) -> (ret: Option<Self::Item>) 
+        ensures
+            self.back() == old(self).back(),
+            if old(self).front() < old(self).back() {
+                self.front() == old(self).front() + 1
+            } else {
+                self.front() == old(self).front()
+            },
+            self.elts() == old(self).elts(),
+    {
+        proof { use_type_invariant(&*self); }
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
-            assert(old(self).decrease() is Some);
-            assert(    self.decrease() is Some);
-            assert(old(self).decrease() matches Some(x) && x == 5);
-            assert(    self.decrease() matches Some(x) && x == 4);
-            assert(old(self).decrease()->0 > self.decrease()->0 >= 0);
             let ret = Some(&self.v[i]);
-            let ghost d1 = old(self).decrease();
-            let ghost d2 = self.decrease();
-            assert(self.obeys_iter_laws() && ret is Some && d1 is Some && d2 is Some);
-            assert(decreases_to!(d1->0 => d2->0));
             return ret;
         } else {
             return None;
@@ -155,13 +159,15 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     type Decrease = int;
-    closed spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
+
+    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
         &&& self.vec_iterator_type_inv()
         &&& init matches Some(init) ==> {
-            &&& init.i == 0 
-            &&& init.j == self.v.len() 
-            &&& self.i >= init.i
-            &&& self.j <= init.j
+            &&& init.front() == 0 
+            &&& init.back() == self.elts().len() 
+            &&& init.elts() == self.elts()
+            &&& self.front() >= init.front()
+            &&& self.back() <= init.back()
         }
     }
 
@@ -762,7 +768,7 @@ fn for_loop_test() {
                       // Grab the next val for (possible) use in inv
                       let x = y.peek_next().unwrap_or(arbitrary());
                       // inv
-                      w@ == v@.take(w@.len() as int)
+                      w@ + y.seq().map_values(|r:&u8| *r) == v@
                     }),
                 ensures
                     y.loop_ensures(),
@@ -774,7 +780,6 @@ fn for_loop_test() {
                 match y.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
-                        assert(y.loop_invariant(Some(&VERUS_snapshot)));
                         break
                     }
                 }
@@ -783,7 +788,6 @@ fn for_loop_test() {
                     // body
                     w.push(*x);
                 };
-                assert(y.loop_invariant(Some(&VERUS_snapshot)));
             }
         }
     };
