@@ -748,7 +748,7 @@ fn for_loop_test() {
     //
     // for x in y: v 
     //     invariant
-    //         w@ == v@.take(w@.len()),
+    //         w@ + y.seq().map_values(|r:&u8| *r) == v@
     // {
     //     w.push(x);
     // }
