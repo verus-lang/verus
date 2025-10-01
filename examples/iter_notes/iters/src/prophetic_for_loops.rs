@@ -238,7 +238,7 @@ impl<T, Pred> ProphSeq<T, Pred>
 }
 
 /* map iterator */
-
+/*
 ghost struct MapIteratorPred<Iter, F> {
     iter: Iter,
     f: F,
@@ -729,7 +729,6 @@ fn all_true_caller(v: &Vec<bool>)
     }
 }
 */
-/*
 fn for_loop_test() {
 
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -789,6 +788,5 @@ fn for_loop_test() {
         }
     };
 }
-
 }
 
