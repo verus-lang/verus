@@ -24,6 +24,7 @@ fn check_well_founded(
         return true;
     }
     if !datatypes.contains_key(path) {
+        // This may occur if the Datatype was created by build_dummy_dt, since it is not in the context datatype map.
         panic!("{:?}", path);
     }
     let datatype = &datatypes[path];

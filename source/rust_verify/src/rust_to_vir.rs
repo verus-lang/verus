@@ -158,7 +158,8 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
+        let vir_ty =
+            mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, None, def_id, item.span, &mid_ty, false)?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -352,7 +353,12 @@ fn check_foreign_item<'tcx>(
 }
 
 pub(crate) fn get_root_module_path<'tcx>(ctxt: &Context<'tcx>) -> Path {
-    def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, rustc_hir::CRATE_OWNER_ID.to_def_id())
+    def_id_to_vir_path(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        rustc_hir::CRATE_OWNER_ID.to_def_id(),
+        ctxt.path_def_id_ref(),
+    )
 }
 
 pub fn crate_to_vir<'a, 'tcx>(
@@ -436,8 +442,12 @@ pub fn crate_to_vir<'a, 'tcx>(
                 OwnerNode::Item(
                     item @ Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. },
                 ) => {
-                    let path =
-                        def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, owner_id.to_def_id());
+                    let path = def_id_to_vir_path(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        owner_id.to_def_id(),
+                        ctxt.path_def_id_ref(),
+                    );
                     if used_modules.contains(&path) {
                         vir.modules.push(ctxt.spanned_new(
                             item.span,

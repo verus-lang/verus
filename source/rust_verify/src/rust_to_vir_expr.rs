@@ -182,6 +182,7 @@ pub(crate) fn closure_param_typs<'tcx>(
                 args.push(mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     expr.span,
                     t,
@@ -207,6 +208,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
             mid_ty_to_vir(
                 bctx.ctxt.tcx,
                 &bctx.ctxt.verus_items,
+                None,
                 bctx.fun_id,
                 expr.span,
                 &t,
@@ -350,7 +352,12 @@ pub(crate) fn patexpr_to_vir<'tcx>(
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const, id) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        id,
+                        bctx.ctxt.path_def_id_ref(),
+                    );
                     let fun = FunX { path };
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -371,6 +378,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                             bctx.ctxt.tcx,
                             &bctx.ctxt.verus_items,
                             ctor.adt_def_id,
+                            bctx.ctxt.path_def_id_ref(),
                         );
                         Ok(PatternX::Constructor(
                             Dt::Path(vir_path),
@@ -400,7 +408,12 @@ pub(crate) fn get_fn_path<'tcx>(
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
-                let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, id);
+                let path = def_id_to_vir_path(
+                    bctx.ctxt.tcx,
+                    &bctx.ctxt.verus_items,
+                    id,
+                    bctx.ctxt.path_def_id_ref(),
+                );
                 Ok(Arc::new(FunX { path }))
             }
         }
@@ -420,7 +433,12 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
     let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-    let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+    let vir_path = def_id_to_vir_path(
+        bctx.ctxt.tcx,
+        &bctx.ctxt.verus_items,
+        ctor.adt_def_id,
+        bctx.ctxt.path_def_id_ref(),
+    );
 
     let vir_fields = Arc::new(
         args_slice
@@ -523,8 +541,12 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             };
 
             let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-            let vir_path =
-                def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let vir_path = def_id_to_vir_path(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                ctor.adt_def_id,
+                bctx.ctxt.path_def_id_ref(),
+            );
 
             let (n_wildcards, pos_to_insert_wildcards) =
                 handle_dot_dot(pats.len(), ctor.variant_def.fields.len(), &dot_dot_pos);
@@ -545,8 +567,12 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let ty = bctx.types.node_type(pat.hir_id);
             let ctor = resolve_braces_ctor(tcx, res, ty, false, pat.span)?;
             let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-            let vir_path =
-                def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let vir_path = def_id_to_vir_path(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                ctor.adt_def_id,
+                bctx.ctxt.path_def_id_ref(),
+            );
 
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for fpat in pats.iter() {
@@ -1017,6 +1043,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         mid_ty_to_vir(
             bctx.ctxt.tcx,
             &bctx.ctxt.verus_items,
+            None,
             bctx.fun_id,
             expr.span,
             &adjustments[adjustment_idx - 1].target,
@@ -1296,6 +1323,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 let expr_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     expr.span,
                     &ty2,
@@ -1768,6 +1796,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             arg_typs.push(mid_ty_to_vir(
                                 tcx,
                                 &bctx.ctxt.verus_items,
+                                None,
                                 bctx.fun_id,
                                 arg.span,
                                 &bctx.types.expr_ty_adjusted(arg),
@@ -1784,6 +1813,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let fun_typ = mid_ty_to_vir(
                             tcx,
                             &bctx.ctxt.verus_items,
+                            None,
                             bctx.fun_id,
                             fun.span,
                             &fun_ty,
@@ -1893,6 +1923,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let array_vir_typ = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     expr.span,
                     &bctx.types.expr_ty(expr),
@@ -2132,7 +2163,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
-                        let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                        let path = def_id_to_vir_path(
+                            tcx,
+                            &bctx.ctxt.verus_items,
+                            id,
+                            bctx.ctxt.path_def_id_ref(),
+                        );
                         let fun = FunX { path };
                         let autospec_usage = if bctx.in_ghost {
                             AutospecUsage::IfMarked
@@ -2143,7 +2179,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                 }
                 (Res::Def(DefKind::Const, id), _) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        id,
+                        bctx.ctxt.path_def_id_ref(),
+                    );
                     let fun = FunX { path };
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -2156,12 +2197,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     ),
                     _,
                 ) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        id,
+                        bctx.ctxt.path_def_id_ref(),
+                    );
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
                 }
                 (Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id), _) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = def_id_to_vir_path(
+                        tcx,
+                        &bctx.ctxt.verus_items,
+                        id,
+                        bctx.ctxt.path_def_id_ref(),
+                    );
                     let fun = Arc::new(vir::ast::FunX { path });
                     mk_expr(ExprX::ExecFnByName(fun))
                 }
@@ -2218,7 +2269,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     "field_of_adt_with_multiple_variants",
                     expr
                 );
-                let datatype_path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, adt_def.did());
+                let datatype_path = def_id_to_vir_path(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    adt_def.did(),
+                    bctx.ctxt.path_def_id_ref(),
+                );
                 let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did());
                 let variant = hir_def.variants().iter().next().unwrap();
                 let field_name = field_ident_from_rust(&name.as_str());
@@ -2451,7 +2507,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let ty = bctx.types.node_type(expr.hir_id);
             let ctor = resolve_braces_ctor(bctx.ctxt.tcx, res, ty, true, expr.span)?;
             let variant_name = ctor.variant_name(bctx.ctxt.tcx, fields);
-            let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let path = def_id_to_vir_path(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                ctor.adt_def_id,
+                bctx.ctxt.path_def_id_ref(),
+            );
 
             let vir_fields = Arc::new(
                 fields
@@ -2824,6 +2885,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
@@ -3357,6 +3419,7 @@ fn is_ptr_cast<'tcx>(
                 let src_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     span,
                     ty1,
@@ -3365,6 +3428,7 @@ fn is_ptr_cast<'tcx>(
                 let dst_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     span,
                     ty2,
@@ -3386,6 +3450,7 @@ fn is_ptr_cast<'tcx>(
             let src_ty = mid_ty_to_vir(
                 bctx.ctxt.tcx,
                 &bctx.ctxt.verus_items,
+                None,
                 bctx.fun_id,
                 span,
                 ty1,
@@ -3489,6 +3554,7 @@ fn deref_expr_to_vir<'tcx>(
         let inner_ty = mid_ty_to_vir(
             bctx.ctxt.tcx,
             &bctx.ctxt.verus_items,
+            None,
             bctx.fun_id,
             expr.span,
             &res_ty,
