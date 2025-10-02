@@ -6,6 +6,7 @@ verus! {
 
 mod prophetic;
 mod prophetic_for_loops;
+mod more_prophetic_for_loops;
 
 // Use a module here, so that we can `broadcast use` in the examples further below.
 mod iters {

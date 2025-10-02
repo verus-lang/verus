@@ -4,6 +4,18 @@ use vstd::prelude::*;
 
 verus!{
 
+pub uninterp spec fn does_decrease<A>(from: A, to: A) -> bool;
+
+broadcast axiom fn does_decrease_decreases<A>(from: A, to: A)
+    ensures
+        #[trigger] does_decrease(from, to) <==> decreases_to!(from => to);
+
+broadcast axiom fn does_decrease_int(from: int, to: int)
+    requires
+        0 <= to < from,
+    ensures
+        #[trigger] does_decrease(from, to);
+
 // PAPER CUT: When a proof fails, you can mention prophetic functions 
 //            as part of proof debugging.  E.g., you can't write:
 //            proof { if prophetic_fn() { assert(P) } else { assert(Q) } }
@@ -36,45 +48,22 @@ pub trait Iterator {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
             }),
-            self.obeys_iter_laws() ==> (
-                forall |init| old(self).loop_invariant(init) ==> self.loop_invariant(init)
-            )
+            self.obeys_iter_laws() && old(self).seq().len() > 0 ==>
+                old(self).decrease() is Some && 
+                (self.decrease() is Some ==> does_decrease(old(self).decrease()->0, self.decrease()->0)),
+        decreases
+            old(self).decrease()
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
 
     type Decrease;
 
-    /// Optional invariant about the iterator.
-    /// May be disabled with #[verifier::no_auto_loop_invariant]
-    /// If enabled, always true before and after each loop iteration.
-    /// (When Verus can infer a spec initial value based on the
-    ///  exec value used to create the iterator, it passes the expression
-    ///  as `Some(expression)`. This can enable a much stronger invariant.
-    spec fn loop_invariant(&self, init: Option<&Self>) -> bool;
-
-    /// True upon loop exit
-    #[verifier::prophetic]  // REVIEW: This seems to help with some of the impls
-    spec fn loop_ensures(&self) -> bool;
-
     /// Value used by default for decreases clause when no explicit decreases clause is provided
     /// (the user can override this with an explicit decreases clause).
     /// If there's no appropriate decrease, this can return None,
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<Self::Decrease>;
-
-    // REVIEW: BP: With the prophetic encoding, I don't think we need this;
-    //             There's a generic peek next based on trying to look at seq().first().
-    // If there will be Some next value, and we can make a useful guess as to what the next value
-    // will be, return Some of it.
-    // Otherwise, return None.
-    // TODO: in the long term, we could have VIR insert an assertion (or warning)
-    // that peek_next returns non-null if it is used in the invariants.
-    // (this will take a little bit of engineering since the syntax macro blindly inserts
-    // let bindings using peek_next, even if they aren't needed, and we only learn
-    // what is actually needed later in VIR.)
-    //spec fn peek_next(&self) -> Option<Self::Item>;
-
 }
 
 pub trait DoubleEndedIterator : Iterator {
@@ -162,6 +151,11 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
+            broadcast use {does_decrease_decreases, does_decrease_int};
+            // proof {
+            //     does_decrease_int(old(self).decrease()->0, self.decrease()->0);
+            // }
+            //assert(does_decrease(old(self).decrease()->0, self.decrease()->0));
             let ret = Some(&self.v[i]);
             return ret;
         } else {
@@ -170,21 +164,6 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     type Decrease = int;
-
-    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
-        &&& self.vec_iterator_type_inv()
-        &&& init matches Some(init) ==> {
-            &&& init.front() == 0 
-            &&& init.back() == self.elts().len() 
-            &&& init.elts() == self.elts()
-            &&& self.front() >= init.front()
-            &&& self.back() <= init.back()
-        }
-    }
-
-    open spec fn loop_ensures(&self) -> bool {
-        self.front() == self.back()
-    }
 
     open spec fn decrease(&self) -> Option<Self::Decrease> {
         Some((self.back() - self.front()) as int)
@@ -429,39 +408,9 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
 
     type Decrease = Iter::Decrease;
 
-    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
-       // TODO: We shouldn't need this when the type invariant is working
-       //       and we can't mention it here b/c it's prophetic
-       //&&& self.map_iterator_type_inv()
-       // TODO: I don't think we can maintain this, since the inner iterator's
-       //       next function won't ensure self.inner().loop_invariant(Some(&init.inner()))
-       &&& init matches Some(init) ==>
-                self.inner().loop_invariant(Some(&init.inner()))
-    }
-
-    // TODO: Strengthen this?
-    #[verifier::prophetic]
-    open spec fn loop_ensures(&self) -> bool {
-        self.inner().loop_ensures()
-    }
-
     open spec fn decrease(&self) -> Option<Self::Decrease> {
         self.inner().decrease()
     }
-
-    // open spec fn peek_next(&self) -> Option<Self::Item> {
-    //     if self.seq().len() > 0 {
-    //         Some(self.seq().first())
-    //     } else {
-    //         None
-    //     }
-    //     // match self.inner().peek_next() {
-    //     //     Some(next) => {
-    //     //         self.iter.peek_next()
-    //     //     },
-    //     //     None => None,
-    //     // }
-    // }
 
 }
 
@@ -535,23 +484,12 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
             None
         } else {
             self.count_remaining = self.count_remaining - 1;
+            broadcast use {does_decrease_decreases, does_decrease_int};
             self.iter.next()
         }
     }
 
     type Decrease = int;
-
-    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
-       init matches Some(init) ==>
-         self.count() <= init.count() &&
-         self.inner().loop_invariant(Some(&init.inner()))
-    }
-
-    #[verifier::prophetic]
-    open spec fn loop_ensures(&self) -> bool {
-        &&& self.count() == 0 || self.inner().seq().len() == 0
-        &&& self.inner().seq().len() == 0 ==> self.inner().loop_ensures()
-    }
 
     open spec fn decrease(&self) -> Option<Self::Decrease> {
         Some(self.count() as int)
@@ -585,13 +523,6 @@ impl<Iter: Iterator> SkipIterator<Iter> {
             s.seq() == (if iter.seq().len() < count { seq![] } else { iter.seq().skip(count as int) }),
             s.completes() <==> iter.completes(),
             iter.seq().len() < count ==> iter.completes(),
-
-            // REVIEW: Not true b/c we mutate iter internally
-            //s.inner() == iter,
-            forall |init| 
-                #![trigger iter.loop_invariant(init)] 
-                #![trigger s.inner().loop_invariant(init)]
-                iter.loop_invariant(init) ==> s.inner().loop_invariant(init)
     {
         let mut i = 0;
         let ghost iter_snapshot = iter;
@@ -603,10 +534,6 @@ impl<Iter: Iterator> SkipIterator<Iter> {
                 iter0.seq() == (if iter.seq().len() < i { seq![] } else { iter.seq().skip(i as int) }),
                 iter0.completes() <==> iter.completes(),
                 iter.seq().len() < i ==> iter.completes(),
-                forall |init| 
-                    #![trigger iter_snapshot.loop_invariant(init)] 
-                    #![trigger iter.loop_invariant(init)]
-                    iter_snapshot.loop_invariant(init) ==> iter0.loop_invariant(init)
             decreases count - i,
         {
             iter0.next();
@@ -645,16 +572,6 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
 
     type Decrease = Iter::Decrease;
 
-    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
-       init matches Some(init) ==>
-         self.inner().loop_invariant(Some(&init.inner()))
-    }
-
-    #[verifier::prophetic]
-    open spec fn loop_ensures(&self) -> bool {
-        self.inner().loop_ensures()
-    }
-
     open spec fn decrease(&self) -> Option<Self::Decrease> {
         self.inner().decrease()
     }
@@ -662,103 +579,6 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
 
 }
 
-// skip2
-struct SkipIterator2<Iter: Iterator> {
-    iter: Iter,
-    pub has_started: bool,
-}
-
-impl<Iter: Iterator> SkipIterator2<Iter> {
-    pub closed spec fn inner(self) -> Iter {
-        self.iter
-    }
-
-    pub closed spec fn started(self) -> bool {
-        self.has_started
-    }
-
-    //#[verifier::type_invariant] // fake this due to limitations
-    #[verifier::prophetic]
-    closed spec fn skip_inv(self) -> bool {
-        self.iter.obeys_iter_laws()
-    }
-}
-
-impl<Iter: Iterator> SkipIterator2<Iter> {
-    fn new(iter: Iter, count: usize) -> (s: Self)
-        requires
-            iter.obeys_iter_laws(),
-        ensures
-            !s.started(),
-            s.inner() == iter,
-    {
-        let s = SkipIterator2 {
-            iter: iter,
-            has_started: false,
-        };
-        assert(s.skip_inv());
-        s
-    }
-}
-
-impl<Iter: Iterator> Iterator for SkipIterator2<Iter> {
-    type Item = Iter::Item;
-
-    open spec fn obeys_iter_laws(&self) -> bool {
-        true
-    }
-
-    #[verifier::prophetic]
-    closed spec fn seq(&self) -> Seq<Self::Item> {
-        if self.has_started {
-            self.iter.seq()
-        } else {
-            self.iter.seq().skip(3)
-        }
-    }
-
-    #[verifier::prophetic]
-    closed spec fn completes(&self) -> bool {
-        self.iter.completes()
-    }
-
-    fn next(&mut self) -> (ret: Option<Self::Item>) {
-        assume(self.skip_inv());
-        if !self.has_started {
-            let _ = self.iter.next();
-            let _ = self.iter.next();
-            let _ = self.iter.next();
-            self.has_started = true;
-        }
-        let ret = self.iter.next();
-        proof {
-// TODO
-assume(false);
-            assert(old(self).seq().len() > 0 ==> self.seq() == old(self).seq().drop_first());
-            assert(old(self).seq().len() > 0 ==> ret == Some(old(self).seq()[0]));
-            assert(old(self).seq().len() == 0 ==> self.seq() === old(self).seq() && ret === None && self.completes());
-        }
-        ret
-    }
-
-    type Decrease = Iter::Decrease;
-
-    open spec fn loop_invariant(&self, init: Option<&Self>) -> bool {
-       init matches Some(init) ==>
-         self.inner().loop_invariant(Some(&init.inner()))
-    }
-
-    #[verifier::prophetic]
-    open spec fn loop_ensures(&self) -> bool {
-        self.inner().loop_ensures()
-    }
-
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
-        self.inner().decrease()
-    }
-
-
-}
 /*
 // reverse iterator
 struct ReverseIterator<Iter: Iterator> {
@@ -963,7 +783,6 @@ fn for_loop_test_vec() {
     let mut w: Vec<u8> = vec![];
 
     let i = vec_iter(&v);
-    assert(i.loop_invariant(Some(&i)));
 
     let mut count: u128 = 0;
     // Verus will desugar this: 
@@ -979,27 +798,27 @@ fn for_loop_test_vec() {
     //
     // Into:
     #[allow(non_snake_case)]
-    let VERUS_iter = v;
-    #[allow(non_snake_case)]
-    let VERUS_loop_result = match vec_iter(&VERUS_iter) {
+    let VERUS_loop_result = match vec_iter(&v) {
         mut y => {
             let ghost VERUS_snapshot = y;
-            //let ghost mut y = VERUS_exec_iter;
+            let ghost mut VERUS_index = 0;
             loop
                 invariant
-                    //y.loop_invariant(Some(&VERUS_snapshot)),
-                    y.loop_invariant(Some(&VERUS_snapshot)),
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
-                      //let x = y.peek_next().unwrap_or(arbitrary());
 
                       // inv
                       w@ + y.seq().map_values(|r:&u8| *r) == v@ &&
                       count == w.len() <= u64::MAX
                     }),
                 ensures
-                    y.loop_ensures(),
+                    // REVIEW: This works, but only if we don't allow `break`s inside a for loop.
+                    //         It appears that may be the case, although the error messages are confusing.
+                    y.seq().len() == 0 && y.completes(),
                 decreases
                     y.decrease().unwrap_or(arbitrary()),
             {
@@ -1011,17 +830,24 @@ fn for_loop_test_vec() {
                         break
                     }
                 }
+                proof {
+                    VERUS_index = VERUS_index + 1;
+                }
                 let x = VERUS_loop_next;
                 let () = {
                     // body
                     w.push(*x);
                     count += 1;
+                    // if count > 2 {
+                    //     break;
+                    // }
                 };
             }
         }
     };
 
     // Make sure our invariant was useful
+    assert(w@.len() == v@.len());
     assert(w@ == v@);
     assert(count == v.len());
 }
@@ -1134,10 +960,12 @@ fn for_loop_test_take() {
     let VERUS_loop_result = match iter {
         mut y => {
             let ghost VERUS_snapshot = y;
-            //let ghost mut y = VERUS_exec_iter;
+            let ghost mut VERUS_index = 0;
             loop
                 invariant
-                    y.loop_invariant(Some(&VERUS_snapshot)),
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
@@ -1146,7 +974,7 @@ fn for_loop_test_take() {
                       &&& w@ + y.seq().map_values(|u: &u8| *u) == v@.take(3)
                     }),
                 ensures
-                    y.loop_ensures(),
+                    y.seq().len() == 0 && y.completes(),
                 decreases
                     y.decrease().unwrap_or(arbitrary()),
             {
@@ -1163,6 +991,9 @@ fn for_loop_test_take() {
                         break
                     }
                 }
+                proof {
+                    VERUS_index = VERUS_index + 1;
+                }
                 let x = VERUS_loop_next;
                 let () = {
                     // body
@@ -1176,7 +1007,6 @@ fn for_loop_test_take() {
     assert(w@ == v@.take(3));
 }
 
-/*
 fn for_loop_test_skip() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
@@ -1184,15 +1014,6 @@ fn for_loop_test_skip() {
     let i = vec_iter(&v);
     let ghost old_i = i;
     let iter = SkipIterator::new(i, 3);
-    assert(iter.inner().loop_invariant(Some(&i)));
-    assert(iter.inner().loop_invariant(Some(&old_i)));
-    //assert(old_i.loop_invariant(Some(&iter.inner())));
-    // TODO: This isn't true, since `new` mutates i,
-    //       and in the postcondition for SkipIterator, we can't say enough
-    //       about how the inner iterator relates to the original iterator
-    assert(old_i == iter.inner());
-    assert(iter.inner().loop_invariant(Some(&iter.inner())));
-    assert(iter.loop_invariant(Some(&iter)));
     // Verus will desugar this: 
     //
     // for x in y: m
@@ -1210,10 +1031,14 @@ fn for_loop_test_skip() {
     let VERUS_loop_result = match iter {
         mut y => {
             let ghost VERUS_snapshot = y;
-            //let ghost mut y = VERUS_exec_iter;
+            let ghost mut VERUS_index = 0;
             loop
+                invariant_except_break
+                    y.decrease() is Some,
                 invariant
-                    y.loop_invariant(Some(&VERUS_snapshot)),
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
@@ -1222,16 +1047,27 @@ fn for_loop_test_skip() {
                       &&& w@ + y.seq().map_values(|u: &u8| *u) == v@.skip(3)
                     }),
                 ensures
-                    y.loop_ensures(),
+                    y.seq().len() == 0 && y.completes(),
                 decreases
                     y.decrease().unwrap_or(arbitrary()),
             {
+                let ghost old_y = y;
+                broadcast use {does_decrease_decreases, does_decrease_int};
                 assume(y.skip_inv());   // Faking type invariant
+                // assert(y.decrease() == y.inner().decrease());
+                // assert(y.decrease() is Some);
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
                 match y.next() {
                     Some(VERUS_loop_val) => {
                         assume(y.skip_inv());   // Faking type invariant
+                        assert(old_y.decrease() is Some);
+                        assert(old_y.seq().len() > 0);
+                        assert(y.decrease() is Some);
+                        assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
+                        proof {
+                            does_decrease_decreases(old_y.decrease()->0, y.decrease()->0);
+                        }
                         VERUS_loop_next = VERUS_loop_val
                     }
                     None => {
@@ -1239,11 +1075,21 @@ fn for_loop_test_skip() {
                         break
                     }
                 }
+                assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
+                proof {
+                    does_decrease_decreases(old_y.decrease()->0, y.decrease()->0);
+                }
+                // assert(y.decrease() is Some);
+                proof {
+                    VERUS_index = VERUS_index + 1;
+                }
                 let x = VERUS_loop_next;
                 let () = {
                     // body
                     w.push(*x);
                 };
+                assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
+                // assert(y.decrease() is Some);
             }
         }
     };
@@ -1252,6 +1098,7 @@ fn for_loop_test_skip() {
     assert(w@ == v@.skip(3));
 }
 
+/*
 fn for_loop_test_skip2() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
