@@ -1,5 +1,5 @@
 use std::{io::Take, iter::{self, Skip}, path::Iter};
-
+use vstd::std_specs::cmp::*;
 use vstd::prelude::*;
 
 verus!{
@@ -48,16 +48,13 @@ pub trait Iterator {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
             }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 ==>
-                old(self).decrease() is Some && 
-                (self.decrease() is Some ==> does_decrease(old(self).decrease()->0, self.decrease()->0)),
-        decreases
-            old(self).decrease()
+            self.obeys_iter_laws() && old(self).seq().len() > 0 ==> 
+                vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.decrease(), &old(self).decrease()) is Less,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
 
-    type Decrease;
+    type Decrease: Ord;
 
     /// Value used by default for decreases clause when no explicit decreases clause is provided
     /// (the user can override this with an explicit decreases clause).
@@ -151,22 +148,17 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
-            broadcast use {does_decrease_decreases, does_decrease_int};
-            // proof {
-            //     does_decrease_int(old(self).decrease()->0, self.decrease()->0);
-            // }
-            //assert(does_decrease(old(self).decrease()->0, self.decrease()->0));
-            let ret = Some(&self.v[i]);
+            let ret: Option<&T> = Some(&self.v[i]);
             return ret;
         } else {
             return None;
         }
     }
 
-    type Decrease = int;
+    type Decrease = usize;
 
     open spec fn decrease(&self) -> Option<Self::Decrease> {
-        Some((self.back() - self.front()) as int)
+        Some((self.back() - self.front()) as usize)
     }
 
     // open spec fn peek_next(&self) -> Option<Self::Item> {
@@ -489,10 +481,10 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
         }
     }
 
-    type Decrease = int;
+    type Decrease = usize;
 
     open spec fn decrease(&self) -> Option<Self::Decrease> {
-        Some(self.count() as int)
+        Some(self.count())
     }
 }
 
@@ -1052,7 +1044,6 @@ fn for_loop_test_skip() {
                     y.decrease().unwrap_or(arbitrary()),
             {
                 let ghost old_y = y;
-                broadcast use {does_decrease_decreases, does_decrease_int};
                 assume(y.skip_inv());   // Faking type invariant
                 // assert(y.decrease() == y.inner().decrease());
                 // assert(y.decrease() is Some);
@@ -1061,23 +1052,12 @@ fn for_loop_test_skip() {
                 match y.next() {
                     Some(VERUS_loop_val) => {
                         assume(y.skip_inv());   // Faking type invariant
-                        assert(old_y.decrease() is Some);
-                        assert(old_y.seq().len() > 0);
-                        assert(y.decrease() is Some);
-                        assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
-                        proof {
-                            does_decrease_decreases(old_y.decrease()->0, y.decrease()->0);
-                        }
                         VERUS_loop_next = VERUS_loop_val
                     }
                     None => {
                         assume(y.skip_inv());   // Faking type invariant
                         break
                     }
-                }
-                assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
-                proof {
-                    does_decrease_decreases(old_y.decrease()->0, y.decrease()->0);
                 }
                 // assert(y.decrease() is Some);
                 proof {
@@ -1088,7 +1068,6 @@ fn for_loop_test_skip() {
                     // body
                     w.push(*x);
                 };
-                assert(does_decrease(old_y.decrease()->0, y.decrease()->0));
                 // assert(y.decrease() is Some);
             }
         }
