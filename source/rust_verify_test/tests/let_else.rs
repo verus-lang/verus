@@ -149,3 +149,28 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] let_else_just_a_normal_var verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(irrefutable_let_patterns)]
+        fn test(x: u64) {
+            let y = x else {
+                assert(false);
+                loop { }
+            };
+
+            assert(y == x);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(irrefutable_let_patterns)]
+        fn test_fails(x: u64) {
+            let y = x else {
+                loop { }
+            };
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

@@ -272,7 +272,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
-    Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
+    Ok(bctx.spanned_typed_new(
+        expr.span,
+        &expr_typ()?,
+        ExprX::Call(target, Arc::new(vir_args), None),
+    ))
 }
 
 pub(crate) fn deref_to_vir<'tcx>(
@@ -325,7 +329,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
     let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
     let args = Arc::new(vec![arg.clone()]);
-    let x = ExprX::Call(call_target, args);
+    let x = ExprX::Call(call_target, args, None);
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
@@ -1617,6 +1621,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
                 Arc::new(vir_args),
+                None,
             ));
         }
         VerusItem::ErasedGhostValue | VerusItem::DummyCapture(_) => {

@@ -35,6 +35,7 @@ pub enum Constant {
 pub enum UnaryOp {
     Not,
     BitNot,
+    BitNeg,
     BitExtract(u32, u32),
     BitZeroExtend(u32),
     BitSignExtend(u32),
@@ -79,7 +80,9 @@ pub enum BinaryOp {
     BitSub,
     BitMul,
     BitUDiv,
-    BitUMod,
+    BitURem,
+    BitSDiv,
+    BitSRem,
     BitULt,
     BitUGt,
     BitULe,

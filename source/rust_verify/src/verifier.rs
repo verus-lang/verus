@@ -2060,6 +2060,7 @@ impl Verifier {
             false,
             self.args.check_api_safety,
             self.args.axiom_usage_info,
+            self.args.new_mut_ref,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2702,6 +2703,7 @@ impl Verifier {
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
             name_def_id_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
+            next_read_kind_id: std::rc::Rc::new(std::cell::Cell::new(0)),
         });
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
@@ -2865,8 +2867,9 @@ impl Verifier {
         }
 
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (vir_crate, erasure_modes, _read_kind_finals) =
+            vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
+                .map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);

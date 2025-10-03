@@ -242,7 +242,7 @@ impl PartialOrd for Fingerprint {
     }
 }
 
-const RUST_FLAGS: &str = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations";
+const RUST_FLAGS: &str = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations --cfg procmacro2_semver_exempt";
 
 fn main() {
     match run() {

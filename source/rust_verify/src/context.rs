@@ -39,6 +39,7 @@ pub struct ContextX<'tcx> {
     pub(crate) vstd_crate_name: Ident,
     pub(crate) name_def_id_map:
         std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Path, DefId>>>,
+    pub(crate) next_read_kind_id: std::rc::Rc<std::cell::Cell<u64>>,
 }
 
 #[derive(Clone)]
@@ -117,6 +118,12 @@ impl<'tcx> ContextX<'tcx> {
             ty,
             allow_mut_ref,
         )
+    }
+
+    pub(crate) fn unique_read_kind_id(&self) -> u64 {
+        let c = self.next_read_kind_id.get();
+        self.next_read_kind_id.set(c + 1);
+        c
     }
 }
 

@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
-    ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
+    ArchWordBits, BinaryOp, BodyVisibility, ByRef, Constant, DatatypeTransparency, DatatypeX, Dt,
+    Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Place,
-    PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
-    Variant, Variants, Visibility,
+    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ,
+    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1306,6 +1306,15 @@ impl PlaceX {
     pub fn temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
+
+    pub fn uses_temporary(&self) -> bool {
+        match self {
+            PlaceX::Local(_) => false,
+            PlaceX::DerefMut(p) => p.x.uses_temporary(),
+            PlaceX::Field(_opr, p) => p.x.uses_temporary(),
+            PlaceX::Temporary(_) => true,
+        }
+    }
 }
 
 pub fn place_to_expr(place: &Place) -> Expr {
@@ -1343,4 +1352,20 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
+}
+
+impl PatternX {
+    /// Returns a Pattern Var that is valid post-simplification.
+    pub fn simple_var(name: VarIdent, mutable: bool, span: &Span, typ: &Typ) -> Pattern {
+        SpannedTyped::new(
+            span,
+            typ,
+            PatternX::Var(PatternBinding {
+                name: name.clone(),
+                mutable,
+                by_ref: ByRef::No,
+                typ: typ.clone(),
+            }),
+        )
+    }
 }

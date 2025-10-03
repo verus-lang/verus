@@ -2,9 +2,9 @@ use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
-    TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX,
-    VarBinders, VarIdent, Variant, VirErr,
+    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    TraitImpl, TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -303,10 +303,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e1 = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Loc(R::get(e1))))
             }
-            ExprX::Call(call_target, exprs) => {
+            ExprX::Call(call_target, exprs, opt_e) => {
                 let ct = self.visit_call_target(call_target)?;
                 let es = self.visit_exprs(exprs)?;
-                R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es))))
+                let oe = self.visit_opt_expr(opt_e)?;
+                R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es), R::get_opt(oe))))
             }
             ExprX::Ctor(dt, id, binders, opt_e) => {
                 let bs = self.visit_binders_expr(binders)?;
@@ -620,14 +621,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::BorrowMut(R::get(p))))
             }
-            ExprX::BorrowMutPhaseOne(p) => {
+            ExprX::TwoPhaseBorrowMut(p) => {
                 let p = self.visit_place(p)?;
-                R::ret(|| expr_new(ExprX::BorrowMutPhaseOne(R::get(p))))
-            }
-            ExprX::BorrowMutPhaseTwo(p, e) => {
-                let p = self.visit_place(p)?;
-                let e = self.visit_expr(e)?;
-                R::ret(|| expr_new(ExprX::BorrowMutPhaseTwo(R::get(p), R::get(e))))
+                R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
             }
             ExprX::AssumeResolved(e, t) => {
                 let e = self.visit_expr(e)?;
@@ -637,6 +633,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
+            }
+            ExprX::UseLeftWhereRightCanHaveNoAssignments(e1, e2) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                R::ret(|| {
+                    expr_new(ExprX::UseLeftWhereRightCanHaveNoAssignments(R::get(e1), R::get(e2)))
+                })
             }
         }
     }
@@ -697,19 +700,35 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn visit_pattern_binding(
+        &mut self,
+        pb: &PatternBinding,
+    ) -> Result<R::Ret<PatternBinding>, Err> {
+        let PatternBinding { name, by_ref, typ, mutable } = pb;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| PatternBinding {
+            name: name.clone(),
+            by_ref: *by_ref,
+            typ: R::get(typ),
+            mutable: *mutable,
+        })
+    }
+
     fn visit_pattern_rec(&mut self, pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
         let typ = self.visit_typ(&pattern.typ)?;
         let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Var { name: _, mutable: _ } => {
-                R::ret(|| pattern_new(pattern.x.clone()))
+            PatternX::Wildcard(_) => R::ret(|| pattern_new(pattern.x.clone())),
+            PatternX::Var(binding) => {
+                let binding = self.visit_pattern_binding(binding)?;
+                R::ret(|| pattern_new(PatternX::Var(R::get(binding))))
             }
-            PatternX::Binding { name, mutable, sub_pat } => {
+            PatternX::Binding { binding, sub_pat } => {
+                let binding = self.visit_pattern_binding(binding)?;
                 let sub_pat = self.visit_pattern(sub_pat)?;
                 R::ret(|| {
                     pattern_new(PatternX::Binding {
-                        name: name.clone(),
-                        mutable: *mutable,
+                        binding: R::get(binding),
                         sub_pat: R::get(sub_pat),
                     })
                 })
@@ -736,6 +755,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     R::ret(|| (R::get(end_expr), *ineq_op))
                 })?;
                 R::ret(|| pattern_new(PatternX::Range(R::get_opt(start), R::get_opt(end))))
+            }
+            PatternX::ImmutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::ImmutRef(R::get(p))))
+            }
+            PatternX::MutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::MutRef(R::get(p))))
             }
         }
     }
@@ -928,12 +955,15 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard(_) => {}
-        PatternX::Var { name, mutable } => {
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ }) => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
-        PatternX::Binding { name, mutable, sub_pat } => {
+        PatternX::Binding {
+            binding: PatternBinding { name, mutable, by_ref: _, typ },
+            sub_pat,
+        } => {
             insert_pattern_vars(map, sub_pat, init);
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
         PatternX::Constructor(_, _, binders) => {
             for binder in binders.iter() {
@@ -946,6 +976,9 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         }
         PatternX::Expr(_) => {}
         PatternX::Range(_, _) => {}
+        PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
+            insert_pattern_vars(map, pat1, init);
+        }
     }
 }
 
