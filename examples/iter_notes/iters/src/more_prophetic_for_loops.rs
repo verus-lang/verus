@@ -77,7 +77,10 @@ pub trait DoubleEndedIterator : Iterator {
                 } else {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
-            });
+            }),
+            self.obeys_iter_laws() && old(self).seq().len() > 0 ==> 
+                vstd::std_specs::cmp::OrdSpec::cmp_spec(&self.decrease(), &old(self).decrease()) is Less,
+    ;
 
 }
 
@@ -571,7 +574,6 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
 
 }
 
-/*
 // reverse iterator
 struct ReverseIterator<Iter: Iterator> {
     iter: Iter,
@@ -582,6 +584,10 @@ impl<Iter: Iterator> ReverseIterator<Iter> {
     #[verifier::prophetic]
     closed spec fn reverse_inv(self) -> bool {
         self.iter.obeys_iter_laws()
+    }
+
+    pub closed spec fn inner(self) -> Iter {
+        self.iter
     }
 }
 
@@ -619,7 +625,14 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
+        assume(self.reverse_inv());
         self.iter.next_back()
+    }
+
+    type Decrease = Iter::Decrease;
+
+    open spec fn decrease(&self) -> Option<Self::Decrease> {
+        self.inner().decrease()
     }
 }
 
@@ -630,6 +643,7 @@ impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterat
     }
 }
 
+/*
 // collect
 
 #[verifier::exec_allows_no_decreases_clause]
@@ -1077,82 +1091,153 @@ fn for_loop_test_skip() {
     assert(w@ == v@.skip(3));
 }
 
-/*
-fn for_loop_test_skip2() {
+
+fn for_loop_test_rev() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
 
     let i = vec_iter(&v);
     let ghost old_i = i;
-    let iter = SkipIterator2::new(i, 3);
-    assert(iter.inner().loop_invariant(Some(&i)));
-    assert(iter.inner().loop_invariant(Some(&old_i)));
-    //assert(old_i.loop_invariant(Some(&iter.inner())));
-    // TODO: This isn't true, since `new` mutates i,
-    //       and in the postcondition for SkipIterator, we can't say enough
-    //       about how the inner iterator relates to the original iterator
-    assert(old_i == iter.inner());
-    assert(iter.inner().loop_invariant(Some(&iter.inner())));
-    assert(iter.loop_invariant(Some(&iter)));
+    let iter = ReverseIterator::new(i);
     // Verus will desugar this: 
     //
     // for x in y: m
     //     invariant
-    //         w@ + y.seq().map_values(|u: &u8| *u) == v@.skip(3)
+    //         w@ + y.seq().map_values(|u: &u8| *u) == v@.reverse()
     // {
     //     w.push(*x);
     // }
     //
     // Into:
     #[allow(non_snake_case)]
-    //let VERUS_iter_expr = v;
-    #[allow(non_snake_case)]
-    // let result =  match IntoIterator::into_iter(VERUS_iter_expr) {...
     let VERUS_loop_result = match iter {
         mut y => {
             let ghost VERUS_snapshot = y;
-            //let ghost mut y = VERUS_exec_iter;
+            let ghost mut VERUS_index = 0;
             loop
+                invariant_except_break
+                    y.decrease() is Some,
                 invariant
-                    y.loop_invariant(Some(&VERUS_snapshot)),
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
 
                       // inv
-                      &&& w@ + y.seq().map_values(|u: &u8| *u) == v@.skip(3)
+                      &&& w@ + y.seq().map_values(|u: &u8| *u) == v@.reverse()
                     }),
                 ensures
-                    y.loop_ensures(),
+                    y.seq().len() == 0 && y.completes(),
                 decreases
                     y.decrease().unwrap_or(arbitrary()),
             {
-                assume(y.skip_inv());   // Faking type invariant
+                let ghost old_y = y;
+                assume(y.reverse_inv());   // Faking type invariant
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
                 match y.next() {
                     Some(VERUS_loop_val) => {
-                        assume(y.skip_inv());   // Faking type invariant
+                        assume(y.reverse_inv());   // Faking type invariant
                         VERUS_loop_next = VERUS_loop_val
                     }
                     None => {
-                        assume(y.skip_inv());   // Faking type invariant
+                        assume(y.reverse_inv());   // Faking type invariant
                         break
                     }
+                }
+                // assert(y.decrease() is Some);
+                proof {
+                    VERUS_index = VERUS_index + 1;
                 }
                 let x = VERUS_loop_next;
                 let () = {
                     // body
                     w.push(*x);
                 };
+                // assert(y.decrease() is Some);
             }
         }
     };
 
     // Make sure our invariant was useful
-    assert(w@ == v@.skip(3));
+    assert(w@ == v@.reverse());
 }
-*/
+
+fn for_loop_test_double_rev() {
+    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+    let mut w: Vec<u8> = vec![];
+
+    let i = vec_iter(&v);
+    let ghost old_i = i;
+    let iter = ReverseIterator::new(ReverseIterator::new(i));
+    // Verus will desugar this: 
+    //
+    // for x in y: m
+    //     invariant
+    //         w@ + y.seq().map_values(|u: &u8| *u) == v@
+    // {
+    //     w.push(*x);
+    // }
+    //
+    // Into:
+    #[allow(non_snake_case)]
+    let VERUS_loop_result = match iter {
+        mut y => {
+            let ghost VERUS_snapshot = y;
+            let ghost mut VERUS_index = 0;
+            loop
+                invariant_except_break
+                    y.decrease() is Some,
+                invariant
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
+                    ({ 
+                      // Grab the next val for (possible) use in inv
+                      let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
+
+                      // inv
+                      &&& w@ + y.seq().map_values(|u: &u8| *u) == v@
+                    }),
+                ensures
+                    y.seq().len() == 0 && y.completes(),
+                decreases
+                    y.decrease().unwrap_or(arbitrary()),
+            {
+                let ghost old_y = y;
+                assume(y.reverse_inv());   // Faking type invariant
+                #[allow(non_snake_case)]
+                let mut VERUS_loop_next;
+                match y.next() {
+                    Some(VERUS_loop_val) => {
+                        assume(y.reverse_inv());   // Faking type invariant
+                        VERUS_loop_next = VERUS_loop_val
+                    }
+                    None => {
+                        assume(y.reverse_inv());   // Faking type invariant
+                        break
+                    }
+                }
+                // assert(y.decrease() is Some);
+                proof {
+                    VERUS_index = VERUS_index + 1;
+                }
+                let x = VERUS_loop_next;
+                let () = {
+                    // body
+                    w.push(*x);
+                };
+                // assert(y.decrease() is Some);
+            }
+        }
+    };
+
+    // Make sure our invariant was useful
+    assert(w@ == v@);
+}
+
 
 
 } // verus!
