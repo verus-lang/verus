@@ -746,7 +746,8 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
-        &mut |_, e, _| {
+        &mut (),
+        &mut |_, _, e| {
             match &e.x {
                 ExprX::Var(x) | ExprX::VarLoc(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -758,7 +759,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
         &mut |_, _, _| Ok(()),
         &mut |_, _, _| Ok(()),
         &mut |_, _, _, _| Ok(()),
-        &mut |_, p, _| {
+        &mut |_, _, p| {
             match &p.x {
                 PlaceX::Local(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -767,7 +768,6 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
             }
             Ok(())
         },
-        &mut |_| (),
     )
     .expect("referenced_vars_expr");
     vars.into_inner()

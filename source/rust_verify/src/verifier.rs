@@ -2834,15 +2834,13 @@ impl Verifier {
                             let map = ctxt.name_def_id_map.borrow();
                             let did = map.get(&p);
                             match did {
-                                Some(did) => {
-                                    match build_boundary_suggestion(&ctxt, *did, &p) {
-                                        Ok(s) => err.help(format!(
-                                            "The following declaration may resolve this error:\n{}",
-                                            s
-                                        )),
-                                        Err(_) => err, //e) => err.help(format!("No suggestion could be constructed: {}", e.note)),
-                                    }
-                                }
+                                Some(did) => match build_boundary_suggestion(&ctxt, *did, &p) {
+                                    Ok(s) => err.help(format!(
+                                        "The following declaration may resolve this error:\n{}",
+                                        s
+                                    )),
+                                    Err(_) => err,
+                                },
                                 None => err,
                             }
                         }

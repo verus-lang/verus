@@ -4,7 +4,7 @@ use crate::ast::{
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
     ParamX, Params, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
     TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX,
-    VarBinders, VarIdent, Variant, VirErr, VirErrAs,
+    VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -12,7 +12,6 @@ use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::scope_map::ScopeMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub(crate) trait Scoper {
@@ -952,48 +951,47 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
 
-pub(crate) fn ast_visitor_check_with_scope_map<E, FE, FS, FP, FT, FPL, Emit>(
+pub(crate) fn ast_visitor_check_with_scope_map<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
     fpl: &mut FPL,
-    emit_diag_closure: &mut Emit,
-) -> Result<(), E>
+) -> Result<(), ERR>
 where
-    FE: FnMut(&VisitorScopeMap, &Expr, &mut Emit) -> Result<(), E>,
-    FS: FnMut(&VisitorScopeMap, &Stmt, &mut Emit) -> Result<(), E>,
-    FP: FnMut(&VisitorScopeMap, &Pattern, &mut Emit) -> Result<(), E>,
-    FT: FnMut(&VisitorScopeMap, &Typ, &Span, &mut Emit) -> Result<(), E>,
-    FPL: FnMut(&VisitorScopeMap, &Place, &mut Emit) -> Result<(), E>,
-    Emit: FnMut((Option<crate::ast::Path>, VirErrAs)) -> (),
+    FE: FnMut(&mut E, &VisitorScopeMap, &Expr) -> Result<(), ERR>,
+    FS: FnMut(&mut E, &VisitorScopeMap, &Stmt) -> Result<(), ERR>,
+    FP: FnMut(&mut E, &VisitorScopeMap, &Pattern) -> Result<(), ERR>,
+    FT: FnMut(&mut E, &VisitorScopeMap, &Typ, &Span) -> Result<(), ERR>,
+    FPL: FnMut(&mut E, &VisitorScopeMap, &Place) -> Result<(), ERR>,
 {
     match ast_visitor_dfs(
         expr,
         scope_map,
-        &mut |scope_map, x, emit_diag| match fe(scope_map, x, emit_diag) {
+        env,
+        &mut |env, scope_map, x| match fe(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x, emit_diag| match fs(scope_map, x, emit_diag) {
+        &mut |env, scope_map, x| match fs(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x, emit_diag| match fp(scope_map, x, emit_diag) {
+        &mut |env, scope_map, x| match fp(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x, span, emit_diag| match ft(scope_map, x, span, emit_diag) {
+        &mut |env, scope_map, x, span| match ft(env, scope_map, x, span) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x, emit_diag| match fpl(scope_map, x, emit_diag) {
+        &mut |env, scope_map, x| match fpl(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        emit_diag_closure,
     ) {
         VisitorControlFlow::Recurse => Ok(()),
         VisitorControlFlow::Return => unreachable!(),
@@ -1001,28 +999,28 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT, FPL, Emit>(
+pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
     fpl: &mut FPL,
-    emit_diag: &mut Emit,
-) -> Result<(), E>
+) -> Result<(), ERR>
 where
-    FE: FnMut(&VisitorScopeMap, &Expr, &mut Emit) -> Result<(), E>,
-    FS: FnMut(&VisitorScopeMap, &Stmt, &mut Emit) -> Result<(), E>,
-    FP: FnMut(&VisitorScopeMap, &Pattern, &mut Emit) -> Result<(), E>,
-    FT: FnMut(&VisitorScopeMap, &Typ, &Span, &mut Emit) -> Result<(), E>,
-    FPL: FnMut(&VisitorScopeMap, &Place, &mut Emit) -> Result<(), E>,
-    Emit: FnMut((Option<crate::ast::Path>, VirErrAs)) -> (),
+    FE: FnMut(&mut E, &VisitorScopeMap, &Expr) -> Result<(), ERR>,
+    FS: FnMut(&mut E, &VisitorScopeMap, &Stmt) -> Result<(), ERR>,
+    FP: FnMut(&mut E, &VisitorScopeMap, &Pattern) -> Result<(), ERR>,
+    FT: FnMut(&mut E, &VisitorScopeMap, &Typ, &Span) -> Result<(), ERR>,
+    FPL: FnMut(&mut E, &VisitorScopeMap, &Place) -> Result<(), ERR>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    ast_visitor_check_with_scope_map(expr, &mut scope_map, fe, fs, fp, ft, fpl, emit_diag)
+    ast_visitor_check_with_scope_map(expr, &mut scope_map, env, fe, fs, fp, ft, fpl)
 }
 
-struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit, Diag> {
+struct WalkAstVisitor<'a, E, FE, FS, FP, FT, FPL> {
+    env: &'a mut E,
     fe: &'a mut FE,
     fs: &'a mut FS,
     fp: &'a mut FP,
@@ -1031,22 +1029,19 @@ struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit, Diag> {
     map: &'a mut VisitorScopeMap,
     // Since types don't have spans, keep track of the best span as we descend
     most_specific_span: Span,
-    emit_diag: &'a mut Emit,
-    _diag_marker: PhantomData<Diag>,
 }
 
-impl<'a, FE, FS, FP, FT, FPL, T, Emit, Diag> AstVisitor<Walk, T, VisitorScopeMap>
-    for WalkAstVisitor<'a, FE, FS, FP, FT, FPL, Emit, Diag>
+impl<'a, E, FE, FS, FP, FT, FPL, T> AstVisitor<Walk, T, VisitorScopeMap>
+    for WalkAstVisitor<'a, E, FE, FS, FP, FT, FPL>
 where
-    FE: FnMut(&mut VisitorScopeMap, &Expr, &mut Emit) -> VisitorControlFlow<T>,
-    FS: FnMut(&mut VisitorScopeMap, &Stmt, &mut Emit) -> VisitorControlFlow<T>,
-    FP: FnMut(&mut VisitorScopeMap, &Pattern, &mut Emit) -> VisitorControlFlow<T>,
-    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span, &mut Emit) -> VisitorControlFlow<T>,
-    FPL: FnMut(&mut VisitorScopeMap, &Place, &mut Emit) -> VisitorControlFlow<T>,
-    Emit: FnMut(Diag) -> (),
+    FE: FnMut(&mut E, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut E, &mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut E, &mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut E, &mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut E, &mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
-        match (self.ft)(self.map, typ, &self.most_specific_span, &mut self.emit_diag) {
+        match (self.ft)(&mut self.env, self.map, typ, &self.most_specific_span) {
             VisitorControlFlow::Recurse => self.visit_typ_rec(typ),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1055,7 +1050,7 @@ where
 
     fn visit_expr(&mut self, expr: &Expr) -> Result<(), T> {
         self.most_specific_span = expr.span.clone();
-        match (self.fe)(self.map, expr, &mut self.emit_diag) {
+        match (self.fe)(&mut self.env, self.map, expr) {
             VisitorControlFlow::Recurse => self.visit_expr_rec(expr),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1064,7 +1059,7 @@ where
 
     fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), T> {
         self.most_specific_span = stmt.span.clone();
-        match (self.fs)(self.map, stmt, &mut self.emit_diag) {
+        match (self.fs)(&mut self.env, self.map, stmt) {
             VisitorControlFlow::Recurse => self.visit_stmt_rec(stmt),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1073,7 +1068,7 @@ where
 
     fn visit_place(&mut self, place: &Place) -> Result<(), T> {
         self.most_specific_span = place.span.clone();
-        match (self.fpl)(self.map, place, &mut self.emit_diag) {
+        match (self.fpl)(&mut self.env, self.map, place) {
             VisitorControlFlow::Recurse => self.visit_place_rec(place),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1082,7 +1077,7 @@ where
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
         self.most_specific_span = pattern.span.clone();
-        match (self.fp)(self.map, pattern, &mut self.emit_diag) {
+        match (self.fp)(&mut self.env, self.map, pattern) {
             VisitorControlFlow::Recurse => self.visit_pattern_rec(pattern),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1094,35 +1089,25 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL, Emit, Diag>(
+pub(crate) fn ast_visitor_dfs<T, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
     fpl: &mut FPL,
-    emit_diag: &mut Emit,
 ) -> VisitorControlFlow<T>
 where
-    FE: FnMut(&mut VisitorScopeMap, &Expr, &mut Emit) -> VisitorControlFlow<T>,
-    FS: FnMut(&mut VisitorScopeMap, &Stmt, &mut Emit) -> VisitorControlFlow<T>,
-    FP: FnMut(&mut VisitorScopeMap, &Pattern, &mut Emit) -> VisitorControlFlow<T>,
-    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span, &mut Emit) -> VisitorControlFlow<T>,
-    FPL: FnMut(&mut VisitorScopeMap, &Place, &mut Emit) -> VisitorControlFlow<T>,
-    Emit: FnMut(Diag) -> (),
+    FE: FnMut(&mut E, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut E, &mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut E, &mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut E, &mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut E, &mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
-    let mut vis = WalkAstVisitor {
-        fe,
-        fs,
-        fp,
-        ft,
-        fpl,
-        map,
-        most_specific_span: expr.span.clone(),
-        emit_diag,
-        _diag_marker: PhantomData,
-    };
+    let mut vis =
+        WalkAstVisitor { env, fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
     match vis.visit_expr(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(t) => VisitorControlFlow::Stop(t),

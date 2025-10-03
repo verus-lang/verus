@@ -1,8 +1,8 @@
 use crate::ast::{
-    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, DatatypeX, Dt,
-    Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness,
-    Path, PathX, Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
-    VarIdent, VirErr, VirErrAs, Visibility,
+    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
+    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
+    VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -26,25 +26,54 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+trait EmitError {
+    fn emit(&mut self, path: Option<Path>, err: VirErrAs);
+    fn has_fatal_errors(&self) -> bool;
+}
+
+struct EmitErrorState {
+    diags: Vec<VirErrAs>,
+    diag_map: HashMap<Path, usize>,
+}
+
+impl EmitError for EmitErrorState {
+    fn emit(&mut self, path: Option<Path>, err: VirErrAs) {
+        match path {
+            Some(path) => match self.diag_map.get(&path) {
+                Some(msg_idx) => self.diags[*msg_idx] = self.diags[*msg_idx].merge(&err),
+                None => {
+                    self.diag_map.insert(path, self.diags.len());
+                    self.diags.push(err);
+                }
+            },
+            None => self.diags.push(err),
+        };
+    }
+
+    fn has_fatal_errors(&self) -> bool {
+        self.diags.iter().any(|err| match err {
+            VirErrAs::NonBlockingError(..) => true,
+            _ => false,
+        })
+    }
+}
+
 #[warn(unused_must_use)]
-fn check_one_typ<Emit>(
+fn check_one_typ<Emit: EmitError>(
     ctxt: &Ctxt,
     typ: &Typ,
     span: &crate::messages::Span,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     match &**typ {
         TypX::Datatype(Dt::Path(path), _, _) => {
-            check_path_and_get_datatype(ctxt, path, span, emit)?;
+            let _ = check_path_and_get_datatype(ctxt, path, span, emit)?;
             Ok(())
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
-            check_path_and_get_function(ctxt, fun, None, span, emit)?;
+            check_function_access(ctxt, fun, None, span, emit)?;
             if let Some(res_fun) = opt_res_fun {
-                check_path_and_get_function(ctxt, res_fun, None, span, emit)?;
+                check_function_access(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
         }
@@ -53,28 +82,27 @@ where
 }
 
 #[warn(unused_must_use)]
-fn check_typ<Emit>(
+fn check_typ<Emit: EmitError>(
     ctxt: &Ctxt,
     typ: &Arc<TypX>,
     span: &crate::messages::Span,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span, emit))
 }
 
+// Returns:
+// - Ok(Ok(d)) on success
+// - Ok(Err(())) to indicate that an error was reported via "emit",
+//   but that the caller can proceed with additional checks to try to find additional errors
+// - Err(...) to indicate that the caller should abort entirely
 #[warn(unused_must_use)]
-fn check_path_and_get_datatype<'a, Emit>(
+fn check_path_and_get_datatype<'a, Emit: EmitError>(
     ctxt: &'a Ctxt,
     path: &Path,
     span: &crate::messages::Span,
     emit: &mut Emit,
-) -> Result<Datatype, VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<Result<Datatype, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
         for dt in &ctxt.unpruned_krate.datatypes {
             match &dt.x.proxy {
@@ -94,7 +122,7 @@ where
     }
 
     match ctxt.dts.get(path) {
-        Some(dt) => Ok(dt.clone()),
+        Some(dt) => Ok(Ok(dt.clone())),
         None => {
             if let Some(actual_path) = is_proxy(ctxt, path) {
                 return Err(error(
@@ -107,7 +135,6 @@ where
                 ));
             } else {
                 let path_string = path_as_friendly_rust_name(path);
-                let dt = build_dummy_dt(span, path);
                 let msg = if is_known_external(ctxt, path) {
                     format!(
                         "cannot use type `{path_string:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`.",
@@ -124,24 +151,26 @@ where
                 };
                 let err: VirErrAs =
                     VirErrAs::NonBlockingError(error(span, msg), Some(path.clone()));
-                emit((Some(path.clone()), err));
+                emit.emit(Some(path.clone()), err);
 
-                return Ok(dt);
+                Ok(Err(()))
             }
         }
     }
 }
 
-fn check_path_and_get_function<'a, Emit>(
+// Returns:
+// - Ok(Ok(f)) on success
+// - Ok(Err(())) to indicate that an error was reported via "emit",
+//   but that the caller can proceed with additional checks to try to find additional errors
+// - Err(...) to indicate that the caller should abort entirely
+fn check_path_and_get_function<'a, Emit: EmitError>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
     emit: &mut Emit,
-) -> Result<Function, VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<Result<Function, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
         for function in &ctxt.unpruned_krate.functions {
@@ -158,7 +187,7 @@ where
     }
 
     let f = match ctxt.funs.get(x) {
-        Some(f) => f.clone(),
+        Some(f) => Ok(f.clone()),
         None => {
             if let Some(actual_path) = is_proxy(ctxt, &x.path) {
                 return Err(error(
@@ -174,7 +203,6 @@ where
                     Some(_) => true,
                     _ => false,
                 };
-                let func = build_dummy_fn(span, &x.path);
                 let path_string = path_as_friendly_rust_name(&x.path);
                 let err_str = if locally_defined {
                     format!(
@@ -191,16 +219,16 @@ where
                         },
                     )
                 };
-                emit((
+                emit.emit(
                     Some(x.path.clone()),
                     VirErrAs::NonBlockingError(error(span, &err_str), Some(x.path.clone())),
-                ));
-                func
+                );
+                Err(())
             }
         }
     };
 
-    if let Some((required_vis, reason)) = disallow_private_access {
+    if let (Some((required_vis, reason)), Ok(f)) = (disallow_private_access, &f) {
         if !required_vis.at_least_as_restrictive_as(&f.x.visibility) {
             let kind = f.x.item_kind.to_string();
             let msg = format!("in {reason:}, cannot refer to private {kind:}");
@@ -211,7 +239,7 @@ where
     Ok(f)
 }
 
-fn check_datatype_access<Emit>(
+fn check_datatype_access<Emit: EmitError>(
     ctxt: &Ctxt,
     path: &Path,
     disallow_private_access: Option<(&Visibility, &str)>,
@@ -219,11 +247,13 @@ fn check_datatype_access<Emit>(
     span: &Span,
     access_type: &str,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     let dt = check_path_and_get_datatype(ctxt, path, span, emit)?;
+    let Ok(dt) = dt else {
+        // Found an error resolving dt; skip this and proceed to find more errors
+        assert!(emit.has_fatal_errors());
+        return Ok(());
+    };
     match &dt.x.transparency {
         DatatypeTransparency::Never => {
             // This can only happen if the datatype is 'external_body'
@@ -332,33 +362,46 @@ where
     Ok(())
 }
 
-fn check_one_expr<Emit>(
+fn check_function_access<'a, Emit: EmitError>(
+    ctxt: &'a Ctxt,
+    x: &Fun,
+    disallow_private_access: Option<(&Visibility, &str)>,
+    span: &crate::messages::Span,
+    emit: &mut Emit,
+) -> Result<(), VirErr> {
+    let _ = check_path_and_get_function(ctxt, x, disallow_private_access, span, emit)?;
+    Ok(())
+}
+
+fn check_one_expr<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
             check_var(function, &expr.span, area, x)?;
         }
         ExprX::ConstVar(x, _) => {
-            check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
+            check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args) => {
             let f =
                 check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
+            let Ok(f) = f else {
+                // Found an error resolving f; skip this and proceed to find more errors
+                assert!(emit.has_fatal_errors());
+                return Ok(());
+            };
             match kind {
                 CallTargetKind::Static => {}
                 CallTargetKind::ProofFn(..) => {}
                 CallTargetKind::Dynamic => {}
                 CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
-                    check_path_and_get_function(
+                    check_function_access(
                         ctxt,
                         resolved_fun,
                         disallow_private_access,
@@ -482,7 +525,8 @@ where
             crate::ast_visitor::ast_visitor_check_with_scope_map(
                 proof,
                 &mut crate::ast_visitor::VisitorScopeMap::new(),
-                &mut |scope_map, e, _| match &e.x {
+                &mut (),
+                &mut |_, scope_map, e| match &e.x {
                     ExprX::Var(x) | ExprX::VarLoc(x)
                         if !scope_map.contains_key(&x) && !referenced.contains(x) =>
                     {
@@ -496,7 +540,7 @@ where
                 &mut |_, _, _| Ok(()),
                 &mut |_, _, _| Ok(()),
                 &mut |_, _, _, _| Ok(()),
-                &mut |scope_map, p, _| match &p.x {
+                &mut |_, scope_map, p| match &p.x {
                     PlaceX::Local(x) if !scope_map.contains_key(&x) && !referenced.contains(x) => {
                         Err(error(
                             &p.span,
@@ -505,7 +549,6 @@ where
                     }
                     _ => Ok(()),
                 },
-                &mut |_| (),
             )?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
@@ -516,10 +559,10 @@ where
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
                 if !vars.is_empty() {
-                    emit((None, VirErrAs::Warning(
+                    emit.emit(None, VirErrAs::Warning(
                         error(&expr.span, "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`")
                             .help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication")
-                    )));
+                    ));
                 }
             }
             _ => {}
@@ -532,6 +575,11 @@ where
                 return Ok(());
             }
             let f = check_path_and_get_function(ctxt, f, None, &expr.span, emit)?;
+            let Ok(f) = f else {
+                // Found an error resolving f; skip this and proceed to find more errors
+                assert!(emit.has_fatal_errors());
+                return Ok(());
+            };
             if *is_broadcast_use {
                 if !f.x.attrs.broadcast_forall {
                     return Err(error(
@@ -571,6 +619,11 @@ where
         ExprX::ExecFnByName(fun) => {
             let func =
                 check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span, emit)?;
+            let Ok(func) = func else {
+                // Found an error resolving f; skip this and proceed to find more errors
+                assert!(emit.has_fatal_errors());
+                return Ok(());
+            };
             for param in func.x.params.iter() {
                 if param.x.is_mut {
                     return Err(error(
@@ -611,17 +664,14 @@ where
     Ok(())
 }
 
-fn check_one_place<Emit>(
+fn check_one_place<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     match &place.x {
         PlaceX::Local(x) => {
             check_var(function, &place.span, area, x)?;
@@ -663,16 +713,13 @@ fn check_var(function: &Function, span: &Span, area: Area, x: &VarIdent) -> Resu
     Ok(())
 }
 
-fn check_one_pattern<Emit>(
+fn check_one_pattern<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     pattern: &Pattern,
     disallow_private_access: Option<(&Visibility, &str)>,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     match &pattern.x {
         PatternX::Constructor(Dt::Path(path), _id, _binders) => {
             check_datatype_access(
@@ -697,45 +744,39 @@ enum Area {
     Body,
 }
 
-fn check_expr<Emit>(
+fn check_expr<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
     emit: &mut Emit,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     let check_result = crate::ast_visitor::ast_visitor_check(
         expr,
-        &mut |_scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>, emit| {
+        emit,
+        &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
             check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_scope_map, _stmt, _emit| Ok(()),
-        &mut |_scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>, emit| {
+        &mut |_emit, _scope_map, _stmt| Ok(()),
+        &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },
-        &mut |_scope_map, typ, span, emit| check_one_typ(ctxt, typ, span, emit),
-        &mut |_scope_map, place, emit| {
+        &mut |emit, _scope_map, typ, span| check_one_typ(ctxt, typ, span, emit),
+        &mut |emit, _scope_map, place| {
             check_one_place(ctxt, function, place, disallow_private_access, area, emit)
         },
-        emit,
     );
 
     check_result
 }
 
-fn check_function<Emit>(
+fn check_function<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     emit: &mut Emit,
     _no_verify: bool,
-) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -1214,13 +1255,13 @@ where
         && (function.x.attrs.exec_assume_termination
             || function.x.attrs.exec_allows_no_decreases_clause)
     {
-        emit((
+        emit.emit(
             None,
             VirErrAs::Warning(error(
                 &function.span,
                 "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
             )),
-        ));
+        );
     }
 
     if let Some(body) = &function.x.body {
@@ -1288,10 +1329,11 @@ where
     Ok(())
 }
 
-fn check_datatype<Emit>(ctxt: &Ctxt, dt: &Datatype, emit: &mut Emit) -> Result<(), VirErr>
-where
-    Emit: FnMut((Option<Path>, VirErrAs)) -> (),
-{
+fn check_datatype<Emit: EmitError>(
+    ctxt: &Ctxt,
+    dt: &Datatype,
+    emit: &mut Emit,
+) -> Result<(), VirErr> {
     for variant in dt.x.variants.iter() {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
@@ -1745,17 +1787,9 @@ pub fn check_crate(
         }
     }
 
-    let mut diag_map: HashMap<Path, usize> = HashMap::new();
-    let mut emit = |(k, v): (Option<Path>, VirErrAs)| match k {
-        Some(k) => match diag_map.get(&k) {
-            Some(msg_idx) => diags[*msg_idx] = diags[*msg_idx].merge(&v),
-            None => {
-                diag_map.insert(k, diags.len());
-                diags.push(v);
-            }
-        },
-        None => diags.push(v),
-    };
+    let diag_map: HashMap<Path, usize> = HashMap::new();
+    let new_diags: Vec<VirErrAs> = Vec::new();
+    let mut emit = EmitErrorState { diag_map, diags: new_diags };
     let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
@@ -1775,86 +1809,12 @@ pub fn check_crate(
         }
         check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span, &mut emit)?;
     }
+
+    diags.append(&mut emit.diags);
     // There is no point in checking for well-founded types if we already have a fatal error:
     if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
         return Ok(());
     }
     crate::recursive_types::check_recursive_types(krate)?;
     Ok(())
-}
-
-pub(crate) const DUMMY_DT_VARIANT_NAME: &str = "Error Shim For External Type";
-/// This function is used for optimistic compilation after an error.
-/// It builds a Datatype (Spanned DatatypeX) approximating what would exist
-/// in krate that can be used in place of an immediate failure.
-/// build_dummy_dt should not be called without also emitting a fatal error.
-fn build_dummy_dt(span: &crate::messages::Span, external_path: &Arc<PathX>) -> Datatype {
-    crate::def::Spanned::new(
-        span.clone(),
-        DatatypeX {
-            name: Dt::Path(external_path.clone()),
-            proxy: None,
-            owning_module: None,
-            visibility: Visibility { restricted_to: None },
-            transparency: DatatypeTransparency::WhenVisible(Visibility::public()),
-            typ_params: Arc::new(vec![]),
-            typ_bounds: Arc::new(vec![]),
-            variants: Arc::new(vec![crate::ast::Variant {
-                name: DUMMY_DT_VARIANT_NAME.to_owned().into(),
-                fields: vec![].into(),
-                ctor_style: crate::ast::CtorPrintStyle::Parens,
-            }]),
-            mode: Mode::Exec,
-            ext_equal: false,
-            user_defined_invariant_fn: None,
-            sized_constraint: None,
-        },
-    )
-}
-
-/// This function is used for optimistic compilation after an error.
-/// It builds a Function (Spanned FunctionX) approximating what would exist
-/// in krate that can be used in place of an immediate failure.
-/// build_dummy_fn should not be called without also emitting a fatal error.
-fn build_dummy_fn(span: &crate::messages::Span, external_path: &Arc<PathX>) -> Function {
-    crate::def::Spanned::new(
-        span.clone(),
-        crate::ast::FunctionX {
-            name: Arc::new(crate::ast::FunX { path: external_path.clone() }),
-            proxy: None,
-            kind: FunctionKind::Static,
-            visibility: Visibility { restricted_to: None },
-            body_visibility: BodyVisibility::public(),
-            opaqueness: Opaqueness::Opaque,
-            owning_module: None,
-            mode: Mode::Exec,
-            typ_params: Arc::new(vec![]),
-            typ_bounds: Arc::new(vec![]),
-            params: Arc::new(vec![]),
-            ret: crate::def::Spanned::new(
-                span.clone(),
-                crate::ast::ParamX {
-                    name: crate::ast_util::air_unique_var(crate::def::RETURN_VALUE),
-                    typ: Arc::new(TypX::TypeId),
-                    mode: Mode::Exec,
-                    is_mut: false,
-                    unwrapped_info: None,
-                },
-            ),
-            ens_has_return: true,
-            require: Arc::new(vec![]),
-            ensure: (Arc::new(vec![]), Arc::new(vec![])),
-            returns: None,
-            decrease: Arc::new(vec![]),
-            decrease_when: None,
-            decrease_by: None,
-            fndef_axioms: None,
-            mask_spec: None,
-            unwind_spec: None,
-            item_kind: crate::ast::ItemKind::Function,
-            attrs: Default::default(),
-            body: None,
-            extra_dependencies: vec![],
-        },
-    )
 }

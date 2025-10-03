@@ -1,9 +1,7 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
 use crate::external::CrateItems;
-use crate::rust_to_vir_base::{
-    check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
-};
+use crate::rust_to_vir_base::{check_generics_bounds_with_polarity, process_predicate_bounds};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
@@ -27,7 +25,6 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 ) -> Result<(), VirErr> {
     use crate::external::{GeneralItemId, VerifOrExternal};
     use rustc_hir::ItemKind;
-    let tcx = ctxt.tcx;
 
     for krate in imported.iter() {
         for t in &krate.traits {
@@ -50,12 +47,7 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                             let attrs = ctxt.tcx.hir_attrs(item.hir_id());
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
-                                let path = def_id_to_vir_path(
-                                    tcx,
-                                    &ctxt.verus_items,
-                                    trait_def_id,
-                                    ctxt.path_def_id_ref(),
-                                );
+                                let path = ctxt.def_id_to_vir_path(trait_def_id);
                                 let spec = path.replace_last(Arc::new(spec.clone()));
                                 let imp = path.replace_last(Arc::new(imp.clone()));
                                 let m = &mut external_info.external_trait_extension_impl_map;
@@ -138,8 +130,7 @@ pub(crate) fn translate_trait<'tcx>(
     safety: Safety,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
-    let orig_trait_path =
-        def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id, ctxt.path_def_id_ref());
+    let orig_trait_path = ctxt.def_id_to_vir_path(trait_def_id);
     let mut trait_path = orig_trait_path.clone();
     let (generics_params, mut typ_bounds) = {
         let (generics_params, mut typ_bounds) = check_generics_bounds_with_polarity(
@@ -245,8 +236,7 @@ pub(crate) fn translate_trait<'tcx>(
     }
     let ex_trait_id_for = ex_trait_ref_for.map(|r| r.def_id);
     if let Some(ex_trait_id_for) = ex_trait_id_for {
-        trait_path =
-            def_id_to_vir_path(tcx, &ctxt.verus_items, ex_trait_id_for, ctxt.path_def_id_ref());
+        trait_path = ctxt.def_id_to_vir_path(ex_trait_id_for);
     }
     if let Some(x) = &trait_vattrs.external_trait_specification {
         if ex_trait_id_for.is_none() {
@@ -279,12 +269,7 @@ pub(crate) fn translate_trait<'tcx>(
             );
         }
 
-        let item_path = def_id_to_vir_path(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            owner_id.to_def_id(),
-            ctxt.path_def_id_ref(),
-        );
+        let item_path = ctxt.def_id_to_vir_path(owner_id.to_def_id());
         let is_verus_spec =
             item_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
         let attrs = tcx.hir_attrs(trait_item.hir_id());

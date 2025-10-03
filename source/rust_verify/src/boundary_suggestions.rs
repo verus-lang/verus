@@ -5,7 +5,7 @@ use std::{
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
-    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind
+    EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -42,7 +42,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
 ) -> Result<String, VirErr> {
     let path_string = ctxt.tcx.def_path_str(external_def_id);
     let path_string = prepend_crate_if_local(external_def_id, path_string);
-    
+
     let generics = ctxt.tcx.generics_of(external_def_id);
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
@@ -167,8 +167,14 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
             format!(
                 "<{} as {}>::{}",
                 prepend_crate_if_local_for_type(&self_ty, self_ty.to_string()),
-                prepend_crate_if_local(trait_ref.def_id, ctxt.tcx.def_path_str_with_args(trait_ref.def_id, trait_ref.args)),
-                prepend_crate_if_local(external_def_id, ctxt.tcx.item_ident(external_def_id).to_string())
+                prepend_crate_if_local(
+                    trait_ref.def_id,
+                    ctxt.tcx.def_path_str_with_args(trait_ref.def_id, trait_ref.args),
+                ),
+                prepend_crate_if_local(
+                    external_def_id,
+                    ctxt.tcx.item_ident(external_def_id).to_string(),
+                ),
             )
         } else {
             // This is an inherent impl, don't need to build a trait impl string.
@@ -198,11 +204,20 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
             .inputs()
             .iter()
             .enumerate()
-            .map(|(i, val)| { "_".to_owned() + i.to_string().as_str() + ": " + &prepend_crate_if_local_for_type(val, val.to_string()) })
+            .map(|(i, val)| {
+                "_".to_owned()
+                    + i.to_string().as_str()
+                    + ": "
+                    + &prepend_crate_if_local_for_type(val, val.to_string())
+            })
             .fold("".to_string(), |acc, s| acc + &s + ", ")
             .trim_end_matches(", "), //params,
         if ret_ty.is_unit() { "" } else { " -> " },
-        if ret_ty.is_unit() { "".to_owned() } else { prepend_crate_if_local_for_type(&ret_ty, ret_ty.to_string()) }, //ret_typ,
+        if ret_ty.is_unit() {
+            "".to_owned()
+        } else {
+            prepend_crate_if_local_for_type(&ret_ty, ret_ty.to_string())
+        },
         if where_clauses.is_empty() {
             "".to_owned()
         } else {
@@ -212,31 +227,27 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     Ok(suggestion_text)
 }
 
-fn prepend_crate_if_local_for_type<'tcx>(
-    ty: &Ty<'tcx>,
-    s: String,
-) -> String {
+fn prepend_crate_if_local_for_type<'tcx>(ty: &Ty<'tcx>, s: String) -> String {
     match ty.kind() {
         rustc_type_ir::TyKind::Adt(adt_def, _) => prepend_crate_if_local(adt_def.did(), s),
         rustc_type_ir::TyKind::FnDef(did, _) => prepend_crate_if_local(*did, s),
-        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => 
-            match region.get_name() {
-                Some(sym) => "&".to_owned() + sym.as_str() + " " + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string()),
-                None => "&".to_owned() + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string()),
-            },
+        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => match region.get_name() {
+            Some(sym) => {
+                "&".to_owned()
+                    + sym.as_str()
+                    + " "
+                    + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string())
+            }
+            None => {
+                "&".to_owned() + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string())
+            }
+        },
         _ => s,
     }
 }
 
-fn prepend_crate_if_local<'tcx>(
-    external_def_id: DefId,
-    s: String,
-) -> String {
-    if external_def_id.is_local() {
-        "crate::".to_owned() + &s
-    } else {
-        s
-    }
+fn prepend_crate_if_local<'tcx>(external_def_id: DefId, s: String) -> String {
+    if external_def_id.is_local() { "crate::".to_owned() + &s } else { s }
 }
 /// A called external item may have anonymous early-bound lifetimes.
 /// These must be made explicit for the assume_specification/other declaration.
@@ -319,8 +330,16 @@ fn build_where_clauses<'tcx>(
                         let trait_with_args_str = ctxt
                             .tcx
                             .def_path_str_with_args(trait_predicate.trait_ref.def_id, trait_args);
-                        Some((prepend_crate_if_local_for_type(&trait_predicate.self_ty(), trait_predicate.self_ty().to_string()),
-                         prepend_crate_if_local(trait_predicate.trait_ref.def_id, trait_with_args_str.to_string())))
+                        Some((
+                            prepend_crate_if_local_for_type(
+                                &trait_predicate.self_ty(),
+                                trait_predicate.self_ty().to_string(),
+                            ),
+                            prepend_crate_if_local(
+                                trait_predicate.trait_ref.def_id,
+                                trait_with_args_str.to_string(),
+                            ),
+                        ))
                     }
                 }
             }

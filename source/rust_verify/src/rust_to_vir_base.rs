@@ -168,15 +168,6 @@ pub(crate) fn def_id_to_vir_path_ignoring_diagnostic_rename<'tcx>(
         .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
 }
 
-// pub(crate) fn def_id_to_vir_path<'tcx>(
-//     tcx: TyCtxt<'tcx>,
-//     verus_items: &crate::verus_items::VerusItems,
-//     def_id: DefId,
-// ) -> Path {
-//     def_id_to_vir_path_option(tcx, Some(verus_items), def_id)
-//         .unwrap_or_else(|| panic!("unhandled name {:?}", def_id))
-// }
-
 pub(crate) fn def_id_to_vir_path<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -584,9 +575,7 @@ pub(crate) fn mk_visibility_from_vis<'tcx>(
 ) -> vir::ast::Visibility {
     let restricted_to = match visibility {
         Visibility::Public => None,
-        Visibility::Restricted(id) => {
-            Some(def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id, ctxt.path_def_id_ref()))
-        }
+        Visibility::Restricted(id) => Some(ctxt.def_id_to_vir_path(id)),
     };
     vir::ast::Visibility { restricted_to }
 }

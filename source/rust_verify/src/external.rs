@@ -39,7 +39,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::Context;
-use crate::rust_to_vir_base::{def_id_to_vir_path, def_id_to_vir_path_option};
+use crate::rust_to_vir_base::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -374,12 +374,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path = def_id_to_vir_path(
-                        self.ctxt.tcx,
-                        &self.ctxt.verus_items,
-                        def_id,
-                        self.ctxt.path_def_id_ref(),
-                    );
+                    self.module_path = self.ctxt.def_id_to_vir_path(def_id);
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {

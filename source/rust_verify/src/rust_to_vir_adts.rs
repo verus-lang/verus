@@ -1,8 +1,7 @@
 use crate::attributes::{VerifierAttrs, get_mode};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
-    mk_visibility_from_vis,
+    check_generics_bounds_with_polarity, mk_visibility, mk_visibility_from_vis,
 };
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
@@ -83,15 +82,7 @@ where
 
         let ident = field_ident_from_rust(&field_def_ident.as_str());
 
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            None,
-            item_id.owner_id.to_def_id(),
-            span,
-            &field_ty,
-            false,
-        )?;
+        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false)?;
         let mode = match hir_field_def_opt {
             Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
@@ -168,7 +159,7 @@ pub(crate) fn check_item_struct<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id, ctxt.path_def_id_ref());
+    let path = ctxt.def_id_to_vir_path(def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
     let variant_name = name.clone();
@@ -256,7 +247,7 @@ pub(crate) fn check_item_enum<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id, ctxt.path_def_id_ref());
+    let path = ctxt.def_id_to_vir_path(def_id);
     let mut total_vis = visibility.clone();
     let mut variants: Vec<_> = vec![];
     for variant in enum_def.variants.iter() {
@@ -346,7 +337,7 @@ pub(crate) fn check_item_union<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id, ctxt.path_def_id_ref());
+    let path = ctxt.def_id_to_vir_path(def_id);
 
     let (variants, transparency) = if vattrs.external_body {
         let name = path.segments.last().expect("unexpected struct path");
@@ -369,8 +360,7 @@ pub(crate) fn check_item_union<'tcx>(
             total_vis = total_vis.join(&vis);
 
             let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
-            let typ =
-                mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, None, def_id, span, &field_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false)?;
 
             let field = (typ, Mode::Exec, vis);
             let variant = Variant {
@@ -509,15 +499,7 @@ fn get_sized_constraint<'tcx>(
         sized_constraint = sc3;
     }
 
-    Ok(Some(mid_ty_to_vir(
-        ctxt.tcx,
-        &ctxt.verus_items,
-        None,
-        adt_def.did(),
-        span,
-        &sized_constraint,
-        false,
-    )?))
+    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false)?))
 }
 
 pub(crate) fn check_item_external<'tcx>(
@@ -642,8 +624,7 @@ pub(crate) fn check_item_external<'tcx>(
     )?;
     let mode = Mode::Exec;
 
-    let path =
-        def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_def_id, ctxt.path_def_id_ref());
+    let path = ctxt.def_id_to_vir_path(external_def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
     let is_builtin_external = matches!(
@@ -657,12 +638,7 @@ pub(crate) fn check_item_external<'tcx>(
         );
     }
 
-    let proxy_path = def_id_to_vir_path(
-        ctxt.tcx,
-        &ctxt.verus_items,
-        proxy_adt_def.did(),
-        ctxt.path_def_id_ref(),
-    );
+    let proxy_path = ctxt.def_id_to_vir_path(proxy_adt_def.did());
     let proxy = ctxt.spanned_new(span, proxy_path);
     let proxy = Some((*proxy).clone());
     let owning_module = Some(module_path.clone());
