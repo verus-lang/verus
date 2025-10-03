@@ -113,9 +113,6 @@ outside the loop. In all other cases, this check shouldn't matter.
 
 */
 
-#![allow(unused_variables)] // TODO(new_mut_ref) remove
-#![allow(dead_code)] // TODO(new_mut_ref) remove
-
 use crate::ast::{
     BinaryOp, ByRef, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Mode, Param, Params, Path,
     Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
@@ -210,7 +207,7 @@ enum AstPosition {
     Before(AstId),
     After(AstId),
     AfterArguments(AstId),
-    OnUnwind(AstId),
+    OnUnwind(#[allow(dead_code)] AstId),
 }
 
 struct Instruction {
@@ -451,7 +448,8 @@ impl<'a> Builder<'a> {
                 for e in es.iter() {
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb) = self.build_place(p, bb)?;
+                            let (p, bb1) = self.build_place(p, bb)?;
+                            bb = bb1;
                             if let Some(p) = p {
                                 two_phase_delayed_mutations.push(p);
                             }
@@ -493,7 +491,8 @@ impl<'a> Builder<'a> {
                     let e = &b.a;
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb) = self.build_place(p, bb)?;
+                            let (p, bb1) = self.build_place(p, bb)?;
+                            bb = bb1;
                             if let Some(p) = p {
                                 two_phase_delayed_mutations.push(p);
                             }
@@ -606,7 +605,6 @@ impl<'a> Builder<'a> {
                         self.append_instructions_for_pattern_moves_mutations(
                             &arm.x.pattern,
                             &fpt,
-                            &place.typ,
                             arm_bb,
                             AstPosition::Before(arm.x.body.span.id),
                         );
@@ -738,10 +736,10 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::AssignToPlace { place, rhs, op: Some(_) } => {
+            ExprX::AssignToPlace { place: _, rhs: _, op: Some(_) } => {
                 todo!()
             }
-            ExprX::TwoPhaseBorrowMut(p) => {
+            ExprX::TwoPhaseBorrowMut(_p) => {
                 // These must be handled contextually, so the recursion should skip over
                 // these nodes.
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
@@ -801,7 +799,6 @@ impl<'a> Builder<'a> {
                     self.append_instructions_for_pattern_moves_mutations(
                         pattern,
                         &fp,
-                        &init.typ,
                         bb,
                         AstPosition::After(stmt.span.id),
                     );
@@ -916,14 +913,12 @@ impl<'a> Builder<'a> {
         &mut self,
         pattern: &Pattern,
         fpt: &FlattenedPlaceTyped,
-        typ: &Typ,
         bb: BBIndex,
         position: AstPosition,
     ) {
         let places = moves_and_muts_for_place_being_matched(
             pattern,
             &fpt,
-            typ,
             &self.locals.datatypes,
             &self.locals.var_modes,
         );
@@ -946,7 +941,6 @@ impl<'a> Builder<'a> {
 
 pub struct BoundVar {
     pub name: VarIdent,
-    pub mutable: bool,
     pub typ: Typ,
 }
 
@@ -965,20 +959,16 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_env, _scope_map, _stmt| Ok(()),
         &mut |_env, _scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ })
+                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ })
                 | PatternX::Binding {
-                    binding: PatternBinding { name, mutable, by_ref: _, typ },
+                    binding: PatternBinding { name, mutable: _, by_ref: _, typ },
                     sub_pat: _,
                 } => {
                     let spec = matches!(&modes[name], Mode::Spec);
                     if !spec {
                         if !names.contains(name) {
                             names.insert(name.clone());
-                            out.push(BoundVar {
-                                name: name.clone(),
-                                mutable: *mutable,
-                                typ: typ.clone(),
-                            });
+                            out.push(BoundVar { name: name.clone(), typ: typ.clone() });
                         }
                     }
                 }
@@ -1007,14 +997,14 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ })
+            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable, by_ref: _, typ },
+                binding: PatternBinding { name, mutable: _, by_ref: _, typ },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
                 if !spec {
-                    out.push(BoundVar { name: name.clone(), mutable: *mutable, typ: typ.clone() });
+                    out.push(BoundVar { name: name.clone(), typ: typ.clone() });
                 }
 
                 match &pattern.x {
@@ -1024,7 +1014,7 @@ pub fn pattern_all_bound_vars_with_ownership(
                     _ => {}
                 }
             }
-            PatternX::Constructor(dt, variant, patterns) => {
+            PatternX::Constructor(_dt, _variant, patterns) => {
                 for binder in patterns.iter() {
                     pattern_all_bound_vars_rec(&binder.a, out, modes);
                 }
@@ -1053,13 +1043,12 @@ pub fn pattern_all_bound_vars_with_ownership(
 fn moves_and_muts_for_place_being_matched(
     pattern: &Pattern,
     fpt: &FlattenedPlaceTyped,
-    typ: &Typ,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
 ) -> Vec<(FlattenedPlaceTyped, ByRef)> {
     // TODO(new_mut_ref) need to check if stuff is copy vs move
     // TODO(new_mut_ref) need to account for pattern-ergonomics
-    let projs = moves_and_muts_for_pattern(pattern, typ, datatypes, modes);
+    let projs = moves_and_muts_for_pattern(pattern, datatypes, modes);
     projs
         .into_iter()
         .map(|(mut projs, by_ref)| {
@@ -1072,7 +1061,6 @@ fn moves_and_muts_for_place_being_matched(
 
 fn moves_and_muts_for_pattern(
     pattern: &Pattern,
-    typ: &Typ,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
 ) -> Vec<(Vec<ProjectionTyped>, ByRef)> {
@@ -1243,7 +1231,7 @@ impl<'a> LocalCollection<'a> {
             }
 
             let projection = match projection_typed {
-                ProjectionTyped::StructField(field_opr, typ) => {
+                ProjectionTyped::StructField(field_opr, _typ) => {
                     Projection::StructField(field_opr_to_index(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
@@ -1318,7 +1306,7 @@ impl<'a> LocalCollection<'a> {
                 }
                 Projection::DerefMut => {
                     let inner_tree = match tree {
-                        PlaceTree::MutRef(ty, tr) => tr,
+                        PlaceTree::MutRef(_ty, tr) => tr,
                         _ => unreachable!(),
                     };
                     ast_place =
@@ -1451,7 +1439,7 @@ impl FlattenedPlace {
             InstructionKind::MoveFrom(_) => false,
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
-            InstructionKind::DropFrom(sp) => false,
+            InstructionKind::DropFrom(_) => false,
         }
     }
 }
@@ -1487,7 +1475,7 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(
     let mut output = DataflowOutput { output: vec![] };
     for bb in cfg.basic_blocks.iter() {
         let mut v = vec![];
-        for i in 0..bb.instructions.len() + 1 {
+        for _i in 0..bb.instructions.len() + 1 {
             v.push(empty.clone());
         }
         output.output.push(v);
@@ -1636,6 +1624,7 @@ fn transfer_reverse<D: DataflowState>(
 
 ////// CFG debugging
 
+#[allow(dead_code)]
 fn pretty_cfg(cfg: &CFG) -> String {
     format!(
         "Locals:\n{:}\nCFG:\n{:}",
@@ -1648,6 +1637,7 @@ fn pretty_locals(locals: &LocalCollection) -> String {
     format!("{:#?}", &locals.locals)
 }
 
+#[allow(dead_code)]
 fn pretty_basics_blocks_with_dataflow<D: std::fmt::Debug>(
     cfg: &CFG,
     output: &DataflowOutput<D>,
@@ -1655,6 +1645,7 @@ fn pretty_basics_blocks_with_dataflow<D: std::fmt::Debug>(
     pretty_basic_blocks(cfg, |i, j| Some(format!("{:?}", output.output[i][j])))
 }
 
+#[allow(dead_code)]
 fn pretty_basics_blocks_with_dataflow2<D: std::fmt::Debug, E: std::fmt::Debug>(
     cfg: &CFG,
     output: &DataflowOutput<D>,
@@ -1793,7 +1784,7 @@ impl DataflowState for InitializationPossibilities {
                     *self
                 }
             }
-            InstructionKind::Mutate(sp) => *self,
+            InstructionKind::Mutate(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities {
@@ -1997,13 +1988,13 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         let entry = id_map.get_mut(&ast_id).unwrap();
 
         match r.position {
-            AstPosition::Before(ast_id) => {
+            AstPosition::Before(_ast_id) => {
                 entry.0.push(r.place);
             }
-            AstPosition::After(ast_id) => {
+            AstPosition::After(_ast_id) => {
                 entry.1.push(r.place);
             }
-            AstPosition::AfterArguments(ast_id) => {
+            AstPosition::AfterArguments(_ast_id) => {
                 entry.2.push(r.place);
             }
             AstPosition::OnUnwind(_) => unreachable!(),
