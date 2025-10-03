@@ -3556,6 +3556,8 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Temporary(expr) => {
             return expr_to_loc_coerce_modes(expr);
         }
+        PlaceX::Ghost(p) | PlaceX::Tracked(p) => {
+        }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }

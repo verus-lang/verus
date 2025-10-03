@@ -784,6 +784,12 @@ fn check_place(
             Ok(mode)
         }
         PlaceX::Temporary(e) => check_expr(ctxt, record, typing, outer_mode, e),
+        PlaceX::Ghost(_p) => {
+            todo!()
+        }
+        PlaceX::Tracked(_p) => {
+            todo!()
+        }
     }
 }
 

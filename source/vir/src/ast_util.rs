@@ -1328,17 +1328,19 @@ impl PlaceX {
         match self {
             PlaceX::Local(_) => false,
             PlaceX::DerefMut(p) => p.x.uses_temporary(),
+            PlaceX::Tracked(p) => p.x.uses_temporary(),
+            PlaceX::Ghost(p) => p.x.uses_temporary(),
             PlaceX::Field(_opr, p) => p.x.uses_temporary(),
             PlaceX::Temporary(_) => true,
         }
     }
 }
 
-pub fn place_to_expr(place: &Place) -> Expr {
+pub(crate) fn place_to_expr(place: &Place) -> Expr {
     place_to_expr_rec(place, false)
 }
 
-pub fn place_to_expr_loc(place: &Place) -> Expr {
+pub(crate) fn place_to_expr_loc(place: &Place) -> Expr {
     let e = place_to_expr_rec(place, true);
     SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
 }
@@ -1366,6 +1368,9 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
             } else {
                 return e.clone();
             }
+        }
+        PlaceX::Tracked(p) | PlaceX::Ghost(p) => {
+            return place_to_expr_rec(p, loc);
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)

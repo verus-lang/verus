@@ -881,6 +881,12 @@ impl<'a> Builder<'a> {
                 let bb = self.build(e, bb)?;
                 Ok((None, bb))
             }
+            PlaceX::Tracked(_p) => {
+                todo!()
+            }
+            PlaceX::Ghost(_p) => {
+                todo!()
+            }
         }
     }
 

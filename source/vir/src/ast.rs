@@ -1019,7 +1019,6 @@ pub enum ReadKind {
 }
 
 // TODO(mut_refs): add ArrayIndex
-// TODO(mut_refs): add Tracked coercions
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1030,6 +1029,8 @@ pub enum PlaceX {
     DerefMut(Place),
     Local(VarIdent),
     Temporary(Expr),
+    Tracked(Place),
+    Ghost(Place),
 }
 
 /// Statement, similar to rustc_hir::Stmt
