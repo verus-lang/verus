@@ -849,7 +849,7 @@ fn for_loop_test_vec() {
     assert(count == v.len());
 }
 
-/*
+
 fn for_loop_test_map() {
     let f = |i: &u8| -> (out: u8)
         requires i < 255,
@@ -857,21 +857,30 @@ fn for_loop_test_map() {
         {
             *i + 1
         };
-
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
 
     let i = vec_iter(&v);
-    let m = MapIterator::new(i, f);
+    let ghost old_i = i;
+    let iter= MapIterator::new(i, f);
+    assert(forall |i| 0 <= i < iter.seq().len() ==> iter.seq()[i] < 10);
 
-    let mut count: u128 = 0;
+    //assert(w@ + iter.seq() == v@.map_values(|u| f(&u)));
+    assert(w@ + iter.seq() == iter.seq());
+    assert(iter.seq() == v@.map_values(|i: u8| (i + 1) as u8)) by {
+        assume(iter.map_iterator_type_inv());
+        broadcast use unwrap_up_to_first_none_len_le; //(s.seq_of_options());
+        broadcast use unwrap_up_to_first_none_len_le_values;
+    }
+    assert(w@ + iter.seq() == v@.map_values(|i: u8| (i + 1) as u8));
     // Verus will desugar this: 
     //
     // for x in y: m
     //     invariant
-    //         w@ + y.seq().map_values(|r:&u8| *r) == v@.map_values(|i| i + 1)
+    //          forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
+    //          w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
     // {
-    //     w.push(x);
+    //     w.push(*x);
     // }
     //
     // Into:
@@ -879,59 +888,63 @@ fn for_loop_test_map() {
     //let VERUS_iter_expr = v;
     #[allow(non_snake_case)]
     // let result =  match IntoIterator::into_iter(VERUS_iter_expr) {...
-    let VERUS_loop_result = match m {
+    let VERUS_loop_result = match iter {
         mut y => {
             let ghost VERUS_snapshot = y;
-            //let ghost mut y = VERUS_exec_iter;
+            let ghost mut VERUS_index = 0;
             loop
+                invariant_except_break
+                    y.decrease() is Some,
                 invariant
-                    y.loop_invariant(Some(&VERUS_snapshot)),
+                    // Internal invariants
+                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
-                      //let x = y.peek_next().unwrap_or(arbitrary());
 
                       // inv
-                      &&& forall |i| 0 <= i < v.len() ==> v[i] < 10
+                      &&& forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
                       &&& w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
                     }),
                 ensures
-                    y.loop_ensures(),
+                    y.seq().len() == 0 && y.completes(),
                 decreases
                     y.decrease().unwrap_or(arbitrary()),
             {
-                assume(y.map_iterator_type_inv());
+                let ghost old_y = y;
+                assume(y.map_iterator_type_inv());   // Faking type invariant
+                // assert(y.decrease() == y.inner().decrease());
+                // assert(y.decrease() is Some);
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
                 match y.next() {
                     Some(VERUS_loop_val) => {
-                        // TODO: Not sure how we can preserve this
-                        assume(y.inner().loop_invariant(Some(&VERUS_snapshot.inner())));
+                        assume(y.map_iterator_type_inv());   // Faking type invariant
                         VERUS_loop_next = VERUS_loop_val
                     }
                     None => {
-                        assume(y.map_iterator_type_inv());
-                        assume(y.inner().loop_invariant(Some(&VERUS_snapshot.inner())));
-                        assert(w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8));
-                        assert(y.loop_invariant(Some(&VERUS_snapshot)));
+                        assume(y.map_iterator_type_inv());   // Faking type invariant
                         break
                     }
                 }
-                assume(y.map_iterator_type_inv());
+                // assert(y.decrease() is Some);
+                proof {
+                    VERUS_index = VERUS_index + 1;
+                }
                 let x = VERUS_loop_next;
                 let () = {
                     // body
                     w.push(x + 1);
                 };
+                // assert(y.decrease() is Some);
             }
         }
     };
 
     // Make sure our invariant was useful
-    assert(w@ == v@);
-    assert(count == v.len());
+    assert(w@ == v@.map_values(|i:u8| (i + 1) as u8));
 }
-*/
 
 fn for_loop_test_take() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
