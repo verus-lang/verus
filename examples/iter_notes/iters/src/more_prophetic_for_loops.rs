@@ -163,14 +163,6 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     open spec fn decrease(&self) -> Option<Self::Decrease> {
         Some((self.back() - self.front()) as usize)
     }
-
-    // open spec fn peek_next(&self) -> Option<Self::Item> {
-    //     if self.front() < self.back() {
-    //         Some(&self.elts()[self.front() as int])
-    //     } else {
-    //         None
-    //     }
-    // }
 }
 
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
@@ -643,7 +635,6 @@ impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterat
     }
 }
 
-/*
 // collect
 
 #[verifier::exec_allows_no_decreases_clause]
@@ -782,7 +773,7 @@ fn all_true_caller(v: &Vec<bool>)
         }
     }
 }
-*/
+
 fn for_loop_test_vec() {
 
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
