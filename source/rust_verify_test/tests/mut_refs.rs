@@ -2750,3 +2750,36 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] calls_unwind_extra_cfg_edge ["new-mut-ref"] => verus_code! {
+        fn call_might_unwind() { }
+        fn call_no_unwind() no_unwind { }
+
+        // If `*x = y` is definitely going to be reached, then we can resolve *x,
+        // however, if there's an unwindable call, then `*x = y` might not be reached.
+
+        fn test1<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x));
+            *x = y;
+        }
+
+        fn test2<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x));
+            call_no_unwind();
+            *x = y;
+        }
+
+        fn test3<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x)); // FAILS
+            call_might_unwind();
+            *x = y;
+        }
+
+        fn test4<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            call_might_unwind();
+            assert(has_resolved(*x));
+            *x = y;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

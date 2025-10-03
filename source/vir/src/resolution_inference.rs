@@ -117,8 +117,8 @@ outside the loop. In all other cases, this check shouldn't matter.
 #![allow(dead_code)] // TODO(new_mut_ref) remove
 
 use crate::ast::{
-    BinaryOp, ByRef, Datatype, Dt, Expr, ExprX, FieldOpr, Mode, Param, Params, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    BinaryOp, ByRef, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Mode, Param, Params, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
 };
 use crate::ast_visitor::VisitorScopeMap;
@@ -136,9 +136,10 @@ pub(crate) fn infer_resolution(
     body: &Expr,
     read_kind_finals: &ReadKindFinals,
     datatypes: &HashMap<Path, Datatype>,
+    functions: &HashMap<Fun, Function>,
     var_modes: &HashMap<VarIdent, Mode>,
 ) -> Expr {
-    let cfg = new_cfg(params, body, read_kind_finals, datatypes, var_modes);
+    let cfg = new_cfg(params, body, read_kind_finals, datatypes, functions, var_modes);
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = get_resolutions(&cfg);
     apply_resolutions(&cfg, body, resolutions)
@@ -209,6 +210,7 @@ enum AstPosition {
     Before(AstId),
     After(AstId),
     AfterArguments(AstId),
+    OnUnwind(AstId),
 }
 
 struct Instruction {
@@ -270,6 +272,7 @@ struct Builder<'a> {
     loops: Vec<LoopEntry>,
     locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
+    functions: &'a HashMap<Fun, Function>,
 }
 
 #[derive(Clone)]
@@ -289,6 +292,7 @@ fn new_cfg<'a>(
     body: &Expr,
     read_kind_finals: &'a ReadKindFinals,
     datatypes: &'a HashMap<Path, Datatype>,
+    functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
 ) -> CFG<'a> {
     let mut builder = Builder {
@@ -301,6 +305,7 @@ fn new_cfg<'a>(
             var_modes,
         },
         read_kind_finals,
+        functions,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
@@ -435,9 +440,8 @@ impl<'a> Builder<'a> {
             | ExprX::AirStmt(..)
             | ExprX::Nondeterministic
             | ExprX::AssumeResolved(..) => Ok(bb),
-            ExprX::Call(_call_target, es, post_args) => {
+            ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());
-                // TODO(new_mut_ref): account for unwinding
 
                 // Can skip the expression in CallTarget because
                 // it can only be for FnSpec which is always a pure spec expression
@@ -468,7 +472,17 @@ impl<'a> Builder<'a> {
                     );
                 }
 
-                Ok(bb)
+                if crate::ast_util::call_no_unwind(call_target, &self.functions) {
+                    Ok(bb)
+                } else {
+                    // Create an extra edge that ends immediately to represent unwinding
+                    let unwind_bb = self.new_bb(AstPosition::OnUnwind(expr.span.id), false);
+                    let main_bb = self.new_bb(AstPosition::After(expr.span.id), false);
+                    self.basic_blocks[bb].successors.push(unwind_bb);
+                    self.basic_blocks[bb].successors.push(main_bb);
+                    self.basic_blocks[unwind_bb].is_exit = true;
+                    Ok(main_bb)
+                }
             }
             ExprX::Ctor(_dt, _id, binders, opt_place) => {
                 let mut two_phase_delayed_mutations = vec![];
@@ -1970,6 +1984,11 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             AstPosition::Before(ast_id) => ast_id,
             AstPosition::After(ast_id) => ast_id,
             AstPosition::AfterArguments(ast_id) => ast_id,
+            AstPosition::OnUnwind(_) => {
+                // It might be necessary to do something here for more
+                // advanced unwind-related stuff?
+                continue;
+            }
         };
         if !id_map.contains_key(&ast_id) {
             id_map.insert(ast_id, (vec![], vec![], vec![], false));
@@ -1987,6 +2006,7 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             AstPosition::AfterArguments(ast_id) => {
                 entry.2.push(r.place);
             }
+            AstPosition::OnUnwind(_) => unreachable!(),
         };
     }
 

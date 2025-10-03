@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, ByRef, Constant, DatatypeTransparency, DatatypeX, Dt,
-    Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ,
-    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, ByRef, CallTarget, CallTargetKind, Constant,
+    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function,
+    FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX,
+    Params, Path, PathX, Pattern, PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped,
+    Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -713,6 +713,23 @@ impl FunctionX {
             },
             Some(unwind_spec) => unwind_spec.clone(),
         }
+    }
+}
+
+pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
+    match call_target {
+        CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
+        CallTarget::Fun(kind, fun, _, _, _) => match kind {
+            CallTargetKind::ProofFn(..) => true,
+            CallTargetKind::Static
+            | CallTargetKind::Dynamic
+            | CallTargetKind::DynamicResolved { .. }
+            | CallTargetKind::ExternalTraitDefault => {
+                let function = &funs[fun];
+                let unwind_spec = function.x.unwind_spec_or_default();
+                matches!(unwind_spec, UnwindSpec::NoUnwind)
+            }
+        },
     }
 }
 

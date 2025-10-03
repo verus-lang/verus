@@ -2071,6 +2071,7 @@ fn check_function(
                         functionx.body.as_ref().unwrap(),
                         &record.read_kind_finals,
                         &ctxt.datatypes,
+                        &ctxt.funs,
                         &record.var_modes,
                     ));
                 }
