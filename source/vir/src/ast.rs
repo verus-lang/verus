@@ -1407,6 +1407,8 @@ pub struct DatatypeX {
     /// For structs, this is usually the last field of the struct, or is derived from it.
     /// For enums, this is always None.
     pub sized_constraint: Option<Typ>,
+    /// Does this type have a Drop impl?
+    pub destructor: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

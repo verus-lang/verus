@@ -198,6 +198,7 @@ pub(crate) fn check_item_struct<'tcx>(
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
         sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+        destructor: adt_def.destructor(ctxt.tcx).is_some(),
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -287,6 +288,7 @@ pub(crate) fn check_item_enum<'tcx>(
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
             sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
     Ok(())
@@ -387,6 +389,7 @@ pub(crate) fn check_item_union<'tcx>(
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
             sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
     Ok(())
@@ -666,6 +669,7 @@ pub(crate) fn check_item_external<'tcx>(
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
             sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -703,6 +707,7 @@ pub(crate) fn check_item_external<'tcx>(
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
             sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -753,6 +758,7 @@ pub(crate) fn check_item_external<'tcx>(
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
             sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }

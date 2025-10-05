@@ -1386,6 +1386,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             } else {
                 Some(Arc::new(TypX::TypParam(prefix_tuple_param(arity - 1))))
             },
+            destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1439,6 +1440,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             ext_equal: false,
             user_defined_invariant_fn: None,
             sized_constraint: None,
+            destructor: false,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }

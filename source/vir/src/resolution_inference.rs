@@ -1906,7 +1906,6 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
         // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
-        // TODO(new_mut_ref): need to account for types with nontrivial Drop implementation
 
         get_resolutions_for_place(
             cfg,
