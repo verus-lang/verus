@@ -562,6 +562,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 mutable,
                 by_ref: vir_by_ref,
                 typ: var_typ.clone(),
+                copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
             };
             match subpat {
                 None => PatternX::Var(binding),

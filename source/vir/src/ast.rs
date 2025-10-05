@@ -641,6 +641,9 @@ pub struct PatternBinding {
     pub by_ref: ByRef,
     pub typ: Typ,
     pub mutable: bool,
+    /// True if the type of this variable is copy.
+    /// This is used by resolution analysis; it is meaningless post-simplification.
+    pub copy: bool,
 }
 
 /// Patterns for match expressions

@@ -959,9 +959,9 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_env, _scope_map, _stmt| Ok(()),
         &mut |_env, _scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ })
+                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
                 | PatternX::Binding {
-                    binding: PatternBinding { name, mutable: _, by_ref: _, typ },
+                    binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
                     sub_pat: _,
                 } => {
                     let spec = matches!(&modes[name], Mode::Spec);
@@ -997,9 +997,9 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ })
+            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable: _, by_ref: _, typ },
+                binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
@@ -1073,13 +1073,13 @@ fn moves_and_muts_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref, typ: _ })
+            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref, typ: _, copy })
             | PatternX::Binding {
-                binding: PatternBinding { name: _, mutable: _, by_ref, typ: _ },
+                binding: PatternBinding { name: _, mutable: _, by_ref, typ: _, copy },
                 sub_pat: _,
             } => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
-                if *by_ref != ByRef::ImmutRef {
+                if *by_ref != ByRef::ImmutRef && !*copy {
                     out.push((projs.clone(), *by_ref));
                 }
             }

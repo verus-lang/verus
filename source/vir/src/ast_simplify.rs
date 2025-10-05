@@ -264,6 +264,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 mutable: binding.mutable,
                 by_ref: ByRef::No,
                 typ: binding.typ.clone(),
+                copy: false,
             });
             let v_pattern = SpannedTyped::new(&pattern.span, &binding.typ, v_patternx);
             stmts.push(Spanned::new(
@@ -711,9 +712,13 @@ fn tuple_get_field_expr(
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
-            PatternX::Var(PatternBinding { by_ref: ByRef::No, name: _, mutable: _, typ: _ }) => {
-                Ok(vec![stmt.clone()])
-            }
+            PatternX::Var(PatternBinding {
+                by_ref: ByRef::No,
+                name: _,
+                mutable: _,
+                typ: _,
+                copy: _,
+            }) => Ok(vec![stmt.clone()]),
             _ => {
                 let mut stmts: Vec<Stmt> = Vec::new();
                 pattern_to_decls_with_no_initializer(pattern, &mut stmts);
@@ -727,7 +732,13 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         StmtX::Decl { pattern, mode: _, init: Some(_init), els: None }
             if matches!(
                 pattern.x,
-                PatternX::Var(PatternBinding { by_ref: ByRef::No, name: _, mutable: _, typ: _ })
+                PatternX::Var(PatternBinding {
+                    by_ref: ByRef::No,
+                    name: _,
+                    mutable: _,
+                    typ: _,
+                    copy: _
+                })
             ) =>
         {
             Ok(vec![stmt.clone()])

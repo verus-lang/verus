@@ -2728,9 +2728,13 @@ fn stmt_to_stm(
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
             let (name, mutable, typ) = match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable, by_ref: ByRef::No, typ }) => {
-                    (name, mutable, typ)
-                }
+                PatternX::Var(PatternBinding {
+                    name,
+                    mutable,
+                    by_ref: ByRef::No,
+                    typ,
+                    copy: _,
+                }) => (name, mutable, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
 

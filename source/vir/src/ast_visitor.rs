@@ -704,13 +704,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         &mut self,
         pb: &PatternBinding,
     ) -> Result<R::Ret<PatternBinding>, Err> {
-        let PatternBinding { name, by_ref, typ, mutable } = pb;
+        let PatternBinding { name, by_ref, typ, mutable, copy } = pb;
         let typ = self.visit_typ(typ)?;
         R::ret(|| PatternBinding {
             name: name.clone(),
             by_ref: *by_ref,
             typ: R::get(typ),
             mutable: *mutable,
+            copy: *copy,
         })
     }
 
@@ -955,11 +956,11 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard(_) => {}
-        PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ }) => {
+        PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ, copy: _ }) => {
             let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
         PatternX::Binding {
-            binding: PatternBinding { name, mutable, by_ref: _, typ },
+            binding: PatternBinding { name, mutable, by_ref: _, typ, copy: _ },
             sub_pat,
         } => {
             insert_pattern_vars(map, sub_pat, init);

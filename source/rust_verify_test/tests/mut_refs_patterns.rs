@@ -2035,3 +2035,139 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] binders_in_pattern_copy_vs_no_copy ["new-mut-ref"] => verus_code! {
+        enum Option<A> {
+            Some(A),
+            None,
+        }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn consume<X>(x: X) { }
+
+        fn test_copy<X: Copy>(x: X, y: X) {
+            let t = (x, y);
+
+            match t {
+                (x, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        fn test_no_copy<X>(x: X, y: X) {
+            let t = (x, y);
+
+            match t {
+                (x, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        fn test_option_copy<X: Copy>(x: X, y: X) {
+            let t = Some((x, y));
+
+            match t {
+                Some((x, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        fn test_option_no_copy<X>(x: X, y: X) {
+            let t = Some((x, y));
+
+            match t {
+                Some((x, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        fn test_let_copy<X: Copy>(x: X, y: X) {
+            let t = (x, y);
+
+            let (x, _) = t;
+            consume(x);
+
+            assert(has_resolved(t));
+        }
+
+        fn test_let_no_copy<X>(x: X, y: X) {
+            let t = (x, y);
+
+            let (x, _) = t;
+            consume(x);
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+
+
+
+        fn atbinder_test_copy<X: Copy>(x: X, y: X) {
+            let t = (x, y);
+
+            match t {
+                x @ (_, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        fn atbinder_test_no_copy<X>(x: X, y: X) {
+            let t = (x, y);
+
+            match t {
+                x @ (_, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        fn atbinder_test_option_copy<X: Copy>(x: X, y: X) {
+            let t = Some((x, y));
+
+            match t {
+                Some(x @ (_, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        fn atbinder_test_option_no_copy<X>(x: X, y: X) {
+            let t = Some((x, y));
+
+            match t {
+                Some(x @ (_, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        fn atbinder_test_let_copy<X: Copy>(x: X, y: X) {
+            let t = (x, y);
+
+            let x @ (_, _) = t;
+            consume(x);
+
+            assert(has_resolved(t));
+        }
+
+        fn atbinder_test_let_no_copy<X>(x: X, y: X) {
+            let t = (x, y);
+
+            let x @ (_, _) = t;
+            consume(x);
+
+            assert(has_resolved(t)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}

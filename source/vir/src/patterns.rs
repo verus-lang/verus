@@ -198,13 +198,12 @@ fn pattern_to_exprs_rec(
     }
 }
 
-// TODO(new_mut_ref): account for Copy types
 pub(crate) fn pattern_has_move(pattern: &Pattern) -> bool {
     match &pattern.x {
         PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => matches!(binding.by_ref, ByRef::No),
+        PatternX::Var(binding) => !binding.copy && matches!(binding.by_ref, ByRef::No),
         PatternX::Binding { binding, sub_pat } => {
-            matches!(binding.by_ref, ByRef::No) || pattern_has_move(sub_pat)
+            (!binding.copy && matches!(binding.by_ref, ByRef::No)) || pattern_has_move(sub_pat)
         }
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {

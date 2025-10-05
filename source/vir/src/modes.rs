@@ -481,13 +481,13 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _ }) => {
+        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ }) => {
             // TODO(new_mut_ref): disallow ByRef::Mut in spec code
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Binding {
-            binding: PatternBinding { name: x, mutable: _, by_ref: _, typ: _ },
+            binding: PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ },
             sub_pat,
         } => {
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
@@ -1813,7 +1813,13 @@ fn check_stmt(
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
                 (
-                    PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _ }),
+                    PatternX::Var(PatternBinding {
+                        name: x,
+                        mutable: _,
+                        by_ref: _,
+                        typ: _,
+                        copy: _,
+                    }),
                     None,
                 ) => {
                     typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));

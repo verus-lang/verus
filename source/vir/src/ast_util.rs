@@ -1373,7 +1373,7 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
 
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
-    pub fn simple_var(name: VarIdent, mutable: bool, span: &Span, typ: &Typ) -> Pattern {
+    pub(crate) fn simple_var(name: VarIdent, mutable: bool, span: &Span, typ: &Typ) -> Pattern {
         SpannedTyped::new(
             span,
             typ,
@@ -1382,6 +1382,7 @@ impl PatternX {
                 mutable,
                 by_ref: ByRef::No,
                 typ: typ.clone(),
+                copy: false,
             }),
         )
     }
