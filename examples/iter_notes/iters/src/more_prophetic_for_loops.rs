@@ -4,19 +4,7 @@ use vstd::prelude::*;
 
 verus!{
 
-pub uninterp spec fn does_decrease<A>(from: A, to: A) -> bool;
-
-broadcast axiom fn does_decrease_decreases<A>(from: A, to: A)
-    ensures
-        #[trigger] does_decrease(from, to) <==> decreases_to!(from => to);
-
-broadcast axiom fn does_decrease_int(from: int, to: int)
-    requires
-        0 <= to < from,
-    ensures
-        #[trigger] does_decrease(from, to);
-
-// PAPER CUT: When a proof fails, you can mention prophetic functions 
+// PAPER CUT: When a proof fails, you can't mention prophetic functions 
 //            as part of proof debugging.  E.g., you can't write:
 //            proof { if prophetic_fn() { assert(P) } else { assert(Q) } }
 
@@ -492,7 +480,6 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
             None
         } else {
             self.count_remaining = self.count_remaining - 1;
-            broadcast use {does_decrease_decreases, does_decrease_int};
             self.iter.next()
         }
     }

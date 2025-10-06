@@ -4,7 +4,7 @@ use vstd::prelude::*;
 
 verus!{
 
-// PAPER CUT: When a proof fails, you can mention prophetic functions 
+// PAPER CUT: When a proof fails, you can't mention prophetic functions 
 //            as part of proof debugging.  E.g., you can't write:
 //            proof { if prophetic_fn() { assert(P) } else { assert(Q) } }
 
