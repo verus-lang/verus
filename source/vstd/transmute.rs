@@ -20,6 +20,62 @@ pub enum AbstractByte {
     Init(u8, Option<Provenance>),
 }
 
+impl AbstractByte {
+    /// Returns true if all `AbstractByte`s in this sequence are `Init`.
+    pub open spec fn all_init(bytes: Seq<Self>) -> bool {
+        bytes.all(
+            |b|
+                match b {
+                    AbstractByte::Init(_, _) => true,
+                    _ => false,
+                },
+        )
+    }
+
+    /// Returns the Provenance shared by all of the (initialized) bytes in the sequence.
+    /// If some bytes are uninitialized, or if some bytes do not share the same provenance (including having no provenance),
+    /// then `Provenance::null()` is returned.
+    pub open spec fn shared_provenance(bytes: Seq<Self>) -> Provenance
+        recommends
+            bytes.len() > 1,
+        decreases bytes.len(),
+    {
+        if bytes.len() == 0 {
+            Provenance::null()
+        } else if bytes.len() == 1 {
+            bytes.last().provenance_or_null()
+        } else {
+            let last_p = bytes.last().provenance_or_null();
+            if Self::shared_provenance(bytes.drop_last()) == last_p {
+                last_p
+            } else {
+                Provenance::null()
+            }
+        }
+    }
+
+    pub open spec fn byte(self) -> u8
+        recommends
+            self is Init,
+    {
+        self->0
+    }
+
+    pub open spec fn provenance(self) -> Option<Provenance> {
+        match self {
+            AbstractByte::Init(_, p) => p,
+            _ => None,
+        }
+    }
+
+    pub open spec fn provenance_or_null(self) -> Provenance {
+        match self.provenance() {
+            Some(p) => p,
+            _ => Provenance::null(),
+        }
+    }
+}
+
 pub trait Encoding where Self: Sized {
     /// Can 'value' be encoded to the given bytes?
     spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool;
@@ -90,92 +146,76 @@ impl Encoding for u8 {
     }
 }
 
-/* usize */
+/* unsigned integers */
 
-/// Convert unsiged integer (as nat) to AbstractBytes.
-pub open spec fn nat_to_bytes(n: nat, size: nat) -> Seq<AbstractByte> where
-    decreases size,
-{
-    if size == 0 {
-        Seq::empty()
-    } else {
-        let least = (n % u8::base()) as u8;
-        let least_endian = seq![AbstractByte::Init(least, None)];
-        let rest = n / u8::base();
-        let rest_endian = nat_to_bytes(rest, (size - 1) as nat);
-        match endianness() {
-            Endian::Big => rest_endian.add(least_endian),
-            Endian::Little => least_endian.add(rest_endian),
-        }
-    }
+// We utilize the EndianNat type to transform an unsigned int to its byte representation.
+/// Convert the given `EndianNat`` representation to `AbtractByte`s with the given provenance.
+pub open spec fn endian_to_bytes(endian: EndianNat<u8>, prov: Option<Provenance>) -> Seq<
+    AbstractByte,
+> {
+    endian.digits.map_values(|e| AbstractByte::Init(e as u8, prov))
 }
 
-pub broadcast proof fn nat_to_bytes_len_size(n: nat, size: nat)
-    ensures
-        #[trigger] nat_to_bytes(n, size).len() == size,
-    decreases size,
-{
-    if size == 0 {
-    } else {
-        nat_to_bytes_len_size(n / u8::base(), (size - 1) as nat);
-    }
+/// Convert the given `AbstractByte` representation to its `EndianNat` representation (provenance is ignored).
+pub open spec fn bytes_to_endian(bytes: Seq<AbstractByte>) -> EndianNat<u8> {
+    EndianNat::<u8>::new_default(bytes.map_values(|b: AbstractByte| b.byte() as int))
 }
 
-/// Convert AbstractBytes to unsigned integer (as nat).
-/// Returns Some if the given AbstractBytes are a valid encoding of some number, None otherwise.
-pub open spec fn bytes_to_nat(b: Seq<AbstractByte>) -> Option<nat> where
-    decreases b.len(),
-{
-    if b.len() == 0 {
-        Some(0 as nat)
-    } else {
-        let (least, rest) = match endianness() {
-            Endian::Big => (b.last(), bytes_to_nat(b.drop_last())),
-            Endian::Little => (b.first(), bytes_to_nat(b.drop_first())),
-        };
-        match (least, rest) {
-            (AbstractByte::Init(v, _), Some(n)) => Some(v as nat + n * u8::base()),
-            _ => None,
-        }
-    }
-}
-
-pub broadcast proof fn nat_to_bytes_to_nat(n: nat, size: nat)
+/// Ensures that converting from an `EndianNat` representation to `AbtractByte`s and back results in the same `EndianNat`.
+pub proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<Provenance>)
     requires
-        n < pow(u8::base() as int, size),
+        pow(u8::base() as int, len) > n,
     ensures
-        #[trigger] bytes_to_nat(nat_to_bytes(n, size)) == Some(n),
-    decreases nat_to_bytes(n, size).len(),
+        ({
+            let endian = EndianNat::<u8>::from_nat_with_len(n, len);
+            &&& bytes_to_endian(endian_to_bytes(endian, prov)) == endian
+            &&& endian.len() == len
+        }),
 {
-    reveal(pow);
-    if nat_to_bytes(n, size).len() == 0 {
+    broadcast use
+        EndianNat::from_nat_len,
+        EndianNat::from_nat_with_len_wf,
+        EndianNat::from_nat_with_len_endianness,
+    ;
+
+    let endian = EndianNat::<u8>::from_nat_with_len(n, len);
+    assert(endian.wf());
+}
+
+/// Ensures that all bytes in the resulting `AbstractByte` representation indeed have the given provenance.
+pub proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, prov: Provenance)
+    requires
+        endian.len() > 0,
+    ensures
+        AbstractByte::shared_provenance(endian_to_bytes(endian, Some(prov))) == prov,
+    decreases endian.len(),
+{
+    if endian.len() == 1 {
     } else {
-        let bytes = nat_to_bytes(n, size);
-        let (least, rest) = match endianness() {
-            Endian::Big => (bytes.last(), bytes.drop_last()),
-            Endian::Little => (bytes.first(), bytes.drop_first()),
-        };
-        assert(rest =~= nat_to_bytes(n / u8::base(), (size - 1) as nat));
-        assert(least == AbstractByte::Init((n % u8::base()) as u8, None));
-        assert(n / u8::base() < pow(u8::base() as int, (size - 1) as nat));
-        nat_to_bytes_to_nat(n / u8::base(), (size - 1) as nat);
-        assert(bytes_to_nat(rest) == Some(n / u8::base()));
-        assert(bytes_to_nat(bytes) == Some(
-            ((n % u8::base()) as u8) as nat + (n / u8::base()) * u8::base(),
-        ));
+        let bytes = endian_to_bytes(endian, Some(prov));
+        assert(bytes.drop_last() =~= endian_to_bytes(endian.drop_last(), Some(prov)));
+        endian_to_bytes_shared_provenance(endian.drop_last(), prov);
     }
 }
+
+/* usize */
 
 impl Encoding for usize {
     open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
-        bytes == nat_to_bytes(value as nat, size_of::<Self>())
+        bytes == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
+            // integer types have no provenance
+            None,
+        )
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
-        if bytes.len() == size_of::<Self>() {
-            match bytes_to_nat(bytes) {
-                Some(n) => Some(n as Self),
-                None => None,
+        if bytes.len() == size_of::<Self>() && AbstractByte::all_init(bytes) {
+            let endian = bytes_to_endian(bytes);
+            if endian.wf() {
+                Some(endian.to_nat() as Self)
+            } else {
+                None
             }
         } else {
             None
@@ -183,11 +223,62 @@ impl Encoding for usize {
     }
 
     proof fn encoding_props() {
-        broadcast use nat_to_bytes_len_size, nat_to_bytes_to_nat;
+        reveal(EndianNat::to_nat);
+        broadcast use EndianNat::from_nat_to_nat;
 
-        assert forall|v, bytes| Self::encode(v, bytes) implies Self::decode(bytes) == Some(v) by {
-            usize_max_bounds();
-            assert(v < pow(u8::base() as int, size_of::<usize>()));
+        usize_max_bounds();
+        assert forall|v, bytes| Self::encode(v, bytes) implies bytes.len() == size_of::<Self>()
+            && Self::decode(bytes) == Some(v) by {
+            endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
+        }
+    }
+}
+
+impl<T> Encoding for *mut T {
+    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+        bytes == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
+            // the abstract encoding preserves the provenance from this pointer
+            Some(value@.provenance),
+        )
+    }
+
+    open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
+        if bytes.len() == size_of::<Self>() && AbstractByte::all_init(bytes) {
+            let endian = bytes_to_endian(bytes);
+            // if all bytes in the sequence have the same provenance, then this should be preserved in the decoding.
+            // otherwise, the resulting pointer should have no provenance
+            let prov = AbstractByte::shared_provenance(bytes);
+            if endian.wf() {
+                Some(
+                    ptr_mut_from_data(
+                        PtrData::<T> {
+                            addr: endian.to_nat() as usize,
+                            provenance: prov,
+                            metadata: (),
+                        },
+                    ),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    proof fn encoding_props() {
+        reveal(EndianNat::to_nat);
+        broadcast use EndianNat::from_nat_to_nat;
+
+        usize_max_bounds();
+        assert forall|v, bytes| Self::encode(v, bytes) implies bytes.len() == size_of::<Self>()
+            && Self::decode(bytes) == Some(v) by {
+            endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
+            let endian_enc = EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<Self>());
+            let endian_dec = bytes_to_endian(bytes);
+            assert(endian_enc == endian_dec);
+            endian_to_bytes_shared_provenance(endian_enc, v@.provenance);
         }
     }
 }
