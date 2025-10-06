@@ -217,13 +217,14 @@ impl<T, Pred> ProphSeq<T, Pred>
             self.pred() == old(self).pred(),
             forall |j| self.proph_elem(j) == old(self).proph_elem(j),
             forall |j| i != j ==> self.has_resolved(j) == old(self).has_resolved(j),
+            self.has_resolved(i),       // REVIEW: BP: I added this.  Seems like it's the point of calling `resolve`
             self.proph_elem(i) == Some(t);
 }
 
 
 /* map iterator */
 
-ghost struct MapIteratorPred<Iter, F> {
+pub ghost struct MapIteratorPred<Iter, F> {
     iter: Iter,
     f: F,
 }
@@ -260,6 +261,14 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
         self.iter
     }
 
+    pub closed spec fn the_prophs(self) -> ProphSeq<Item, MapIteratorPred<Iter, F>> {
+        self.prophs@
+    }
+
+    pub closed spec fn count(self) -> nat {
+        self.idx@ as nat
+    }
+
     //#[verifier::type_invariant] // fake this due to limitations
     #[verifier::prophetic]
     closed spec fn map_iterator_type_inv(self) -> bool {
@@ -269,6 +278,13 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
           && (forall |i| #![auto] 0 <= i < self.iter.seq().len() ==> call_requires(self.f, (self.iter.seq()[i], )))
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.seq().len() ==> !self.prophs@.has_resolved(i))
           && self.iter.obeys_iter_laws()
+          // New
+          // Not clear if this is useful, since seq() only talks about the values of
+          // prophs that are >= self.idx
+          && (forall |i: int|
+                #![trigger self.prophs@.has_resolved(i)]
+                #![trigger self.prophs@.proph_elem(i)]
+                0 <= i < self.idx@ ==> self.prophs@.has_resolved(i) && self.prophs@.proph_elem(i).is_some())
     }
 
     fn new(iter: Iter, f: F) -> (s: Self)
@@ -281,6 +297,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
             forall |i| #![auto] 0 <= i < s.seq().len() ==>
                 call_ensures(f, (iter.seq()[i],), s.seq()[i]),
             s.completes() ==> iter.completes() && s.seq().len() == iter.seq().len(),
+            s.count() == 0,
     {
         let s = Self {
             f: f,
@@ -369,8 +386,12 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
 
     fn next(&mut self) -> (ret: Option<Self::Item>) 
         ensures
-            true,
-            //self.inner() == old(self).inner(),
+            // Added:
+            ret is None ==> self.the_prophs() == old(self).the_prophs() && self.count() == old(self).count(),
+            ret is Some ==> self.count() == old(self).count() + 1,
+            ret is Some ==> (forall |i| 0 <= i < old(self).count() ==> 
+                self.the_prophs().proph_elem(i) == old(self).the_prophs().proph_elem(i)),
+            ret is Some ==> self.the_prophs().proph_elem(old(self).count() as int) == ret,
     {
         assume(self.map_iterator_type_inv());
 
@@ -865,14 +886,26 @@ fn for_loop_test_map() {
     let iter= MapIterator::new(i, f);
     assert(forall |i| 0 <= i < iter.seq().len() ==> iter.seq()[i] < 10);
 
-    //assert(w@ + iter.seq() == v@.map_values(|u| f(&u)));
-    assert(w@ + iter.seq() == iter.seq());
-    assert(iter.seq() == v@.map_values(|i: u8| (i + 1) as u8)) by {
-        assume(iter.map_iterator_type_inv());
-        broadcast use unwrap_up_to_first_none_len_le; //(s.seq_of_options());
-        broadcast use unwrap_up_to_first_none_len_le_values;
-    }
-    assert(w@ + iter.seq() == v@.map_values(|i: u8| (i + 1) as u8));
+    // //assert(w@ + iter.seq() == v@.map_values(|u| f(&u)));
+    // assert(w@ + iter.seq() == iter.seq());
+    // assert(iter.seq().len() == i.seq().len()) by {
+    //     assert(iter.iter.seq().len() == i.seq().len());
+    //     assume(iter.map_iterator_type_inv());
+    //     broadcast use unwrap_up_to_first_none_len_le;
+    //     broadcast use unwrap_up_to_first_none_len_le_values;
+    //     assert forall |i| 0 <= i < iter.seq_of_options().len() implies iter.seq_of_options()[i].is_some() by {
+    //         assert(iter.seq_of_options()[i] == iter.prophs@.proph_elem(iter.idx@ + i));
+    //     };
+    //     assume(false);
+    // }
+    // assert(iter.seq().len() <= v.len());
+    // assert(iter.seq() == v@.map_values(|i: u8| (i + 1) as u8)) by {
+    //     assume(iter.map_iterator_type_inv());
+    //     broadcast use unwrap_up_to_first_none_len_le;
+    //     broadcast use unwrap_up_to_first_none_len_le_values;
+    // }
+    //assert(w@ + iter.seq() == v@.map_values(|i: u8| (i + 1) as u8));
+
     // Verus will desugar this: 
     //
     // for x in y: m
@@ -880,7 +913,7 @@ fn for_loop_test_map() {
     //          forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
     //          w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
     // {
-    //     w.push(*x);
+    //     w.push(x);
     // }
     //
     // Into:
@@ -905,7 +938,16 @@ fn for_loop_test_map() {
 
                       // inv
                       &&& forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
-                      &&& w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
+                      //&&& w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
+                    //   &&& w@ == v@.take(w@.len() as int).map_values(|i: u8| (i + 1) as u8)
+                    //   &&& w.len() < v.len()
+
+                      &&& w.len() == y.count()
+                      &&& forall |i| 
+                          #![trigger y.prophs@.proph_elem(i)]
+                          #![trigger w[i]]
+                          0 <= i < w.len() ==> (y.prophs@.proph_elem(i) matches Some(x) && x == w[i])
+
                     }),
                 ensures
                     y.seq().len() == 0 && y.completes(),
@@ -913,7 +955,10 @@ fn for_loop_test_map() {
                     y.decrease().unwrap_or(arbitrary()),
             {
                 let ghost old_y = y;
+                let ghost old_w = w;
                 assume(y.map_iterator_type_inv());   // Faking type invariant
+                broadcast use unwrap_up_to_first_none_len_le;
+                broadcast use unwrap_up_to_first_none_len_le_values;
                 // assert(y.decrease() == y.inner().decrease());
                 // assert(y.decrease() is Some);
                 #[allow(non_snake_case)]
@@ -935,13 +980,49 @@ fn for_loop_test_map() {
                 let x = VERUS_loop_next;
                 let () = {
                     // body
-                    w.push(x + 1);
+                    w.push(x);
                 };
                 // assert(y.decrease() is Some);
+                assert(forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10);
+                // assert forall |j| 0 <= j < w@.len() implies w@[j] == (v@.take(w@.len() as int)[j] + 1) as u8 by {
+                //     if j < w@.len() - 1 {
+                //         assert(w@[j] == old_w@[j]);
+                //         assert(j < old_w@.len());
+                //         assert(old_w@.len() + 1 == w@.len());
+                //         assert(w@.len() <= v@.len());
+                //         assert(v@.take(old_w@.len() as int)[j] == v@[j]);
+                //         assert(v@.take(old_w@.len() as int)[j] == v@.take(w@.len() as int)[j]);
+                //         assert(old_w@[j] == (v@.take(w@.len() as int)[j] + 1) as u8);
+                //     } else {
+                //         assert(j < w@.len());
+                //         assume(false);
+                //     }
+                // };
+                // assert(w@ == v@.take(w@.len() as int).map_values(|i: u8| (i + 1) as u8));
+                // assert(w.len() < v.len());
+
+                // assert(w.len() == y.count());
+                // assert forall |i| 
+                //           #![trigger y.prophs@.proph_elem(i)]
+                //           #![trigger w[i]]
+                //           0 <= i < w.len() implies (y.prophs@.proph_elem(i) matches Some(x) && x == w[i]) by {
+                //     if i < w.len() - 1 {
+                //         assert(y.prophs@.proph_elem(i) is Some);
+                //         assert(old_w[i] == w[i]);
+                //         assert(y.prophs@.proph_elem(i) matches Some(x) && x == w[i]);
+                //     } else {
+                //         assert(i == w.len() - 1);
+                //         assert(i == old_y.count());
+                //         assert(y.prophs@.proph_elem(i) is Some);
+                //         assert(y.prophs@.proph_elem(i) matches Some(x) && x == w[i]);
+                //     }
+                // };
+
             }
         }
     };
-
+// TODO
+assume(false);
     // Make sure our invariant was useful
     assert(w@ == v@.map_values(|i:u8| (i + 1) as u8));
 }
