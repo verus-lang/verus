@@ -4,6 +4,11 @@ use vstd::prelude::*;
 
 verus!{
 
+mod iterator_traits {
+
+use vstd::prelude::*;
+use vstd::std_specs::cmp::*;
+
 // PAPER CUT: When a proof fails, you can't mention prophetic functions 
 //            as part of proof debugging.  E.g., you can't write:
 //            proof { if prophetic_fn() { assert(P) } else { assert(Q) } }
@@ -121,7 +126,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
     }
 
-    closed spec fn completes(&self) -> bool {
+    open spec fn completes(&self) -> bool {
         true
     }
 
@@ -259,7 +264,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
 
     //#[verifier::type_invariant] // fake this due to limitations
     #[verifier::prophetic]
-    closed spec fn map_iterator_type_inv(self) -> bool {
+    pub closed spec fn map_iterator_type_inv(self) -> bool {
         0 <= self.idx@ <= self.prophs@.pred().iter.seq().len()
           && self.iter.seq() =~= self.prophs@.pred().iter.seq().skip(self.idx@)
           && self.prophs@.pred().f == self.f
@@ -275,7 +280,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
                 0 <= i < self.idx@ ==> self.prophs@.has_resolved(i) && self.prophs@.proph_elem(i).is_some())
     }
 
-    fn new(iter: Iter, f: F) -> (s: Self)
+    pub fn new(iter: Iter, f: F) -> (s: Self)
         requires
             iter.obeys_iter_laws(),
             forall |i| #![auto] 0 <= i < iter.seq().len() ==>
@@ -315,7 +320,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
     }
 }
 
-spec fn unwrap_up_to_first_none<T>(seq: Seq<Option<T>>) -> Seq<T>
+pub closed spec fn unwrap_up_to_first_none<T>(seq: Seq<Option<T>>) -> Seq<T>
     decreases seq.len()
 {
     if seq.len() == 0 {
@@ -327,7 +332,7 @@ spec fn unwrap_up_to_first_none<T>(seq: Seq<Option<T>>) -> Seq<T>
     }
 }
 
-broadcast proof fn unwrap_up_to_first_none_len_le<T>(seq: Seq<Option<T>>)
+pub broadcast proof fn unwrap_up_to_first_none_len_le<T>(seq: Seq<Option<T>>)
     ensures #[trigger] unwrap_up_to_first_none(seq).len() <= seq.len(),
         (forall |i| 0 <= i < seq.len() ==> seq[i].is_some()) ==>
             unwrap_up_to_first_none(seq).len() == seq.len(),
@@ -338,7 +343,7 @@ broadcast proof fn unwrap_up_to_first_none_len_le<T>(seq: Seq<Option<T>>)
     }
 }
 
-broadcast proof fn unwrap_up_to_first_none_len_le_values<T>(seq: Seq<Option<T>>, i: int)
+pub broadcast proof fn unwrap_up_to_first_none_len_le_values<T>(seq: Seq<Option<T>>, i: int)
     requires 0 <= i < unwrap_up_to_first_none(seq).len()
     ensures
         i < seq.len(),
@@ -413,7 +418,7 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
 
 // take
 
-struct TakeIterator<Iter: Iterator> {
+pub struct TakeIterator<Iter: Iterator> {
     iter: Iter,
     count_remaining: usize,
 }
@@ -430,11 +435,11 @@ impl<Iter: Iterator> TakeIterator<Iter> {
     //#[verifier::type_invariant] // fake this (via assert/assume below) due to limitations:
     //  With this as a type invariantVerus won't let us call self.iter.next() unless it's marked no_unwind
     #[verifier::prophetic]
-    closed spec fn take_inv(self) -> bool {
+    pub closed spec fn take_inv(self) -> bool {
         self.iter.obeys_iter_laws()
     }
 
-    fn new(iter: Iter, count: usize) -> (s: Self)
+    pub fn new(iter: Iter, count: usize) -> (s: Self)
         requires
             iter.obeys_iter_laws(),
         ensures
@@ -494,7 +499,7 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
 
 // skip
 
-struct SkipIterator<Iter: Iterator> {
+pub struct SkipIterator<Iter: Iterator> {
     iter: Iter,
 }
 
@@ -505,13 +510,13 @@ impl<Iter: Iterator> SkipIterator<Iter> {
 
     //#[verifier::type_invariant] // fake this due to limitations
     #[verifier::prophetic]
-    closed spec fn skip_inv(self) -> bool {
+    pub closed spec fn skip_inv(self) -> bool {
         self.iter.obeys_iter_laws()
     }
 }
 
 impl<Iter: Iterator> SkipIterator<Iter> {
-    fn new(iter: Iter, count: usize) -> (s: Self)
+    pub fn new(iter: Iter, count: usize) -> (s: Self)
         requires
             iter.obeys_iter_laws(),
         ensures
@@ -575,14 +580,14 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
 }
 
 // reverse iterator
-struct ReverseIterator<Iter: Iterator> {
+pub struct ReverseIterator<Iter: Iterator> {
     iter: Iter,
 }
 
 impl<Iter: Iterator> ReverseIterator<Iter> {
     //#[verifier::type_invariant] // fake this due to limitations
     #[verifier::prophetic]
-    closed spec fn reverse_inv(self) -> bool {
+    pub closed spec fn reverse_inv(self) -> bool {
         self.iter.obeys_iter_laws()
     }
 
@@ -592,7 +597,7 @@ impl<Iter: Iterator> ReverseIterator<Iter> {
 }
 
 impl<Iter: Iterator + DoubleEndedIterator> ReverseIterator<Iter> {
-    fn new(iter: Iter) -> (s: Self)
+    pub fn new(iter: Iter) -> (s: Self)
         requires
             iter.obeys_iter_laws(),
         ensures
@@ -646,7 +651,7 @@ impl<Iter: Iterator + DoubleEndedIterator> DoubleEndedIterator for ReverseIterat
 // collect
 
 #[verifier::exec_allows_no_decreases_clause]
-fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
+pub fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
     requires
         iter.obeys_iter_laws(),
     ensures s@ == iter.seq(),
@@ -671,7 +676,14 @@ fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
     }
 }
 
+}
+
 // examples
+mod examples {
+
+use vstd::prelude::*;
+use super::iterator_traits::*;
+
 
 fn test() {
     let f = |i: &u8| -> (out: u8)
@@ -931,9 +943,9 @@ fn for_loop_test_map() {
 
                       &&& w.len() == y.count()
                       &&& forall |i| 
-                          #![trigger y.prophs@.proph_elem(i)]
+                          #![trigger y.the_prophs().proph_elem(i)]
                           #![trigger w[i]]
-                          0 <= i < w.len() ==> (y.prophs@.proph_elem(i) matches Some(x) && x == w[i])
+                          0 <= i < w.len() ==> (y.the_prophs().proph_elem(i) matches Some(x) && x == w[i])
 
                     }),
                 ensures
@@ -1310,7 +1322,7 @@ fn for_loop_test_double_rev() {
     assert(w@ == v@);
 }
 
-
+} // mod examples
 
 } // verus!
 
