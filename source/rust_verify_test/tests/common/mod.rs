@@ -194,9 +194,8 @@ pub fn parse_diags(
 
     // eprintln!("rust_output: {}", &rust_output);
     if rust_output.len() > 0 {
-        for ss in rust_output.split("\n") {
-            let diag: Result<Diagnostic, _> = serde_json::from_str(ss);
-            if let Ok(diag) = diag {
+        for line in rust_output.lines() {
+            if let Ok(diag) = serde_json::from_str::<Diagnostic>(line) {
                 eprintln!("{}", diag.rendered);
                 if diag.level == "note" && diag.message.starts_with("diagnostics via expansion") {
                     // TODO(main_new) define in defs
@@ -217,8 +216,14 @@ pub fn parse_diags(
                 }
                 errors.push(diag);
             } else {
+                // HACK: skip long running messages
+                if !line.contains("has been running for") {
+                    eprintln!("{line}");
+                    continue;
+                }
+
                 *is_failure = true;
-                eprintln!("[unexpected json] \"{}\"", ss);
+                eprintln!("[unexpected json] \"{line}\"");
             }
         }
     }
