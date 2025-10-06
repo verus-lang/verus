@@ -23,13 +23,12 @@ use verus_syn::{
     ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Generics, Global, Ident, ImplItem,
     ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
     InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lifetime,
-    LifetimeParam, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec,
-    ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Receiver, Recommends, Requires,
-    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
-    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof,
-    TypeFnSpec, TypePath, TypeReference, UnOp, Visibility, braced, bracketed, parenthesized,
-    parse_macro_input,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lifetime, Lit, Local,
+    MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat, PatIdent,
+    PatType, Path, Publish, Receiver, Recommends, Requires, ReturnType, Returns, Signature,
+    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
+    Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, TypeReference,
+    UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -642,7 +641,7 @@ impl Visitor {
         let mut args_ty_tokens = TokenStream::new();
         let mut args_pat_tokens = TokenStream::new();
         let mut self_ident = None;
-        let mut self_lifetime = None;
+        //let mut self_lifetime = None;
 
         for pair in sig.inputs.pairs() {
             let (fn_arg, comma) = pair.into_tuple();
@@ -652,9 +651,9 @@ impl Visitor {
                 FnArgKind::Typed(pat_type) => pat_type,
                 FnArgKind::Receiver(receiver) => {
                     let ident = Ident::new("this", receiver.self_token.span());
-                    let (pat_type, lifetime) = self.resolve_receiver(receiver, &ident);
+                    let (pat_type, _lifetime) = self.resolve_receiver(receiver, &ident);
                     self_ident = Some(ident);
-                    self_lifetime = lifetime;
+                    //self_lifetime = lifetime;
 
                     temp = pat_type;
                     &temp
@@ -664,29 +663,38 @@ impl Visitor {
             pat_type.pat.to_tokens(&mut args_pat_tokens);
             pat_type.ty.to_tokens(&mut args_ty_tokens);
 
+            // let comma =
+            //     comma.cloned().unwrap_or_else(|| verus_syn::token::Comma { spans: [full_span] });
             comma.to_tokens(&mut args_pat_tokens);
             comma.to_tokens(&mut args_ty_tokens);
         }
 
-        let generics = &sig.generics;
+        let mut generics = sig.generics.clone();
+        generics.params.retain(|val, _| match val {
+            GenericParam::Lifetime(..) => false,
+            GenericParam::Const(..) => true,
+            GenericParam::Type(..) => true,
+        });
+
+        let generics_params = &generics.params;
         let where_clause = &generics.where_clause;
 
-        let mut generics_extra_lt = generics.clone();
-        if let Some(lifetime) = self_lifetime {
-            generics_extra_lt.params.insert(
-                0,
-                GenericParam::Lifetime(LifetimeParam {
-                    attrs: Vec::new(),
-                    lifetime,
-                    colon_token: None,
-                    bounds: Punctuated::new(),
-                }),
-            );
-        }
+        // let mut generics_extra_lt = generics.clone();
+        // if let Some(lifetime) = self_lifetime {
+        //     generics_extra_lt.params.insert(
+        //         0,
+        //         GenericParam::Lifetime(LifetimeParam {
+        //             attrs: Vec::new(),
+        //             lifetime,
+        //             colon_token: None,
+        //             bounds: Punctuated::new(),
+        //         }),
+        //     );
+        // }
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
-            #vis struct #pred_ident #generics_extra_lt #where_clause {
-                #vis ghost data: ( #args_ty_tokens ),
+            #vis struct #pred_ident #generics #where_clause {
+                _marker: ::core::marker::PhantomData<( #generics_params )>,
             }
         ));
 
@@ -717,14 +725,14 @@ impl Visitor {
             atomic_ens = replace_self_with_ident(atomic_ens, ident);
         }
 
-        let mut impl_members = quote_spanned!(full_span =>
+        let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
             open spec fn req(self, #old_val: #old_ty) -> bool {
-                let ( #args_pat_tokens ) = self.data;
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
                 #atomic_req
             }
 
             open spec fn ens(self, #old_val: #old_ty, #new_val: #new_ty) -> bool {
-                let ( #args_pat_tokens ) = self.data;
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
                 #atomic_ens
             }
         );
@@ -772,30 +780,19 @@ impl Visitor {
             return Vec::new();
         };
 
-        let out_stmts = vec![
-            Stmt::Expr(
-                Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
-                    #builtin::assume_(
-                        #builtin::spec_eq(
+        let out_stmts = vec![Stmt::Expr(
+            Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
+                #builtin::assume_(
+                    #builtin::spec_eq(
+                        #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(
                             #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
-                            #pred_ident { data: ( #args_pat_tokens ) },
-                        )
+                        ),
+                        ( #args_pat_tokens ),
                     )
-                )),
-                Some(Semi { spans: [full_span] }),
-            ),
-            // Stmt::Expr(
-            //     Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
-            //         #builtin::assert_(
-            //             vstd::set::Set::spec_le(
-            //                 #vstd::atomic::AtomicUpdate::inner_mask( #atomic_update ),
-            //                 #vstd::atomic::AtomicUpdate::outer_mask( #atomic_update ),
-            //             )
-            //         )
-            //     )),
-            //     Some(Semi { spans: [full_span] }),
-            // ),
-        ];
+                )
+            )),
+            Some(Semi { spans: [full_span] }),
+        )];
 
         // We should always be in exec mode here so this should always run
         if self.inside_ghost == 0 {
@@ -3491,8 +3488,8 @@ impl Visitor {
     }
 
     fn handle_atomic_call(&mut self, expr: &mut Expr) {
-        let (Expr::Call(ExprCall { args, atomically, .. })
-        | Expr::MethodCall(ExprMethodCall { args, atomically, .. })) = expr
+        let (Expr::Call(ExprCall { args, atomically, attrs, .. })
+        | Expr::MethodCall(ExprMethodCall { args, atomically, attrs, .. })) = expr
         else {
             return;
         };
@@ -3503,6 +3500,10 @@ impl Visitor {
 
         let span = atomically.span();
         let AtomicallyBlock { update_binder, mut body, .. } = atomically;
+
+        attrs.push(parse_quote_spanned!(span =>
+            #[verifier::atomic_call]
+        ));
 
         self.inside_ghost += 1;
         self.visit_block_mut(&mut body);

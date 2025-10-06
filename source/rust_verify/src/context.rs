@@ -52,6 +52,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
+    pub(crate) au_pred_args: Option<vir::ast::Exprs>,
 }
 
 pub(crate) struct AtomicallyCtxt {

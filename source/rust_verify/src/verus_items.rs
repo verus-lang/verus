@@ -320,6 +320,7 @@ pub(crate) enum VstdItem {
     SetFn(SetItem),
     Invariant(InvariantItem),
     AtomicUpdate(AtomicUpdateItem),
+    PredArgs,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -589,6 +590,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),

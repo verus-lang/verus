@@ -943,11 +943,7 @@ pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
     if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
 }
 
-fn assert_atomic_update_resolves(
-    ctx: &Ctx,
-    state: &mut State,
-    stms: &mut Vec<Stm>,
-) {
+fn assert_atomic_update_resolves(ctx: &Ctx, state: &mut State, stms: &mut Vec<Stm>) {
     if state.checking_recommends(ctx) {
         return;
     }
@@ -2588,7 +2584,7 @@ pub(crate) fn expr_to_stm_opt(
 
             return Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
-        ExprX::Atomically(info, pred_expr, body_expr) => {
+        ExprX::Atomically(info, args_expr, body_expr) => {
             // let pred = $pred_expr;
             // let au = new existential;
             // assume(pred(au) == pred);
@@ -2599,11 +2595,35 @@ pub(crate) fn expr_to_stm_opt(
 
             let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, .. } = info.as_ref();
 
+            let args_typ = &args_expr.typ;
+            let (mut stms, args_raw_exp) = expr_to_stm_opt(ctx, state, args_expr)?;
+            let args_raw_exp = unwrap_or_return_never!(args_raw_exp, stms);
+            let args_var_exp = state.make_tmp_var_for_exp(&mut stms, args_raw_exp);
+
             // construct predicate type
 
-            let (mut stms, pred_raw_exp) = expr_to_stm_opt(ctx, state, pred_expr)?;
-            let pred_raw_exp = unwrap_or_return_never!(pred_raw_exp, stms);
-            let pred_var_exp = state.make_tmp_var_for_exp(&mut stms, pred_raw_exp);
+            let (pred_var_id, pred_var_exp) =
+                state.declare_temp_var_stm(&expr.span, pred_typ, LocalDeclKind::Nondeterministic);
+            stms.push(assume_has_typ(&pred_var_id, pred_typ, &expr.span));
+
+            let call_pred_args = SpannedTyped::new(
+                &expr.span,
+                args_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::pred_args"),
+                    Arc::new(vec![pred_typ.clone(), args_typ.clone()]),
+                    Arc::new(vec![pred_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(SpannedTyped::new(
+                    &expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, args_var_exp),
+                )),
+            ));
 
             // construct atomic update
 

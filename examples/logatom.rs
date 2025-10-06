@@ -3,7 +3,7 @@ use vstd::*;
 
 verus! {
 
-pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
+pub fn atomic_function<T>(x: i32, _s: &str, _t: T) -> (y: i32)
     atomically (au) {
         type FunPred,
         (z: i32) -> (w: i32),
@@ -15,7 +15,7 @@ pub fn atomic_function<'a, T>(x: i32, _s: &'a str, _t: T) -> (y: i32)
     requires x == 2,
     ensures y == 3,
 {
-    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, FunPred<'a, T>> = au;
+    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, FunPred<T>> = au;
     assume(au.resolves());
     return x + 1;
 }

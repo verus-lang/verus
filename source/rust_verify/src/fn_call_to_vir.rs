@@ -36,7 +36,8 @@ use vir::ast::{
     ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun,
     CallTarget, ChainedOp, ComputeMode, Constant, Dt, ExprX, FieldOpr, FunX, HeaderExpr,
     HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant,
-    Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent,
+    VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -271,7 +272,21 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
-    let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+    let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+    let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
+    let vir_args = if vir_attrs.contains(&crate::attributes::Attr::AtomicCall) {
+        let [prefix @ .., au] = args.as_slice() else {
+            panic!("atomic call must have at least one argument");
+        };
+
+        let mut args = mk_vir_args(bctx, node_substs, f, prefix)?;
+        let au_pred_args = Some(Arc::new(args.clone()));
+        let atomic_bctx = BodyCtxt { au_pred_args, ..bctx.clone() };
+        args.push(expr_to_vir_consume(&atomic_bctx, au, ExprModifier::REGULAR)?);
+        args
+    } else {
+        mk_vir_args(bctx, node_substs, f, &args)?
+    };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
@@ -650,9 +665,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
                 };
 
-                let TypX::Datatype(pred_dt @ Dt::Path(pred_dt_path), ..) = pred_typ.as_ref() else {
-                    return malformed_err(&expr);
-                };
+                // let TypX::Datatype(pred_dt @ Dt::Path(pred_dt_path), ..) = pred_typ.as_ref() else {
+                //     return malformed_err(&expr);
+                // };
 
                 let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
                     return malformed_err(&expr);
@@ -699,20 +714,21 @@ fn verus_item_to_vir<'tcx, 'a>(
                     return malformed_err(expr);
                 };
 
-                let fun_args = expr_to_vir_consume(&bctx, fun_args, outer_modifier)?;
-                let pred_init = bctx.spanned_typed_new(
-                    expr.span,
-                    pred_typ,
-                    ExprX::Ctor(
-                        pred_dt.clone(),
-                        Arc::new(pred_dt_path.last_segment().as_str().to_owned()),
-                        Arc::new(vec![Arc::new(air::ast::BinderX {
-                            name: Arc::new("data".to_string()),
-                            a: fun_args,
-                        })]),
-                        None,
-                    ),
-                );
+                let args_expr = expr_to_vir_consume(&bctx, fun_args, outer_modifier)?;
+
+                let Some(args) = &bctx.au_pred_args else {
+                    return malformed_err(expr);
+                };
+
+                let args_expr = match args.as_slice() {
+                    [single] => single.clone(),
+                    _ => {
+                        let span = &args_expr.span;
+                        let typs = args.iter().map(|e| e.typ.clone()).collect();
+                        let tup_typ = mk_tuple_typ(&Arc::new(typs));
+                        SpannedTyped::new(span, &tup_typ, mk_tuple_x(args))
+                    }
+                };
 
                 let info = Arc::new(AtomicCallInfoX {
                     au_typ: au_typ.clone(),
@@ -736,7 +752,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
                     0 => err_span(arg.span, "function must be called in `atomically` block"),
-                    1 => mk_expr(ExprX::Atomically(info, pred_init, value)),
+                    1 => mk_expr(ExprX::Atomically(info, args_expr, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,
                         note: "function must be called exactly once in `atomically` block".into(),
@@ -2340,33 +2356,28 @@ fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     node_substs: &rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     f: DefId,
-    args: &Vec<&'tcx Expr<'tcx>>,
+    args: &[&'tcx Expr<'tcx>],
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let raw_inputs = bctx.ctxt.tcx.fn_sig(f).instantiate(tcx, node_substs).skip_binder().inputs();
-    assert!(raw_inputs.len() == args.len());
+    //assert!(raw_inputs.len() == args.len());
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
             let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
-                && match raw_param.kind() {
-                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                    _ => false,
-                };
+                && matches!(raw_param.kind(), TyKind::Ref(_, _, rustc_hir::Mutability::Mut));
             if is_mut_ref_param {
-                let expr =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
+                let modifier = ExprModifier { deref_mut: true, addr_of_mut: true };
+                let expr = expr_to_vir(bctx, arg, modifier)?;
                 let expr = crate::rust_to_vir_expr::place_to_loc(&expr.to_place())?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
-                expr_to_vir_consume(
-                    bctx,
-                    arg,
-                    is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), ExprModifier::REGULAR)?,
-                )
+                let ty = bctx.types.expr_ty_adjusted(arg);
+                let modifier = is_expr_typ_mut_ref(ty, ExprModifier::REGULAR)?;
+                expr_to_vir_consume(bctx, arg, modifier)
             }
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect()
 }
 
 fn mk_vir_args_auto_skip_mut_refs<'tcx>(
@@ -2382,10 +2393,7 @@ fn mk_vir_args_auto_skip_mut_refs<'tcx>(
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
             let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
-                && match raw_param.kind() {
-                    TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
-                    _ => false,
-                };
+                && matches!(raw_param.kind(), TyKind::Ref(_, _, rustc_hir::Mutability::Mut));
             let modifier = if is_mut_ref_param {
                 ExprModifier { deref_mut: true, addr_of_mut: false }
             } else {
@@ -2397,7 +2405,7 @@ fn mk_vir_args_auto_skip_mut_refs<'tcx>(
                 is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?,
             )
         })
-        .collect::<Result<Vec<_>, _>>()
+        .collect()
 }
 
 fn mk_one_vir_arg<'tcx>(

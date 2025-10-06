@@ -251,7 +251,7 @@ test_verify_one_file! {
     #[test] atomic_spec_predicate_type_args
     ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
-            let ghost FunctionPred { data: (n) } = au.pred();
+            let ghost n: u32 = vstd::atomic::pred_args(au.pred());
             assert forall |a: u32| au.req(a) <==> a == n by {}
             assert forall |a: u32, b: u32| au.ens(a, b) <==> b == a + 3 by {}
         }

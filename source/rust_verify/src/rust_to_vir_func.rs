@@ -231,6 +231,7 @@ fn body_to_vir<'tcx>(
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
         atomically: None,
+        au_pred_args: None,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 

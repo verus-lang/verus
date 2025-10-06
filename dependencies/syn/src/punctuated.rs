@@ -274,6 +274,12 @@ impl<T, P> Punctuated<T, P> {
         }
     }
 
+    /// Retains only the elements specified by the predicate.
+    pub fn retain(&mut self, mut f: impl FnMut(&T, Option<&P>) -> bool) {
+        self.inner.retain(|(value, punct)| f(&value, Some(punct)));
+        self.last.take_if(|value| !f(value, None));
+    }
+
     /// Clears the sequence of all values and punctuation, making it empty.
     pub fn clear(&mut self) {
         self.inner.clear();
