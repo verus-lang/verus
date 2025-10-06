@@ -1,9 +1,9 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget,
-    ComputeMode, Constant, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, Place, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, ByRef,
+    CallTarget, ComputeMode, Constant, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange,
+    InvAtomicity, LoopInvariantKind, MaskSpec, Mode, PatternBinding, PatternX, Place, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{
@@ -3124,14 +3124,19 @@ fn stmt_to_stm(
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
-            let (name, mutable) = match &pattern.x {
-                PatternX::Var { name, mutable } => (name, mutable),
+            let (name, mutable, typ) = match &pattern.x {
+                PatternX::Var(PatternBinding {
+                    name,
+                    mutable,
+                    by_ref: ByRef::No,
+                    typ,
+                    copy: _,
+                }) => (name, mutable, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
 
             let rename = state.rename_var_maybe_exp(&name);
             let ident = rename.clone();
-            let typ = pattern.typ.clone();
             let decl = Arc::new(LocalDeclX {
                 ident,
                 typ: typ.clone(),

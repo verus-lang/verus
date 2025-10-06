@@ -1,8 +1,8 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec,
-    VarIdent, VirErr,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr,
+    UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -473,17 +473,23 @@ fn add_pattern_rec(
     if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
         && !matches!(&pattern.x, PatternX::Wildcard(true))
         && !matches!(&pattern.x, PatternX::Expr(_))
+        && !matches!(&pattern.x, PatternX::ImmutRef(_))
+        && !matches!(&pattern.x, PatternX::MutRef(_))
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var { name: x, mutable: _ } => {
+        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ }) => {
+            // TODO(new_mut_ref): disallow ByRef::Mut in spec code
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
-        PatternX::Binding { name: x, mutable: _, sub_pat } => {
+        PatternX::Binding {
+            binding: PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ },
+            sub_pat,
+        } => {
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -568,6 +574,13 @@ fn add_pattern_rec(
                 check_expr_has_mode(ctxt, record, typing, mode, expr2, mode)?;
             }
             Ok(())
+        }
+        PatternX::ImmutRef(sub_pat) => {
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
+        }
+        PatternX::MutRef(sub_pat) => {
+            // TODO(new_mut_ref): disallow MutRef in spec code
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
     }
 }
@@ -1356,9 +1369,10 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::AssignToPlace { place, rhs, op: _ } => {
-            if outer_mode != Mode::Exec {
-                return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
-            }
+            // TODO(new_mut_ref): implement the correct mode-checking here
+            //if outer_mode != Mode::Exec {
+            //    return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
+            //}
             check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             check_expr_has_mode(ctxt, record, typing, Mode::Exec, rhs, Mode::Exec)?;
             Ok(Mode::Exec)
@@ -1840,7 +1854,16 @@ fn check_stmt(
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
-                (PatternX::Var { name: x, mutable: _ }, None) => {
+                (
+                    PatternX::Var(PatternBinding {
+                        name: x,
+                        mutable: _,
+                        by_ref: _,
+                        typ: _,
+                        copy: _,
+                    }),
+                    None,
+                ) => {
                     typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));
                 }
                 _ => panic!("internal error: unexpected mode = None"),
@@ -2096,6 +2119,7 @@ fn check_function(
                         functionx.body.as_ref().unwrap(),
                         &record.read_kind_finals,
                         &ctxt.datatypes,
+                        &ctxt.funs,
                         &record.var_modes,
                     ));
                 }

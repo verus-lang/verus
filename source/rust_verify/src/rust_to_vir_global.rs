@@ -67,14 +67,7 @@ pub(crate) fn process_const_early<'tcx>(
             return err();
         };
         let ty = types.node_type(ty.hir_id);
-        let ty = crate::rust_to_vir_base::mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            def_id,
-            item.span,
-            &ty,
-            true,
-        )?;
+        let ty = ctxt.mid_ty_to_vir(def_id, item.span, &ty, true)?;
         let rustc_hir::ExprKind::Lit(lit) = args[0].kind else {
             return err();
         };

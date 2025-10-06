@@ -1098,10 +1098,9 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
-            | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
-            (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
-                l.typ.clone()
-            }
+            | (LocalDeclKind::ExecClosureRet, _, _)
+            | (LocalDeclKind::Decreases, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            (LocalDeclKind::TempViaAssign, _, _) => l.typ.clone(),
         };
         match l.kind {
             LocalDeclKind::TempViaAssign => {

@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use crate::messages::{Message, Span};
+use crate::messages::{Message, MessageAs, Span};
 pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
@@ -15,11 +15,7 @@ use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
-
-pub enum VirErrAs {
-    Warning(VirErr),
-    Note(VirErr),
-}
+pub type VirErrAs = MessageAs;
 
 /// A non-qualified name, such as a local variable name or type parameter name
 pub type Ident = Arc<String>;
@@ -634,6 +630,24 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum ByRef {
+    No,
+    ImmutRef,
+    MutRef,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub struct PatternBinding {
+    pub name: VarIdent,
+    pub by_ref: ByRef,
+    pub typ: Typ,
+    pub mutable: bool,
+    /// True if the type of this variable is copy.
+    /// This is used by resolution analysis; it is meaningless post-simplification.
+    pub copy: bool,
+}
+
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
@@ -642,14 +656,21 @@ pub enum PatternX {
     /// _
     /// True if this is implicitly added from a ..
     Wildcard(bool),
-    /// x or mut x
-    Var {
-        name: VarIdent,
-        mutable: bool,
-    },
+    /// Be careful: when binding a variable, the *type of the variable* is found in the
+    /// PatternBinding struct. This can be different than the &pattern.typ which is the
+    /// *type of the value being matched against*.
+    ///
+    /// The specific relation depends on the ByRef:
+    ///
+    /// | ByRef    | pattern.typ | binding.typ |
+    /// |----------|-------------|-------------|
+    /// | No       | T           | T           |
+    /// | ImmutRef | T           | &T          |
+    /// | MutRef   | T           | &mut T      |
+    Var(PatternBinding),
+    /// `x @ subpat`
     Binding {
-        name: VarIdent,
-        mutable: bool,
+        binding: PatternBinding,
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident
@@ -666,6 +687,14 @@ pub enum PatternX {
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
+    /// References, which are often automatically inserted due to "match ergonomics".
+    /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern
+    /// `Some(x)`. In this case it gets elaborated to the VIR pattern:
+    /// `MutRef(Constructor("Some", Var("x")))`.
+    /// The variable "x" will have binding mode ByRef::Mut,
+    /// and ultimately x will have type `&mut T`.
+    MutRef(Pattern),
+    ImmutRef(Pattern),
 }
 
 /// Arms of match expressions
@@ -1398,6 +1427,8 @@ pub struct DatatypeX {
     /// For structs, this is usually the last field of the struct, or is derived from it.
     /// For enums, this is always None.
     pub sized_constraint: Option<Typ>,
+    /// Does this type have a Drop impl?
+    pub destructor: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

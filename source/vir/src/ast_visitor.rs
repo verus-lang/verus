@@ -2,9 +2,9 @@ use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl,
-    TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX,
-    VarBinders, VarIdent, Variant, VirErr,
+    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    TraitImpl, TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -734,19 +734,36 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn visit_pattern_binding(
+        &mut self,
+        pb: &PatternBinding,
+    ) -> Result<R::Ret<PatternBinding>, Err> {
+        let PatternBinding { name, by_ref, typ, mutable, copy } = pb;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| PatternBinding {
+            name: name.clone(),
+            by_ref: *by_ref,
+            typ: R::get(typ),
+            mutable: *mutable,
+            copy: *copy,
+        })
+    }
+
     fn visit_pattern_rec(&mut self, pattern: &Pattern) -> Result<R::Ret<Pattern>, Err> {
         let typ = self.visit_typ(&pattern.typ)?;
         let pattern_new = |p: PatternX| SpannedTyped::new(&pattern.span, &R::get(typ), p);
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Var { name: _, mutable: _ } => {
-                R::ret(|| pattern_new(pattern.x.clone()))
+            PatternX::Wildcard(_) => R::ret(|| pattern_new(pattern.x.clone())),
+            PatternX::Var(binding) => {
+                let binding = self.visit_pattern_binding(binding)?;
+                R::ret(|| pattern_new(PatternX::Var(R::get(binding))))
             }
-            PatternX::Binding { name, mutable, sub_pat } => {
+            PatternX::Binding { binding, sub_pat } => {
+                let binding = self.visit_pattern_binding(binding)?;
                 let sub_pat = self.visit_pattern(sub_pat)?;
                 R::ret(|| {
                     pattern_new(PatternX::Binding {
-                        name: name.clone(),
-                        mutable: *mutable,
+                        binding: R::get(binding),
                         sub_pat: R::get(sub_pat),
                     })
                 })
@@ -773,6 +790,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     R::ret(|| (R::get(end_expr), *ineq_op))
                 })?;
                 R::ret(|| pattern_new(PatternX::Range(R::get_opt(start), R::get_opt(end))))
+            }
+            PatternX::ImmutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::ImmutRef(R::get(p))))
+            }
+            PatternX::MutRef(p) => {
+                let p = self.visit_pattern(p)?;
+                R::ret(|| pattern_new(PatternX::MutRef(R::get(p))))
             }
         }
     }
@@ -965,12 +990,15 @@ where
 fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool) {
     match &pattern.x {
         PatternX::Wildcard(_) => {}
-        PatternX::Var { name, mutable } => {
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+        PatternX::Var(PatternBinding { name, mutable, by_ref: _, typ, copy: _ }) => {
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
-        PatternX::Binding { name, mutable, sub_pat } => {
+        PatternX::Binding {
+            binding: PatternBinding { name, mutable, by_ref: _, typ, copy: _ },
+            sub_pat,
+        } => {
             insert_pattern_vars(map, sub_pat, init);
-            let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
+            let _ = map.insert(name.clone(), ScopeEntry::new(typ, *mutable, init));
         }
         PatternX::Constructor(_, _, binders) => {
             for binder in binders.iter() {
@@ -983,47 +1011,52 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         }
         PatternX::Expr(_) => {}
         PatternX::Range(_, _) => {}
+        PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
+            insert_pattern_vars(map, pat1, init);
+        }
     }
 }
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
 
-pub(crate) fn ast_visitor_check_with_scope_map<E, FE, FS, FP, FT, FPL>(
+pub(crate) fn ast_visitor_check_with_scope_map<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
     fpl: &mut FPL,
-) -> Result<(), E>
+) -> Result<(), ERR>
 where
-    FE: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
-    FS: FnMut(&VisitorScopeMap, &Stmt) -> Result<(), E>,
-    FP: FnMut(&VisitorScopeMap, &Pattern) -> Result<(), E>,
-    FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
-    FPL: FnMut(&VisitorScopeMap, &Place) -> Result<(), E>,
+    FE: FnMut(&mut E, &VisitorScopeMap, &Expr) -> Result<(), ERR>,
+    FS: FnMut(&mut E, &VisitorScopeMap, &Stmt) -> Result<(), ERR>,
+    FP: FnMut(&mut E, &VisitorScopeMap, &Pattern) -> Result<(), ERR>,
+    FT: FnMut(&mut E, &VisitorScopeMap, &Typ, &Span) -> Result<(), ERR>,
+    FPL: FnMut(&mut E, &VisitorScopeMap, &Place) -> Result<(), ERR>,
 {
     match ast_visitor_dfs(
         expr,
         scope_map,
-        &mut |scope_map, x| match fe(scope_map, x) {
+        env,
+        &mut |env, scope_map, x| match fe(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x| match fs(scope_map, x) {
+        &mut |env, scope_map, x| match fs(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x| match fp(scope_map, x) {
+        &mut |env, scope_map, x| match fp(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x, span| match ft(scope_map, x, span) {
+        &mut |env, scope_map, x, span| match ft(env, scope_map, x, span) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
-        &mut |scope_map, x| match fpl(scope_map, x) {
+        &mut |env, scope_map, x| match fpl(env, scope_map, x) {
             Ok(()) => VisitorControlFlow::Recurse,
             Err(e) => VisitorControlFlow::Stop(e),
         },
@@ -1034,26 +1067,28 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_check<E, FE, FS, FP, FT, FPL>(
+pub(crate) fn ast_visitor_check<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
     ft: &mut FT,
     fpl: &mut FPL,
-) -> Result<(), E>
+) -> Result<(), ERR>
 where
-    FE: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
-    FS: FnMut(&VisitorScopeMap, &Stmt) -> Result<(), E>,
-    FP: FnMut(&VisitorScopeMap, &Pattern) -> Result<(), E>,
-    FT: FnMut(&VisitorScopeMap, &Typ, &Span) -> Result<(), E>,
-    FPL: FnMut(&VisitorScopeMap, &Place) -> Result<(), E>,
+    FE: FnMut(&mut E, &VisitorScopeMap, &Expr) -> Result<(), ERR>,
+    FS: FnMut(&mut E, &VisitorScopeMap, &Stmt) -> Result<(), ERR>,
+    FP: FnMut(&mut E, &VisitorScopeMap, &Pattern) -> Result<(), ERR>,
+    FT: FnMut(&mut E, &VisitorScopeMap, &Typ, &Span) -> Result<(), ERR>,
+    FPL: FnMut(&mut E, &VisitorScopeMap, &Place) -> Result<(), ERR>,
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
-    ast_visitor_check_with_scope_map(expr, &mut scope_map, fe, fs, fp, ft, fpl)
+    ast_visitor_check_with_scope_map(expr, &mut scope_map, env, fe, fs, fp, ft, fpl)
 }
 
-struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL> {
+struct WalkAstVisitor<'a, E, FE, FS, FP, FT, FPL> {
+    env: &'a mut E,
     fe: &'a mut FE,
     fs: &'a mut FS,
     fp: &'a mut FP,
@@ -1064,17 +1099,17 @@ struct WalkAstVisitor<'a, FE, FS, FP, FT, FPL> {
     most_specific_span: Span,
 }
 
-impl<'a, FE, FS, FP, FT, FPL, T> AstVisitor<Walk, T, VisitorScopeMap>
-    for WalkAstVisitor<'a, FE, FS, FP, FT, FPL>
+impl<'a, E, FE, FS, FP, FT, FPL, T> AstVisitor<Walk, T, VisitorScopeMap>
+    for WalkAstVisitor<'a, E, FE, FS, FP, FT, FPL>
 where
-    FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
-    FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
-    FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
-    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
-    FPL: FnMut(&mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
+    FE: FnMut(&mut E, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut E, &mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut E, &mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut E, &mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut E, &mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
-        match (self.ft)(self.map, typ, &self.most_specific_span) {
+        match (self.ft)(&mut self.env, self.map, typ, &self.most_specific_span) {
             VisitorControlFlow::Recurse => self.visit_typ_rec(typ),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1083,7 +1118,7 @@ where
 
     fn visit_expr(&mut self, expr: &Expr) -> Result<(), T> {
         self.most_specific_span = expr.span.clone();
-        match (self.fe)(self.map, expr) {
+        match (self.fe)(&mut self.env, self.map, expr) {
             VisitorControlFlow::Recurse => self.visit_expr_rec(expr),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1092,7 +1127,7 @@ where
 
     fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), T> {
         self.most_specific_span = stmt.span.clone();
-        match (self.fs)(self.map, stmt) {
+        match (self.fs)(&mut self.env, self.map, stmt) {
             VisitorControlFlow::Recurse => self.visit_stmt_rec(stmt),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1101,7 +1136,7 @@ where
 
     fn visit_place(&mut self, place: &Place) -> Result<(), T> {
         self.most_specific_span = place.span.clone();
-        match (self.fpl)(self.map, place) {
+        match (self.fpl)(&mut self.env, self.map, place) {
             VisitorControlFlow::Recurse => self.visit_place_rec(place),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1110,7 +1145,7 @@ where
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), T> {
         self.most_specific_span = pattern.span.clone();
-        match (self.fp)(self.map, pattern) {
+        match (self.fp)(&mut self.env, self.map, pattern) {
             VisitorControlFlow::Recurse => self.visit_pattern_rec(pattern),
             VisitorControlFlow::Return => Ok(()),
             VisitorControlFlow::Stop(err) => Err(err),
@@ -1122,9 +1157,10 @@ where
     }
 }
 
-pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL>(
+pub(crate) fn ast_visitor_dfs<T, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
+    env: &mut E,
     fe: &mut FE,
     fs: &mut FS,
     fp: &mut FP,
@@ -1132,14 +1168,14 @@ pub(crate) fn ast_visitor_dfs<T, FE, FS, FP, FT, FPL>(
     fpl: &mut FPL,
 ) -> VisitorControlFlow<T>
 where
-    FE: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
-    FS: FnMut(&mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
-    FP: FnMut(&mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
-    FT: FnMut(&mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
-    FPL: FnMut(&mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
+    FE: FnMut(&mut E, &mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+    FS: FnMut(&mut E, &mut VisitorScopeMap, &Stmt) -> VisitorControlFlow<T>,
+    FP: FnMut(&mut E, &mut VisitorScopeMap, &Pattern) -> VisitorControlFlow<T>,
+    FT: FnMut(&mut E, &mut VisitorScopeMap, &Typ, &Span) -> VisitorControlFlow<T>,
+    FPL: FnMut(&mut E, &mut VisitorScopeMap, &Place) -> VisitorControlFlow<T>,
 {
     let mut vis =
-        WalkAstVisitor { fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
+        WalkAstVisitor { env, fe, fs, fp, ft, fpl, map, most_specific_span: expr.span.clone() };
     match vis.visit_expr(expr) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(t) => VisitorControlFlow::Stop(t),
