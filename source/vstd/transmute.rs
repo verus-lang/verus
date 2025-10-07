@@ -163,14 +163,18 @@ pub open spec fn bytes_to_endian(bytes: Seq<AbstractByte>) -> EndianNat<u8> {
 }
 
 /// Ensures that converting from an `EndianNat` representation to `AbtractByte`s and back results in the same `EndianNat`.
-pub proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<Provenance>)
+pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<Provenance>)
     requires
         pow(u8::base() as int, len) > n,
     ensures
+        #![trigger endian_to_bytes(EndianNat::<u8>::from_nat_with_len(n, len), prov)]
         ({
             let endian = EndianNat::<u8>::from_nat_with_len(n, len);
-            &&& bytes_to_endian(endian_to_bytes(endian, prov)) == endian
-            &&& endian.len() == len
+            let bytes = endian_to_bytes(endian, prov);
+            &&& bytes_to_endian(bytes) == endian
+            &&& endian.len() == bytes.len() == len
+            &&& AbstractByte::all_init(bytes)
+            &&& endian.wf()
         }),
 {
     broadcast use
@@ -180,15 +184,18 @@ pub proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<Provenance
     ;
 
     let endian = EndianNat::<u8>::from_nat_with_len(n, len);
+    let bytes = endian_to_bytes(endian, prov);
     assert(endian.wf());
+    assert(endian.len() == len);
+    assert(endian.len() == bytes.len());
 }
 
 /// Ensures that all bytes in the resulting `AbstractByte` representation indeed have the given provenance.
-pub proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, prov: Provenance)
+pub broadcast proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, prov: Provenance)
     requires
         endian.len() > 0,
     ensures
-        AbstractByte::shared_provenance(endian_to_bytes(endian, Some(prov))) == prov,
+        #[trigger] AbstractByte::shared_provenance(endian_to_bytes(endian, Some(prov))) == prov,
     decreases endian.len(),
 {
     if endian.len() == 1 {
@@ -196,6 +203,23 @@ pub proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, prov: Prov
         let bytes = endian_to_bytes(endian, Some(prov));
         assert(bytes.drop_last() =~= endian_to_bytes(endian.drop_last(), Some(prov)));
         endian_to_bytes_shared_provenance(endian.drop_last(), prov);
+    }
+}
+
+/// Ensures that all bytes in the resulting `AbstractByte` representation have no provenance.
+pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<u8>)
+    requires
+        endian.len() > 0,
+    ensures
+        #[trigger] AbstractByte::shared_provenance(endian_to_bytes(endian, None))
+            == Provenance::null(),
+    decreases endian.len(),
+{
+    if endian.len() == 1 {
+    } else {
+        let bytes = endian_to_bytes(endian, None);
+        assert(bytes.drop_last() =~= endian_to_bytes(endian.drop_last(), None));
+        endian_to_bytes_shared_provenance_none(endian.drop_last());
     }
 }
 
@@ -224,14 +248,26 @@ impl Encoding for usize {
     }
 
     proof fn encoding_props() {
-        reveal(EndianNat::to_nat);
-        broadcast use EndianNat::from_nat_to_nat;
+        broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
         usize_max_bounds();
-        assert forall|v| Self::decode(#[trigger] Self::encode(v)) == Some(v) by {
-            endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
-        }
     }
+}
+
+pub proof fn encode_usize(v: usize)
+    ensures
+        ({
+            let bytes = usize::encode(v);
+            &&& bytes.len() == size_of::<usize>()
+            &&& AbstractByte::all_init(bytes)
+            &&& AbstractByte::shared_provenance(bytes) == Provenance::null()
+            &&& bytes_to_endian(bytes).to_nat() as usize == v
+            &&& bytes_to_endian(bytes).wf()
+        }),
+{
+    broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+    usize_max_bounds();
 }
 
 impl<T> Encoding for *mut T {
@@ -268,18 +304,28 @@ impl<T> Encoding for *mut T {
     }
 
     proof fn encoding_props() {
-        reveal(EndianNat::to_nat);
-        broadcast use EndianNat::from_nat_to_nat;
+        broadcast use
+            EndianNat::from_nat_to_nat,
+            endian_to_bytes_to_endian,
+            endian_to_bytes_shared_provenance,
+        ;
 
         usize_max_bounds();
-        assert forall|v| Self::decode(#[trigger] Self::encode(v)) == Some(v) by {
-            endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
-            let endian_enc = EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<Self>());
-            let endian_dec = bytes_to_endian(Self::encode(v));
-            assert(endian_enc == endian_dec);
-            endian_to_bytes_shared_provenance(endian_enc, v@.provenance);
-        }
     }
+}
+
+// Helpers for specific transmute ops
+pub broadcast proof fn transmute_usize_mut_ptr<T>(src: usize)
+    ensures
+        #![trigger <*mut T as Encoding>::decode(usize::encode(src))]
+        <*mut T as Encoding>::decode(usize::encode(src)).is_some(),
+        ({
+            let dst = <*mut T as Encoding>::decode(usize::encode(src)).unwrap();
+            &&& dst@.addr == src
+            &&& dst@.provenance == Provenance::null()
+        }),
+{
+    encode_usize(src);
 }
 
 pub trait EncodingNotSized<T: ?Sized> {
