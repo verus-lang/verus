@@ -10,9 +10,7 @@ use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_to_vir, mk_visibility,
-};
+use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -160,7 +158,7 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, item.span, &mid_ty, false)?;
+        let vir_ty = ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false)?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -354,7 +352,7 @@ fn check_foreign_item<'tcx>(
 }
 
 pub(crate) fn get_root_module_path<'tcx>(ctxt: &Context<'tcx>) -> Path {
-    def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, rustc_hir::CRATE_OWNER_ID.to_def_id())
+    ctxt.def_id_to_vir_path(rustc_hir::CRATE_OWNER_ID.to_def_id())
 }
 
 pub fn crate_to_vir<'a, 'tcx>(

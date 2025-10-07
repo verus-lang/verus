@@ -219,6 +219,9 @@ fn resolve_datatype_axiom(ctx: &Ctx, dt: &Dt) -> Vec<Command> {
     if !crate::ast_util::is_transparent_to(&datatype.x.transparency, &ctx.module.x.path) {
         return vec![];
     }
+    if datatype.x.destructor {
+        return vec![];
+    }
 
     let span = &datatype.span;
 
