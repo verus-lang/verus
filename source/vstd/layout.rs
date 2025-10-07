@@ -25,16 +25,17 @@ pub open spec fn is_power_2_exists(m: int) -> bool {
     exists|i: nat| pow(2, i) == m
 }
 
-pub broadcast proof fn is_power_2_equiv() 
+pub broadcast proof fn is_power_2_equiv()
     ensures
-        forall |n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        forall|n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
 {
-    assert forall |n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
+    assert forall|n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
         is_power_2_equiv_forward(n);
     }
 
-    assert forall |n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
+    assert forall|n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
         broadcast use lemma_pow_positive;
+
         is_power_2_equiv_reverse(n);
     }
 }
@@ -44,41 +45,41 @@ proof fn is_power_2_equiv_forward(n: int)
         is_power_2(n),
     ensures
         is_power_2_exists(n),
-    decreases
-        n,
+    decreases n,
 {
     reveal(is_power_2);
     reveal(pow);
 
     if n == 1 {
         broadcast use lemma_pow0;
+
         assert(pow(2, 0) == n);
     } else {
-        is_power_2_equiv_forward(n/2);
-        let exp = choose |i: nat| pow(2, i) == n/2;
+        is_power_2_equiv_forward(n / 2);
+        let exp = choose|i: nat| pow(2, i) == n / 2;
         assert(pow(2, exp + 1) == 2 * pow(2, exp));
     }
 }
 
 proof fn is_power_2_equiv_reverse(n: int)
-    requires 
+    requires
         n > 0,
         is_power_2_exists(n),
     ensures
         is_power_2(n),
-    decreases
-        n,
+    decreases n,
 {
     reveal(is_power_2);
     reveal(pow);
 
-    let exp = choose |i: nat| pow(2, i) == n;
+    let exp = choose|i: nat| pow(2, i) == n;
 
     if exp == 0 {
         broadcast use lemma_pow0;
+
     } else {
-        assert(pow(2, (exp - 1) as nat) == n/2);
-        is_power_2_equiv_reverse(n/2);
+        assert(pow(2, (exp - 1) as nat) == n / 2);
+        is_power_2_equiv_reverse(n / 2);
     }
 }
 
