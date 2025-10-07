@@ -77,29 +77,34 @@ impl AbstractByte {
 }
 
 pub trait Encoding where Self: Sized {
-    /// Can 'value' be encoded to the given bytes?
-    spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool;
+    /// Returns the abstract encoding of the given value.
+    spec fn encode(value: Self) -> Seq<AbstractByte>;
 
-    /// Returns Some(v) if the given bytes can be decoded into the value v, else None
+    /// Returns Some(v) if the given bytes can be decoded into the value v, else None.
     spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self>;
 
     /// Required properties for encoding (sanity check for any implementation of this trait)
     proof fn encoding_props()
         ensures
-            forall|v, bytes| Self::encode(v, bytes) ==> bytes.len() == size_of::<Self>(),
-            forall|v, bytes| Self::encode(v, bytes) ==> Self::decode(bytes) == Some(v),
+            forall|v| #[trigger] Self::encode(v).len() == size_of::<Self>(),
+            forall|v| Self::decode(#[trigger] Self::encode(v)) == Some(v),
     ;
 }
 
 /* bool */
 
 impl Encoding for bool {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
-        &&& bytes.len() == 1
-        &&& match bytes.first() {
-            AbstractByte::Init(v, None::<Provenance>) => (v == 0 && !value) || (v == 1 && value),
-            _ => false,
-        }
+    open spec fn encode(value: Self) -> Seq<AbstractByte> {
+        seq![
+            AbstractByte::Init(
+                if value {
+                    1
+                } else {
+                    0
+                },
+                None,
+            ),
+        ]
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
@@ -121,12 +126,8 @@ impl Encoding for bool {
 /* u8 */
 
 impl Encoding for u8 {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
-        &&& bytes.len() == 1
-        &&& match bytes.first() {
-            AbstractByte::Init(v, None::<Provenance>) => v == value,
-            _ => false,
-        }
+    open spec fn encode(value: Self) -> Seq<AbstractByte> {
+        seq![AbstractByte::Init(value, None)]
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
@@ -201,8 +202,8 @@ pub proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, prov: Prov
 /* usize */
 
 impl Encoding for usize {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
-        bytes == endian_to_bytes(
+    open spec fn encode(value: Self) -> Seq<AbstractByte> {
+        endian_to_bytes(
             EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
             // integer types have no provenance
             None,
@@ -227,16 +228,15 @@ impl Encoding for usize {
         broadcast use EndianNat::from_nat_to_nat;
 
         usize_max_bounds();
-        assert forall|v, bytes| Self::encode(v, bytes) implies bytes.len() == size_of::<Self>()
-            && Self::decode(bytes) == Some(v) by {
+        assert forall|v| Self::decode(#[trigger] Self::encode(v)) == Some(v) by {
             endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
         }
     }
 }
 
 impl<T> Encoding for *mut T {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
-        bytes == endian_to_bytes(
+    open spec fn encode(value: Self) -> Seq<AbstractByte> {
+        endian_to_bytes(
             EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
             // the abstract encoding preserves the provenance from this pointer
             Some(value@.provenance),
@@ -272,11 +272,10 @@ impl<T> Encoding for *mut T {
         broadcast use EndianNat::from_nat_to_nat;
 
         usize_max_bounds();
-        assert forall|v, bytes| Self::encode(v, bytes) implies bytes.len() == size_of::<Self>()
-            && Self::decode(bytes) == Some(v) by {
+        assert forall|v| Self::decode(#[trigger] Self::encode(v)) == Some(v) by {
             endian_to_bytes_to_endian(v as nat, size_of::<Self>(), None);
             let endian_enc = EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<Self>());
-            let endian_dec = bytes_to_endian(bytes);
+            let endian_dec = bytes_to_endian(Self::encode(v));
             assert(endian_enc == endian_dec);
             endian_to_bytes_shared_provenance(endian_enc, v@.provenance);
         }
