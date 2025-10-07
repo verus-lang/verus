@@ -235,6 +235,7 @@ impl Encoding for usize {
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
+        // fail if any byte is uninitalized or if the byte sequence is not the necessary length
         if bytes.len() == size_of::<Self>() && AbstractByte::all_init(bytes) {
             let endian = bytes_to_endian(bytes);
             if endian.wf() {
@@ -280,6 +281,7 @@ impl<T> Encoding for *mut T {
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>) -> Option<Self> {
+        // fail if any byte is uninitalized or if the byte sequence is not the necessary length
         if bytes.len() == size_of::<Self>() && AbstractByte::all_init(bytes) {
             let endian = bytes_to_endian(bytes);
             // if all bytes in the sequence have the same provenance, then this should be preserved in the decoding.
