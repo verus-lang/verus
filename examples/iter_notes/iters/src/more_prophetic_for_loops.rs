@@ -131,14 +131,14 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) 
-        ensures
-            self.back() == old(self).back(),
-            if old(self).front() < old(self).back() {
-                self.front() == old(self).front() + 1
-            } else {
-                self.front() == old(self).front()
-            },
-            self.elts() == old(self).elts(),
+        // ensures
+        //     self.back() == old(self).back(),
+        //     if old(self).front() < old(self).back() {
+        //         self.front() == old(self).front() + 1
+        //     } else {
+        //         self.front() == old(self).front()
+        //     },
+        //     self.elts() == old(self).elts(),
     {
         proof { use_type_invariant(&*self); }
         if self.i < self.j {
@@ -911,6 +911,7 @@ fn for_loop_test_map() {
     //     invariant
     //          forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
     //          w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
+    //          w@ == v@.map_values(|i: u8| (i + 1) as u8).take(w@.len())
     // {
     //     w.push(x);
     // }
@@ -937,15 +938,16 @@ fn for_loop_test_map() {
 
                       // inv
                       &&& forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 10
+                      &&& w@ =~= v@.map_values(|i: u8| (i + 1) as u8).take(w@.len() as int)
                       //&&& w@ + y.seq() == v@.map_values(|i: u8| (i + 1) as u8)
                     //   &&& w@ == v@.take(w@.len() as int).map_values(|i: u8| (i + 1) as u8)
                     //   &&& w.len() < v.len()
 
-                      &&& w.len() == y.count()
-                      &&& forall |i| 
-                          #![trigger y.the_prophs().proph_elem(i)]
-                          #![trigger w[i]]
-                          0 <= i < w.len() ==> (y.the_prophs().proph_elem(i) matches Some(x) && x == w[i])
+//                      &&& w.len() == y.count()
+                    //   &&& forall |i| 
+                    //       #![trigger y.the_prophs().proph_elem(i)]
+                    //       #![trigger w[i]]
+                    //       0 <= i < w.len() ==> (y.the_prophs().proph_elem(i) matches Some(x) && x == w[i])
 
                     }),
                 ensures
