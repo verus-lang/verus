@@ -1,6 +1,6 @@
 # `exec_spec!` macro
 
-When writing proofs in Verus, we occassionally need to
+When writing proofs in Verus, we occasionally need to
 implement some simple function or data structure in both exec
 and spec modes, and then establish their equivalence.
 This process can be tedious for simple functions.
@@ -8,7 +8,7 @@ This process can be tedious for simple functions.
 The `exec_spec!` macro simplifies this process: you only need
 to write the desired functions/structs/enums in spec mode within
 the supported fragment of `exec_spec!`, and then the macro can
-automatically generate exec counterparts of these spec item,
+automatically generate exec counterparts of these spec items,
 as well as proofs of equivalence.
 
 Here is an example:
@@ -16,10 +16,10 @@ Here is an example:
 {{#include ../../../../examples/guide/exec_spec.rs:example}}
 ```
 In the example, we define a simple spec function `on_line` to check if
-the given sequence of `Point`s have equal coordinates.
+the given sequence of `Point`s have the same coordinates.
 
 The `exec_spec!` macro call in this example takes all spec items in
-its scope, and then derive executable counterparts along the lines of
+its scope, and then derives executable counterparts along the lines of
 the following definitions:
 ```
 struct ExecPoint {
@@ -37,7 +37,7 @@ fn exec_on_line(points: &[ExecPoint]) -> (res: bool)
 { ... }
 ```
 
-Then after the macro invocation we have the original spec items
+After the macro invocation, we have the original spec items
 as before (`Point` and `on_line`), but also new items `ExecPoint` and
 `exec_on_line` with a suitable equivalence verified.
 We can test the equivalence using the following sanity check:
