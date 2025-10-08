@@ -22,9 +22,7 @@ use crate::{unsupported_err, unsupported_err_unless};
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
-use rustc_hir::{
-    Block, BlockCheckMode, Expr, ExprKind, LetStmt, Node, Pat, PatKind, QPath, Stmt, StmtKind,
-};
+use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -661,10 +659,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
                 };
 
-                // let TypX::Datatype(pred_dt @ Dt::Path(pred_dt_path), ..) = pred_typ.as_ref() else {
-                //     return malformed_err(&expr);
-                // };
-
                 let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
                     return malformed_err(&expr);
                 };
@@ -674,56 +668,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("the closure should take exactly one argument")
                 };
 
-                // The pattern below matches the following structure:
-                // { let _args = (x1, x2, x3); { ... } }
-
-                let Expr {
-                    kind:
-                        ExprKind::Block(
-                            Block {
-                                stmts:
-                                    [
-                                        Stmt {
-                                            kind:
-                                                StmtKind::Let(LetStmt {
-                                                    pat:
-                                                        Pat {
-                                                            kind: PatKind::Binding(..),
-                                                            default_binding_modes: true,
-                                                            ..
-                                                        },
-                                                    init: Some(fun_args),
-                                                    els: None,
-                                                    ..
-                                                }),
-                                            ..
-                                        },
-                                    ],
-                                expr: Some(value_expr @ Expr { kind: ExprKind::Block(..), .. }),
-                                ..
-                            },
-                            None,
-                        ),
-                    ..
-                } = body.value
-                else {
-                    return malformed_err(expr);
-                };
-
-                let args_expr = expr_to_vir_consume(&bctx, fun_args, outer_modifier)?;
-
                 let Some(args) = &bctx.au_pred_args else {
                     return malformed_err(expr);
                 };
 
-                let args_expr = match args.as_slice() {
-                    [single] => single.clone(),
-                    _ => {
-                        let span = &args_expr.span;
-                        let typs = args.iter().map(|e| e.typ.clone()).collect();
-                        let tup_typ = mk_tuple_typ(&Arc::new(typs));
-                        SpannedTyped::new(span, &tup_typ, mk_tuple_x(args))
-                    }
+                let args_expr = if let [single] = args.as_slice() {
+                    single.clone()
+                } else {
+                    let span = bctx.ctxt.spans.to_air_span(expr.span);
+                    let typs = args.iter().map(|e| e.typ.clone()).collect();
+                    let tup_typ = mk_tuple_typ(&Arc::new(typs));
+                    SpannedTyped::new(&span, &tup_typ, mk_tuple_x(args))
                 };
 
                 let info = Arc::new(AtomicCallInfoX {
@@ -743,7 +698,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let atomically = Some(actx.clone());
                 let bctx_inner = BodyCtxt { atomically, ..bctx.clone() };
-                let value = expr_to_vir_consume(&bctx_inner, value_expr, outer_modifier)?;
+                let value = expr_to_vir_consume(&bctx_inner, body.value, outer_modifier)?;
 
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {

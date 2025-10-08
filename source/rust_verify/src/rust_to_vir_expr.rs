@@ -1034,10 +1034,10 @@ fn is_open_au_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
 }
 
 fn malformed_au_block_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
-    return err_span(
+    err_span(
         expr.span,
         "malformed atomic update block; use `open_atomic_update!` macro instead",
-    );
+    )
 }
 
 fn open_au_block_to_vir<'tcx>(

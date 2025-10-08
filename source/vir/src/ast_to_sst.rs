@@ -2482,7 +2482,14 @@ pub(crate) fn expr_to_stm_opt(
             let au_typ = &au_expr.typ;
 
             let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
-                panic!("atomic update should be a datatype")
+                dbg!(&au_typ);
+
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed atomic update block; atomic update should be a datatype",
+                );
+
+                //panic!("atomic update should be a datatype");
             };
 
             let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_exp);

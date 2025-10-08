@@ -23,7 +23,7 @@ use verus_syn::{
     ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Generics, Global, Ident, ImplItem,
     ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
     InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lifetime, Lit, Local,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
     MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat, PatIdent,
     PatType, Path, Publish, Receiver, Recommends, Requires, ReturnType, Returns, Signature,
     SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
@@ -500,7 +500,7 @@ impl Visitor {
         }
     }
 
-    fn resolve_receiver(&self, receiver: &Receiver, name: &Ident) -> (PatType, Option<Lifetime>) {
+    fn resolve_receiver(&self, receiver: &Receiver, name: &Ident) -> PatType {
         match &receiver.colon_token {
             None => {
                 let (_generics, mut ty) = self
@@ -510,15 +510,8 @@ impl Visitor {
                     .clone();
 
                 let mut rec_mut = receiver.mutability.clone();
-                let mut opt_lt = None;
 
-                if let Some((and_token, mut lifetime)) = receiver.reference.clone() {
-                    if lifetime.is_none() {
-                        let fresh_lt = Lifetime::new("'this", and_token.span());
-                        lifetime = Some(fresh_lt);
-                        opt_lt = lifetime.clone();
-                    }
-
+                if let Some((and_token, lifetime)) = receiver.reference.clone() {
                     ty = Box::new(Type::Reference(TypeReference {
                         and_token,
                         lifetime,
@@ -542,7 +535,7 @@ impl Visitor {
                     ty,
                 };
 
-                (pat_type, opt_lt)
+                pat_type
             }
 
             Some(_colon) => todo!(),
@@ -640,31 +633,30 @@ impl Visitor {
 
         let mut args_ty_tokens = TokenStream::new();
         let mut args_pat_tokens = TokenStream::new();
+        let mut args_use_tokens = TokenStream::new();
         let mut self_ident = None;
-        //let mut self_lifetime = None;
 
         for pair in sig.inputs.pairs() {
             let (fn_arg, comma) = pair.into_tuple();
-            let temp;
+            match &fn_arg.kind {
+                FnArgKind::Typed(pat_type) => {
+                    pat_type.pat.to_tokens(&mut args_use_tokens);
+                    pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.ty.to_tokens(&mut args_ty_tokens);
+                }
 
-            let pat_type = match &fn_arg.kind {
-                FnArgKind::Typed(pat_type) => pat_type,
                 FnArgKind::Receiver(receiver) => {
                     let ident = Ident::new("this", receiver.self_token.span());
-                    let (pat_type, _lifetime) = self.resolve_receiver(receiver, &ident);
+                    let pat_type = self.resolve_receiver(receiver, &ident);
                     self_ident = Some(ident);
-                    //self_lifetime = lifetime;
 
-                    temp = pat_type;
-                    &temp
+                    receiver.self_token.to_tokens(&mut args_use_tokens);
+                    pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.ty.to_tokens(&mut args_ty_tokens);
                 }
             };
 
-            pat_type.pat.to_tokens(&mut args_pat_tokens);
-            pat_type.ty.to_tokens(&mut args_ty_tokens);
-
-            // let comma =
-            //     comma.cloned().unwrap_or_else(|| verus_syn::token::Comma { spans: [full_span] });
+            comma.to_tokens(&mut args_use_tokens);
             comma.to_tokens(&mut args_pat_tokens);
             comma.to_tokens(&mut args_ty_tokens);
         }
@@ -678,19 +670,6 @@ impl Visitor {
 
         let generics_params = &generics.params;
         let where_clause = &generics.where_clause;
-
-        // let mut generics_extra_lt = generics.clone();
-        // if let Some(lifetime) = self_lifetime {
-        //     generics_extra_lt.params.insert(
-        //         0,
-        //         GenericParam::Lifetime(LifetimeParam {
-        //             attrs: Vec::new(),
-        //             lifetime,
-        //             colon_token: None,
-        //             bounds: Punctuated::new(),
-        //         }),
-        //     );
-        // }
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
             #vis struct #pred_ident #generics #where_clause {
@@ -708,15 +687,15 @@ impl Visitor {
         perm_clause.old_perms.to_value_tokens(&mut old_val);
         perm_clause.new_perms.to_value_tokens(&mut new_val);
 
-        let mut atomic_req = TokenStream::new();
-        let mut atomic_ens = TokenStream::new();
+        let mut atomic_req = quote!(true);
+        let mut atomic_ens = quote!(true);
 
         for req in &requires.exprs.exprs {
-            quote!(&&& #req).to_tokens(&mut atomic_req);
+            quote_spanned!(requires.token.span => && ( #req )).to_tokens(&mut atomic_req);
         }
 
         for ens in &ensures.exprs.exprs {
-            quote!(&&& #ens).to_tokens(&mut atomic_ens);
+            quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
         }
 
         if let Some(ident) = &self_ident {
@@ -787,7 +766,7 @@ impl Visitor {
                         #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(
                             #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
                         ),
-                        ( #args_pat_tokens ),
+                        ( #args_use_tokens ),
                     )
                 )
             )),
@@ -3511,10 +3490,7 @@ impl Visitor {
 
         let extra_arg = match self.erase_ghost {
             EraseGhost::Keep => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(move |#update_binder| {
-                    let _args = ( #args );
-                    #body
-                })
+                #vstd::atomic::atomically(move |#update_binder| #body)
             ),
 
             _ => quote_spanned_vstd!(vstd, span =>

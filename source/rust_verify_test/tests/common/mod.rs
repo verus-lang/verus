@@ -217,7 +217,7 @@ pub fn parse_diags(
                 errors.push(diag);
             } else {
                 // HACK: skip long running messages
-                if !line.contains("has been running for") {
+                if line.contains("has been running for") {
                     eprintln!("{line}");
                     continue;
                 }

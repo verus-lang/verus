@@ -355,6 +355,59 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_spec_call_with_self
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub struct Foo {
+            pub value: u8,
+        }
+
+        impl Foo {
+            pub exec fn atomic_function(&self, a: u8)
+                atomically (au) {
+                    type FunctionPred,
+                    (x: u8) -> (y: u8),
+                    requires x == self.value + a,
+                    ensures y == x + 2,
+                },
+                requires
+                    self.value == 2,
+                    a == 3,
+            {
+                open_atomic_update!(au, mut n => {
+                    assert(n == 5);
+                    proof { n += 2_u8; };
+                    assert(n == 7);
+                    n
+                });
+            }
+        }
+
+        pub exec fn other_atomic_function()
+            atomically (atom_upd) {
+                (a: u8) -> (b: u8),
+                requires a == 5,
+                ensures b == 7,
+            },
+        {
+            let foo = Foo { value: 2 };
+
+            foo.atomic_function(3) atomically |upd| {
+                open_atomic_update!(atom_upd, fst => {
+                    assert(fst == 5);
+                    let snd = upd(fst);
+                    assert(snd == 7);
+                    snd
+                });
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_spec_mask_simple_ok
     verus_code! {
         use vstd::*;
@@ -424,6 +477,8 @@ test_verify_one_file! {
     } => Err(err) => {
         // todo: this should emit a note from the recommends check
         // that the mask pair is inverted
+
+        dbg!(&err);
 
         assert!(!err.errors.is_empty());
         assert!(!err.notes.is_empty());
