@@ -88,9 +88,11 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     }
 
     pub proof fn to_infinite_ensures(self)
-        ensures self.to_infinite().dom().congruent(self.dom())
+        ensures
+            self.to_infinite().dom().congruent(self.dom()),
     {
         broadcast use super::set::group_set_lemmas;
+
     }
 
     pub open spec fn to_finite(self) -> Map<K, V>
@@ -542,6 +544,7 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
+
 }
 
 // Trusted axioms
@@ -698,9 +701,11 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V, FINITE: Finiteness>(
 }
 
 proof fn lemma_dom_congruence<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
-ensures ISet::new(|k| (m.mapping)(k) is Some).congruent(m.dom())
+    ensures
+        ISet::new(|k| (m.mapping)(k) is Some).congruent(m.dom()),
 {
     broadcast use super::set::group_set_lemmas;
+
     if FINITE::type_is_finite() {
         axiom_map_finite_from_trait(m);
     }
@@ -713,21 +718,22 @@ pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>
     requires
         #[trigger] x.congruent(y),
     ensures
-        x == y
+        x == y,
 {
     broadcast use super::set::group_set_lemmas;
+
     lemma_dom_congruence(x);
     lemma_dom_congruence(y);
     // Trigger our way through .contains
     assert forall|e| #[trigger] (x.mapping)(e) == (y.mapping)(e) by {
-        assert( ((x.mapping)(e) is Some) <==> x.dom().contains(e) );
+        assert(((x.mapping)(e) is Some) <==> x.dom().contains(e));
     }
 }
 
 pub broadcast group group_map_axioms {
     lemma_new_from_set_ensures,
     lemma_infinite_new_ensures,
-//     GMap::to_infinite_ensures,
+    //     GMap::to_infinite_ensures,
     GMap::lemma_remove_keys,
     GMap::lemma_invert_ensures,
     GMap::lemma_restrict,
