@@ -571,21 +571,21 @@ impl<A> ISet<A> {
     /// `map` and `union` commute
     pub proof fn lemma_map_union_commute<B>(self, t: ISet<A>, f: spec_fn(A) -> B)
         ensures
-            (self.union(t)).map(f) =~= self.map(f).union(t.map(f))
+            (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
     {
-        assert(self.union(t) == self.generic_union(t));   // extn
+        assert(self.union(t) == self.generic_union(t));  // extn
         self.lemma_map_generic_union_commute(t, f);
     }
 
     pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
         ensures
-            #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(
-                t.filter_map(f),
-            )
+            #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(t.filter_map(f)),
     {
         self.lemma_filter_map_generic_union(f, t);
-        assert(self.union(t) == self.generic_union(t));   // extn
-        assert(self.filter_map(f).union(t.filter_map(f)) == self.filter_map(f).generic_union(t.filter_map(f)));   // extn
+        assert(self.union(t) == self.generic_union(t));  // extn
+        assert(self.filter_map(f).union(t.filter_map(f)) == self.filter_map(f).generic_union(
+            t.filter_map(f),
+        ));  // extn
     }
 }
 
@@ -924,7 +924,11 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     }
 
-    pub broadcast proof fn lemma_filter_map_generic_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
+    pub broadcast proof fn lemma_filter_map_generic_union<B>(
+        self,
+        f: spec_fn(A) -> Option<B>,
+        t: Self,
+    )
         ensures
             #[trigger] self.generic_union(t).filter_map(f) == self.filter_map(f).generic_union(
                 t.filter_map(f),
@@ -1130,7 +1134,7 @@ pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
         (#[trigger] s1.generic_union(s2)).finite() <==> s1.finite() && s2.finite(),
         (#[trigger] s1.union(s2)).finite() <==> s1.finite() && s2.finite(),
 {
-    assert(s1.union(s2) == s1.generic_union(s2));   // extn
+    assert(s1.union(s2) == s1.generic_union(s2));  // extn
     if s1.generic_union(s2).finite() {
         lemma_set_generic_union_finite_implies_sets_finite(s1, s2);
     }
@@ -1404,16 +1408,15 @@ pub broadcast proof fn lemma_gset_disjoint<A, FINITE: Finiteness, FINITE2: Finit
 pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
     ensures
         #![trigger a.union(b).difference(a)]
-        a.disjoint(b) ==> (a.union(b).difference(a) =~= b
-            && a.union(b).difference(b) =~= a),
+        a.disjoint(b) ==> (a.union(b).difference(a) =~= b && a.union(b).difference(b) =~= a),
 {
 }
 
 pub broadcast proof fn lemma_iset_disjoint<A>(a: ISet<A>, b: ISet<A>)
     ensures
         #![trigger a.union(b).difference(a)]
-        a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite()
-            && a.union(b).difference(b) =~= a.to_infinite()),
+        a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b)
+            =~= a.to_infinite()),
 {
 }
 
@@ -1647,7 +1650,7 @@ pub broadcast group group_set_properties {
     // REVIEW: exclude from broadcast group if trigger is too free
     //         also note that some proofs in seq_lib requires this lemma
     lemma_set_empty_equivalency_len,
-    lemma_set_union_finite_iff
+    lemma_set_union_finite_iff,
 }
 
 pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
@@ -1740,19 +1743,33 @@ impl<A> Set<A> {
     /// Start with a finite set and apply a mapping function:
     ///   Set::range(0, 10).map_flatten_by(/*fwd*/ |e| set!(e*3, e*5), /*rev*/ |b| )
     ///   actually I have no idea how this is supposed to work.
-    pub open spec fn map_flatten_by<B>(self, fwd: spec_fn(A) -> Set<B>, rev: spec_fn(B) -> A) -> Set<B> {
+    pub open spec fn map_flatten_by<B>(
+        self,
+        fwd: spec_fn(A) -> Set<B>,
+        rev: spec_fn(B) -> A,
+    ) -> Set<B> {
         ISet::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)).to_finite()
     }
 }
-pub broadcast proof fn lemma_map_flatten_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> Set<B>, rev: spec_fn(B) -> A)
+
+pub broadcast proof fn lemma_map_flatten_by<A, B>(
+    sa: Set<A>,
+    fwd: spec_fn(A) -> Set<B>,
+    rev: spec_fn(B) -> A,
+)
     ensures
         #![trigger sa.map_flatten_by(fwd, rev)]
-        forall|b: B| #[trigger] sa.map_flatten_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && fwd(rev(b)).contains(b),
+        forall|b: B| #[trigger]
+            sa.map_flatten_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && fwd(
+                rev(b),
+            ).contains(b),
 {
     let ib1 = ISet::new(|b: B| sa.contains(rev(b)) && fwd(rev(b)).contains(b));
     let ib2 = sa.map(fwd).flatten().to_infinite();
     assert forall|b: B| ib1.contains(b) implies ib2.contains(b) by {
-        sa.map(fwd).to_infinite().map(|e: Set<B>| e.to_infinite()).infinite_flatten_preserves_finite();
+        sa.map(fwd).to_infinite().map(
+            |e: Set<B>| e.to_infinite(),
+        ).infinite_flatten_preserves_finite();
         assert(sa.map(fwd).to_infinite().contains(fwd(rev(b))));
         assert(sa.map(fwd).to_infinite_deep().contains(fwd(rev(b)).to_infinite()));
     }

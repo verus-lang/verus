@@ -1541,7 +1541,8 @@ pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
 pub trait FiniteFull: Sized {
     proof fn full_properties()
         ensures
-            ISet::<Self>::full().finite();
+            ISet::<Self>::full().finite(),
+    ;
 }
 
 pub broadcast proof fn full_set_properties<A: FiniteFull>()
@@ -1824,10 +1825,12 @@ impl<A> Set<A> {
         ISet::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).to_finite()
     }
 }
+
 pub broadcast proof fn lemma_map_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
     ensures
         #![trigger sa.map_by(fwd, rev)]
-        forall|b: B| #[trigger] sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b == fwd(rev(b)),
+        forall|b: B| #[trigger]
+            sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b == fwd(rev(b)),
 {
     broadcast use {fold::group_set_lemmas_early, GSet::to_infinite_ensures};
 
@@ -1892,6 +1895,5 @@ pub broadcast group group_set_lemmas {
     lemma_map_by,
     full_set_properties,
 }
-
 
 } // verus!
