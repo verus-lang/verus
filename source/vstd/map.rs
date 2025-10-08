@@ -502,6 +502,7 @@ pub broadcast proof fn lemma_new_from_set_ensures<K, V, FINITE: Finiteness>(
         forall|k|
             key_set.contains(k) <==> #[trigger] GMap::from_set(key_set, fv).dom().contains(k),
         forall|k| key_set.contains(k) ==> #[trigger] GMap::from_set(key_set, fv)[k] == fv(k),
+        key_set == GMap::from_set(key_set, fv).dom(),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
@@ -535,13 +536,12 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
         #![trigger(IMap::new(fk, fv))]
         forall|k|
             #![auto]
-            fk(k) <==> (#[trigger] IMap::new(fk, fv)).dom().contains(k),
+            fk(k) <==> IMap::new(fk, fv).dom().contains(k),
         forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
         IMap::new(fk, fv).dom() == ISet::new(fk),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
-
 }
 
 // Trusted axioms
