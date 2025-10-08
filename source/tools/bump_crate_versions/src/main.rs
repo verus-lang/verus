@@ -15,9 +15,9 @@ use clap::Parser as ClapParser;
 #[derive(ClapParser)]
 #[command(version, about)]
 struct Args {
-    /// If set, update the versions and dependencies, but run `cargo publish` in dry-run mode
-    #[arg(long = "dry-run")]
-    dry_run: bool,
+    /// If set, publishes the updated crates to crates.io.  Otherwise runs the publish step in dry-run mode
+    #[arg(long = "publish")]
+    publish: bool,
 }
 
 // Path to cargo-verus's main file, where we have a static string
@@ -124,12 +124,12 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<Crate>) {
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
-fn publish(dir: &Path, dry_run: bool) {
+fn publish(dir: &Path, publish: bool) {
     use std::process::Command;
 
     let mut cmd = Command::new("cargo");
     cmd.arg("publish");
-    if dry_run {
+    if !publish {
         cmd.arg("--dry-run");
     }
     let status = cmd
@@ -138,7 +138,10 @@ fn publish(dir: &Path, dry_run: bool) {
         .expect("Failed to execute cargo publish");
 
     if !status.success() {
-        panic!("cargo publish failed for {}", dir.display());
+        panic!("cargo publish{} failed for {}", 
+            if publish { " --dry-run" } else { "" },
+            dir.display()
+        );
     }
 }
 
@@ -217,6 +220,6 @@ fn main() {
 
     for krate in modified_crates {
         println!("Publishing modified crate {}", krate.name);
-        publish(&Path::new(&krate.path), args.dry_run);
+        publish(&Path::new(&krate.path), args.publish);
     }
 }
