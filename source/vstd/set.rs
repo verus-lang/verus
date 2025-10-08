@@ -136,7 +136,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
             #[trigger] self.castable::<FINITE>(),
     {
         if FINITE::type_is_finite() {
-            lemma_set_finite_from_trait(self);
+            axiom_set_finite_from_trait(self);
         }
         self.cast_finiteness_properties::<FINITE>();
     }
@@ -154,7 +154,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 
-pub broadcast proof fn lemma_set_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
+pub broadcast proof fn axiom_set_finite_from_trait<A, FINITE: Finiteness>(s: GSet<A, FINITE>)
     requires
         FINITE::type_is_finite(),
     ensures
@@ -168,7 +168,7 @@ pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A>)
     ensures
         #[trigger] s.finite(),
 {
-    lemma_set_finite_from_trait(s);
+    axiom_set_finite_from_trait(s);
 }
 
 impl<A> ISet<A> {
@@ -1523,7 +1523,7 @@ pub trait FiniteRange: Sized {
 
     spec fn range_len(lo: Self, hi: Self) -> nat;
 
-    proof fn properties(lo: Self, hi: Self)
+    proof fn range_properties(lo: Self, hi: Self)
         ensures
             Self::range_iset(lo, hi).finite(),
             Self::range_iset(lo, hi).len() == Self::range_len(lo, hi),
@@ -1535,7 +1535,22 @@ pub broadcast proof fn range_set_properties<A: FiniteRange>(lo: A, hi: A)
         (#[trigger] A::range_iset(lo, hi)).finite(),
         A::range_iset(lo, hi).len() == A::range_len(lo, hi),
 {
-    A::properties(lo, hi);
+    A::range_properties(lo, hi);
+}
+
+pub trait FiniteFull: Sized {
+    proof fn full_properties()
+        ensures
+            ISet::<Self>::full().finite();
+}
+
+pub broadcast proof fn full_set_properties<A: FiniteFull>()
+    ensures
+        #![trigger Set::<A>::full()]
+        #![trigger ISet::<A>::full()]
+        (ISet::<A>::full()).finite(),
+{
+    A::full_properties();
 }
 
 impl<A: FiniteRange> Set<A> {
@@ -1544,6 +1559,25 @@ impl<A: FiniteRange> Set<A> {
     /// numeric type.
     pub open spec fn range(lo: A, hi: A) -> Set<A> {
         A::range_iset(lo, hi).to_finite()
+    }
+
+    #[verifier::inline]
+    pub open spec fn range_inclusive(lo: A, hi: A) -> Set<A> {
+        A::range_iset(lo, hi).insert(hi).to_finite()
+    }
+}
+
+impl<A: FiniteRange> ISet<A> {
+    #[verifier::inline]
+    /// This is a recommended constructor for building finite sets containing a contiguous range of a
+    /// numeric type.
+    pub open spec fn range(lo: A, hi: A) -> ISet<A> {
+        A::range_iset(lo, hi)
+    }
+
+    #[verifier::inline]
+    pub open spec fn range_inclusive(lo: A, hi: A) -> ISet<A> {
+        A::range_iset(lo, hi).insert(hi)
     }
 }
 
@@ -1560,7 +1594,7 @@ macro_rules! range_impls {
                     open spec fn range_len(lo: Self, hi: Self) -> nat {
                         if lo <= hi { (hi - lo) as nat } else { 0 }
                     }
-                    proof fn properties(lo: Self, hi: Self)
+                    proof fn range_properties(lo: Self, hi: Self)
                         decreases hi - lo
                     {
                         broadcast use lemma_set_empty_finite;
@@ -1571,7 +1605,7 @@ macro_rules! range_impls {
                             assert(Self::range_iset(lo, hi).is_empty());
                         } else {
                             let hi1 = (hi - 1) as $t;
-                            Self::properties(lo, hi1);
+                            Self::range_properties(lo, hi1);
                             assert(Self::range_iset(lo, hi) == Self::range_iset(lo, hi1).insert(hi1));
                             lemma_set_insert_finite(Self::range_iset(lo, hi1), hi1);
                         }
@@ -1582,9 +1616,32 @@ macro_rules! range_impls {
     }
 }
 
-// Make Set::range available for all of the Verus numeric types
+macro_rules! full_impls {
+    ([$($t:ty)*]) => {
+        $(
+            verus! {
+                impl FiniteFull for $t {
+                    proof fn full_properties() {
+                        broadcast use lemma_set_insert_finite;
+
+                        assert(ISet::<$t>::full() == ISet::range_inclusive($t::MIN, $t::MAX));
+                        <$t as FiniteRange>::range_properties($t::MIN, $t::MAX);
+                    }
+                }
+            } // verus!
+        )*
+    }
+}
+
+// Make Set,ISet::range available for all of the Verus numeric types
 range_impls!([
     int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+// Make ISet::full available for all of the Verus numeric types
+full_impls!([
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
@@ -1707,6 +1764,78 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 }
 
+// Macros
+#[doc(hidden)]
+#[macro_export]
+macro_rules! set_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::vstd::set::Set::empty()
+            $(.insert($elem))*
+    };
+}
+
+#[macro_export]
+macro_rules! set {
+    [$($tail:tt)*] => {
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
+    };
+}
+
+// 'iset' macro, so that the macro name prevents the need for type inference
+// of the FINITE parameter.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! iset_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::vstd::set::ISet::empty()
+            $(.insert($elem))*
+    };
+}
+
+#[macro_export]
+macro_rules! iset {
+    [$($tail:tt)*] => {
+        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::iset_internal!($($tail)*))
+    };
+}
+
+pub use set_internal;
+pub use set;
+pub use iset_internal;
+pub use iset;
+
+impl<A: FiniteFull> Set<A> {
+    #[verifier::inline]
+    pub open spec fn from_finite_type(f: spec_fn(A) -> bool) -> Set<A> {
+        ISet::<A>::full().to_finite().filter(f)
+    }
+}
+
+impl<A> Set<A> {
+    /// Set::map_by is like Set::map, but map only takes a forward function fwd: spec_fn(A) -> B,
+    /// while map_by also takes a reverse function rev: spec_fn(B) -> A.
+    /// This reverse function can make proofs easier
+    /// by avoiding the "exists" that appears in lemmas about Set::map.
+    /// Example: for a set s: Set<int>, to map each i in s to (i, 10 * i),
+    /// we can write either s.map(|i: int| (i, 10 * i))
+    /// or s.map_by(|i: int| (i, 10 * i), |p: (int, int)| p.0);
+    /// the version with map_by is usually easier to use in proofs.
+    pub open spec fn map_by<B>(self, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A) -> Set<B> {
+        ISet::new(|b: B| self.contains(rev(b)) && b == fwd(rev(b))).to_finite()
+    }
+}
+pub broadcast proof fn lemma_map_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> B, rev: spec_fn(B) -> A)
+    ensures
+        #![trigger sa.map_by(fwd, rev)]
+        forall|b: B| #[trigger] sa.map_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && b == fwd(rev(b)),
+{
+    broadcast use {fold::group_set_lemmas_early, GSet::to_infinite_ensures};
+
+    let ib1 = ISet::new(|b: B| sa.contains(rev(b)) && b == fwd(rev(b)));
+    let ib2 = sa.map(fwd).to_infinite();
+    assert(ib1 == ib2.filter(|b| ib1.contains(b)));
+}
+
 pub broadcast group group_set_lemmas {
     // This line...
     fold::group_set_lemmas_early,
@@ -1760,46 +1889,9 @@ pub broadcast group group_set_lemmas {
     GSet::lemma_set_product_contains_2,
     range_set_properties,
     lemma_to_finite_len,
+    lemma_map_by,
+    full_set_properties,
 }
 
-// Macros
-#[doc(hidden)]
-#[macro_export]
-macro_rules! set_internal {
-    [$($elem:expr),* $(,)?] => {
-        $crate::vstd::set::Set::empty()
-            $(.insert($elem))*
-    };
-}
-
-#[macro_export]
-macro_rules! set {
-    [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::set::set_internal!($($tail)*))
-    };
-}
-
-// 'iset' macro, so that the macro name prevents the need for type inference
-// of the FINITE parameter.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! iset_internal {
-    [$($elem:expr),* $(,)?] => {
-        $crate::vstd::set::ISet::empty()
-            $(.insert($elem))*
-    };
-}
-
-#[macro_export]
-macro_rules! iset {
-    [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::iset_internal!($($tail)*))
-    };
-}
-
-pub use set_internal;
-pub use set;
-pub use iset_internal;
-pub use iset;
 
 } // verus!

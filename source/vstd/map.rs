@@ -39,11 +39,23 @@ pub tracked struct GMap<K, V, FINITE: Finiteness> {
 /// Map<K,V> is a type synonym for map whose membership is finite (known at typechecking time).
 pub type Map<K, V> = GMap<K, V, Finite>;
 
-pub broadcast proof fn lemma_map_finite_from_type<K, V>(m: Map<K, V>)
+pub broadcast proof fn axiom_map_finite_from_trait<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
+    requires
+        FINITE::type_is_finite(),
     ensures
+        #[trigger] m.idom().finite(),
         #[trigger] m.dom().finite(),
 {
+    // This lemma is the root of the soundness danger (see "Important soundness note" in set.rs).
     admit();
+}
+
+pub broadcast proof fn axiom_map_finite_from_type<K, V>(m: Map<K, V>)
+    ensures
+        #[trigger] m.idom().finite(),
+        #[trigger] m.dom().finite(),
+{
+    axiom_map_finite_from_trait(m);
 }
 
 impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
@@ -75,6 +87,12 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         IMap::new(|k| self.contains_key(k), |k| self[k])
     }
 
+    pub proof fn to_infinite_ensures(self)
+        ensures self.to_infinite().dom().congruent(self.dom())
+    {
+        broadcast use super::set::group_set_lemmas;
+    }
+
     pub open spec fn to_finite(self) -> Map<K, V>
         recommends
             self.dom().finite(),
@@ -83,7 +101,7 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     }
 }
 
-/// IMap<K,V> is a type synonym a set whose membership may be infinite (but can be
+/// IMap<K,V> is a type synonym a map whose domain may be infinite (but can be
 /// proven finite at verification time).
 pub type IMap<K, V> = GMap<K, V, Infinite>;
 
@@ -93,9 +111,14 @@ impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
         GMap { mapping: |k| None, _phantom: core::marker::PhantomData }
     }
 
+    /// The domain as an infinite set
+    pub closed spec fn idom(self) -> ISet<K> {
+        ISet::new(|k| (self.mapping)(k) is Some)
+    }
+
     /// The domain of the map as a set.
-    pub closed spec fn dom(self) -> GSet<K, FINITE> {
-        ISet::new(|k| (self.mapping)(k) is Some).cast_finiteness()
+    pub open spec fn dom(self) -> GSet<K, FINITE> {
+        self.idom().cast_finiteness()
     }
 
     /// Gets the value that the given key `key` maps to.
@@ -514,6 +537,7 @@ pub broadcast proof fn lemma_infinite_new_ensures<K, V>(fk: spec_fn(K) -> bool, 
             #![auto]
             fk(k) <==> (#[trigger] IMap::new(fk, fv)).dom().contains(k),
         forall|k| #![auto] fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
+        IMap::new(fk, fv).dom() == ISet::new(fk),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;
@@ -673,9 +697,37 @@ pub broadcast proof fn lemma_map_ext_equal_deep<K, V, FINITE: Finiteness>(
     lemma_map_ext_equal(m1, m2);
 }
 
+proof fn lemma_dom_congruence<K, V, FINITE: Finiteness>(m: GMap<K, V, FINITE>)
+ensures ISet::new(|k| (m.mapping)(k) is Some).congruent(m.dom())
+{
+    broadcast use super::set::group_set_lemmas;
+    if FINITE::type_is_finite() {
+        axiom_map_finite_from_trait(m);
+    }
+}
+
+pub broadcast proof fn lemma_congruence_extensionality<K, V, FINITE: Finiteness>(
+    x: GMap<K, V, FINITE>,
+    y: GMap<K, V, FINITE>,
+)
+    requires
+        #[trigger] x.congruent(y),
+    ensures
+        x == y
+{
+    broadcast use super::set::group_set_lemmas;
+    lemma_dom_congruence(x);
+    lemma_dom_congruence(y);
+    // Trigger our way through .contains
+    assert forall|e| #[trigger] (x.mapping)(e) == (y.mapping)(e) by {
+        assert( ((x.mapping)(e) is Some) <==> x.dom().contains(e) );
+    }
+}
+
 pub broadcast group group_map_axioms {
     lemma_new_from_set_ensures,
     lemma_infinite_new_ensures,
+//     GMap::to_infinite_ensures,
     GMap::lemma_remove_keys,
     GMap::lemma_invert_ensures,
     GMap::lemma_restrict,
@@ -693,6 +745,7 @@ pub broadcast group group_map_axioms {
     lemma_map_ext_equal_deep,
     GMap::lemma_union_prefer_right,
     //     lemma_union_prefer_right_noself,
+    lemma_congruence_extensionality,
 }
 
 // Macros

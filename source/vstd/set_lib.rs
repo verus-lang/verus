@@ -507,7 +507,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
     }
 
     /// `map` and `union` commute
-    pub proof fn lemma_map_union_commute<B>(self, t: Set<A>, f: spec_fn(A) -> B)
+    pub proof fn lemma_map_generic_union_commute<B>(self, t: GSet<A, FINITE>, f: spec_fn(A) -> B)
         ensures
             (self.generic_union(t)).map(f) =~= self.map(f).generic_union(t.map(f)),
     {
@@ -564,6 +564,28 @@ impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
 
     pub open spec fn deep_castable<F2: Finiteness>(self) -> bool {
         self.deep_finite() || !F2::type_is_finite()
+    }
+}
+
+impl<A> ISet<A> {
+    /// `map` and `union` commute
+    pub proof fn lemma_map_union_commute<B>(self, t: ISet<A>, f: spec_fn(A) -> B)
+        ensures
+            (self.union(t)).map(f) =~= self.map(f).union(t.map(f))
+    {
+        assert(self.union(t) == self.generic_union(t));   // extn
+        self.lemma_map_generic_union_commute(t, f);
+    }
+
+    pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
+        ensures
+            #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(
+                t.filter_map(f),
+            )
+    {
+        self.lemma_filter_map_generic_union(f, t);
+        assert(self.union(t) == self.generic_union(t));   // extn
+        assert(self.filter_map(f).union(t.filter_map(f)) == self.filter_map(f).generic_union(t.filter_map(f)));   // extn
     }
 }
 
@@ -680,6 +702,7 @@ impl<A> ISet<ISet<A>> {
 }
 
 impl<A, FINITE: Finiteness> GSet<GSet<A, FINITE>, FINITE> {
+    // Well, only two layers deep.
     pub open spec fn to_infinite_deep(self) -> GSet<GSet<A, Infinite>, Infinite> {
         self.to_infinite().map(|e: GSet<A, FINITE>| e.to_infinite())
     }
@@ -901,7 +924,7 @@ impl<A, FINITE: Finiteness> GSet<A, FINITE> {
 
     }
 
-    pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
+    pub broadcast proof fn lemma_filter_map_generic_union<B>(self, f: spec_fn(A) -> Option<B>, t: Self)
         ensures
             #[trigger] self.generic_union(t).filter_map(f) == self.filter_map(f).generic_union(
                 t.filter_map(f),
@@ -1104,14 +1127,16 @@ pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
 /// The union of two sets is finite iff both sets are finite.
 pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
     ensures
-        #[trigger] s1.generic_union(s2).finite() <==> s1.finite() && s2.finite(),
+        (#[trigger] s1.generic_union(s2)).finite() <==> s1.finite() && s2.finite(),
+        (#[trigger] s1.union(s2)).finite() <==> s1.finite() && s2.finite(),
 {
+    assert(s1.union(s2) == s1.generic_union(s2));   // extn
     if s1.generic_union(s2).finite() {
-        lemma_set_union_finite_implies_sets_finite(s1, s2);
+        lemma_set_generic_union_finite_implies_sets_finite(s1, s2);
     }
 }
 
-pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
+pub proof fn lemma_set_generic_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.generic_union(s2).finite(),
     ensures
@@ -1128,7 +1153,7 @@ pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet
         let a = s1.generic_union(s2).choose();
         assert(s1.remove(a).generic_union(s2.remove(a)) == s1.generic_union(s2).remove(a));
         lemma_set_remove_len(s1.generic_union(s2), a);
-        lemma_set_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
+        lemma_set_generic_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
         assert(forall|s: Set<A>|
             #![auto]
             s.remove(a).insert(a) == if s.contains(a) {
@@ -1365,14 +1390,30 @@ pub broadcast proof fn lemma_set_difference2<A, FINITE1: Finiteness, FINITE2: Fi
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
 /// of `a.union(b)` and `b` is equal to `a` and the set difference of `a.union(b)` and `a` is equal to `b`.
-pub broadcast proof fn lemma_set_disjoint<A, FINITE: Finiteness, FINITE2: Finiteness>(
+pub broadcast proof fn lemma_gset_disjoint<A, FINITE: Finiteness, FINITE2: Finiteness>(
     a: GSet<A, FINITE>,
     b: GSet<A, FINITE2>,
 )
     ensures
-        #![trigger a.generic_union(b).generic_difference(a)]  //TODO: this might be too free
+        #![trigger a.generic_union(b).generic_difference(a)]
         a.disjoint(b) ==> (a.generic_union(b).generic_difference(a) =~= b.to_infinite()
             && a.generic_union(b).generic_difference(b) =~= a.to_infinite()),
+{
+}
+
+pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
+    ensures
+        #![trigger a.union(b).difference(a)]
+        a.disjoint(b) ==> (a.union(b).difference(a) =~= b
+            && a.union(b).difference(b) =~= a),
+{
+}
+
+pub broadcast proof fn lemma_iset_disjoint<A>(a: ISet<A>, b: ISet<A>)
+    ensures
+        #![trigger a.union(b).difference(a)]
+        a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite()
+            && a.union(b).difference(b) =~= a.to_infinite()),
 {
 }
 
@@ -1411,7 +1452,8 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A, FINITE: Finiteness>(s:
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a.union(b)` is equal to the sum of the lengths of `a` and `b`.
-pub broadcast proof fn lemma_set_disjoint_lens<A, FINITE1: Finiteness, FINITE2: Finiteness>(
+/// ("lens" here refers to the shape of the intersection in the classic two-circle Venn diagram.)
+pub broadcast proof fn lemma_gset_disjoint_lens<A, FINITE1: Finiteness, FINITE2: Finiteness>(
     a: GSet<A, FINITE1>,
     b: GSet<A, FINITE2>,
 )
@@ -1430,16 +1472,37 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, FINITE1: Finiteness, FINITE2: 
         if a.disjoint(b) {
             let x = a.choose();
             assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
-            lemma_set_disjoint_lens(a.remove(x), b);
+            lemma_gset_disjoint_lens(a.remove(x), b);
         }
     }
+}
+
+pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
+    ensures
+        a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
+    decreases a.len(),
+{
+    lemma_gset_disjoint_lens(a, b);
+    assert((a + b).to_infinite() == a.generic_union(b));
+}
+
+pub broadcast proof fn lemma_iset_disjoint_lens<A>(a: ISet<A>, b: ISet<A>)
+    requires
+        a.finite(),
+        b.finite(),
+    ensures
+        a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
+    decreases a.len(),
+{
+    lemma_gset_disjoint_lens(a, b);
+    assert((a + b).to_infinite() == a.generic_union(b));
 }
 
 pub broadcast proof fn lemma_set_disjoint_lens_finite<A>(a: Set<A>, b: Set<A>)
     ensures
         a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
 {
-    lemma_set_disjoint_lens(a, b);
+    lemma_gset_disjoint_lens(a, b);
     assert((a + b).to_infinite() == a.generic_union(b));
 }
 
@@ -1542,7 +1605,7 @@ pub proof fn lemma_set_properties<A, FINITE1: Finiteness, FINITE2: Finiteness>()
             s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
             (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] a.generic_union(b).len()
-                == a.len() + b.len(),  //from lemma_set_disjoint_lens
+                == a.len() + b.len(),  //from lemma_gset_disjoint_lens
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
             (a.finite() && b.finite()) ==> #[trigger] a.generic_union(b).len()
                 + #[trigger] a.generic_intersect(b).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
@@ -1572,14 +1635,19 @@ pub broadcast group group_set_properties {
     lemma_set_intersect_again1,
     lemma_set_intersect_again2,
     lemma_set_difference2,
+    lemma_gset_disjoint,
     lemma_set_disjoint,
+    lemma_iset_disjoint,
+    lemma_gset_disjoint_lens,
     lemma_set_disjoint_lens,
+    lemma_iset_disjoint_lens,
     lemma_set_disjoint_lens_finite,
     lemma_set_intersect_union_lens,
     lemma_set_difference_len,
     // REVIEW: exclude from broadcast group if trigger is too free
     //         also note that some proofs in seq_lib requires this lemma
     lemma_set_empty_equivalency_len,
+    lemma_set_union_finite_iff
 }
 
 pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
@@ -1667,10 +1735,35 @@ macro_rules! assert_sets_equal_internal {
     }
 }
 
+impl<A> Set<A> {
+    /// An automation-friendly way to construct finite sets.
+    /// Start with a finite set and apply a mapping function:
+    ///   Set::range(0, 10).map_flatten_by(/*fwd*/ |e| set!(e*3, e*5), /*rev*/ |b| )
+    ///   actually I have no idea how this is supposed to work.
+    pub open spec fn map_flatten_by<B>(self, fwd: spec_fn(A) -> Set<B>, rev: spec_fn(B) -> A) -> Set<B> {
+        ISet::new(|b: B| self.contains(rev(b)) && fwd(rev(b)).contains(b)).to_finite()
+    }
+}
+pub broadcast proof fn lemma_map_flatten_by<A, B>(sa: Set<A>, fwd: spec_fn(A) -> Set<B>, rev: spec_fn(B) -> A)
+    ensures
+        #![trigger sa.map_flatten_by(fwd, rev)]
+        forall|b: B| #[trigger] sa.map_flatten_by(fwd, rev).contains(b) <==> sa.contains(rev(b)) && fwd(rev(b)).contains(b),
+{
+    let ib1 = ISet::new(|b: B| sa.contains(rev(b)) && fwd(rev(b)).contains(b));
+    let ib2 = sa.map(fwd).flatten().to_infinite();
+    assert forall|b: B| ib1.contains(b) implies ib2.contains(b) by {
+        sa.map(fwd).to_infinite().map(|e: Set<B>| e.to_infinite()).infinite_flatten_preserves_finite();
+        assert(sa.map(fwd).to_infinite().contains(fwd(rev(b))));
+        assert(sa.map(fwd).to_infinite_deep().contains(fwd(rev(b)).to_infinite()));
+    }
+    assert(ib1 == ib2.filter(|b| ib1.contains(b)));
+}
+
 pub broadcast group group_set_lib_default {
     lemma_is_empty,
     lemma_is_empty_len0,
     lemma_set_subset_finite,
+    lemma_map_flatten_by,
 }
 
 pub use assert_sets_equal_internal;

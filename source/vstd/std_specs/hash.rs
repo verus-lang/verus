@@ -1405,6 +1405,45 @@ pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
     admit();
 }
 
+pub broadcast proof fn lemma_hashmap_view_ensures_contains_key<K, V>(m: HashMap<K, V>, k: K)
+    ensures
+        #[trigger] m@.contains_key(k) <==> m@.to_infinite().contains_key(k),
+{
+    broadcast use crate::map::group_map_axioms;
+}
+
+pub broadcast proof fn lemma_hashmap_view_ensures_to_infinite<K, V>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m@ == m@.to_infinite().to_finite(),
+{
+    // TODO(jonh): minimize
+    broadcast use super::super::map::group_map_axioms;
+    broadcast use super::super::set::group_set_lemmas;
+    broadcast use super::super::set::GSet::congruent_infiniteness;
+    broadcast use super::super::map::lemma_congruence_extensionality;
+    m@.to_infinite_ensures();
+    assert( m@.to_infinite().congruent(m@) );
+    assert( m@.dom().finite() );
+    assert( m@.to_infinite().dom().finite() );
+    assert( m@.to_infinite().to_finite().congruent(m@) );
+
+//     assert( m@.to_infinite().dom().finite() );
+}
+
+pub broadcast proof fn lemma_hashset_view_contains_key<K>(s: HashSet<K>, k: K)
+    ensures
+        #[trigger] s@.contains(k) <==> s@.to_infinite().contains(k),
+{
+    broadcast use super::super::set::group_set_lemmas;
+}
+
+pub broadcast proof fn lemma_hashset_view_to_infinite<K>(s: HashSet<K>)
+    ensures
+        #[trigger] s@ == s@.to_infinite().to_finite(),
+{
+    broadcast use super::super::set::group_set_lemmas;
+}
+
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -1441,6 +1480,10 @@ pub broadcast group group_hash_axioms {
     axiom_spec_hash_map_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
+    lemma_hashmap_view_ensures_contains_key,
+    lemma_hashmap_view_ensures_to_infinite,
+    lemma_hashset_view_contains_key,
+    lemma_hashset_view_to_infinite,
 }
 
 } // verus!
