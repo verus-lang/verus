@@ -1,11 +1,11 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
-    ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Place,
-    PlaceX, Quant, SpannedTyped, Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
-    Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, ByRef, CallTarget, CallTargetKind, Constant,
+    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function,
+    FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX,
+    Params, Path, PathX, Pattern, PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped,
+    Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -716,6 +716,23 @@ impl FunctionX {
     }
 }
 
+pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
+    match call_target {
+        CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
+        CallTarget::Fun(kind, fun, _, _, _) => match kind {
+            CallTargetKind::ProofFn(..) => true,
+            CallTargetKind::Static
+            | CallTargetKind::Dynamic
+            | CallTargetKind::DynamicResolved { .. }
+            | CallTargetKind::ExternalTraitDefault => {
+                let function = &funs[fun];
+                let unwind_spec = function.x.unwind_spec_or_default();
+                matches!(unwind_spec, UnwindSpec::NoUnwind)
+            }
+        },
+    }
+}
+
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
     match variants.iter().find(|v| v.name == *variant) {
         Some(variant) => variant,
@@ -743,10 +760,11 @@ impl DatatypeX {
 
 pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     let vars: std::cell::RefCell<HashSet<VarIdent>> = std::cell::RefCell::new(HashSet::new());
-    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _>(
+    crate::ast_visitor::ast_visitor_check_with_scope_map::<(), _, _, _, _, _, _>(
         exp,
         &mut crate::ast_visitor::VisitorScopeMap::new(),
-        &mut |_, e| {
+        &mut (),
+        &mut |_, _, e| {
             match &e.x {
                 ExprX::Var(x) | ExprX::VarLoc(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -755,10 +773,10 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
             }
             Ok(())
         },
-        &mut |_, _| Ok(()),
-        &mut |_, _| Ok(()),
         &mut |_, _, _| Ok(()),
-        &mut |_, p| {
+        &mut |_, _, _| Ok(()),
+        &mut |_, _, _, _| Ok(()),
+        &mut |_, _, p| {
             match &p.x {
                 PlaceX::Local(x) => {
                     vars.borrow_mut().insert(x.clone());
@@ -1305,6 +1323,15 @@ impl PlaceX {
     pub fn temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
+
+    pub fn uses_temporary(&self) -> bool {
+        match self {
+            PlaceX::Local(_) => false,
+            PlaceX::DerefMut(p) => p.x.uses_temporary(),
+            PlaceX::Field(_opr, p) => p.x.uses_temporary(),
+            PlaceX::Temporary(_) => true,
+        }
+    }
 }
 
 pub fn place_to_expr(place: &Place) -> Expr {
@@ -1342,4 +1369,21 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
+}
+
+impl PatternX {
+    /// Returns a Pattern Var that is valid post-simplification.
+    pub(crate) fn simple_var(name: VarIdent, mutable: bool, span: &Span, typ: &Typ) -> Pattern {
+        SpannedTyped::new(
+            span,
+            typ,
+            PatternX::Var(PatternBinding {
+                name: name.clone(),
+                mutable,
+                by_ref: ByRef::No,
+                typ: typ.clone(),
+                copy: false,
+            }),
+        )
+    }
 }

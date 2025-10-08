@@ -22,7 +22,11 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             let var = ExprX::ConstVar(tgt, AutospecUsage::Final);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage), args) => {
+        ExprX::Call(
+            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage),
+            args,
+            post_args,
+        ) => {
             use crate::ast::CallTargetKind;
             let (kind, tgt, typs, impl_paths) = match (kind, autospec_usage) {
                 (
@@ -70,6 +74,7 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             let call = ExprX::Call(
                 CallTarget::Fun(kind, tgt, typs, impl_paths, AutospecUsage::Final),
                 args.clone(),
+                post_args.clone(),
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }

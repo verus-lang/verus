@@ -1,7 +1,8 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr,
+    UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -128,12 +129,16 @@ pub(crate) struct TypeInvInfo {
     pub field_loc_needs_check: HashMap<crate::messages::AstId, bool>,
 }
 
+pub type ReadKindFinals = HashMap<u64, ReadKind>;
+
 // Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
     // Modes of InferSpecForLoopIter
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
     type_inv_info: TypeInvInfo,
+    read_kind_finals: ReadKindFinals,
+    var_modes: HashMap<VarIdent, Mode>,
 }
 
 #[derive(Debug)]
@@ -443,6 +448,7 @@ fn add_pattern(
     for decl in decls {
         let PatternBoundDecl { span: _, name, mode } = decl;
         typing.insert(&name, mode);
+        record.var_modes.insert(name.clone(), mode);
     }
     Ok(())
 }
@@ -467,17 +473,23 @@ fn add_pattern_rec(
     if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
         && !matches!(&pattern.x, PatternX::Wildcard(true))
         && !matches!(&pattern.x, PatternX::Expr(_))
+        && !matches!(&pattern.x, PatternX::ImmutRef(_))
+        && !matches!(&pattern.x, PatternX::MutRef(_))
     {
         record.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     }
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var { name: x, mutable: _ } => {
+        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ }) => {
+            // TODO(new_mut_ref): disallow ByRef::Mut in spec code
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
-        PatternX::Binding { name: x, mutable: _, sub_pat } => {
+        PatternX::Binding {
+            binding: PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ },
+            sub_pat,
+        } => {
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -562,6 +574,13 @@ fn add_pattern_rec(
                 check_expr_has_mode(ctxt, record, typing, mode, expr2, mode)?;
             }
             Ok(())
+        }
+        PatternX::ImmutRef(sub_pat) => {
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
+        }
+        PatternX::MutRef(sub_pat) => {
+            // TODO(new_mut_ref): disallow MutRef in spec code
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
     }
 }
@@ -882,6 +901,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Call(
             CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
             es,
+            None,
         ) => {
             // es = [FnProof, (...args...)]
             assert!(es.len() == 2);
@@ -907,7 +927,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(*ret_mode)
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
             let function = match ctxt.funs.get(x) {
@@ -1020,7 +1040,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(function.x.ret.x.mode)
         }
-        ExprX::Call(CallTarget::FnSpec(e0), es) => {
+        ExprX::Call(CallTarget::FnSpec(e0), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1030,7 +1050,7 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es) => {
+        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es, None) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1038,6 +1058,9 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, arg, Mode::Spec)?;
             }
             Ok(Mode::Spec)
+        }
+        ExprX::Call(_, _, Some(_)) => {
+            return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
         ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(ctxt, record, typing, outer_mode, e))?;
@@ -1346,9 +1369,10 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::AssignToPlace { place, rhs, op: _ } => {
-            if outer_mode != Mode::Exec {
-                return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
-            }
+            // TODO(new_mut_ref): implement the correct mode-checking here
+            //if outer_mode != Mode::Exec {
+            //    return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
+            //}
             check_place_has_mode(ctxt, record, typing, Mode::Exec, place, Mode::Exec, true)?;
             check_expr_has_mode(ctxt, record, typing, Mode::Exec, rhs, Mode::Exec)?;
             Ok(Mode::Exec)
@@ -1370,6 +1394,7 @@ fn check_expr_handle_mut_arg(
                     if let Some(span) = typing.to_be_inferred(xl) {
                         let mode = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode);
+                        record.var_modes.insert(xl.clone(), mode);
                         record.erasure_modes.var_modes.push((span, mode));
                     }
                 }
@@ -1723,10 +1748,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
-        ExprX::BorrowMutPhaseOne(_) | ExprX::BorrowMutPhaseTwo(_, _) => {
-            panic!("BorrowmutPhaseOne / BorrowMutPhaseTwo should not exist yet");
-        }
-        ExprX::BorrowMut(place) => {
+        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
             if outer_mode != Mode::Exec {
                 return Err(error(&expr.span, "mutable borrow can only be in exec mode"));
             }
@@ -1754,8 +1776,21 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, e, Mode::Spec)?;
             Ok(outer_mode)
         }
-        ExprX::ReadPlace(place, _read_type) => {
-            Ok(check_place(ctxt, record, typing, outer_mode, place, false)?)
+        ExprX::ReadPlace(place, read_kind) => {
+            let mode = check_place(ctxt, record, typing, outer_mode, place, false)?;
+
+            // TODO(new_mut_ref) this is not aggressive enough about marking stuff as spec;
+            // we also need to take the expected mode into account
+            let final_read_kind = match mode {
+                Mode::Spec => ReadKind::Spec,
+                _ => read_kind.preliminary_kind,
+            };
+            record.read_kind_finals.insert(read_kind.id, final_read_kind);
+
+            Ok(mode)
+        }
+        ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
+            panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
         }
     };
     Ok((mode?, None))
@@ -1777,7 +1812,16 @@ fn check_stmt(
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
-                (PatternX::Var { name: x, mutable: _ }, None) => {
+                (
+                    PatternX::Var(PatternBinding {
+                        name: x,
+                        mutable: _,
+                        by_ref: _,
+                        typ: _,
+                        copy: _,
+                    }),
+                    None,
+                ) => {
                     typing.insert_var_mode(x, VarMode::Infer(pattern.span.clone()));
                 }
                 _ => panic!("internal error: unexpected mode = None"),
@@ -1826,10 +1870,12 @@ fn check_function(
     record: &mut Record,
     typing: &mut Typing,
     function: &mut Function,
+    new_mut_ref: bool,
 ) -> Result<(), VirErr> {
     // Reset this, we only need it per-function
     record.type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+    record.var_modes = HashMap::new();
 
     let mut fun_typing0 = typing.push_var_scope();
 
@@ -2017,12 +2063,25 @@ fn check_function(
         record.infer_spec_for_loop_iter_modes = None;
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+            let functionx = &mut Arc::make_mut(&mut *function).x;
             crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                &mut Arc::make_mut(&mut *function).x,
+                functionx,
                 &record.type_inv_info,
                 &ctxt.funs,
                 &ctxt.datatypes,
             )?;
+            if new_mut_ref {
+                if functionx.body.is_some() {
+                    functionx.body = Some(crate::resolution_inference::infer_resolution(
+                        &functionx.params,
+                        functionx.body.as_ref().unwrap(),
+                        &record.read_kind_finals,
+                        &ctxt.datatypes,
+                        &ctxt.funs,
+                        &record.var_modes,
+                    ));
+                }
+            }
         }
     }
     drop(fun_typing);
@@ -2031,7 +2090,10 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    new_mut_ref: bool,
+) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -2060,7 +2122,13 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
-    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None, type_inv_info };
+    let mut record = Record {
+        erasure_modes,
+        infer_spec_for_loop_iter_modes: None,
+        type_inv_info,
+        read_kind_finals: HashMap::new(),
+        var_modes: HashMap::new(),
+    };
     let mut state = State {
         vars: ScopeMap::new(),
         in_forall_stmt: false,
@@ -2077,11 +2145,11 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         ctxt.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
             typing.atomic_insts.as_ref().expect("atomic_insts").validate(&function.span, true)?;
         } else {
-            check_function(&ctxt, &mut record, &mut typing, function)?;
+            check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
         }
     }
-    Ok((Arc::new(kratex), record.erasure_modes))
+    Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
 }

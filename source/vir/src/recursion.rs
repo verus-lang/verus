@@ -520,7 +520,7 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _, _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
@@ -563,7 +563,7 @@ pub(crate) fn expand_call_graph(
             ExprX::ConstVar(callee, _) => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
-            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _) => {
+            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }

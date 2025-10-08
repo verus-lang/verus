@@ -6,10 +6,9 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type, def_id_to_vir_path,
+    auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
     get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
-    mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    mid_ty_simplify, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;
@@ -30,7 +29,8 @@ use rustc_hir::{
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
-    Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
+    Adjust, Adjustment, AllowTwoPhase, AutoBorrow, AutoBorrowMutability, PatAdjust, PatAdjustment,
+    PointerCoercion,
 };
 use rustc_middle::ty::{
     AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
@@ -43,8 +43,8 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
     FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
-    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder,
-    VarBinderX, VarIdent, VariantCheck, VirErr,
+    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
+    UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -89,16 +89,24 @@ impl ExprOrPlace {
                 } else {
                     vir::ast::ReadKind::Move
                 };
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id(),
+                };
                 SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
 
-    pub(crate) fn immut_bor(&self) -> vir::ast::Expr {
+    pub(crate) fn immut_bor<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => add_vir_ref_decoration(e.clone()),
             ExprOrPlace::Place(p) => {
                 let rk = vir::ast::ReadKind::ImmutBor;
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id(),
+                };
                 let typ =
                     Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
                 SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
@@ -106,11 +114,15 @@ impl ExprOrPlace {
         }
     }
 
-    pub(crate) fn to_spec_expr<'tcx>(&self) -> vir::ast::Expr {
+    pub(crate) fn to_spec_expr<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
             ExprOrPlace::Place(p) => {
                 let rk = vir::ast::ReadKind::Spec;
+                let rk = UnfinalizedReadKind {
+                    preliminary_kind: rk,
+                    id: bctx.ctxt.unique_read_kind_id(),
+                };
                 SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
@@ -179,14 +191,7 @@ pub(crate) fn closure_param_typs<'tcx>(
             let mut args: Vec<Typ> = Vec::new();
             // REVIEW: rustc docs refer to skip_binder as "dangerous"
             for t in sig.inputs().skip_binder().iter() {
-                args.push(mid_ty_to_vir(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    bctx.fun_id,
-                    expr.span,
-                    t,
-                    false, /* allow_mut_ref */
-                )?);
+                args.push(bctx.mid_ty_to_vir(expr.span, t, /* allow_mut_ref */ false)?);
             }
             assert!(args.len() == 1);
             match &*args[0] {
@@ -204,14 +209,7 @@ fn closure_ret_typ<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Typ
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
             let t = sig.output().skip_binder();
-            mid_ty_to_vir(
-                bctx.ctxt.tcx,
-                &bctx.ctxt.verus_items,
-                bctx.fun_id,
-                expr.span,
-                &t,
-                false, /* allow_mut_ref */
-            )
+            bctx.mid_ty_to_vir(expr.span, &t, /* allow_mut_ref */ false)
         }
         _ => panic!("closure_param_types expected Closure type"),
     }
@@ -321,12 +319,12 @@ pub(crate) fn expr_to_vir<'tcx>(
     let mut vir_expr_or_place = expr_to_vir_inner(bctx, expr, modifier)?;
     let attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     for group in get_trigger(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr();
+        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
     }
     for err_msg in get_custom_err_annotations(attrs)? {
-        let mut vir_expr = vir_expr_or_place.to_spec_expr();
+        let mut vir_expr = vir_expr_or_place.to_spec_expr(bctx);
         vir_expr = vir_expr
             .new_x(ExprX::UnaryOpr(UnaryOpr::CustomErr(Arc::new(err_msg)), vir_expr.clone()));
         vir_expr_or_place = ExprOrPlace::Expr(vir_expr);
@@ -350,7 +348,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const, id) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = bctx.ctxt.def_id_to_vir_path(id);
                     let fun = FunX { path };
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -367,11 +365,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                 _ => match resolve_ctor(bctx.ctxt.tcx, res) {
                     Some((ctor, CtorKind::Const)) => {
                         let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-                        let vir_path = def_id_to_vir_path(
-                            bctx.ctxt.tcx,
-                            &bctx.ctxt.verus_items,
-                            ctor.adt_def_id,
-                        );
+                        let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
                         Ok(PatternX::Constructor(
                             Dt::Path(vir_path),
                             variant_name,
@@ -400,7 +394,7 @@ pub(crate) fn get_fn_path<'tcx>(
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
-                let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, id);
+                let path = bctx.ctxt.def_id_to_vir_path(id);
                 Ok(Arc::new(FunX { path }))
             }
         }
@@ -420,7 +414,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
     let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-    let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+    let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
 
     let vir_fields = Arc::new(
         args_slice
@@ -458,33 +452,122 @@ fn handle_dot_dot(
     }
 }
 
-pub(crate) fn pattern_to_vir_inner<'tcx>(
+pub(crate) fn pattern_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+) -> Result<vir::ast::Pattern, VirErr> {
+    let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
+    {
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((pat.hir_id, unadjusted_pat.span.id));
+    }
+
+    // See rustc_mir_build/src/thir/pattern/mod.rs
+    let adjustments: &[PatAdjustment<'tcx>] =
+        bctx.types.pat_adjustments().get(pat.hir_id).map_or(&[], |v| &**v);
+    let mut vir_pat = unadjusted_pat;
+
+    if bctx.ctxt.cmd_line_args.new_mut_ref {
+        for adjust in adjustments.iter().rev() {
+            match adjust.kind {
+                PatAdjust::BuiltinDeref => {
+                    let is_mut = match adjust.source.kind() {
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => true,
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => false,
+                        _ => {
+                            crate::internal_err!(pat.span, "expected reference type")
+                        }
+                    };
+
+                    if is_mut {
+                        let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone()));
+                        let x = PatternX::MutRef(vir_pat);
+                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                    } else {
+                        let typ =
+                            Arc::new(TypX::Decorate(TypDecoration::Ref, None, vir_pat.typ.clone()));
+                        let x = PatternX::ImmutRef(vir_pat);
+                        vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
+                    };
+                }
+                PatAdjust::OverloadedDeref => {
+                    unsupported_err!(pat.span, "overloaded deref in pattern");
+                }
+            }
+        }
+    }
+
+    Ok(vir_pat)
+}
+
+pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
+    let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
-        PatKind::Binding(BindingMode(_, mutability), canonical, x, subpat) => {
+        PatKind::Binding(_binding_mode, canonical, x, subpat) => {
+            // We want the computed binding mode, which accounts for match ergonomics,
+            // rather than the source-level binding mode.
+            let BindingMode(by_ref, mutability) =
+                bctx.types.pat_binding_modes().get(pat.hir_id).expect("binding mode");
+
             let mutable = match mutability {
                 Mutability::Not => false,
                 Mutability::Mut => true,
             };
 
+            let vir_by_ref = match by_ref {
+                ByRef::No => vir::ast::ByRef::No,
+                ByRef::Yes(Mutability::Mut) => {
+                    if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                        unsupported_err!(pat.span, "'ref mut' binding in pattern");
+                    }
+                    vir::ast::ByRef::MutRef
+                }
+                ByRef::Yes(Mutability::Not) => vir::ast::ByRef::ImmutRef,
+            };
+
+            // For a PatKind::Binding node, the HIR node type is always the type of
+            // the bound variable.
+            // However, we want the pattern.typ to be the type that is being matched against,
+            // which is different if there's a nontrivial binding mode.
+            let var_typ = pat_typ.clone();
+            let actual_pat_typ = match by_ref {
+                ByRef::No => var_typ.clone(),
+                ByRef::Yes(Mutability::Mut) => match &*var_typ {
+                    TypX::MutRef(t) => t.clone(),
+                    _ => crate::internal_err!(pat.span, "expected &mut type"),
+                },
+                ByRef::Yes(Mutability::Not) => match &*var_typ {
+                    TypX::Decorate(TypDecoration::Ref, None, t) => t.clone(),
+                    _ => crate::internal_err!(pat.span, "expected & type"),
+                },
+            };
+            pat_typ = actual_pat_typ;
+
             // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
             // mutable reference (or if it contains a nested mutable reference),
             // even if the variable is not marked 'mut'.
-            // Conservatively mark all variables non-mutable for now
-            // TODO be more precise about this.
+            // Conservatively mark all variables mutable for now
+            // TODO(new_mut_ref) be more precise about this.
             let mutable = mutable || bctx.ctxt.cmd_line_args.new_mut_ref;
 
             let name = local_to_var(x, canonical.local_id);
+            let binding = vir::ast::PatternBinding {
+                name,
+                mutable,
+                by_ref: vir_by_ref,
+                typ: var_typ.clone(),
+                copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
+            };
             match subpat {
-                None => PatternX::Var { name, mutable },
+                None => PatternX::Var(binding),
                 Some(subpat) => {
-                    PatternX::Binding { name, mutable, sub_pat: pattern_to_vir(bctx, subpat)? }
+                    PatternX::Binding { binding, sub_pat: pattern_to_vir(bctx, subpat)? }
                 }
             }
         }
@@ -523,8 +606,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             };
 
             let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-            let vir_path =
-                def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
 
             let (n_wildcards, pos_to_insert_wildcards) =
                 handle_dot_dot(pats.len(), ctor.variant_def.fields.len(), &dot_dot_pos);
@@ -545,8 +627,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             let ty = bctx.types.node_type(pat.hir_id);
             let ctor = resolve_braces_ctor(tcx, res, ty, false, pat.span)?;
             let variant_name = str_ident(&ctor.variant_def.ident(tcx).as_str());
-            let vir_path =
-                def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let vir_path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
 
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for fpat in pats.iter() {
@@ -620,7 +701,11 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             PatternX::Range(e1, e2)
         }
         PatKind::Guard(..) => unsupported_err!(pat.span, "pattern guards", pat),
-        PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
+        PatKind::Ref(..) => {
+            // note: to handle this, you need to check skipped_ref_pats
+            // see rustc_mir_build/src/thir/pattern/mod.rs
+            unsupported_err!(pat.span, "ref patterns", pat);
+        }
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
@@ -631,16 +716,6 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
     Ok(pattern)
-}
-
-pub(crate) fn pattern_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    pat: &Pat<'tcx>,
-) -> Result<vir::ast::Pattern, VirErr> {
-    let vir_pat = pattern_to_vir_inner(bctx, pat)?;
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.hir_vir_ids.push((pat.hir_id, vir_pat.span.id));
-    Ok(vir_pat)
 }
 
 pub(crate) fn block_to_vir<'tcx>(
@@ -869,7 +944,7 @@ fn invariant_block_to_vir<'tcx>(
     // to use the open_atomic_invariant! macro.
 
     let body = match &expr.kind {
-        ExprKind::Block(body, _) => body,
+        ExprKind::Block(body, None) => body,
         _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
@@ -910,7 +985,7 @@ fn invariant_block_to_vir<'tcx>(
     }
 
     let vir_body = match mid_stmt.kind {
-        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, _), .. }) => {
+        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
                 slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
@@ -1013,16 +1088,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // peeling off the adjustment (i-1).
     // Whereas the node (expr, 0) is just expr by itself.
 
-    let expr_typ = || {
-        mid_ty_to_vir(
-            bctx.ctxt.tcx,
-            &bctx.ctxt.verus_items,
-            bctx.fun_id,
-            expr.span,
-            &adjustments[adjustment_idx - 1].target,
-            false,
-        )
-    };
+    let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target, false);
 
     if adjustment_idx == 0 {
         let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
@@ -1125,10 +1191,10 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?
-            .immut_bor();
+            .immut_bor(bctx);
             Ok(ExprOrPlace::Expr(new_expr))
         }
-        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
+        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { allow_two_phase_borrow })) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 // Rust often inserts &mut* adjustments in argument positions.
                 // e.g., `foo(a)` where `a: &mut T` really becomes `foo(&mut *a)`.
@@ -1142,7 +1208,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     if inner_inner_ty != adjustment.target {
                         panic!("Verus Internal Error: Implicit &mut * expected the same type");
                     }
-                    // TODO: we need to improve this condition to work for tracked code
+                    // TODO(new_mut_ref): we need to improve this condition to work for tracked code
                     if bctx.in_ghost {
                         return expr_to_vir_with_adjustments(
                             bctx,
@@ -1162,9 +1228,12 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustment_idx - 1,
                 )?
                 .to_place();
-                let x = ExprX::BorrowMut(place.clone());
-                let typ = Arc::new(TypX::MutRef(place.typ.clone()));
-                Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &typ, x)))
+                Ok(ExprOrPlace::Expr(borrow_mut_vir(
+                    bctx,
+                    expr.span,
+                    &place,
+                    *allow_two_phase_borrow,
+                )))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -1292,15 +1361,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
-                let x = ExprX::Call(call_target, args);
-                let expr_typ = mid_ty_to_vir(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    bctx.fun_id,
-                    expr.span,
-                    &ty2,
-                    false,
-                )?;
+                let x = ExprX::Call(call_target, args, None);
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
                 Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)))
             } else {
                 unsupported_err!(
@@ -1577,7 +1639,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
     let expr_typ = || {
-        if current_modifier.deref_mut {
+        if current_modifier.deref_mut && !bctx.ctxt.cmd_line_args.new_mut_ref {
             typ_of_node_expect_mut_ref(bctx, expr.span, &expr.hir_id)
         } else {
             typ_of_node(bctx, expr.span, &expr.hir_id, false)
@@ -1634,7 +1696,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     };
 
     match &expr.kind {
-        ExprKind::Block(body, _) => {
+        ExprKind::Block(body, label) => {
+            unsupported_err_unless!(label.is_none(), expr.span, "block with label");
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
             } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
@@ -1765,10 +1828,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // Compute `tup_typ` with the correct decoration:
                         let mut arg_typs = vec![];
                         for arg in args.iter() {
-                            arg_typs.push(mid_ty_to_vir(
-                                tcx,
-                                &bctx.ctxt.verus_items,
-                                bctx.fun_id,
+                            arg_typs.push(bctx.mid_ty_to_vir(
                                 arg.span,
                                 &bctx.types.expr_ty_adjusted(arg),
                                 false,
@@ -1781,14 +1841,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         // ignored later, but for consistency with other typ_args I
                         // decided to get the decorated version)
                         // Also, allow &mut refs here since that can happen for FnMut.
-                        let fun_typ = mid_ty_to_vir(
-                            tcx,
-                            &bctx.ctxt.verus_items,
-                            bctx.fun_id,
-                            fun.span,
-                            &fun_ty,
-                            true,
-                        )?;
+                        let fun_typ = bctx.mid_ty_to_vir(fun.span, &fun_ty, true)?;
 
                         let (kind, rcall) = if let Some((arg_modes, ret_mode)) = proof_fn {
                             if arg_modes.len() != args.len() {
@@ -1862,7 +1915,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                         expr.span,
                         &expr_typ,
-                        ExprX::Call(target, Arc::new(vir_args)),
+                        ExprX::Call(target, Arc::new(vir_args), None),
                     )))
                 }
             }
@@ -1890,14 +1943,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             if is_copy {
                 let arg_vir = expr_to_vir_consume(bctx, e, modifier)?;
                 let fun = vir::fun!("vstd" => "array", "array_fill_for_copy_types");
-                let array_vir_typ = mid_ty_to_vir(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    bctx.fun_id,
-                    expr.span,
-                    &bctx.types.expr_ty(expr),
-                    false,
-                )?;
+                let array_vir_typ =
+                    bctx.mid_ty_to_vir(expr.span, &bctx.types.expr_ty(expr), false)?;
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                     _ => {
@@ -1914,7 +1961,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     autospec_usage,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
-                mk_expr(ExprX::Call(call_target, args))
+                mk_expr(ExprX::Call(call_target, args, None))
             } else {
                 // Could be a const. In this case the array needs to be translated like:
                 //    forall |i| array[i] satisfies post-condition of const
@@ -1974,15 +2021,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?.immut_bor();
+            let new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?.immut_bor(bctx);
             Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 let place = expr_to_vir(bctx, e, modifier)?.to_place();
-                let x = ExprX::BorrowMut(place.clone());
-                let typ = Arc::new(TypX::MutRef(place.typ.clone()));
-                Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &typ, x)))
+                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No)))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -2132,7 +2177,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
-                        let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                        let path = bctx.ctxt.def_id_to_vir_path(id);
                         let fun = FunX { path };
                         let autospec_usage = if bctx.in_ghost {
                             AutospecUsage::IfMarked
@@ -2143,7 +2188,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                 }
                 (Res::Def(DefKind::Const, id), _) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = bctx.ctxt.def_id_to_vir_path(id);
                     let fun = FunX { path };
                     let autospec_usage =
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -2156,12 +2201,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     ),
                     _,
                 ) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = bctx.ctxt.def_id_to_vir_path(id);
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
                 }
                 (Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id), _) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let path = bctx.ctxt.def_id_to_vir_path(id);
                     let fun = Arc::new(vir::ast::FunX { path });
                     mk_expr(ExprX::ExecFnByName(fun))
                 }
@@ -2203,6 +2248,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(lhs), modifier)?;
             let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?.to_place();
+
             let lhs_ty = tc.expr_ty_adjusted(lhs);
             let lhs_ty = mid_ty_simplify(tcx, &bctx.ctxt.verus_items, &lhs_ty, true);
             let field_opr = if let Some(adt_def) = lhs_ty.ty_adt_def() {
@@ -2218,7 +2264,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     "field_of_adt_with_multiple_variants",
                     expr
                 );
-                let datatype_path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, adt_def.did());
+                let datatype_path = bctx.ctxt.def_id_to_vir_path(adt_def.did());
                 let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did());
                 let variant = hir_def.variants().iter().next().unwrap();
                 let field_name = field_ident_from_rust(&name.as_str());
@@ -2241,12 +2287,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     check,
                 }
             } else {
-                let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, true)?;
-                let lhs_typ = undecorate_typ(&lhs_typ);
-                if let TypX::Datatype(Dt::Tuple(_), ts, _) = &*lhs_typ {
+                if let TyKind::Tuple(t_args) = lhs_ty.kind() {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
-                    mk_tuple_field_opr(ts.len(), field)
+                    mk_tuple_field_opr(t_args.len(), field)
                 } else {
                     unsupported_err!(expr.span, "field_of_non_adt", expr)
                 }
@@ -2451,7 +2495,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let ty = bctx.types.node_type(expr.hir_id);
             let ctor = resolve_braces_ctor(bctx.ctxt.tcx, res, ty, true, expr.span)?;
             let variant_name = ctor.variant_name(bctx.ctxt.tcx, fields);
-            let path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, ctor.adt_def_id);
+            let path = bctx.ctxt.def_id_to_vir_path(ctor.adt_def_id);
 
             let vir_fields = Arc::new(
                 fields
@@ -2565,7 +2609,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-            mk_expr(ExprX::Call(call_target, args))
+            mk_expr(ExprX::Call(call_target, args, None))
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
@@ -2824,6 +2868,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 let deref_ghost = mid_ty_to_vir_ghost(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,
+                    None,
                     bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
@@ -2913,7 +2958,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let index_set = bctx.spanned_typed_new(
             lhs.span,
             &mk_tuple_typ(&Arc::new(vec![])),
-            ExprX::Call(call_target, args),
+            ExprX::Call(call_target, args, None),
         );
         // lhs is not recorded and so explicitly add it here.
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
@@ -3354,22 +3399,8 @@ fn is_ptr_cast<'tcx>(
             } else if ty2
                 .is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id))
             {
-                let src_ty = mid_ty_to_vir(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    bctx.fun_id,
-                    span,
-                    ty1,
-                    false,
-                )?;
-                let dst_ty = mid_ty_to_vir(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    bctx.fun_id,
-                    span,
-                    ty2,
-                    false,
-                )?;
+                let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
+                let dst_ty = bctx.mid_ty_to_vir(span, ty2, false)?;
                 let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
@@ -3383,14 +3414,7 @@ fn is_ptr_cast<'tcx>(
         (TyKind::RawPtr(ty1, _), _ty2)
             if crate::rust_to_vir_base::is_integer_ty(&bctx.ctxt.verus_items, &dst) =>
         {
-            let src_ty = mid_ty_to_vir(
-                bctx.ctxt.tcx,
-                &bctx.ctxt.verus_items,
-                bctx.fun_id,
-                span,
-                ty1,
-                false,
-            )?;
+            let src_ty = bctx.mid_ty_to_vir(span, ty1, false)?;
             let typs = Arc::new(vec![src_ty]);
             let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_usize");
 
@@ -3425,7 +3449,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 autospec_usage,
             );
             let args = Arc::new(vec![src_vir.clone()]);
-            let x = ExprX::Call(call_target, args);
+            let x = ExprX::Call(call_target, args, None);
             let expr_typ = typ_of_node(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
 
             if clip {
@@ -3486,14 +3510,7 @@ fn deref_expr_to_vir<'tcx>(
             .type_dependent_def_id(expr.hir_id)
             .expect("cannot get the function definition id for a deref");
         let res_ty = bctx.types.node_type(expr.hir_id);
-        let inner_ty = mid_ty_to_vir(
-            bctx.ctxt.tcx,
-            &bctx.ctxt.verus_items,
-            bctx.fun_id,
-            expr.span,
-            &res_ty,
-            false,
-        )?;
+        let inner_ty = bctx.mid_ty_to_vir(expr.span, &res_ty, false)?;
         let inner_expr = inner_expr.consume(bctx, bctx.types.expr_ty_adjusted(arg));
         Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
             bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
@@ -3546,7 +3563,13 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
 
 pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast::Expr, VirErr> {
     let x = match &expr.x {
-        ExprX::ReadPlace(p, vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy) => {
+        ExprX::ReadPlace(
+            p,
+            UnfinalizedReadKind {
+                preliminary_kind: vir::ast::ReadKind::Move | vir::ast::ReadKind::Copy,
+                id: _,
+            },
+        ) => {
             return place_to_loc(p);
         }
         ExprX::Unary(
@@ -3575,9 +3598,6 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
-    //
-    // Note that `&mut *x` does NOT cancel itself out in the same way
-    // (this is a reborrow which has nontrivial semantics)
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
@@ -3594,4 +3614,38 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
         _ => panic!("expected mut ref"),
     };
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+}
+
+fn borrow_mut_vir(
+    bctx: &BodyCtxt,
+    span: Span,
+    place: &Place,
+    allow_two_phase: AllowTwoPhase,
+) -> vir::ast::Expr {
+    // In general, `&mut *x` does NOT cancel itself out;
+    // this is a reborrow which has nontrivial semantics.
+    // However, if x is a temporary, then it's ok.
+
+    match &place.x {
+        PlaceX::DerefMut(inner_place) => match &inner_place.x {
+            PlaceX::Temporary(temp) => {
+                return temp.clone();
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    let x = match allow_two_phase {
+        AllowTwoPhase::Yes => {
+            if place.x.uses_temporary() {
+                ExprX::BorrowMut(place.clone())
+            } else {
+                ExprX::TwoPhaseBorrowMut(place.clone())
+            }
+        }
+        AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
+    };
+    let typ = Arc::new(TypX::MutRef(place.typ.clone()));
+    bctx.spanned_typed_new(span, &typ, x)
 }
