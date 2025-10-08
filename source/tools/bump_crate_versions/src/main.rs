@@ -41,7 +41,7 @@ static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
 });
 
 
-#[derive(Clone,PartialEq,Eq,Hash,PartialOrd,Ord)]
+#[derive(Clone,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
 struct Crate {
     // Crate's official name
     name: String,
@@ -68,6 +68,14 @@ fn compute_immediate_deps(crates: &Vec<Crate>) -> HashMap<Crate, Vec<Crate>> {
         }
     }
     dep_map
+}
+
+fn display_dep_map(dep_map: &HashMap<Crate, Vec<Crate>>, tab_depth: usize) {
+    for (krate, dependents) in dep_map {
+        print!("{}{}: ", "\t".repeat(tab_depth), krate.name);
+        let names = dependents.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
+        println!("{}", names.join(", "));
+    }
 }
 
 // Given a path to a directory, run git to check for the most recent change to the Cargo.toml file
@@ -177,7 +185,8 @@ fn update_cargo_verus_template() {
         panic!("Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.", CARGO_VERUS_MAIN, count);
     }
     let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
-    println!("Updated cargo-verus main.rs:\n{}", updated_content);
+    //println!("Updated cargo-verus main.rs:\n{}", updated_content);
+    println!("Updated cargo-verus main.rs\n");
 
     // Write the updated content back to the file
     fs::write(main, updated_content.to_string()).expect("Failed to write cargo-verus main.rs");
@@ -225,10 +234,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for krate in &crates {
         if let Some(commit) = last_commit(&Path::new(&krate.path)) {
             if src_modified(&Path::new(&krate.path), &commit) {
-                println!("\t{}:\n\t\thas been modified since commit {}.", krate.name, commit);
+                println!("\t{}:\n\t\tHAS been modified since commit {}.\n", krate.name, commit);
                 modified_crates.insert(&krate);
             } else {
-                println!("\t{}:\n\t\t has not been modified since commit {}", krate.name, commit);
+                println!("\t{}:\n\t\t has NOT been modified since commit {}.\n", krate.name, commit);
             }
         } else {
             println!("{}: Could not find last commit for {}", krate.name, krate.path);
@@ -238,15 +247,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Compute crates that (transitively) depend on modified crates, and hence themselves need a version update
     println!("\nScanning for crates that depend on modified crates...");
     let dep_map = compute_immediate_deps(&crates);
+    println!("\tworking from the following map A: [B1, ..., BN], where each Bi depends on A");
+    display_dep_map(&dep_map, 2);
+    println!("\tidentifying transitively affected crates...");
     loop {
         let mut new_modifications = HashSet::new();
         for krate in &modified_crates {
-            for dependent in &dep_map[krate] {
-                // For each dependent that relies on a modified krate,
-                // if it hasn't already been marked for modification, mark it now.
-                if !modified_crates.contains(&dependent) {
-                    new_modifications.insert(dependent);
-                    println!("\t{}: depends on modified crate {}", dependent.name, krate.name);
+            if dep_map.contains_key(krate) {
+                for dependent in &dep_map[krate] {
+                    // For each dependent that relies on a modified krate,
+                    // if it hasn't already been marked for modification, mark it now.
+                    if !modified_crates.contains(&dependent) {
+                        new_modifications.insert(dependent);
+                        println!("\t\t{}: depends on modified crate {}", dependent.name, krate.name);
+                    }
                 }
             }
         }
@@ -260,7 +274,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Do the modifications
     if modified_crates.len() > 0 {
-        println!("\nModifying the each of the following crates to version {} and updating their dependencies ...", *NEW_VERSION);
+        println!("\nModifying each of the following crates to version {} and updating their dependencies ...", *NEW_VERSION);
         let mut modified_crates: Vec<&Crate> = modified_crates.into_iter().collect();
         modified_crates.sort();
         for krate in &modified_crates {
