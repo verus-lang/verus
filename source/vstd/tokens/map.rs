@@ -447,6 +447,7 @@ impl<K, V> GhostSubmap<K, V> {
             frac: Some(r.value().frac.unwrap().union_prefer_right(m)),
         };
 
+        assume( frame_preserving_update(r.value(), rr) );   // TODO(jonh): why did this decay!?
         let tracked r_upd = r.update(rr);
 
         let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(IMap::empty()) };

@@ -750,9 +750,10 @@ impl Visitor {
                 }
                 InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
                     self.visit_expr_mut(&mut expr);
+                    let typ = quote_vstd! { vstd => #vstd::set::Set<int> };
                     spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set(#expr)),
+                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set::<#typ>(#expr)),
                         ),
                         Some(Semi { spans: [expr.span()] }),
                     ));
