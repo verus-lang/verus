@@ -12,12 +12,23 @@ use clap::Parser as ClapParser;
 ///
 /// Usage: Run this tool from the root of the Verus repository.
 
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Update version numbers
+    Update,
+    /// Publish any updated crates to crates.io
+    Publish {
+        /// Operate in dry-run mode, instead of actually publishing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+}
+
 #[derive(ClapParser)]
 #[command(version, about)]
 struct Args {
-    /// If set, publishes the updated crates to crates.io.  Otherwise runs the publish step in dry-run mode
-    #[arg(long = "publish")]
-    publish: bool,
+    #[command(subcommand)]
+    command: Command,
 }
 
 // Path to cargo-verus's main file, where we have a static string
@@ -153,12 +164,12 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
-fn publish(dir: &Path, publish: bool) {
+fn publish(dir: &Path, dry_run: bool) {
     use std::process::Command;
 
     let mut cmd = Command::new("cargo");
     cmd.arg("publish");
-    if !publish {
+    if dry_run {
         cmd.arg("--dry-run");
     }
     let status = cmd
@@ -168,7 +179,7 @@ fn publish(dir: &Path, publish: bool) {
 
     if !status.success() {
         panic!("cargo publish{} failed for {}", 
-            if publish { " --dry-run" } else { "" },
+            if dry_run { " --dry-run" } else { "" },
             dir.display()
         );
     }
@@ -192,42 +203,7 @@ fn update_cargo_verus_template() {
     fs::write(main, updated_content.to_string()).expect("Failed to write cargo-verus main.rs");
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let  args = Args::parse();
-
-    println!("Scanning for modified crates...");
-    let crates = vec![
-        Crate {
-            name: "vstd".to_string(),
-            path: "source/vstd".to_string(),
-        },
-        Crate {
-            name: "verus_builtin".to_string(),
-            path: "source/builtin".to_string(),
-        },
-        Crate {
-            name: "verus_builtin_macros".to_string(),
-            path: "source/builtin_macros".to_string(),
-        },
-        Crate {
-            name: "verus_state_machine_macros".to_string(),
-            path: "source/state_machines_macros".to_string(),
-        },
-        Crate {
-            name: "verus_prettyplease".to_string(),
-            path: "dependencies/prettyplease".to_string(),
-        },
-        Crate {
-            name: "verus_syn".to_string(),
-            path: "dependencies/syn".to_string(),
-        },
-    ];
-
-    let test_path = Path::new(&crates[0].path);
-    if !Path::exists(test_path) {
-        return Err(format!("Failed to find path: {}.  Hint: This tool expects to run in the root of the Verus repo", test_path.display()).into());
-    }
-
+fn update_crates(crates: Vec<Crate>) {
     // Compute directly modified crates
     println!("\nScanning for crates with modified source code...");
     let mut modified_crates: HashSet<&Crate> = HashSet::new();
@@ -286,15 +262,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 update_cargo_verus_template();
             }
         }
+    }
 
-        for krate in modified_crates {
-            if args.publish {
-                println!("Publishing modified crate {}", krate.name);
-            } else {
-                println!("Performing a dry-run publish of modified crate {}", krate.name);
-            }
-            publish(&Path::new(&krate.path), args.publish);
+}
+
+fn publish_crates(crates: Vec<Crate>, dry_run: bool) {
+    for krate in crates {
+        if dry_run {
+            println!("Performing a dry-run publish of modified crate {}", krate.name);
+        } else {
+            println!("Publishing modified crate {}", krate.name);
         }
+        publish(&Path::new(&krate.path), dry_run);
+    }
+
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let  args = Args::parse();
+
+    let crates = vec![
+        Crate {
+            name: "vstd".to_string(),
+            path: "source/vstd".to_string(),
+        },
+        Crate {
+            name: "verus_builtin".to_string(),
+            path: "source/builtin".to_string(),
+        },
+        Crate {
+            name: "verus_builtin_macros".to_string(),
+            path: "source/builtin_macros".to_string(),
+        },
+        Crate {
+            name: "verus_state_machine_macros".to_string(),
+            path: "source/state_machines_macros".to_string(),
+        },
+        Crate {
+            name: "verus_prettyplease".to_string(),
+            path: "dependencies/prettyplease".to_string(),
+        },
+        Crate {
+            name: "verus_syn".to_string(),
+            path: "dependencies/syn".to_string(),
+        },
+    ];
+
+    let test_path = Path::new(&crates[0].path);
+    if !Path::exists(test_path) {
+        return Err(format!("Failed to find path: {}.  Hint: This tool expects to run in the root of the Verus repo", test_path.display()).into());
+    }
+
+    match &args.command {
+        Command::Update => update_crates(crates),
+        Command::Publish { dry_run } => publish_crates(crates, *dry_run),
     }
 
     Ok(())
