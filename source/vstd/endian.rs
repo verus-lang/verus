@@ -180,12 +180,18 @@ impl<B: Base> EndianNat<B> {
         EndianNat::new(self.endian, self.digits + other.digits)
     }
 
-    pub open spec fn push_first(self, n: int) -> Self {
+    pub open spec fn push_first(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
         EndianNat { endian: self.endian, digits: seq![n].add(self.digits), phantom: self.phantom }
     }
 
-    pub open spec fn push_last(self, n: int) -> Self {
-        EndianNat { endian: self.endian, digits: self.digits.add(seq![n]), phantom: self.phantom }
+    pub open spec fn push_last(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
+        EndianNat { endian: self.endian, digits: self.digits.push(n), phantom: self.phantom }
     }
 
     pub open spec fn push_least(self, n: int) -> Self {
@@ -672,7 +678,7 @@ impl<B: Base> EndianNat<B> {
         requires
             n < pow(B::base() as int, len),
         ensures
-            #[trigger] Self::to_nat(Self::from_nat_with_len(n, len)) == n,
+            #[trigger] Self::from_nat_with_len(n, len).to_nat() == n,
         decreases Self::from_nat_with_len(n, len).len(),
     {
         reveal(pow);
@@ -685,13 +691,13 @@ impl<B: Base> EndianNat<B> {
             assert(rest =~= Self::from_nat_with_len(n / B::base(), (len - 1) as nat));
             Self::base_max_bounds(n, len);
             Self::from_nat_to_nat(n / B::base(), (len - 1) as nat);
-            assert(Self::to_nat(rest) == (n / B::base()));
-            assert(Self::to_nat(endian) == (n % B::base()) + (n / B::base()) * B::base());
+            assert(rest.to_nat() == (n / B::base()));
+            assert(endian.to_nat() == (n % B::base()) + (n / B::base()) * B::base());
             assert((n % B::base()) + (n / B::base()) * B::base() == n) by (nonlinear_arith)
                 requires
                     B::base() > 0,
             ;
-            assert(Self::to_nat(Self::from_nat_with_len(n, len)) == n);
+            assert(Self::from_nat_with_len(n, len).to_nat() == n);
         }
     }
 
