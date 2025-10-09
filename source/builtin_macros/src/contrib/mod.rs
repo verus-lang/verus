@@ -1,4 +1,5 @@
 pub mod auto_spec;
+pub mod exec_spec;
 
 use proc_macro2::TokenStream;
 use verus_syn::{Attribute, ImplItem, Item, Meta, Path};

@@ -804,7 +804,7 @@ pub(crate) fn build_triggers(
     } else {
         Err(error(
             span,
-            "Could not automatically infer triggers for this quantifer.  Use #[trigger] annotations to manually mark trigger terms instead.",
+            "Could not automatically infer triggers for this quantifier.  Use #[trigger] annotations to manually mark trigger terms instead.",
         ))
     }
 }

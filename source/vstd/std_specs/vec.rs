@@ -271,6 +271,23 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     }
 }
 
+pub assume_specification<T: PartialEq<U>, U, A1: Allocator, A2: Allocator>[ <Vec<T, A1> as PartialEq<Vec<U, A2>>>::eq ](
+    x: &Vec<T, A1>,
+    y: &Vec<U, A2>,
+) -> bool
+;
+
+impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cmp::PartialEqSpecImpl<Vec<U, A2>> for Vec<T, A1> {
+    open spec fn obeys_eq_spec() -> bool {
+        T::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &Vec<U, A2>) -> bool {
+        &&& self.len() == other.len()
+        &&& forall|i: int| #![auto] 0 <= i < self.len() ==> self[i].eq_spec(&other[i])
+    }
+}
+
 // The `into_iter` method of a `Vec` returns an iterator of type `IntoIter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -399,6 +416,49 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     ensures
         iter@ == (0int, vec@),
 ;
+
+pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
+    requires
+        super::super::laws_eq::obeys_eq_spec::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_eq_spec::<Vec<T>>(),
+{
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+}
+
+pub broadcast proof fn lemma_vec_obeys_view_eq<T: PartialEq + View>()
+    requires
+        super::super::laws_eq::obeys_concrete_eq::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_view_eq::<Vec<T>>(),
+{
+    use super::cmp::PartialEqSpec;
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+    reveal(super::super::laws_eq::obeys_concrete_eq);
+    reveal(super::super::laws_eq::obeys_view_eq);
+    assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x@ == y@);
+}
+
+pub broadcast proof fn lemma_vec_obeys_deep_eq<T: PartialEq + DeepView>()
+    requires
+        super::super::laws_eq::obeys_deep_eq::<T>(),
+    ensures
+        #[trigger] super::super::laws_eq::obeys_deep_eq::<Vec<T>>(),
+{
+    use super::cmp::PartialEqSpec;
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    reveal(super::super::laws_eq::obeys_eq_spec_properties);
+    reveal(super::super::laws_eq::obeys_deep_eq);
+    assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x.deep_view() == y.deep_view());
+    assert forall|x: Vec<T>, y: Vec<T>| x.deep_view() == y.deep_view() implies x.eq_spec(&y) by {
+        assert(x.deep_view().len() == y.deep_view().len());
+        assert forall|i: int| #![auto] 0 <= i < x.len() implies x[i].eq_spec(&y[i]) by {
+            assert(x.deep_view()[i] == y.deep_view()[i]);
+        }
+    }
+}
 
 pub broadcast group group_vec_axioms {
     axiom_spec_len,

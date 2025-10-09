@@ -242,7 +242,7 @@ test_verify_one_file! {
         fn test<A: T>(a: &A) {
             a.VERUS_SPEC__f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`crate::T::VERUS_SPEC__f` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "T::VERUS_SPEC__f`")
 }
 
 test_verify_one_file! {

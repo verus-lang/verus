@@ -8,9 +8,11 @@ the *lifetimes*. Resolution is safe for any value *as long as that value will ne
 mutated again*. In fact, it is crucial that this can happen before the end of a lifetime.
 Consider:
 
+```
 fn example<'a>(pair: &'a mut (u64, u64) -> &'a mut u64 {
     &mut (*pair).0
 }
+```
 
 Note that the lifetime clearly extends beyond the end of the function, but we will
 always resolve `pair` at the end of the function. This might be surprising because
@@ -20,11 +22,13 @@ is still resolved at the end of the function.
 
 We effectively elaborate this example to look like this:
 
+```
 fn example<'a>(pair: &'a mut (u64, u64) -> &'a mut u64 {
     let return_value = &mut (*pair).0;    // mutates `pair`
     // resolve `pair` here
     return return_value;                  // moves `return_value`
 }
+```
 
 We can resolve `pair` at line 2 because `pair` is never moved or mutated after that point.
 This is necessary if we want to prove a postcondition like
@@ -109,13 +113,10 @@ outside the loop. In all other cases, this check shouldn't matter.
 
 */
 
-#![allow(unused_variables)] // TODO remove
-#![allow(dead_code)] // TODO remove
-
 use crate::ast::{
-    BinaryOp, Datatype, Dt, Expr, ExprX, FieldOpr, Mode, Param, Params, Path, Pattern, PatternX,
-    Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX,
-    UnfinalizedReadKind, VarIdent,
+    BinaryOp, ByRef, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Mode, Param, Params, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
@@ -132,9 +133,10 @@ pub(crate) fn infer_resolution(
     body: &Expr,
     read_kind_finals: &ReadKindFinals,
     datatypes: &HashMap<Path, Datatype>,
+    functions: &HashMap<Fun, Function>,
     var_modes: &HashMap<VarIdent, Mode>,
 ) -> Expr {
-    let cfg = new_cfg(params, body, read_kind_finals, datatypes, var_modes);
+    let cfg = new_cfg(params, body, read_kind_finals, datatypes, functions, var_modes);
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = get_resolutions(&cfg);
     apply_resolutions(&cfg, body, resolutions)
@@ -171,8 +173,8 @@ struct LocalCollection<'a> {
 }
 
 /// A projection that maps a place to a subplace
-#[derive(Clone)]
-enum ProjectionTyped {
+#[derive(Clone, Debug)]
+pub(crate) enum ProjectionTyped {
     StructField(FieldOpr, Typ),
     DerefMut(Typ),
 }
@@ -181,9 +183,9 @@ enum ProjectionTyped {
 /// Only represents places based on locals, not temporaries.
 #[derive(Clone)]
 struct FlattenedPlaceTyped {
-    local: VarIdent,
-    typ: Typ,
-    projections: Vec<ProjectionTyped>,
+    pub local: VarIdent,
+    pub typ: Typ,
+    pub projections: Vec<ProjectionTyped>,
 }
 
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
@@ -205,6 +207,7 @@ enum AstPosition {
     Before(AstId),
     After(AstId),
     AfterArguments(AstId),
+    OnUnwind(#[allow(dead_code)] AstId),
 }
 
 struct Instruction {
@@ -266,6 +269,7 @@ struct Builder<'a> {
     loops: Vec<LoopEntry>,
     locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
+    functions: &'a HashMap<Fun, Function>,
 }
 
 #[derive(Clone)]
@@ -285,6 +289,7 @@ fn new_cfg<'a>(
     body: &Expr,
     read_kind_finals: &'a ReadKindFinals,
     datatypes: &'a HashMap<Path, Datatype>,
+    functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
 ) -> CFG<'a> {
     let mut builder = Builder {
@@ -297,6 +302,7 @@ fn new_cfg<'a>(
             var_modes,
         },
         read_kind_finals,
+        functions,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
@@ -431,9 +437,8 @@ impl<'a> Builder<'a> {
             | ExprX::AirStmt(..)
             | ExprX::Nondeterministic
             | ExprX::AssumeResolved(..) => Ok(bb),
-            ExprX::Call(_call_target, es, post_args) => {
+            ExprX::Call(call_target, es, post_args) => {
                 assert!(post_args.is_none());
-                // TODO(new_mut_ref): account for unwinding
 
                 // Can skip the expression in CallTarget because
                 // it can only be for FnSpec which is always a pure spec expression
@@ -443,7 +448,8 @@ impl<'a> Builder<'a> {
                 for e in es.iter() {
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb) = self.build_place(p, bb)?;
+                            let (p, bb1) = self.build_place(p, bb)?;
+                            bb = bb1;
                             if let Some(p) = p {
                                 two_phase_delayed_mutations.push(p);
                             }
@@ -464,7 +470,17 @@ impl<'a> Builder<'a> {
                     );
                 }
 
-                Ok(bb)
+                if crate::ast_util::call_no_unwind(call_target, &self.functions) {
+                    Ok(bb)
+                } else {
+                    // Create an extra edge that ends immediately to represent unwinding
+                    let unwind_bb = self.new_bb(AstPosition::OnUnwind(expr.span.id), false);
+                    let main_bb = self.new_bb(AstPosition::After(expr.span.id), false);
+                    self.basic_blocks[bb].successors.push(unwind_bb);
+                    self.basic_blocks[bb].successors.push(main_bb);
+                    self.basic_blocks[unwind_bb].is_exit = true;
+                    Ok(main_bb)
+                }
             }
             ExprX::Ctor(_dt, _id, binders, opt_place) => {
                 let mut two_phase_delayed_mutations = vec![];
@@ -475,7 +491,8 @@ impl<'a> Builder<'a> {
                     let e = &b.a;
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb) = self.build_place(p, bb)?;
+                            let (p, bb1) = self.build_place(p, bb)?;
+                            bb = bb1;
                             if let Some(p) = p {
                                 two_phase_delayed_mutations.push(p);
                             }
@@ -575,7 +592,59 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
             ExprX::Match(place, arms) => {
-                todo!()
+                let (fpt, bb) = self.build_place_typed(place, bb)?;
+
+                let mut arm_bb_ends = vec![];
+                for arm in arms.iter() {
+                    // TODO(new_mut_ref) handle guards
+
+                    let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+                    self.basic_blocks[bb].successors.push(arm_bb);
+
+                    if let Some(fpt) = fpt.clone() {
+                        self.append_instructions_for_pattern_moves_mutations(
+                            &arm.x.pattern,
+                            &fpt,
+                            arm_bb,
+                            AstPosition::Before(arm.x.body.span.id),
+                        );
+                    }
+
+                    for bound_var in pattern_all_bound_vars_with_ownership(
+                        &arm.x.pattern,
+                        &self.locals.var_modes,
+                    )
+                    .into_iter()
+                    {
+                        let fpt = FlattenedPlaceTyped {
+                            local: bound_var.name,
+                            typ: bound_var.typ,
+                            projections: vec![],
+                        };
+                        let fp = self.locals.add_place(fpt, false);
+                        self.push_instruction(
+                            bb,
+                            AstPosition::Before(arm.x.body.span.id),
+                            InstructionKind::Overwrite(fp),
+                        );
+                    }
+
+                    let arm_bb_end = self.build(&arm.x.body, arm_bb);
+                    if let Ok(arm_bb_end) = arm_bb_end {
+                        arm_bb_ends.push(arm_bb_end);
+                    }
+                }
+
+                if arm_bb_ends.len() > 0 {
+                    let join_position = AstPosition::After(expr.span.id);
+                    let join_block = self.new_bb(join_position, false);
+                    for arm_bb_end in arm_bb_ends {
+                        self.basic_blocks[arm_bb_end].successors.push(join_block);
+                    }
+                    Ok(join_block)
+                } else {
+                    Err(())
+                }
             }
             ExprX::Loop {
                 loop_isolation: _,
@@ -667,10 +736,10 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::AssignToPlace { place, rhs, op: Some(_) } => {
+            ExprX::AssignToPlace { place: _, rhs: _, op: Some(_) } => {
                 todo!()
             }
-            ExprX::TwoPhaseBorrowMut(p) => {
+            ExprX::TwoPhaseBorrowMut(_p) => {
                 // These must be handled contextually, so the recursion should skip over
                 // these nodes.
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
@@ -727,20 +796,12 @@ impl<'a> Builder<'a> {
             StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
                 let (fp, bb) = self.build_place_typed(init, bb)?;
                 if let Some(fp) = fp {
-                    let moved_places = moves_for_place_being_matched(
+                    self.append_instructions_for_pattern_moves_mutations(
                         pattern,
                         &fp,
-                        &self.locals.datatypes,
-                        &self.locals.var_modes,
+                        bb,
+                        AstPosition::After(stmt.span.id),
                     );
-                    for fpt in moved_places.into_iter() {
-                        let fp = self.locals.add_place(fpt, false);
-                        self.push_instruction(
-                            bb,
-                            AstPosition::After(init.span.id),
-                            InstructionKind::MoveFrom(fp),
-                        );
-                    }
                 }
                 for bound_var in
                     pattern_all_bound_vars_with_ownership(pattern, &self.locals.var_modes)
@@ -847,13 +908,39 @@ impl<'a> Builder<'a> {
             })
             .collect()
     }
+
+    fn append_instructions_for_pattern_moves_mutations(
+        &mut self,
+        pattern: &Pattern,
+        fpt: &FlattenedPlaceTyped,
+        bb: BBIndex,
+        position: AstPosition,
+    ) {
+        let places = moves_and_muts_for_place_being_matched(
+            pattern,
+            &fpt,
+            &self.locals.datatypes,
+            &self.locals.var_modes,
+        );
+        for (fpt, by_ref) in places.into_iter() {
+            let fp = self.locals.add_place(fpt, false);
+            self.push_instruction(
+                bb,
+                position,
+                match by_ref {
+                    ByRef::No => InstructionKind::MoveFrom(fp),
+                    ByRef::MutRef => InstructionKind::Mutate(fp),
+                    ByRef::ImmutRef => unreachable!(),
+                },
+            );
+        }
+    }
 }
 
 ////// Patterns
 
 pub struct BoundVar {
     pub name: VarIdent,
-    pub mutable: bool,
     pub typ: Typ,
 }
 
@@ -865,23 +952,23 @@ pub fn expr_all_bound_vars_with_ownership(
 ) -> Vec<BoundVar> {
     let mut out = vec![];
     let mut names = HashSet::<VarIdent>::new();
-    crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _>(
+    crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
         expr,
-        &mut |_scope_map, _expr| Ok(()),
-        &mut |_scope_map, _stmt| Ok(()),
-        &mut |_scope_map, pattern| {
+        &mut (),
+        &mut |_env, _scope_map, _expr| Ok(()),
+        &mut |_env, _scope_map, _stmt| Ok(()),
+        &mut |_env, _scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var { name, mutable }
-                | PatternX::Binding { name, mutable, sub_pat: _ } => {
+                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+                | PatternX::Binding {
+                    binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                    sub_pat: _,
+                } => {
                     let spec = matches!(&modes[name], Mode::Spec);
                     if !spec {
                         if !names.contains(name) {
                             names.insert(name.clone());
-                            out.push(BoundVar {
-                                name: name.clone(),
-                                mutable: *mutable,
-                                typ: pattern.typ.clone(),
-                            });
+                            out.push(BoundVar { name: name.clone(), typ: typ.clone() });
                         }
                     }
                 }
@@ -889,8 +976,8 @@ pub fn expr_all_bound_vars_with_ownership(
             }
             Ok(())
         },
-        &mut |_scope_map, _typ, _span| Ok(()),
-        &mut |_scope_map, _place| Ok(()),
+        &mut |_env, _scope_map, _typ, _span| Ok(()),
+        &mut |_env, _scope_map, _place| Ok(()),
     )
     .unwrap();
     out
@@ -910,14 +997,14 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var { name, mutable } | PatternX::Binding { name, mutable, sub_pat: _ } => {
+            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+            | PatternX::Binding {
+                binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                sub_pat: _,
+            } => {
                 let spec = matches!(&modes[name], Mode::Spec);
                 if !spec {
-                    out.push(BoundVar {
-                        name: name.clone(),
-                        mutable: *mutable,
-                        typ: pattern.typ.clone(),
-                    });
+                    out.push(BoundVar { name: name.clone(), typ: typ.clone() });
                 }
 
                 match &pattern.x {
@@ -927,12 +1014,12 @@ pub fn pattern_all_bound_vars_with_ownership(
                     _ => {}
                 }
             }
-            PatternX::Constructor(dt, variant, patterns) => {
+            PatternX::Constructor(_dt, _variant, patterns) => {
                 for binder in patterns.iter() {
                     pattern_all_bound_vars_rec(&binder.a, out, modes);
                 }
             }
-            PatternX::Or(pat1, _pat2) => {
+            PatternX::Or(pat1, _) | PatternX::ImmutRef(pat1) | PatternX::MutRef(pat1) => {
                 pattern_all_bound_vars_rec(&pat1, out, modes);
             }
             PatternX::Expr(_) => {}
@@ -952,74 +1039,86 @@ pub fn pattern_all_bound_vars_with_ownership(
 /// let (x, _) = y;   // moves y.0
 /// let (x, _) = y.1; // moves y.1.0
 /// ```
-///
-/// This returns the places that are moved by the given pattern.
 
-fn moves_for_place_being_matched(
+fn moves_and_muts_for_place_being_matched(
     pattern: &Pattern,
     fpt: &FlattenedPlaceTyped,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
-) -> Vec<FlattenedPlaceTyped> {
+) -> Vec<(FlattenedPlaceTyped, ByRef)> {
     // TODO(new_mut_ref) need to check if stuff is copy vs move
     // TODO(new_mut_ref) need to account for pattern-ergonomics
-    let mut res: Vec<FlattenedPlaceTyped> = vec![];
-    for mut projs in moves_for_pattern(pattern, datatypes, modes).into_iter() {
-        let mut f = fpt.clone();
-        f.projections.append(&mut projs);
-        res.push(f);
-    }
-    res
+    let projs = moves_and_muts_for_pattern(pattern, datatypes, modes);
+    projs
+        .into_iter()
+        .map(|(mut projs, by_ref)| {
+            let mut f = fpt.clone();
+            f.projections.append(&mut projs);
+            (f, by_ref)
+        })
+        .collect()
 }
 
-fn moves_for_pattern(
+fn moves_and_muts_for_pattern(
     pattern: &Pattern,
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
-) -> Vec<Vec<ProjectionTyped>> {
-    fn moves_for_pattern_rec(
+) -> Vec<(Vec<ProjectionTyped>, ByRef)> {
+    fn moves_and_muts_for_pattern_rec(
         pattern: &Pattern,
         projs: &mut Vec<ProjectionTyped>,
-        out: &mut Vec<Vec<ProjectionTyped>>,
+        out: &mut Vec<(Vec<ProjectionTyped>, ByRef)>,
         datatypes: &HashMap<Path, Datatype>,
         modes: &HashMap<VarIdent, Mode>,
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var { name: _, mutable: _ } => {
-                out.push(projs.clone());
-            }
-            PatternX::Binding { name, mutable, sub_pat: _ } => {
-                out.push(projs.clone());
-                // no need to descend, already moving the whole thing
+            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref, typ: _, copy })
+            | PatternX::Binding {
+                binding: PatternBinding { name: _, mutable: _, by_ref, typ: _, copy },
+                sub_pat: _,
+            } => {
+                // no need to descend into subpat, already moving or borrowing the whole thing
+                if *by_ref != ByRef::ImmutRef && !*copy {
+                    out.push((projs.clone(), *by_ref));
+                }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                // TODO(new_mut_ref): we need different logic for enums
-                match dt {
+                let is_irrefutable = match dt {
                     Dt::Path(path) => {
                         let datatype = &datatypes[path];
-                        if datatype.x.variants.len() > 1 {
-                            todo!();
-                        }
+                        datatype.x.variants.len() == 1
                     }
-                    Dt::Tuple(_) => {}
-                }
+                    Dt::Tuple(_) => true,
+                };
 
-                for p in patterns.iter() {
-                    let proj = ProjectionTyped::StructField(
-                        FieldOpr {
-                            datatype: dt.clone(),
-                            variant: variant.clone(),
-                            field: p.name.clone(),
-                            get_variant: false,
-                            check: crate::ast::VariantCheck::None,
-                        },
-                        p.a.typ.clone(),
-                    );
+                if is_irrefutable {
+                    for binder in patterns.iter() {
+                        let field_typ = binder.a.typ.clone();
+                        let proj = ProjectionTyped::StructField(
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.clone(),
+                                field: binder.name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            },
+                            field_typ,
+                        );
 
-                    projs.push(proj);
-                    moves_for_pattern_rec(&p.a, projs, out, datatypes, modes);
-                    projs.pop();
+                        projs.push(proj);
+                        moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
+                        projs.pop();
+                    }
+                } else {
+                    // TODO(new_mut_ref) this is not quite right, need to check if anything
+                    // is actually bound in here, irrefutability issues, Copy,
+                    // what if there's a mixture of muts and moves
+                    if crate::patterns::pattern_has_move(pattern) {
+                        out.push((projs.clone(), ByRef::No));
+                    } else if crate::patterns::pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(_, _) => {
@@ -1027,11 +1126,21 @@ fn moves_for_pattern(
                 todo!()
             }
             PatternX::Expr(..) | PatternX::Range(..) => {}
+            PatternX::ImmutRef(_) => {
+                // can skip this, nothing can be moved or mutated from behind an immutable ref
+            }
+            PatternX::MutRef(sub_pat) => {
+                let proj = ProjectionTyped::DerefMut(sub_pat.typ.clone());
+
+                projs.push(proj);
+                moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes);
+                projs.pop();
+            }
         }
     }
 
     let mut out = vec![];
-    moves_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes);
+    moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes);
     out
 }
 
@@ -1122,7 +1231,7 @@ impl<'a> LocalCollection<'a> {
             }
 
             let projection = match projection_typed {
-                ProjectionTyped::StructField(field_opr, typ) => {
+                ProjectionTyped::StructField(field_opr, _typ) => {
                     Projection::StructField(field_opr_to_index(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
@@ -1197,7 +1306,7 @@ impl<'a> LocalCollection<'a> {
                 }
                 Projection::DerefMut => {
                     let inner_tree = match tree {
-                        PlaceTree::MutRef(ty, tr) => tr,
+                        PlaceTree::MutRef(_ty, tr) => tr,
                         _ => unreachable!(),
                     };
                     ast_place =
@@ -1330,7 +1439,7 @@ impl FlattenedPlace {
             InstructionKind::MoveFrom(_) => false,
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
-            InstructionKind::DropFrom(sp) => false,
+            InstructionKind::DropFrom(_) => false,
         }
     }
 }
@@ -1366,7 +1475,7 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(
     let mut output = DataflowOutput { output: vec![] };
     for bb in cfg.basic_blocks.iter() {
         let mut v = vec![];
-        for i in 0..bb.instructions.len() + 1 {
+        for _i in 0..bb.instructions.len() + 1 {
             v.push(empty.clone());
         }
         output.output.push(v);
@@ -1515,6 +1624,7 @@ fn transfer_reverse<D: DataflowState>(
 
 ////// CFG debugging
 
+#[allow(dead_code)]
 fn pretty_cfg(cfg: &CFG) -> String {
     format!(
         "Locals:\n{:}\nCFG:\n{:}",
@@ -1527,6 +1637,7 @@ fn pretty_locals(locals: &LocalCollection) -> String {
     format!("{:#?}", &locals.locals)
 }
 
+#[allow(dead_code)]
 fn pretty_basics_blocks_with_dataflow<D: std::fmt::Debug>(
     cfg: &CFG,
     output: &DataflowOutput<D>,
@@ -1534,6 +1645,7 @@ fn pretty_basics_blocks_with_dataflow<D: std::fmt::Debug>(
     pretty_basic_blocks(cfg, |i, j| Some(format!("{:?}", output.output[i][j])))
 }
 
+#[allow(dead_code)]
 fn pretty_basics_blocks_with_dataflow2<D: std::fmt::Debug, E: std::fmt::Debug>(
     cfg: &CFG,
     output: &DataflowOutput<D>,
@@ -1672,7 +1784,7 @@ impl DataflowState for InitializationPossibilities {
                     *self
                 }
             }
-            InstructionKind::Mutate(sp) => *self,
+            InstructionKind::Mutate(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
                     InitializationPossibilities {
@@ -1794,7 +1906,6 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
         //println!("{:}\n", pretty_basics_blocks_with_dataflow2(&cfg, &resolve_analyses[r_idx], &initialization_analyses[i_idx]));
 
         // TODO(new_mut_ref): filter for "interesting" types, i.e., those containing a &mut ref
-        // TODO(new_mut_ref): need to account for types with nontrivial Drop implementation
 
         get_resolutions_for_place(
             cfg,
@@ -1863,6 +1974,11 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             AstPosition::Before(ast_id) => ast_id,
             AstPosition::After(ast_id) => ast_id,
             AstPosition::AfterArguments(ast_id) => ast_id,
+            AstPosition::OnUnwind(_) => {
+                // It might be necessary to do something here for more
+                // advanced unwind-related stuff?
+                continue;
+            }
         };
         if !id_map.contains_key(&ast_id) {
             id_map.insert(ast_id, (vec![], vec![], vec![], false));
@@ -1871,19 +1987,20 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         let entry = id_map.get_mut(&ast_id).unwrap();
 
         match r.position {
-            AstPosition::Before(ast_id) => {
+            AstPosition::Before(_ast_id) => {
                 entry.0.push(r.place);
             }
-            AstPosition::After(ast_id) => {
+            AstPosition::After(_ast_id) => {
                 entry.1.push(r.place);
             }
-            AstPosition::AfterArguments(ast_id) => {
+            AstPosition::AfterArguments(_ast_id) => {
                 entry.2.push(r.place);
             }
+            AstPosition::OnUnwind(_) => unreachable!(),
         };
     }
 
-    crate::ast_visitor::map_expr_visitor_env(
+    let result = crate::ast_visitor::map_expr_visitor_env(
         body,
         &mut VisitorScopeMap::new(),
         &mut id_map,
@@ -1942,7 +2059,15 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         &|_, t| Ok(t.clone()),
         &|_, _, p| Ok(p.clone()),
     )
-    .unwrap()
+    .unwrap();
+
+    for (_, (_, _, _, found)) in id_map.iter() {
+        if !*found {
+            panic!("resolution_inference: bad run for apply_resolutions");
+        }
+    }
+
+    result
 }
 
 /// Filter for the resolutions that are actually in scope and make the AssumeResolved expressions.
