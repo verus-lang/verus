@@ -194,14 +194,20 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian: self.endian, digits: self.digits.push(n), phantom: self.phantom }
     }
 
-    pub open spec fn push_least(self, n: int) -> Self {
+    pub open spec fn push_least(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
         match self.endian {
             Endian::Little => self.push_first(n),
             Endian::Big => self.push_last(n),
         }
     }
 
-    pub open spec fn push_most(self, n: int) -> Self {
+    pub open spec fn push_most(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
         match self.endian {
             Endian::Little => self.push_last(n),
             Endian::Big => self.push_first(n),
