@@ -12,7 +12,10 @@ use crate::ast_util::{
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
+use crate::messages::{
+    Message, Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error,
+    warning,
+};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -943,14 +946,19 @@ pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
     if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
 }
 
-fn assert_atomic_update_resolves(ctx: &Ctx, state: &mut State, stms: &mut Vec<Stm>) {
+fn assert_atomic_update_resolves(
+    ctx: &Ctx,
+    state: &mut State,
+    stms: &mut Vec<Stm>,
+    error: impl FnOnce(Message) -> Message,
+) {
     if state.checking_recommends(ctx) {
         return;
     }
 
     let Some(au_exp) = &state.au_var_exp_to_resolve else { return };
 
-    let span = &au_exp.span;
+    let au_span = &au_exp.span;
     let TypX::Datatype(_, typ_args, _) = au_exp.typ.as_ref() else {
         panic!("atomic update should be a datatype")
     };
@@ -961,11 +969,17 @@ fn assert_atomic_update_resolves(ctx: &Ctx, state: &mut State, stms: &mut Vec<St
         Arc::new(vec![au_exp.clone()]),
     );
 
-    let call_resolves = SpannedTyped::new(span, &Arc::new(TypX::Bool), call_resolves);
-    let error = error(span, "cannot show atomic update resolves at end of function");
+    let call_resolves = SpannedTyped::new(au_span, &Arc::new(TypX::Bool), call_resolves);
+    let base_error = error_with_label(
+        &au_span,
+        "cannot show atomic update resolves at end of function",
+        "unresolved atomic update",
+    );
+
+    let error = error(base_error);
 
     stms.push(Spanned::new(
-        span.clone(),
+        au_span.clone(),
         StmX::Assert(state.next_assert_id(), Some(error), call_resolves),
     ));
 }
@@ -980,21 +994,25 @@ pub(crate) fn expr_to_one_stm_with_post(
 ) -> Result<Stm, VirErr> {
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
 
-    // secondary label (indicating which post-condition failed) is added later
-    // in ast_to_sst when the post condition is expanded
-    let base_error = error_with_secondary_label(
-        find_last_span_in_expr(&expr, func_span),
-        crate::def::POSTCONDITION_FAILURE.to_string(),
-        "at the end of the function body".to_string(),
-    );
-
     match exp.to_value() {
         Some(exp) => {
             // Emit the postcondition for the common case where the function body
             // terminates with an expression to be returned (or an implicit
             // return value of 'unit').
 
-            assert_atomic_update_resolves(ctx, state, &mut stms);
+            let end_of_fn = find_last_span_in_expr(&expr, func_span);
+
+            assert_atomic_update_resolves(ctx, state, &mut stms, |base| {
+                base.secondary_label(end_of_fn, "at the end of the function body")
+            });
+
+            // secondary label (indicating which post-condition failed) is added later
+            // in ast_to_sst when the post condition is expanded
+            let base_error = error_with_secondary_label(
+                end_of_fn,
+                crate::def::POSTCONDITION_FAILURE.to_string(),
+                "at the end of the function body".to_string(),
+            );
 
             stms.push(Spanned::new(
                 expr.span.clone(),
@@ -2853,7 +2871,9 @@ pub(crate) fn expr_to_stm_opt(
                         "at this exit".to_string(),
                     );
 
-                    assert_atomic_update_resolves(ctx, state, &mut stms);
+                    assert_atomic_update_resolves(ctx, state, &mut stms, |base| {
+                        base.secondary_label(&expr.span, "at this exit")
+                    });
 
                     stms.push(Spanned::new(
                         expr.span.clone(),

@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore --- incomplete feature
+// rust_verify/tests/example.rs ignore --- incomplete proof
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
@@ -8,6 +8,12 @@ verus! {
 
 type FlipAU = AtomicUpdate<FlagToken, FlagToken, FlipPred>;
 
+enum Protocol {
+    Empty,
+    Offering(GhostVar<FlipAU>, Tracked<FlipAU>),
+    Accepted(GhostVar<FlipAU>),
+}
+
 type K = (int, int, int);
 type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, Option<FlipAU>);
 
@@ -15,17 +21,18 @@ pub struct FlagInv;
 impl InvariantPredicate<K, V> for FlagInv {
     open spec fn inv(k: K, v: V) -> bool {
         let (value_id, pend_id, auth_id) = k;
-        let (value_perm, pend_perm, auth, other_au) = v;
+        let (value_perm, pend_perm, auth, stored_au) = v;
+
         &&& value_perm.id() == value_id
         &&& pend_perm.id() == pend_id
         &&& auth.id() == auth_id
         &&& pend_perm.value() < 3
-        &&& other_au is Some <==> pend_perm.value() == 1
+        &&& stored_au is Some <==> pend_perm.value() == 1
     }
 }
 
 pub struct FlagToken {
-    pub state: GhostVar<bool>,
+    pub value: GhostVar<bool>,
 }
 
 pub struct Flag {
@@ -47,7 +54,7 @@ impl Flag {
     pub fn new() -> (out: (Self, Tracked<FlagToken>))
         ensures
             out.0.wf(),
-            out.0.token_id() == out.1@.state.id(),
+            out.0.token_id() == out.1@.value.id(),
     {
         let (value, Tracked(value_perm)) = PAtomicBool::new(false);
         let (pending, Tracked(pending_perm)) = PAtomicU32::new(0);
@@ -59,7 +66,7 @@ impl Flag {
         );
 
         let this = Self { value, pending, inv: Tracked(inv) };
-        let tracked token = FlagToken { state: var };
+        let tracked token = FlagToken { value: var };
         (this, Tracked(token))
     }
 
@@ -77,45 +84,37 @@ impl Flag {
     }
 
     #[verifier::exec_allows_no_decreases_clause]
+    #[verifier::loop_isolation(false)]
     pub fn flip(&self)
-        atomically (au) {
+        atomically (atomic_update) {
             type FlipPred,
             (old_token: FlagToken) -> (new_token: FlagToken),
             requires
-                old_token.state.id() == self.token_id(),
+                old_token.value.id() == self.token_id(),
             ensures
-                new_token.state@ == !old_token.state@,
-                new_token.state.id() == old_token.state.id(),
+                new_token.value@ == !old_token.value@,
+                new_token.value.id() == old_token.value.id(),
         },
         requires self.wf(),
     {
-        let tracked mut au = au;
+        let tracked mut au = atomic_update;
         loop invariant
             self.wf(),
-            vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
+            au == atomic_update,
         {
             match self.try_cancel_two_flips(au) {
                 Some(upd) => proof { au = upd.get() },
-                None => {
-                    assert(au.resolves());
-                    return;
-                }
+                None => return,
             }
 
             match self.try_simple_flip(au) {
                 Some(upd) => proof { au = upd.get() },
-                None => {
-                    assert(au.resolves());
-                    return;
-                }
+                None => return,
             }
 
             match self.try_handshake(au) {
                 Some(upd) => proof { au = upd.get() },
-                None => {
-                    assert(au.resolves());
-                    return;
-                }
+                None => return,
             }
         }
     }
@@ -124,7 +123,11 @@ impl Flag {
         requires
             self.wf(),
             vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
-        ensures out is None ==> au.resolves(),
+        ensures
+            match out {
+                Some(ret_au) => ret_au == au,
+                None => au.resolves(),
+            }
     {
         let tracked mut maybe_au = Some(au);
         let res;
@@ -140,13 +143,13 @@ impl Flag {
 
                     open_atomic_update!(au, mut token => {
                         let ghost old = auth@;
-                        auth.update(&mut token.state, !old);
+                        auth.update(&mut token.value, !old);
                         token
                     });
 
                     open_atomic_update!(other_au, mut token => {
                         let ghost old = auth@;
-                        auth.update(&mut token.state, !old);
+                        auth.update(&mut token.value, !old);
                         token
                     });
                 }
@@ -166,7 +169,11 @@ impl Flag {
         requires
             self.wf(),
             vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
-        ensures out is None ==> au.resolves(),
+        ensures
+            match out {
+                Some(ret_au) => ret_au == au,
+                None => au.resolves(),
+            }
     {
         let tracked mut maybe_au = Some(au);
         let res;
@@ -179,7 +186,7 @@ impl Flag {
                     let tracked au = maybe_au.tracked_take();
                     open_atomic_update!(au, mut token => {
                         let ghost old = auth@;
-                        auth.update(&mut token.state, !old);
+                        auth.update(&mut token.value, !old);
                         token
                     });
                 }
@@ -202,7 +209,7 @@ impl Flag {
                     let tracked au = maybe_au.tracked_take();
                     open_atomic_update!(au, mut token => {
                         let ghost old = auth@;
-                        auth.update(&mut token.state, !old);
+                        auth.update(&mut token.value, !old);
                         token
                     });
                 }
@@ -222,7 +229,11 @@ impl Flag {
         requires
             self.wf(),
             vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
-        ensures out is None ==> au.resolves(),
+        ensures
+            match out {
+                Some(ret_au) => ret_au == au,
+                None => au.resolves(),
+            }
     {
         let tracked mut maybe_au = Some(au);
         let res;
