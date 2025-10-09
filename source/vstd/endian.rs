@@ -75,6 +75,13 @@ impl<B: Base> EndianNat<B> {
         EndianNat { endian, digits, phantom: PhantomData }
     }
 
+    pub open spec fn new_default(digits: Seq<int>) -> Self
+        recommends
+            Self::in_bounds(digits),
+    {
+        EndianNat { endian: endianness(), digits, phantom: PhantomData }
+    }
+
     pub open spec fn wf(self) -> bool {
         Self::in_bounds(self.digits)
     }
@@ -107,13 +114,6 @@ impl<B: Base> EndianNat<B> {
         ensures
             self.first() as int == self.digits.first(),
     {
-    }
-
-    pub open spec fn append(self, other: Self) -> Self
-        recommends
-            self.endian == other.endian,
-    {
-        EndianNat::new(self.endian, self.digits + other.digits)
     }
 
     pub open spec fn last(self) -> nat {
@@ -170,6 +170,47 @@ impl<B: Base> EndianNat<B> {
         match self.endian {
             Endian::Little => self.drop_last(),
             Endian::Big => self.drop_first(),
+        }
+    }
+
+    pub open spec fn append(self, other: Self) -> Self
+        recommends
+            self.endian == other.endian,
+    {
+        EndianNat::new(self.endian, self.digits + other.digits)
+    }
+
+    pub open spec fn push_first(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
+        EndianNat { endian: self.endian, digits: seq![n].add(self.digits), phantom: self.phantom }
+    }
+
+    pub open spec fn push_last(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
+        EndianNat { endian: self.endian, digits: self.digits.push(n), phantom: self.phantom }
+    }
+
+    pub open spec fn push_least(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
+        match self.endian {
+            Endian::Little => self.push_first(n),
+            Endian::Big => self.push_last(n),
+        }
+    }
+
+    pub open spec fn push_most(self, n: int) -> Self
+        recommends
+            n < B::base(),
+    {
+        match self.endian {
+            Endian::Little => self.push_last(n),
+            Endian::Big => self.push_first(n),
         }
     }
 
@@ -552,21 +593,120 @@ impl<B: Base> EndianNat<B> {
     /// Converts a nat to a sequence
     pub uninterp spec fn from_nat(n: nat) -> Self;
 
-    /// Converts a nat to a sequence of a specified length
-    pub uninterp spec fn from_nat_with_len(n: nat, len: nat) -> Self
+    /// Converts a nat to an `EndianNat` representation with the specified number of digits
+    pub open spec fn from_nat_with_len(n: nat, len: nat) -> Self
         recommends
             pow(B::base() as int, len) > n,
-    ;
+        decreases len,
+    {
+        if len == 0 {
+            EndianNat { digits: Seq::empty(), endian: endianness(), phantom: PhantomData }
+        } else {
+            let least = (n % B::base()) as int;
+            let rest = n / B::base();
+            let rest_endian = Self::from_nat_with_len(rest, (len - 1) as nat);
+            rest_endian.push_least(least)
+        }
+    }
 
-    // proof fn from_nat_with_len_ensures(n: nat, len: nat)
-    //     requires
-    //         pow(B::base() as int, len) > n,
-    //     ensures
-    //         Self::from_nat_with_len(n, len).len() == len,
-    //         Self::from_nat_with_len(n, len).to_nat() == n,
-    // {
-    //     assume(false);
-    // }
+    pub proof fn base_max_bounds(n: nat, len: nat)
+        requires
+            pow(B::base() as int, len) > n,
+            len > 0,
+        ensures
+            pow(B::base() as int, (len - 1) as nat) > n / B::base(),
+    {
+        reveal(pow);
+        assert(n / B::base() < pow(B::base() as int, (len - 1) as nat)) by (nonlinear_arith)
+            requires
+                n < B::base() * pow(B::base() as int, (len - 1) as nat),
+                B::base() > 0,
+        ;
+    }
+
+    /// Ensures that the `EndianNat` representation from `from_nat_with_len` will have the given number of digits.
+    pub broadcast proof fn from_nat_len(n: nat, len: nat)
+        requires
+            pow(B::base() as int, len) > n,
+        ensures
+            #[trigger] Self::from_nat_with_len(n, len).len() == len,
+        decreases len,
+    {
+        if len == 0 {
+        } else {
+            Self::base_max_bounds(n, len);
+            Self::from_nat_len(n / B::base(), (len - 1) as nat);
+        }
+    }
+
+    /// Ensures that the `EndianNat` representation from `from_nat_with_len` will have the (axiomatized)
+    /// default endian representation.
+    pub broadcast proof fn from_nat_with_len_endianness(n: nat, len: nat)
+        requires
+            pow(B::base() as int, len) > n,
+        ensures
+            #[trigger] Self::from_nat_with_len(n, len).endian == endianness(),
+        decreases len,
+    {
+        if len == 0 {
+        } else {
+            Self::base_max_bounds(n, len);
+            Self::from_nat_with_len_endianness(n / B::base(), (len - 1) as nat);
+        }
+    }
+
+    /// Ensures that the `EndianNat` representation from `from_nat_with_len` is well-formed.
+    pub broadcast proof fn from_nat_with_len_wf(n: nat, len: nat)
+        requires
+            pow(B::base() as int, len) > n,
+        ensures
+            #[trigger] Self::from_nat_with_len(n, len).wf(),
+        decreases len,
+    {
+        if len == 0 {
+        } else {
+            let endian = Self::from_nat_with_len(n, len);
+            let least = endian.least();
+            Self::base_max_bounds(n, len);
+            Self::from_nat_with_len_wf(n / B::base(), (len - 1) as nat);
+            B::base_min();
+            assert(least < B::base()) by (nonlinear_arith)
+                requires
+                    B::base() > 0,
+                    least == (n % B::base()),
+            ;
+        }
+    }
+
+    /// Ensures that `to_nat` correctly inverts `from_nat_with_len`,
+    /// provided that the given value can be encoded in the given base using the given length.
+    pub broadcast proof fn from_nat_to_nat(n: nat, len: nat)
+        requires
+            n < pow(B::base() as int, len),
+        ensures
+            #[trigger] Self::from_nat_with_len(n, len).to_nat() == n,
+        decreases Self::from_nat_with_len(n, len).len(),
+    {
+        reveal(pow);
+        reveal(EndianNat::to_nat);
+        if Self::from_nat_with_len(n, len).len() == 0 {
+        } else {
+            let endian = Self::from_nat_with_len(n, len);
+            let least = endian.least();
+            let rest = endian.drop_least();
+            assert(rest =~= Self::from_nat_with_len(n / B::base(), (len - 1) as nat));
+            Self::base_max_bounds(n, len);
+            Self::from_nat_to_nat(n / B::base(), (len - 1) as nat);
+            assert(rest.to_nat() == (n / B::base()));
+            assert(endian.to_nat() == (n % B::base()) + (n / B::base()) * B::base());
+            assert((n % B::base()) + (n / B::base()) * B::base() == n) by (nonlinear_arith)
+                requires
+                    B::base() > 0,
+            ;
+            assert(Self::from_nat_with_len(n, len).to_nat() == n);
+        }
+    }
+
     // proof fn lemma_from_nat_injective(n: nat)
     //     ensures
     //         Self::from_nat(n).to_nat() == n,
