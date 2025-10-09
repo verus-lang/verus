@@ -1353,4 +1353,6 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
     "rustc_box",
     // TODO: support this, currently added here to unblock rustlib verification
     "rustc_nonnull_optimization_guaranteed",
+    "rustc_layout_scalar_valid_range_start",
+    "rustc_layout_scalar_valid_range_end",
 ];
