@@ -4,7 +4,7 @@ use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
+    check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -266,7 +266,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(id, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -356,8 +356,8 @@ fn compare_external_ty_or_true<'tcx>(
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
-                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1);
-                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2);
+                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1, None);
+                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2, None);
                     if trait_path1 == *from_path {
                         trait_path1 = to_path.clone();
                     }
@@ -476,9 +476,9 @@ pub(crate) fn handle_external_fn<'tcx>(
                 }
             };
             let body = find_body(ctxt, body_id);
-            get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?
+            get_external_def_id(ctxt, id, body_id, body, sig)?
         };
-    let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
+    let external_path = ctxt.def_id_to_vir_path(external_id);
 
     if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
         && &*external_path.last_segment() != "clone"
@@ -613,14 +613,16 @@ pub(crate) fn handle_external_fn<'tcx>(
     Ok((external_path, external_item_visibility, kind, has_self_parameter, safety))
 }
 
-fn get_substs_early<'tcx>(
+pub(crate) fn get_substs_early<'tcx>(
     ty: rustc_middle::ty::Ty<'tcx>,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
     match ty.kind() {
-        rustc_middle::ty::FnDef(_, substs) => Ok(substs),
+        // The following TyKind Variants have a I::GenericArgs of early-bound generic arguments:
+        // Adt, FnDef, Coroutine, Closure, CoroutineClosure, CoroutineWitness
+        rustc_middle::ty::Adt(_, substs) | rustc_middle::ty::FnDef(_, substs) => Ok(substs),
         _ => {
-            crate::internal_err!(span, "expected FnDef")
+            crate::internal_err!(span, "expected Adt or FnDef")
         }
     }
 }
@@ -969,7 +971,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
 ) -> Result<Option<Fun>, VirErr> {
-    let mut this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let mut this_path = ctxt.def_id_to_vir_path(id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
@@ -990,7 +992,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, sig.span, &ty, false)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false)?;
 
         let fun = check_item_const_or_static(
             ctxt,
@@ -1013,8 +1015,8 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
-        let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
-        let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
+        let from_path = ctxt.def_id_to_vir_path(from_trait_id);
+        let to_path = ctxt.def_id_to_vir_path(to_trait_id);
         let to_spec_path = if let Some(name) = to_spec_name {
             Some(from_path.pop_segment().push_segment(Arc::new(name.clone())))
         } else {
@@ -1148,14 +1150,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
 
         let typ = {
-            let typ = mid_ty_to_vir(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-            )?;
+            let typ =
+                ctxt.mid_ty_to_vir(id, span, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false)?;
             if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
                 Arc::new(TypX::Decorate(decoration, None, typ))
             } else {
@@ -1201,7 +1197,13 @@ pub(crate) fn check_item_fn<'tcx>(
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
-                vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+                vir::ast::PatternX::Var(vir::ast::PatternBinding {
+                    name: name.clone(),
+                    mutable: true,
+                    by_ref: vir::ast::ByRef::No,
+                    typ: typ.clone(),
+                    copy: false,
+                }),
             );
             let new_init_expr =
                 ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
@@ -1927,7 +1929,6 @@ pub(crate) fn predicates_match<'tcx>(
     // So they have to be equal.
     //
     // Regardless, it makes sense to keep this as a sanity check.
-
     let preds1 = preds1.iter().map(|p| tcx.anonymize_bound_vars(p.kind()));
     let mut preds2: Vec<_> = preds2.iter().map(|p| tcx.anonymize_bound_vars(p.kind())).collect();
 
@@ -1991,13 +1992,14 @@ fn all_predicates<'tcx>(
 }
 
 pub(crate) fn get_external_def_id<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
+    ctxt: &Context<'tcx>,
     proxy_fun_id: DefId,
     body_id: &BodyId,
     body: &Body<'tcx>,
     sig: &'tcx FnSig<'tcx>,
 ) -> Result<(rustc_span::def_id::DefId, FunctionKind), VirErr> {
+    let tcx = ctxt.tcx;
+
     let err = || {
         err_span(
             sig.span,
@@ -2095,28 +2097,19 @@ pub(crate) fn get_external_def_id<'tcx>(
                 impl_item_args: _,
                 resolved_item: ResolvedItem::FromImpl(impl_item_id, _args),
             } => {
-                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+                let trait_path = ctxt.def_id_to_vir_path(trait_def_id);
 
                 let mut types: Vec<Typ> = vec![];
 
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(mid_ty_to_vir(
-                        tcx,
-                        &verus_items,
-                        impl_item_id,
-                        sig.span,
-                        &ty,
-                        false,
-                    )?);
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
-                    method: Arc::new(FunX {
-                        path: def_id_to_vir_path(tcx, verus_items, external_id),
-                    }),
-                    impl_path: def_id_to_vir_path(tcx, verus_items, impl_def_id),
+                    method: Arc::new(FunX { path: ctxt.def_id_to_vir_path(external_id) }),
+                    impl_path: ctxt.def_id_to_vir_path(impl_def_id),
                     trait_path: trait_path,
                     trait_typ_args: Arc::new(types),
                 };
@@ -2140,7 +2133,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     body_id: &BodyId,
     is_static: bool,
 ) -> Result<Fun, VirErr> {
-    let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let mut path = ctxt.def_id_to_vir_path(id);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     if vattrs.unerased_proxy {
@@ -2297,7 +2290,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let path = ctxt.def_id_to_vir_path(id);
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
@@ -2327,14 +2320,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-        )?;
+        let typ =
+            ctxt.mid_ty_to_vir(id, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), false)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,

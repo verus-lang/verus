@@ -2733,3 +2733,111 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*a_ref` because it was mutably borrowed")
 }
+
+test_verify_one_file_with_options! {
+    #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
+        struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
+
+        fn test1() {
+            let pair = (2, 3);
+            let mut big_pair = (4, &pair);
+            let mut big = BigStruct(&mut big_pair);
+
+            *big.0 = (5, &pair);
+
+            assert(has_resolved(big.0));
+            assert(mut_ref_current(big.0) == mut_ref_future(big.0));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] calls_unwind_extra_cfg_edge ["new-mut-ref"] => verus_code! {
+        fn call_might_unwind() { }
+        fn call_no_unwind() no_unwind { }
+
+        // If `*x = y` is definitely going to be reached, then we can resolve *x,
+        // however, if there's an unwindable call, then `*x = y` might not be reached.
+
+        fn test1<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x));
+            *x = y;
+        }
+
+        fn test2<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x));
+            call_no_unwind();
+            *x = y;
+        }
+
+        fn test3<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            assert(has_resolved(*x)); // FAILS
+            call_might_unwind();
+            *x = y;
+        }
+
+        fn test4<'a>(x: &mut &'a mut u64, y: &'a mut u64) {
+            call_might_unwind();
+            assert(has_resolved(*x));
+            *x = y;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] has_resolved_for_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+        struct XNoDrop<'a> {
+            b: &'a mut u64,
+        }
+
+        struct X<'a> {
+            b: &'a mut u64,
+        }
+
+        impl<'a> Drop for X<'a> {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                *self.b = 20;
+            }
+        }
+
+        struct Y<'a> {
+            x: X<'a>,
+            u: &'a mut u64,
+        }
+
+        struct YNoDrop<'a> {
+            x: XNoDrop<'a>,
+            u: &'a mut u64,
+        }
+
+
+        fn test1<'a>(x: X<'a>) {
+            // There is an implicit drop for x at the end of this function body
+            // This could possibly modify *x.b (as demonstrated in the Drop impl above)
+            // Thus, we make the `has_resolved` predicate of X not imply `has_resolved` of its fields.
+
+            assert(has_resolved(x));
+            assert(has_resolved(x.b)); // FAILS
+        }
+
+        fn test2<'a>(x: XNoDrop<'a>) {
+            assert(has_resolved(x));
+            assert(has_resolved(x.b));
+        }
+
+        fn test3<'a>(y: Y<'a>) {
+            assert(has_resolved(y));
+            assert(has_resolved(y.x));
+            assert(has_resolved(y.x.b)); // FAILS
+        }
+
+        fn test4<'a>(y: YNoDrop<'a>) {
+            assert(has_resolved(y));
+            assert(has_resolved(y.x));
+            assert(has_resolved(y.x.b));
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

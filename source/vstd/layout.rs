@@ -27,18 +27,21 @@ pub open spec fn is_power_2_exists(m: int) -> bool {
     exists|i: nat| pow(2, i) == m
 }
 
-pub broadcast proof fn is_power_2_equiv()
+pub broadcast proof fn is_power_2_equiv(n: int)
     ensures
-        forall|n| #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
 {
-    assert forall|n| is_power_2(n) implies #[trigger] is_power_2_exists(n) by {
-        is_power_2_equiv_forward(n);
+    if is_power_2(n) {
+        assert(is_power_2_exists(n)) by {
+            is_power_2_equiv_forward(n);
+        }
     }
+    if is_power_2_exists(n) {
+        assert(is_power_2(n)) by {
+            broadcast use lemma_pow_positive;
 
-    assert forall|n| is_power_2_exists(n) implies #[trigger] is_power_2(n) by {
-        broadcast use lemma_pow_positive;
-
-        is_power_2_equiv_reverse(n);
+            is_power_2_equiv_reverse(n);
+        }
     }
 }
 
