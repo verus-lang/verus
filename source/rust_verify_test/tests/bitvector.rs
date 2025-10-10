@@ -222,8 +222,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] not_supported_int_in_by_bit_vector verus_code! {
-        proof fn test_int(x: int) {
-            assert(x == x) by (bit_vector);
+        proof fn test_int(x: int, y: int) {
+            assert(x == y) by (bit_vector);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
 }
@@ -231,8 +231,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] not_supported_datatype_in_by_bit_vector verus_code! {
         struct X { }
-        proof fn test_int(x: X) {
-            assert(x == x) by (bit_vector);
+        proof fn test_int(x: X, y: X) {
+            assert(x == y) by (bit_vector);
         }
     } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle this type")
 }
@@ -1035,10 +1035,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mod0_div0_consistency verus_code! {
         fn mod_0_div_0_consistency(x: u32, y: u32) {
-            assert(x % y == x % y) by(bit_vector); // FAILS
-            assert(x / y == x / y) by(bit_vector); // FAILS
+            assert(x % y == x % y) by(bit_vector);
+            assert(x / y == x / y) by(bit_vector);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Ok(())
 }
 
 test_verify_one_file! {

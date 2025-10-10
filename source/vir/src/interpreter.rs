@@ -1909,6 +1909,7 @@ fn eval_expr_launch(
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
+    quiet: bool,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
     let type_env = ScopeMap::new();
@@ -1952,17 +1953,25 @@ fn eval_expr_launch(
             return Ok((crate::sst_util::sst_bool(&exp.span, true), state.msgs));
         }
         SimplificationResult::False(None) => {
-            return Err(error(&exp.span, "expression simplifies to false"));
+            if quiet {
+                return Ok((crate::sst_util::sst_bool(&exp.span, false), state.msgs));
+            } else {
+                return Err(error(&exp.span, "expression simplifies to false"));
+            }
         }
         SimplificationResult::False(Some(small_exp)) => {
             let small_exp = cleanup_exp(&small_exp)?;
-            return Err(error(
-                &exp.span,
-                format!(
-                    "expression simplifies to `{}`, which evaluates to false",
-                    small_exp.x.to_user_string(&ctx.global)
-                ),
-            ));
+            if quiet {
+                return Ok((crate::sst_util::sst_bool(&exp.span, false), state.msgs));
+            } else {
+                return Err(error(
+                    &exp.span,
+                    format!(
+                        "expression simplifies to `{}`, which evaluates to false",
+                        small_exp.x.to_user_string(&ctx.global)
+                    ),
+                ));
+            }
         }
         SimplificationResult::Complex(res) => match mode {
             ComputeMode::Z3 => {
@@ -2013,6 +2022,7 @@ where
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let mut taken_log = log.take();
+    let quiet = diagnostics.is_none();
     let (taken_log, res) = {
         let handler = {
             // Create local versions that we own and hence can pass to the closure
@@ -2027,6 +2037,7 @@ where
                         arch,
                         mode,
                         &mut taken_log,
+                        quiet,
                     );
                     (taken_log, res)
                 })
