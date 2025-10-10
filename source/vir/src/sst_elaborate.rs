@@ -245,13 +245,12 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
     }
 }
 
-struct ElaborateVisitorBv<'a, 'b, D: Diagnostics> {
+struct ElaborateVisitorBv<'a> {
     ctx: &'a Ctx,
-    diagnostics: &'b D,
     fun_ssts: SstMap,
 }
 
-impl<'a, 'b, D: Diagnostics> ElaborateVisitorBv<'a, 'b, D> {
+impl<'a> ElaborateVisitorBv<'a> {
     fn expand(&self, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
         vec_map_result(&exps, |e| {
             crate::interpreter::eval_expr(
@@ -268,7 +267,7 @@ impl<'a, 'b, D: Diagnostics> ElaborateVisitorBv<'a, 'b, D> {
     }
 }
 
-impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVisitorBv<'a, 'b, D> {
+impl<'a> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVisitorBv<'a> {
     // This is the same as visit_func_decl in sst_visitor.rs, except for the calls to self.expand(..)
     fn visit_func_decl(&mut self, func_decl: &FuncDeclSst) -> Result<FuncDeclSst, VirErr> {
         let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
@@ -395,14 +394,13 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
     Ok(())
 }
 
-pub(crate) fn elaborate_function_bv<'a, 'b, 'c, D: Diagnostics>(
+pub(crate) fn elaborate_function_bv<'a>(
     ctx: &'a Ctx,
-    diagnostics: &'b D,
     fun_ssts: SstMap,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
     if function.x.attrs.bit_vector {
-        let mut visitor = ElaborateVisitorBv { ctx, diagnostics, fun_ssts };
+        let mut visitor = ElaborateVisitorBv { ctx, fun_ssts };
         *function = visitor.visit_function(function)?;
     }
 

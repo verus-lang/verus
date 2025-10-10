@@ -579,7 +579,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let expr = air::ast_util::mk_let(&bs, &body.expr);
                 Ok(BvExpr { expr, bv_typ: body.bv_typ })
             }
-            BndX::Quant(quant, binders, trigs, _) => {
+            BndX::Quant(quant, binders, _trigs, _) => {
                 state.scope_map.push_scope(true);
                 for b in binders.iter() {
                     let bv_typ = bv_typ_for_vir_typ(state, &exp.span, &b.a)?;
