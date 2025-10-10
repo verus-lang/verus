@@ -198,7 +198,7 @@ fn bitwidth_exact(state: &mut State, w: IntegerTypeBitwidth) -> u32 {
 // However, some SMT BitVec _operations_ have a notion
 // of signedness (e.g., the right shift).
 //
-// Verus's mathematical model is the opposite: a mathematical
+// Verus's mathematical model is the opposite: a mathematical int
 // is just an element of Z, so it has no notion of bit-width
 // at all (but of course it has a sign).
 //
