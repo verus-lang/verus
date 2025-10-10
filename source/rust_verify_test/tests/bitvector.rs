@@ -1401,3 +1401,64 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] test_functions verus_code! {
+
+        const LIFE: u32 = 42;
+
+        spec fn shifter(u: u32) -> u32 {
+            u >> 1
+        }
+
+        spec fn xor(u: u32, v: u32) -> u32 {
+            u & v
+        }
+
+        fn test() {
+            let u: u32;
+            let v: u32;
+            assert(shifter(LIFE) == 21) by (bit_vector);
+            assert(xor(add(u, v), add(v, u)) == add(u, v)) by (bit_vector);
+            assert(forall |i:u32| shifter(i) == i / 2) by (bit_vector);
+        }
+
+
+        spec fn get_bit64(u: u64, index: u64) -> bool {
+            (0x1u64 & (u >> index)) == 1
+        }
+
+        proof fn myproof() by (bit_vector)
+            ensures
+                get_bit64(1u64, 0),
+        {}
+
+        spec fn set_bit64(u: u64, index: u64, bit: bool) -> u64 {
+            if bit {
+                u | 1u64 << index
+            } else {
+                u & (!(1u64 << index))
+            }
+        }
+
+        proof fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool) by (bit_vector)
+            requires
+                bv_new == set_bit64(bv_old, index, bit),
+                index < 64,
+            ensures
+                get_bit64(bv_new, index) == bit,
+                forall|loc2: u64|
+                    (loc2 < 64 && loc2 != index) ==> (get_bit64(bv_new, loc2) == get_bit64(bv_old, loc2)),
+        {
+        }
+
+        proof fn use_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool, loc2: u64) {
+            assume(bv_new == set_bit64(bv_old, index, bit));
+            assume(index < 64);
+            assume(loc2 < 64 && loc2 != index);
+            set_bit64_proof(bv_new, bv_old, index, bit);
+            assert(get_bit64(bv_new, loc2) == get_bit64(bv_old, loc2));
+        }
+
+    } => Ok(())
+}
