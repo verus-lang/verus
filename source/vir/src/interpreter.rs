@@ -1750,6 +1750,23 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 env.extend(state.env.map().iter().map(|(k, v)| (k.clone(), v.clone())));
                 exp_new(Interp(InterpExp::Closure(exp.clone(), env)))
             }
+            BndX::Quant(_quant_type, bnds, _triggers, _by_locals) => {
+                state.env.push_scope(true);
+                for b in bnds.iter() {
+                    let id = b.name.clone();
+                    let val = SpannedTyped::new(&e.span, &b.a, ExpX::Var(id.clone()));
+                    state.env.insert(id, val).unwrap();
+                }
+                let e = eval_expr_internal(ctx, state, e)?;
+                state.env.pop_scope();
+                if let ExpX::Const(Constant::Bool(_)) = e.x {
+                    // We simplified the body so far that we can eliminate the quantifier too
+                    Ok(e)
+                } else {
+                    // Restore the quantifier with a (hopefully) simpler body
+                    exp_new(Bind(bnd.clone(), e))
+                }
+            }
             _ => ok,
         },
         Ctor(path, id, bnds) => {
@@ -1977,16 +1994,19 @@ fn eval_expr_launch(
 }
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
-pub fn eval_expr(
+pub fn eval_expr<D>(
     global: &GlobalCtx,
     exp: &Exp,
-    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
+    diagnostics: Option<&D>,
     fun_ssts: SstMap,
     rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
-) -> Result<Exp, VirErr> {
+) -> Result<Exp, VirErr> 
+    where
+        D: air::messages::Diagnostics + ?Sized
+{
     // Make a new global so we can move it into the new thread
     let global = global.from_self_with_log(global.interpreter_log.clone());
 
@@ -2016,6 +2036,8 @@ pub fn eval_expr(
     };
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
+    if let Some(diagnostics) = diagnostics {
+        msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
+    }
     Ok(e)
 }

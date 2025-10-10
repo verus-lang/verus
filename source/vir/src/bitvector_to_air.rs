@@ -604,12 +604,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));
                     }
                 }
-                let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result::<_, _, VirErr, _>(trig, |x| {
-                        Ok(bv_exp_to_expr(ctx, state, x)?.expr)
-                    })
-                    .map(|v| Arc::new(v))
-                })?;
+
+                // Assume there are no functions to trigger on, since we should have already inlined them
+                let triggers = vec![];  
 
                 state.scope_map.pop_scope();
 
@@ -624,7 +621,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                     format!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
                 ));
             }
-        },
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
