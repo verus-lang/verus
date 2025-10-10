@@ -76,30 +76,30 @@ impl AbstractByte {
     }
 }
 
-pub trait Encoding where Self: Sized {
+pub trait Encoding<T: Sized> {
     /// Can 'value' be encoded to the given bytes?
-    spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool;
+    spec fn encode(value: T, bytes: Seq<AbstractByte>) -> bool;
 
     /// Can the bytes be decoded to the given value?
-    spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool;
+    spec fn decode(bytes: Seq<AbstractByte>, value: T) -> bool;
 
     // Required properties for encoding (sanity check for any implementation of this trait)
     /// Any encoding should match the size of this type.
-    broadcast proof fn encoding_size(v: Self, b: Seq<AbstractByte>)
+    broadcast proof fn encoding_size(v: T, b: Seq<AbstractByte>)
         requires
             #[trigger] Self::encode(v, b),
         ensures
-            b.len() == size_of::<Self>(),
+            b.len() == size_of::<T>(),
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(v: T) -> (b: Seq<AbstractByte>)
         ensures
             Self::encode(v, b),
     ;
 
     /// Any byte encoding should be able to be decoded back to the same value.
-    broadcast proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>)
+    broadcast proof fn encoding_invertible(v: T, b: Seq<AbstractByte>)
         requires
             #[trigger] Self::encode(v, b),
         ensures
@@ -109,8 +109,10 @@ pub trait Encoding where Self: Sized {
 
 /* bool */
 
-impl Encoding for bool {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+pub struct EncodingBool {}
+
+impl Encoding<bool> for EncodingBool {
+    open spec fn encode(value: bool, bytes: Seq<AbstractByte>) -> bool {
         bytes == seq![
             AbstractByte::Init(
                 if value {
@@ -123,7 +125,7 @@ impl Encoding for bool {
         ]
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+    open spec fn decode(bytes: Seq<AbstractByte>, value: bool) -> bool {
         &&& bytes.len() == 1
         &&& match bytes.first() {
             AbstractByte::Init(0, _) => !value,
@@ -132,10 +134,10 @@ impl Encoding for bool {
         }
     }
 
-    proof fn encoding_size(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: bool, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(v: bool) -> (b: Seq<AbstractByte>) {
         seq![
             AbstractByte::Init(
                 if v {
@@ -148,18 +150,22 @@ impl Encoding for bool {
         ]
     }
 
-    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_invertible(v: bool, b: Seq<AbstractByte>) {
     }
 }
 
+/* unsigned integers */
+
 /* u8 */
 
-impl Encoding for u8 {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+pub struct EncodingU8 {}
+
+impl Encoding<u8> for EncodingU8 {
+    open spec fn encode(value: u8, bytes: Seq<AbstractByte>) -> bool {
         bytes == seq![AbstractByte::Init(value, None)]
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+    open spec fn decode(bytes: Seq<AbstractByte>, value: u8) -> bool {
         &&& bytes.len() == 1
         &&& match bytes.first() {
             AbstractByte::Init(v, _) => v == value,
@@ -167,18 +173,16 @@ impl Encoding for u8 {
         }
     }
 
-    proof fn encoding_size(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: u8, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(v: u8) -> (b: Seq<AbstractByte>) {
         seq![AbstractByte::Init(v, None)]
     }
 
-    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_invertible(v: u8, b: Seq<AbstractByte>) {
     }
 }
-
-/* unsigned integers */
 
 // We utilize the EndianNat type to transform an unsigned int to its byte representation.
 /// Convert the given `EndianNat`` representation to `AbtractByte`s with the given provenance.
@@ -256,37 +260,39 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
 
 /* usize */
 
-impl Encoding for usize {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+pub struct EncodingUsize {}
+
+impl Encoding<usize> for EncodingUsize {
+    open spec fn encode(value: usize, bytes: Seq<AbstractByte>) -> bool {
         bytes == endian_to_bytes(
-            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<usize>()),
             // integer types have no provenance
             None,
         )
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+    open spec fn decode(bytes: Seq<AbstractByte>, value: usize) -> bool {
         // fail if any byte is uninitalized or if the byte sequence is not the necessary length
-        &&& bytes.len() == size_of::<Self>()
+        &&& bytes.len() == size_of::<usize>()
         &&& AbstractByte::all_init(bytes)
         &&& {
             let endian = bytes_to_endian(bytes);
             &&& endian.wf()
-            &&& (endian.to_nat() as Self) == value
+            &&& (endian.to_nat() as usize) == value
         }
     }
 
-    proof fn encoding_size(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: usize, b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
         usize_max_bounds();
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
-        endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<Self>()), None)
+    proof fn encoding_exists(v: usize) -> (b: Seq<AbstractByte>) {
+        endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<usize>()), None)
     }
 
-    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_invertible(v: usize, b: Seq<AbstractByte>) {
         broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
         usize_max_bounds();
@@ -295,7 +301,7 @@ impl Encoding for usize {
 
 pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
     requires
-        #[trigger] usize::encode(v, bytes),
+        #[trigger] EncodingUsize::encode(v, bytes),
     ensures
         bytes.len() == size_of::<usize>(),
         AbstractByte::all_init(bytes),
@@ -310,18 +316,20 @@ pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
 
 /* Raw pointers */
 
-impl<T> Encoding for *mut T {
-    open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+pub struct EncodingMutPtr {}
+
+impl<T> Encoding<*mut T> for EncodingMutPtr {
+    open spec fn encode(value: *mut T, bytes: Seq<AbstractByte>) -> bool {
         bytes == endian_to_bytes(
-            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<Self>()),
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<*mut T>()),
             // the abstract encoding preserves the provenance from this pointer
             Some(value@.provenance),
         )
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+    open spec fn decode(bytes: Seq<AbstractByte>, value: *mut T) -> bool {
         // fail if any byte is uninitalized or if the byte sequence is not the necessary length
-        &&& bytes.len() == size_of::<Self>()
+        &&& bytes.len() == size_of::<*mut T>()
         &&& AbstractByte::all_init(bytes)
         &&& {
             let endian = bytes_to_endian(bytes);
@@ -334,20 +342,20 @@ impl<T> Encoding for *mut T {
         }
     }
 
-    proof fn encoding_size(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: *mut T, b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
         usize_max_bounds();
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(v: *mut T) -> (b: Seq<AbstractByte>) {
         endian_to_bytes(
-            EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<Self>()),
+            EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<*mut T>()),
             Some(v@.provenance),
         )
     }
 
-    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+    proof fn encoding_invertible(v: *mut T, b: Seq<AbstractByte>) {
         broadcast use
             EndianNat::from_nat_to_nat,
             endian_to_bytes_to_endian,
@@ -362,7 +370,7 @@ impl<T> Encoding for *mut T {
 pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
     ensures
         forall|bytes| #[trigger]
-            usize::encode(src, bytes) ==> <*mut T as Encoding>::decode(bytes, dst),
+            EncodingUsize::encode(src, bytes) ==> EncodingMutPtr::decode(bytes, dst),
         dst@.addr == src,
         dst@.provenance == Provenance::null(),
 {
@@ -371,35 +379,19 @@ pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
     ptr_mut_from_data(PtrData { addr: src, provenance: Provenance::null(), metadata: () })
 }
 
-pub trait EncodingNotSized<T: ?Sized> {
-    /// Can 'value' be encoded to the given bytes?
-    uninterp spec fn encode(value: &T, bytes: Seq<AbstractByte>) -> bool;
-
-    /// Can the given bytes always be decoded to the given value?
-    uninterp spec fn decode(bytes: Seq<AbstractByte>, value: &T) -> bool;
-}
-
-pub uninterp spec fn can_be_encoded<T: ?Sized>() -> bool;
-
-// compiler wants &T instead of T, complains about T not being Sized
-/// Can 'value' be encoded to the given bytes?
-pub uninterp spec fn encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
-
-/// Can the given bytes always be decoded to the given value?
-pub uninterp spec fn decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
-
 // can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
 impl<T> PointsTo<T> {
     // TODO: version for nondeterministic targets
-    pub axiom fn transmute_shared<'a, U>(tracked &'a self, tracked target: U) -> (tracked ret:
-        &'a PointsTo<U>)
+    pub axiom fn transmute_shared<'a, U, EncodingT: Encoding<T>, EncodingU: Encoding<U>>(
+        tracked &'a self,
+        tracked target: U,
+    ) -> (tracked ret: &'a PointsTo<U>)
         requires
             self.is_init(),
-            can_be_encoded::<T>(),
             forall|bytes|
-                #![trigger encode(&self.value(), bytes)]
-                #![trigger decode(bytes, &target)]
-                encode(&self.value(), bytes) ==> decode(bytes, &target),
+                #![trigger EncodingT::encode(self.value(), bytes)]
+                #![trigger EncodingU::decode(bytes, target)]
+                EncodingT::encode(self.value(), bytes) ==> EncodingU::decode(bytes, target),
         ensures
             ret.is_init(),
             ret.value() == target,
@@ -408,34 +400,68 @@ impl<T> PointsTo<T> {
     ;
 }
 
-/* str */
+/* Dynamically Sized Types */
 
-pub broadcast axiom fn str_can_be_encoded()
-    ensures
-        #[trigger] can_be_encoded::<str>(),
-;
+pub trait EncodingNotSized<T: ?Sized> {
+    /// Can 'value' be encoded to the given bytes?
+    spec fn encode(value: &T, bytes: Seq<AbstractByte>) -> bool;
 
-impl PointsTo<str> {
-    pub axiom fn transmute_shared<'a>(tracked &'a self, target: &[u8]) -> (tracked ret:
-        &'a PointsTo<[u8]>)
+    /// Can the given bytes always be decoded to the given value?
+    spec fn decode(bytes: Seq<AbstractByte>, value: &T) -> bool;
+
+    // Required properties for encoding (sanity check for any implementation of this trait)
+    /// Any encoding should match the size of the corresponding value.
+    broadcast proof fn encoding_size(v: &T, b: Seq<AbstractByte>)
         requires
-            self.is_init(),
-            can_be_encoded::<str>(),
-            forall|bytes|
-                #![trigger encode(self.value(), bytes)]
-                #![trigger decode(bytes, target)]
-                encode(self.value(), bytes) ==> decode(bytes, target),
+            #[trigger] Self::encode(v, b),
         ensures
-            ret.is_init(),
-            ret.value() == target@,
-            ret.phy() == target,
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
+            b.len() == spec_size_of_val::<T>(v),
+    ;
+
+    /// Every value should have at least one encoding.
+    proof fn encoding_exists(v: &T) -> (b: Seq<AbstractByte>)
+        ensures
+            Self::encode(v, b),
+    ;
+
+    /// Any byte encoding should be able to be decoded back to the same value.
+    broadcast proof fn encoding_invertible(v: &T, b: Seq<AbstractByte>)
+        requires
+            #[trigger] Self::encode(v, b),
+        ensures
+            #[trigger] Self::decode(b, v),
     ;
 }
 
 /* [u8] */
 
+pub struct EncodingU8Slice {}
+
+impl EncodingNotSized<[u8]> for EncodingU8Slice {
+    // todo - should slices be encoded with provenance?
+    // I'm not sure if we have a way of reasoning about provenance without the PointsTo...
+    open spec fn encode(value: &[u8], bytes: Seq<AbstractByte>) -> bool {
+        bytes == value@.map_values(|e| AbstractByte::Init(e, None))
+    }
+
+    // todo - should provenance be encoded?
+    open spec fn decode(bytes: Seq<AbstractByte>, value: &[u8]) -> bool {
+        value@ == bytes.map_values(|b: AbstractByte| b.byte())
+    }
+
+    proof fn encoding_size(v: &[u8], b: Seq<AbstractByte>) {
+    }
+
+    proof fn encoding_exists(v: &[u8]) -> (b: Seq<AbstractByte>) {
+        v@.map_values(|e| AbstractByte::Init(e, None))
+    }
+
+    proof fn encoding_invertible(v: &[u8], b: Seq<AbstractByte>) {
+        assert(v@ =~= b.map_values(|bt: AbstractByte| bt.byte()));
+    }
+}
+
+/*
 pub open spec fn u8_encode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
     decreases bytes.len(),
     via u8_encode_decreases
@@ -467,5 +493,27 @@ pub broadcast axiom fn u8_encode(b: &[u8], bytes: Seq<AbstractByte>)
         encode::<[u8]>(b, bytes) <==> decode::<[u8]>(bytes, b),
         encode::<[u8]>(b, bytes) <==> u8_encode_eq(b@, bytes),
 ;
+*/
+
+impl PointsTo<str> {
+    pub axiom fn transmute_shared<
+        'a,
+        EncodingStr: EncodingNotSized<str>,
+        EncodingU8Slice: EncodingNotSized<[u8]>,
+    >(tracked &'a self, target: &[u8]) -> (tracked ret: &'a PointsTo<[u8]>)
+        requires
+            self.is_init(),
+            forall|bytes|
+                #![trigger EncodingStr::encode(self.value(), bytes)]
+                #![trigger EncodingU8Slice::decode(bytes, target)]
+                EncodingStr::encode(self.value(), bytes) ==> EncodingU8Slice::decode(bytes, target),
+        ensures
+            ret.is_init(),
+            ret.value() == target@,
+            ret.phy() == target,
+            ret.ptr()@.addr == self.ptr()@.addr,
+            ret.ptr()@.provenance == self.ptr()@.provenance,
+    ;
+}
 
 } // verus!
