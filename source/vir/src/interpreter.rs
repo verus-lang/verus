@@ -2003,9 +2003,9 @@ pub fn eval_expr<D>(
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
-) -> Result<Exp, VirErr> 
-    where
-        D: air::messages::Diagnostics + ?Sized
+) -> Result<Exp, VirErr>
+where
+    D: air::messages::Diagnostics + ?Sized,
 {
     // Make a new global so we can move it into the new thread
     let global = global.from_self_with_log(global.interpreter_log.clone());

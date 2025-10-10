@@ -5,7 +5,10 @@ use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::messages::{ToAny, error_with_label, warning};
-use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FuncDeclSst, FunctionSst, PostConditionSst, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, FuncCheckSst, FuncDeclSst, FunctionSst, PostConditionSst, Stm, StmX,
+    UniqueIdent,
+};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
 use crate::util::vec_map_result;
@@ -151,7 +154,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
                     fun_ssts.clone(),
                     ctx.global.rlimit,
                     ctx.global.arch,
-                    crate::ast::ComputeMode::Z3, 
+                    crate::ast::ComputeMode::Z3,
                     &mut ctx.global.interpreter_log.lock().unwrap(),
                 )
             })?;
@@ -163,7 +166,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
                     fun_ssts.clone(),
                     ctx.global.rlimit,
                     ctx.global.arch,
-                    crate::ast::ComputeMode::Z3, 
+                    crate::ast::ComputeMode::Z3,
                     &mut ctx.global.interpreter_log.lock().unwrap(),
                 )
             })?;
@@ -248,7 +251,7 @@ struct ElaborateVisitorBv<'a, 'b, D: Diagnostics> {
     fun_ssts: SstMap,
 }
 
-impl<'a, 'b, D: Diagnostics>  ElaborateVisitorBv<'a, 'b, D> {
+impl<'a, 'b, D: Diagnostics> ElaborateVisitorBv<'a, 'b, D> {
     fn expand(&self, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
         vec_map_result(&exps, |e| {
             crate::interpreter::eval_expr(
@@ -258,7 +261,7 @@ impl<'a, 'b, D: Diagnostics>  ElaborateVisitorBv<'a, 'b, D> {
                 self.fun_ssts.clone(),
                 self.ctx.global.rlimit,
                 self.ctx.global.arch,
-                crate::ast::ComputeMode::Z3, 
+                crate::ast::ComputeMode::Z3,
                 &mut self.ctx.global.interpreter_log.lock().unwrap(),
             )
         })
@@ -305,7 +308,8 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
         let reqs = self.expand(reqs)?;
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
-        let local_decls = Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let local_decls =
+            Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
         let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
 
@@ -320,12 +324,8 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
         })
     }
 
-
     // This is the same as visit_postcondition in sst_visitor.rs, except for the call to self.expand(..)
-    fn visit_postcondition(
-        &mut self,
-        post: &PostConditionSst,
-    ) -> Result<PostConditionSst, VirErr> {
+    fn visit_postcondition(&mut self, post: &PostConditionSst) -> Result<PostConditionSst, VirErr> {
         let ens_exps = self.visit_exps(&post.ens_exps)?;
         let ens_exps = self.expand(ens_exps)?;
         let ens_spec_precondition_stms = self.visit_stms(&post.ens_spec_precondition_stms)?;
@@ -336,10 +336,7 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
             kind: post.kind,
         })
     }
-
 }
-
-
 
 // Triggers and inlining
 pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
@@ -370,8 +367,6 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
 
     Ok(())
 }
-
-
 
 // Compute and rewrite-recursive-calls
 pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
