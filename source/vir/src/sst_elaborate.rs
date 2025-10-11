@@ -268,39 +268,6 @@ impl<'a> ElaborateVisitorBv<'a> {
 }
 
 impl<'a> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVisitorBv<'a> {
-    // This is the same as visit_func_decl in sst_visitor.rs, except for the calls to self.expand(..)
-    fn visit_func_decl(&mut self, func_decl: &FuncDeclSst) -> Result<FuncDeclSst, VirErr> {
-        let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
-        let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
-
-        let reqs = self.visit_exps(&func_decl.reqs)?;
-        let enss0 = self.visit_exps(&func_decl.enss.0)?;
-        let enss1 = self.visit_exps(&func_decl.enss.1)?;
-
-        let reqs = self.expand(reqs)?;
-        let enss0 = self.expand(enss0)?;
-        let enss1 = self.expand(enss1)?;
-
-        let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
-        let mut inv_masks = Rewrite::vec();
-        for es in func_decl.inv_masks.iter() {
-            let es = self.visit_exps(es)?;
-            Rewrite::push(&mut inv_masks, Rewrite::ret::<_, VirErr>(|| Rewrite::get_vec_a(es))?);
-        }
-        let unwind_condition =
-            Rewrite::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
-        Rewrite::ret(|| FuncDeclSst {
-            req_inv_pars: Rewrite::get_vec_a(req_inv_pars),
-            ens_pars: Rewrite::get_vec_a(ens_pars),
-            reqs: Rewrite::get_vec_a(reqs),
-            enss: (Rewrite::get_vec_a(enss0), Rewrite::get_vec_a(enss1)),
-            inv_masks: Rewrite::get_vec_a(inv_masks),
-            unwind_condition: Rewrite::get_opt(unwind_condition),
-            fndef_axioms: Rewrite::get_vec_a(fndef_axioms),
-        })
-    }
-
-    // REVIEW: Why are the reqs and enss stored in two places (here and in the FuncDecl)?
     // This is the same as visit_func_check in sst_visitor.rs, except for the call to self.expand(..)
     fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<FuncCheckSst, VirErr> {
         let reqs = self.visit_exps(&def.reqs)?;
