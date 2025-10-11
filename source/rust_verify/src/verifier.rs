@@ -2489,7 +2489,7 @@ impl Verifier {
                 }
             }
 
-            // join with all worker threads, theys should all have exited by now.
+            // join with all worker threads, they should all have exited by now.
             // merge the verifier and global contexts
             for worker in workers {
                 let res = worker.join().unwrap();
