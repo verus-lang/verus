@@ -2,7 +2,9 @@ use crate::ast::{Fun, Krate, VirErr};
 use crate::ast_to_sst_func::function_to_sst;
 use crate::context::Ctx;
 use crate::sst::{FunctionSst, KrateSst, KrateSstX};
-use crate::sst_elaborate::{elaborate_function_rewrite_recursive, elaborate_function1};
+use crate::sst_elaborate::{
+    elaborate_function_bv, elaborate_function_rewrite_recursive, elaborate_function1,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -51,6 +53,7 @@ pub fn ast_to_sst_krate(
     let sst_map = Arc::new(sst_infos);
     for func_sst in &mut functions {
         elaborate_function_rewrite_recursive(ctx, diagnostics, sst_map.clone(), func_sst)?;
+        elaborate_function_bv(ctx, sst_map.clone(), func_sst)?;
 
         assert!(!ctx.func_sst_map.contains_key(&func_sst.x.name));
         ctx.func_sst_map.insert(func_sst.x.name.clone(), func_sst.clone());

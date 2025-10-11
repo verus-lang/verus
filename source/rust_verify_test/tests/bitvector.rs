@@ -222,8 +222,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] not_supported_int_in_by_bit_vector verus_code! {
-        proof fn test_int(x: int) {
-            assert(x == x) by (bit_vector);
+        proof fn test_int(x: int, y: int) {
+            assert(x == y) by (bit_vector);
         }
     } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
 }
@@ -231,8 +231,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] not_supported_datatype_in_by_bit_vector verus_code! {
         struct X { }
-        proof fn test_int(x: X) {
-            assert(x == x) by (bit_vector);
+        proof fn test_int(x: X, y: X) {
+            assert(x == y) by (bit_vector);
         }
     } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle this type")
 }
@@ -1035,10 +1035,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] mod0_div0_consistency verus_code! {
         fn mod_0_div_0_consistency(x: u32, y: u32) {
-            assert(x % y == x % y) by(bit_vector); // FAILS
-            assert(x / y == x / y) by(bit_vector); // FAILS
+            assert(x % y == x % y) by(bit_vector);
+            assert(x / y == x / y) by(bit_vector);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1400,4 +1400,74 @@ test_verify_one_file! {
             assert(0 <= (x << w) < 0x1_0000);
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] test_functions verus_code! {
+
+        const LIFE: u32 = 42;
+
+        spec fn shifter(u: u32) -> u32 {
+            u >> 1
+        }
+
+        spec fn xor(u: u32, v: u32) -> u32 {
+            u & v
+        }
+
+        fn test() {
+            let u: u32;
+            let v: u32;
+            assert(shifter(LIFE) == 21) by (bit_vector);
+            assert(xor(add(u, v), add(v, u)) == add(u, v)) by (bit_vector);
+            assert(forall |i:u32| shifter(i) == i / 2) by (bit_vector);
+        }
+
+
+        spec fn get_bit64(u: u64, index: u64) -> bool {
+            (0x1u64 & (u >> index)) == 1
+        }
+
+        proof fn myproof() by (bit_vector)
+            ensures
+                get_bit64(1u64, 0),
+        {}
+
+        spec fn set_bit64(u: u64, index: u64, bit: bool) -> u64 {
+            if bit {
+                u | 1u64 << index
+            } else {
+                u & (!(1u64 << index))
+            }
+        }
+
+        proof fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool) by (bit_vector)
+            requires
+                bv_new == set_bit64(bv_old, index, bit),
+                index < 64,
+            ensures
+                get_bit64(bv_new, index) == bit,
+                forall|loc2: u64|
+                    (loc2 < 64 && loc2 != index) ==> (get_bit64(bv_new, loc2) == get_bit64(bv_old, loc2)),
+        {
+        }
+
+        proof fn use_proof(bv_new: u64, bv_old: u64, index: u64, bit: bool, loc2: u64) {
+            assume(bv_new == set_bit64(bv_old, index, bit));
+            assume(index < 64);
+            assume(loc2 < 64 && loc2 != index);
+            set_bit64_proof(bv_new, bv_old, index, bit);
+            assert(get_bit64(bv_new, loc2) == get_bit64(bv_old, loc2));
+        }
+
+        spec fn bv_shift(u: u32) -> u32 {
+            u >> 1
+        }
+
+        fn test_assert_quantifiers_still_trigger(x: u32) {
+            assert(forall |u| bv_shift(u) <= u) by (bit_vector);
+            assert(bv_shift(x) <= x);
+        }
+
+    } => Ok(())
 }
