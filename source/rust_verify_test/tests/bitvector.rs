@@ -1460,5 +1460,14 @@ test_verify_one_file! {
             assert(get_bit64(bv_new, loc2) == get_bit64(bv_old, loc2));
         }
 
+        spec fn bv_shift(u: u32) -> u32 {
+            u >> 1
+        }
+
+        fn test_assert_quantifiers_still_trigger(x: u32) {
+            assert(forall |u| bv_shift(u) <= u) by (bit_vector);
+            assert(bv_shift(x) <= x);
+        }
+
     } => Ok(())
 }

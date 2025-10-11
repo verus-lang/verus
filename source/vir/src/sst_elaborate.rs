@@ -6,7 +6,7 @@ use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::messages::{ToAny, error_with_label, warning};
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, FuncCheckSst, FuncDeclSst, FunctionSst, PostConditionSst, Stm, StmX,
+    BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, PostConditionSst, Stm, StmX,
     UniqueIdent,
 };
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
