@@ -686,7 +686,7 @@ pub(crate) enum RustItem {
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
-    Allocator,
+    // Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
