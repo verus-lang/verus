@@ -76,30 +76,30 @@ impl AbstractByte {
     }
 }
 
-pub trait Encoding<T: Sized> {
+pub trait Encoding where Self: Sized {
     /// Can 'value' be encoded to the given bytes?
-    spec fn encode(value: T, bytes: Seq<AbstractByte>) -> bool;
+    spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool;
 
     /// Can the bytes be decoded to the given value?
-    spec fn decode(bytes: Seq<AbstractByte>, value: T) -> bool;
+    spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool;
 
     // Required properties for encoding (sanity check for any implementation of this trait)
     /// Any encoding should match the size of this type.
-    broadcast proof fn encoding_size(v: T, b: Seq<AbstractByte>)
+    broadcast proof fn encoding_size(v: Self, b: Seq<AbstractByte>)
         requires
             #[trigger] Self::encode(v, b),
         ensures
-            b.len() == size_of::<T>(),
+            b.len() == size_of::<Self>(),
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(v: T) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>)
         ensures
             Self::encode(v, b),
     ;
 
     /// Any byte encoding should be able to be decoded back to the same value.
-    broadcast proof fn encoding_invertible(v: T, b: Seq<AbstractByte>)
+    broadcast proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>)
         requires
             #[trigger] Self::encode(v, b),
         ensures
@@ -109,9 +109,7 @@ pub trait Encoding<T: Sized> {
 
 /* bool */
 
-pub struct EncodingBool {}
-
-impl Encoding<bool> for EncodingBool {
+impl Encoding for bool {
     open spec fn encode(value: bool, bytes: Seq<AbstractByte>) -> bool {
         bytes == seq![
             AbstractByte::Init(
@@ -158,9 +156,7 @@ impl Encoding<bool> for EncodingBool {
 
 /* u8 */
 
-pub struct EncodingU8 {}
-
-impl Encoding<u8> for EncodingU8 {
+impl Encoding for u8 {
     open spec fn encode(value: u8, bytes: Seq<AbstractByte>) -> bool {
         bytes == seq![AbstractByte::Init(value, None)]
     }
@@ -260,9 +256,7 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
 
 /* usize */
 
-pub struct EncodingUsize {}
-
-impl Encoding<usize> for EncodingUsize {
+impl Encoding for usize {
     open spec fn encode(value: usize, bytes: Seq<AbstractByte>) -> bool {
         bytes == endian_to_bytes(
             EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<usize>()),
@@ -301,7 +295,7 @@ impl Encoding<usize> for EncodingUsize {
 
 pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
     requires
-        #[trigger] EncodingUsize::encode(v, bytes),
+        #[trigger] usize::encode(v, bytes),
     ensures
         bytes.len() == size_of::<usize>(),
         AbstractByte::all_init(bytes),
@@ -316,9 +310,7 @@ pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
 
 /* Raw pointers */
 
-pub struct EncodingMutPtr {}
-
-impl<T> Encoding<*mut T> for EncodingMutPtr {
+impl<T> Encoding for *mut T {
     open spec fn encode(value: *mut T, bytes: Seq<AbstractByte>) -> bool {
         bytes == endian_to_bytes(
             EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<*mut T>()),
@@ -370,7 +362,7 @@ impl<T> Encoding<*mut T> for EncodingMutPtr {
 pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
     ensures
         forall|bytes| #[trigger]
-            EncodingUsize::encode(src, bytes) ==> EncodingMutPtr::decode(bytes, dst),
+            usize::encode(src, bytes) ==> <*mut T as Encoding>::decode(bytes, dst),
         dst@.addr == src,
         dst@.provenance == Provenance::null(),
 {
@@ -380,18 +372,18 @@ pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
 }
 
 // can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
-impl<T> PointsTo<T> {
+impl<T: Encoding> PointsTo<T> {
     // TODO: version for nondeterministic targets
-    pub axiom fn transmute_shared<'a, U, EncodingT: Encoding<T>, EncodingU: Encoding<U>>(
+    pub axiom fn transmute_shared<'a, U: Encoding>(
         tracked &'a self,
         tracked target: U,
     ) -> (tracked ret: &'a PointsTo<U>)
         requires
             self.is_init(),
             forall|bytes|
-                #![trigger EncodingT::encode(self.value(), bytes)]
-                #![trigger EncodingU::decode(bytes, target)]
-                EncodingT::encode(self.value(), bytes) ==> EncodingU::decode(bytes, target),
+                #![trigger T::encode(self.value(), bytes)]
+                #![trigger U::decode(bytes, target)]
+                T::encode(self.value(), bytes) ==> U::decode(bytes, target),
         ensures
             ret.is_init(),
             ret.value() == target,
@@ -460,40 +452,6 @@ impl EncodingNotSized<[u8]> for EncodingU8Slice {
         assert(v@ =~= b.map_values(|bt: AbstractByte| bt.byte()));
     }
 }
-
-/*
-pub open spec fn u8_encode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
-    decreases bytes.len(),
-    via u8_encode_decreases
-{
-    if bytes.len() == 0 {
-        value.len() == 0
-    } else {
-        match bytes.first() {
-            AbstractByte::Uninit => false,
-            AbstractByte::Init(b, _) => {
-                &&& value.len() > 0
-                &&& b == value.first()
-                &&& u8_encode_eq(value.drop_first(), bytes.drop_first())
-            },
-        }
-    }
-}
-
-#[verifier::decreases_by]
-proof fn u8_encode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
-    broadcast use axiom_seq_subrange_len::<AbstractByte>;
-
-}
-
-pub broadcast axiom fn u8_encode(b: &[u8], bytes: Seq<AbstractByte>)
-    ensures
-        #![trigger encode::<[u8]>(b, bytes)]
-        #![trigger decode::<[u8]>(bytes, b)]
-        encode::<[u8]>(b, bytes) <==> decode::<[u8]>(bytes, b),
-        encode::<[u8]>(b, bytes) <==> u8_encode_eq(b@, bytes),
-;
-*/
 
 impl PointsTo<str> {
     pub axiom fn transmute_shared<
