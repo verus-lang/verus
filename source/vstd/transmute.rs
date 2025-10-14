@@ -254,6 +254,168 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
     }
 }
 
+/* u16 */
+
+impl Encoding for u16 {
+    open spec fn encode(value: u16, bytes: Seq<AbstractByte>) -> bool {
+        bytes == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<u16>()),
+            // integer types have no provenance
+            None,
+        )
+    }
+
+    open spec fn decode(bytes: Seq<AbstractByte>, value: u16) -> bool {
+        // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+        &&& bytes.len() == size_of::<u16>()
+        &&& AbstractByte::all_init(bytes)
+        &&& {
+            let endian = bytes_to_endian(bytes);
+            &&& endian.wf()
+            &&& (endian.to_nat() as u16) == value
+        }
+    }
+
+    proof fn encoding_size(v: u16, b: Seq<AbstractByte>) {
+        broadcast use endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+
+    proof fn encoding_exists(v: u16) -> (b: Seq<AbstractByte>) {
+        endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u16>()), None)
+    }
+
+    proof fn encoding_invertible(v: u16, b: Seq<AbstractByte>) {
+        broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+}
+
+pub broadcast proof fn u16_encode(v: u16, bytes: Seq<AbstractByte>)
+    requires
+        #[trigger] u16::encode(v, bytes),
+    ensures
+        bytes.len() == size_of::<u16>(),
+        AbstractByte::all_init(bytes),
+        AbstractByte::shared_provenance(bytes) == Provenance::null(),
+        bytes_to_endian(bytes).to_nat() as u16 == v,
+        bytes_to_endian(bytes).wf(),
+{
+    broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+    unsigned_int_max_bounds();
+}
+
+/* u32 */
+
+impl Encoding for u32 {
+    open spec fn encode(value: u32, bytes: Seq<AbstractByte>) -> bool {
+        bytes == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<u32>()),
+            // integer types have no provenance
+            None,
+        )
+    }
+
+    open spec fn decode(bytes: Seq<AbstractByte>, value: u32) -> bool {
+        // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+        &&& bytes.len() == size_of::<u32>()
+        &&& AbstractByte::all_init(bytes)
+        &&& {
+            let endian = bytes_to_endian(bytes);
+            &&& endian.wf()
+            &&& (endian.to_nat() as u32) == value
+        }
+    }
+
+    proof fn encoding_size(v: u32, b: Seq<AbstractByte>) {
+        broadcast use endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+
+    proof fn encoding_exists(v: u32) -> (b: Seq<AbstractByte>) {
+        endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u32>()), None)
+    }
+
+    proof fn encoding_invertible(v: u32, b: Seq<AbstractByte>) {
+        broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+}
+
+pub broadcast proof fn u32_encode(v: u32, bytes: Seq<AbstractByte>)
+    requires
+        #[trigger] u32::encode(v, bytes),
+    ensures
+        bytes.len() == size_of::<u32>(),
+        AbstractByte::all_init(bytes),
+        AbstractByte::shared_provenance(bytes) == Provenance::null(),
+        bytes_to_endian(bytes).to_nat() as u32 == v,
+        bytes_to_endian(bytes).wf(),
+{
+    broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+    unsigned_int_max_bounds();
+}
+
+/* u64 */
+
+impl Encoding for u64 {
+    open spec fn encode(value: u64, bytes: Seq<AbstractByte>) -> bool {
+        bytes == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<u64>()),
+            // integer types have no provenance
+            None,
+        )
+    }
+
+    open spec fn decode(bytes: Seq<AbstractByte>, value: u64) -> bool {
+        // fail if any byte is uninitalized or if the byte sequence is not the necessary length
+        &&& bytes.len() == size_of::<u64>()
+        &&& AbstractByte::all_init(bytes)
+        &&& {
+            let endian = bytes_to_endian(bytes);
+            &&& endian.wf()
+            &&& (endian.to_nat() as u64) == value
+        }
+    }
+
+    proof fn encoding_size(v: u64, b: Seq<AbstractByte>) {
+        broadcast use endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+
+    proof fn encoding_exists(v: u64) -> (b: Seq<AbstractByte>) {
+        endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u64>()), None)
+    }
+
+    proof fn encoding_invertible(v: u64, b: Seq<AbstractByte>) {
+        broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+        unsigned_int_max_bounds();
+    }
+}
+
+pub broadcast proof fn u64_encode(v: u64, bytes: Seq<AbstractByte>)
+    requires
+        #[trigger] u64::encode(v, bytes),
+    ensures
+        bytes.len() == size_of::<u64>(),
+        AbstractByte::all_init(bytes),
+        AbstractByte::shared_provenance(bytes) == Provenance::null(),
+        bytes_to_endian(bytes).to_nat() as u64 == v,
+        bytes_to_endian(bytes).wf(),
+{
+    broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+    unsigned_int_max_bounds();
+}
+
 /* usize */
 
 impl Encoding for usize {
@@ -279,7 +441,7 @@ impl Encoding for usize {
     proof fn encoding_size(v: usize, b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
-        usize_max_bounds();
+        unsigned_int_max_bounds();
     }
 
     proof fn encoding_exists(v: usize) -> (b: Seq<AbstractByte>) {
@@ -289,7 +451,7 @@ impl Encoding for usize {
     proof fn encoding_invertible(v: usize, b: Seq<AbstractByte>) {
         broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-        usize_max_bounds();
+        unsigned_int_max_bounds();
     }
 }
 
@@ -305,7 +467,7 @@ pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
 {
     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-    usize_max_bounds();
+    unsigned_int_max_bounds();
 }
 
 /* Raw pointers */
@@ -337,7 +499,7 @@ impl<T> Encoding for *mut T {
     proof fn encoding_size(v: *mut T, b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
-        usize_max_bounds();
+        unsigned_int_max_bounds();
     }
 
     proof fn encoding_exists(v: *mut T) -> (b: Seq<AbstractByte>) {
@@ -354,7 +516,7 @@ impl<T> Encoding for *mut T {
             endian_to_bytes_shared_provenance,
         ;
 
-        usize_max_bounds();
+        unsigned_int_max_bounds();
     }
 }
 

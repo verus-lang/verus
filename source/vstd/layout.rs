@@ -286,53 +286,50 @@ pub proof fn usize_size_pow2()
     assert(is_power_2(8)) by (compute);
 }
 
-pub proof fn usize_max_bitwise()
+pub proof fn unsigned_int_max_bitwise()
     ensures
 // We use a funky expression here, rather than the more natural expression: usize::MAX == (1usize << usize::BITS) - 1.
 // This is because the above left shift will overflow usize and thus is not compatible with bit vector.
 
         usize::MAX == (1usize << (usize::BITS - 1)) + ((1usize << (usize::BITS - 1)) - 1),
+        u8::MAX == (1u8 << (u8::BITS - 1)) + ((1u8 << (u8::BITS - 1)) - 1),
+        u16::MAX == (1u16 << (u16::BITS - 1)) + ((1u16 << (u16::BITS - 1)) - 1),
+        u32::MAX == (1u32 << (u32::BITS - 1)) + ((1u32 << (u32::BITS - 1)) - 1),
+        u64::MAX == (1u64 << (u64::BITS - 1)) + ((1u64 << (u64::BITS - 1)) - 1),
 {
+    assert((1u8 << 7) + ((1u8 << 7) - 1) == (0x100 - 1)) by (bit_vector);
+    assert((1u16 << 15) + ((1u16 << 15) - 1) == (0x1_0000 - 1)) by (bit_vector);
     assert((1u32 << 31) + ((1u32 << 31) - 1) == (0x1_0000_0000 - 1)) by (bit_vector);
     assert((1u64 << 63) + ((1u64 << 63) - 1) == (0x1_0000_0000_0000_0000 - 1)) by (bit_vector);
 }
 
-pub proof fn usize_max_bounds()
+pub proof fn unsigned_int_max_bounds()
     ensures
         (usize::MAX as nat) < pow2(usize::BITS as nat),
         (usize::MAX as nat) < pow(256, size_of::<usize>()),
+        (u8::MAX as nat) < pow2(u8::BITS as nat),
+        (u8::MAX as nat) < pow(256, size_of::<u8>()),
+        (u16::MAX as nat) < pow2(u16::BITS as nat),
+        (u16::MAX as nat) < pow(256, size_of::<u16>()),
+        (u32::MAX as nat) < pow2(u32::BITS as nat),
+        (u32::MAX as nat) < pow(256, size_of::<u32>()),
+        (u64::MAX as nat) < pow2(u64::BITS as nat),
+        (u64::MAX as nat) < pow(256, size_of::<u64>()),
 {
-    usize_max_bitwise();
-    assert(1usize << (usize::BITS - 1) == 1 * pow2((usize::BITS - 1) as nat)) by {
-        lemma_u64_pow2_no_overflow((u64::BITS - 1) as nat);
-        lemma_u64_shl_is_mul(1u64, (u64::BITS - 1) as u64);
-        assert(1u64 << (u64::BITS - 1) == 1 * pow2((u64::BITS - 1) as nat));
-        lemma_u32_pow2_no_overflow((u32::BITS - 1) as nat);
-        lemma_u32_shl_is_mul(1u32, (u32::BITS - 1) as u32);
-        assert(1u32 << (u32::BITS - 1) == 1 * pow2((u32::BITS - 1) as nat));
-    }
-    assert(usize::MAX == pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1);
-    assert(pow2((usize::BITS - 1) as nat) + pow2((usize::BITS - 1) as nat) - 1 < pow2(
-        usize::BITS as nat,
-    )) by {
-        broadcast use lemma_pow2_unfold;
+    broadcast use layout_of_primitives;
 
-    }
-
-    assert(8 * size_of::<usize>() == usize::BITS) by {
-        broadcast use layout_of_primitives;
-
-    }
-    assert(pow2(usize::BITS as nat) == pow(2, usize::BITS as nat)) by {
-        broadcast use lemma_pow2;
-
-    }
-    assert(pow(2, 8 * size_of::<usize>()) == pow(pow(2, 8), size_of::<usize>())) by {
-        broadcast use lemma_pow_multiplies;
-
-    }
-    assert(pow(2, 8) == 256) by (compute);
-    assert(pow2(usize::BITS as nat) == pow(256, size_of::<usize>()));
+    reveal(pow);
+    reveal(pow2);
+    assert(0x100 - 1 < pow2(8)) by (compute);
+    assert(0x1_0000 - 1 < pow2(16)) by (compute);
+    assert(0x1_0000_0000 - 1 < pow2(32)) by (compute);
+    assert(0x1_0000_0000_0000_0000 - 1 < pow2(64)) by (compute);
+    assert(pow(256, 1) == pow2(8)) by (compute);
+    assert(pow(256, 2) == pow2(16)) by (compute);
+    assert(pow(256, 4) == pow2(32)) by (compute);
+    assert(pow(256, 8) == pow2(64)) by (compute);
+    // assert((usize::MAX as nat) < pow2(usize::BITS as nat));
+    // assert((usize::MAX as nat) < pow(256, size_of::<usize>() as nat));
 }
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
