@@ -172,7 +172,7 @@ macro_rules! num_specs {
 
             #[verifier::allow_in_spec]
             pub assume_specification[<$uN>::unchecked_mul](x: $uN, y: $uN) -> $uN
-                requires 
+                requires
                     x * y <= <$uN>::MAX,
                 returns
                     (x * y) as $uN,
