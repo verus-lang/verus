@@ -282,30 +282,30 @@ impl<'a> ExecSpecIndex<'a> for &'a str {
 
 /// NOTE: can't implement [`ExecSpecType`] for [`Seq<T>`]
 /// since it conflicts with [`SpecString`] (i.e., [`Seq<char>`]).
-impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
-    #[inline(always)]
-    fn get_ref(self) -> &'a [T] {
-        self.as_slice()
-    }
-}
+// impl<'a, T: DeepView> ToRef<&'a [T]> for &'a Vec<T> {
+//     #[inline(always)]
+//     fn get_ref(self) -> &'a [T] {
+//         self.as_slice()
+//     }
+// }
 
-impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
-    /// TODO: verify this
-    #[verifier::external_body]
-    #[inline(always)]
-    fn get_owned(self) -> Vec<T> {
-        self.iter().map(|x| x.deep_clone()).collect()
-    }
-}
+// impl<'a, T: DeepView + DeepViewClone> ToOwned<Vec<T>> for &'a [T] {
+//     /// TODO: verify this
+//     #[verifier::external_body]
+//     #[inline(always)]
+//     fn get_owned(self) -> Vec<T> {
+//         self.iter().map(|x| x.deep_clone()).collect()
+//     }
+// }
 
-impl<T: DeepViewClone> DeepViewClone for Vec<T> {
-    /// TODO: verify this
-    #[verifier::external_body]
-    #[inline(always)]
-    fn deep_clone(&self) -> Self {
-        self.iter().map(|x| x.deep_clone()).collect()
-    }
-}
+// impl<T: DeepViewClone> DeepViewClone for Vec<T> {
+//     /// TODO: verify this
+//     #[verifier::external_body]
+//     #[inline(always)]
+//     fn deep_clone(&self) -> Self {
+//         self.iter().map(|x| x.deep_clone()).collect()
+//     }
+// }
 
 impl<'a, T: DeepView> ExecSpecEq<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
     type Other = &'a [T];
@@ -319,17 +319,17 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Oth
     }
 }
 
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a Vec<T>;
+// impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
+//     type Other = &'a Vec<T>;
 
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        this.len() == other.len() && this.iter().zip(other.iter()).all(
-            |(a, b)| <&'a T>::exec_eq(a, b),
-        )
-    }
-}
+//     #[verifier::external_body]
+//     #[inline(always)]
+//     fn exec_eq(this: Self, other: Self::Other) -> bool {
+//         this.len() == other.len() && this.iter().zip(other.iter()).all(
+//             |(a, b)| <&'a T>::exec_eq(a, b),
+//         )
+//     }
+// }
 
 impl<'a, T: DeepView> ExecSpecLen for &'a [T] {
     #[verifier::external_body]

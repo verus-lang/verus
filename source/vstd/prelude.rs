@@ -55,12 +55,12 @@ pub use super::std_specs::option::OptionAdditionalFns;
 #[cfg(verus_keep_ghost)]
 pub use super::std_specs::result::ResultAdditionalSpecFns;
 
-#[cfg(verus_keep_ghost)]
-#[cfg(feature = "alloc")]
-pub use super::std_specs::vec::VecAdditionalSpecFns;
+// #[cfg(verus_keep_ghost)]
+// #[cfg(feature = "alloc")]
+// pub use super::std_specs::vec::VecAdditionalSpecFns;
 
-#[cfg(feature = "alloc")]
-pub use super::pervasive::VecAdditionalExecFns;
+// #[cfg(feature = "alloc")]
+// pub use super::pervasive::VecAdditionalExecFns;
 
 pub use super::string::StrSliceExecFns;
 #[cfg(feature = "alloc")]

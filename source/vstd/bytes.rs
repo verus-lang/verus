@@ -86,15 +86,15 @@ pub exec fn u16_from_le_bytes(s: &[u8]) -> (x: u16)
     u16::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(feature = "alloc")]
-#[verifier::external_body]
-pub exec fn u16_to_le_bytes(x: u16) -> (s: alloc::vec::Vec<u8>)
-    ensures
-        s@ == spec_u16_to_le_bytes(x),
-        s@.len() == 2,
-{
-    x.to_le_bytes().to_vec()
-}
+// #[cfg(feature = "alloc")]
+// #[verifier::external_body]
+// pub exec fn u16_to_le_bytes(x: u16) -> (s: alloc::vec::Vec<u8>)
+//     ensures
+//         s@ == spec_u16_to_le_bytes(x),
+//         s@.len() == 2,
+// {
+//     x.to_le_bytes().to_vec()
+// }
 
 // Conversion between u32 and little-endian byte sequences
 pub closed spec fn spec_u32_to_le_bytes(x: u32) -> Seq<u8> {
@@ -181,15 +181,15 @@ pub exec fn u32_from_le_bytes(s: &[u8]) -> (x: u32)
     u32::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(feature = "alloc")]
-#[verifier::external_body]
-pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
-    ensures
-        s@ == spec_u32_to_le_bytes(x),
-        s@.len() == 4,
-{
-    x.to_le_bytes().to_vec()
-}
+// #[cfg(feature = "alloc")]
+// #[verifier::external_body]
+// pub exec fn u32_to_le_bytes(x: u32) -> (s: alloc::vec::Vec<u8>)
+//     ensures
+//         s@ == spec_u32_to_le_bytes(x),
+//         s@.len() == 4,
+// {
+//     x.to_le_bytes().to_vec()
+// }
 
 // Conversion between u64 and little-endian byte sequences
 pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8> {
@@ -338,15 +338,15 @@ pub exec fn u64_from_le_bytes(s: &[u8]) -> (x: u64)
     u64::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(feature = "alloc")]
-#[verifier::external_body]
-pub exec fn u64_to_le_bytes(x: u64) -> (s: alloc::vec::Vec<u8>)
-    ensures
-        s@ == spec_u64_to_le_bytes(x),
-        s@.len() == 8,
-{
-    x.to_le_bytes().to_vec()
-}
+// #[cfg(feature = "alloc")]
+// #[verifier::external_body]
+// pub exec fn u64_to_le_bytes(x: u64) -> (s: alloc::vec::Vec<u8>)
+//     ensures
+//         s@ == spec_u64_to_le_bytes(x),
+//         s@.len() == 8,
+// {
+//     x.to_le_bytes().to_vec()
+// }
 
 // Conversion between u128 and little-endian byte sequences
 pub closed spec fn spec_u128_to_le_bytes(x: u128) -> Seq<u8> {
@@ -525,14 +525,14 @@ pub exec fn u128_from_le_bytes(s: &[u8]) -> (x: u128)
     u128::from_le_bytes(s.try_into().unwrap())
 }
 
-#[cfg(feature = "alloc")]
-#[verifier::external_body]
-pub exec fn u128_to_le_bytes(x: u128) -> (s: alloc::vec::Vec<u8>)
-    ensures
-        s@ == spec_u128_to_le_bytes(x),
-        s@.len() == 16,
-{
-    x.to_le_bytes().to_vec()
-}
+// #[cfg(feature = "alloc")]
+// #[verifier::external_body]
+// pub exec fn u128_to_le_bytes(x: u128) -> (s: alloc::vec::Vec<u8>)
+//     ensures
+//         s@ == spec_u128_to_le_bytes(x),
+//         s@.len() == 16,
+// {
+//     x.to_le_bytes().to_vec()
+// }
 
 } // verus!
