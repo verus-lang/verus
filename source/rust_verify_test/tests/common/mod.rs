@@ -413,7 +413,7 @@ pub fn run_verus(
 }
 
 
-pub fn run_cargo(
+pub fn run_cargo_verus(
     args: &[&str],
     dir: &std::path::Path,
 ) -> std::process::Output {
@@ -472,6 +472,10 @@ pub fn run_cargo(
         .spawn()
         .expect("could not execute cargo process");
     let run = child.wait_with_output().expect("cargo wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
     run
 }
 

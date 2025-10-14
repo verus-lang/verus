@@ -1,0 +1,12 @@
+[package]
+name = "vstd-macros"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../vstd/" }
+
+[package.metadata.verus]
+verify = true
+
+[workspace]
