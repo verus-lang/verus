@@ -26,6 +26,7 @@ use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
+use crate::vstd::layout;
 
 verus! {
 
@@ -81,6 +82,10 @@ impl Provenance {
 
     /// The length of the pointer's allocation in bytes.
     pub uninterp spec fn alloc_len(&self) -> usize;
+
+    /// The alignment of the pointer's allocation. Must be a power of two.
+    // If we add this, I think we can get rid of the Dealloc permission
+    pub uninterp spec fn alignment(&self) -> usize;
 }
 
 pub broadcast axiom fn alloc_bound(p: Provenance)
@@ -955,6 +960,24 @@ impl PointsToRaw {
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
                 PtrData { addr: start, provenance: self.provenance(), metadata: () },
+            ),
+            points_to.is_uninit(),
+    ;
+
+    /// Creates a `PointsTo<[V]>` permission from a `PointsToRaw` permission
+    /// with address `start` and the same provanance as the `PointsToRaw` permission,
+    /// provided that `start` is aligned to `V` and
+    /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`.
+    ///
+    /// Note: this only guarantees that the first element is aligned. 
+    /// It is possible that subsequent slice elements will not be aligned. 
+    pub axiom fn into_typed_slice<V>(tracked self, start: usize, length: usize) -> (tracked points_to: PointsTo<[V]>)
+        requires
+            start as int % layout::align_of::<V>() as int == 0,
+            self.is_range(start as int, (length * layout::size_of::<V>()) as int),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<[V]>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: length },
             ),
             points_to.is_uninit(),
     ;
