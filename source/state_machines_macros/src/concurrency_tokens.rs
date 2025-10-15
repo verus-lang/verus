@@ -57,7 +57,8 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOption(ty) => ty.clone(),
-        ShardableType::StorageMap(_key, ty) => ty.clone(),
+        ShardableType::StorageMap(_key, ty)
+        | ShardableType::StorageIMap(_key, ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
@@ -66,7 +67,9 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::IMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::PersistentCount
         | ShardableType::PersistentBool
         | ShardableType::Multiset(_)
@@ -352,7 +355,9 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
@@ -362,10 +367,12 @@ pub fn output_token_types_and_fns(
             | ShardableType::Map(..)
             | ShardableType::IMap(..)
             | ShardableType::PersistentMap(..)
+            | ShardableType::PersistentIMap(..)
             | ShardableType::Multiset(_)
             | ShardableType::Set(_)
             | ShardableType::ISet(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::Count
             | ShardableType::PersistentCount
             | ShardableType::Bool
@@ -526,6 +533,7 @@ pub fn exchange_stream(
                 | ShardableType::IMap(_, _)
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::Count
                 | ShardableType::PersistentCount
                 | ShardableType::Bool
@@ -533,8 +541,10 @@ pub fn exchange_stream(
                 | ShardableType::Set(_)
                 | ShardableType::ISet(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     params.insert(field.name.to_string(), Vec::new());
                 }
                 ShardableType::Variable(_)
@@ -877,11 +887,14 @@ pub fn exchange_stream(
                 | ShardableType::Bool
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::PersistentCount
                 | ShardableType::PersistentBool
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
                     // phase has already processed those and established all the necessary
                     // pre-conditions and post-conditions, and it has also established
@@ -1057,7 +1070,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::IMap(_, _) => None,
         ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentSet(_) => None,
+        ShardableType::PersistentISet(_) => None,
         ShardableType::PersistentMap(_, _) => None,
+        ShardableType::PersistentIMap(_, _) => None,
         ShardableType::PersistentCount => None,
         ShardableType::PersistentBool => None,
         ShardableType::Count => None,
@@ -1065,6 +1080,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
             ::core::option::Option<#ty>
         })),
         ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
+            #vstd::map::Map<#key, #val>
+        })),
+        ShardableType::StorageIMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
             #vstd::map::IMap<#key, #val>
         })),
     }
@@ -1077,7 +1095,9 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+        ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _) => {
             requires.push(mk_eq(param_value.span(), &param_value, &init_value));
         }
         _ => {
@@ -1100,12 +1120,15 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Set(_)
         | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(..)
         | ShardableType::IMap(..)
-        | ShardableType::PersistentMap(..) => Some(field_token_collection_type(sm, field)),
+        | ShardableType::PersistentMap(..)
+        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field)),
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
+        ShardableType::StorageIMap(_, _) => None,
     }
 }
 

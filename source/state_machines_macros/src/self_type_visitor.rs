@@ -50,7 +50,8 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         | ShardableType::ISet(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::PersistentSet(ty) => {
+        ShardableType::PersistentSet(ty)
+        | ShardableType::PersistentISet(ty) => {
             replace_self_type(ty, path);
         }
         ShardableType::Map(key, val)
@@ -58,7 +59,8 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
-        ShardableType::PersistentMap(key, val) => {
+        ShardableType::PersistentMap(key, val)
+        | ShardableType::PersistentIMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
@@ -68,7 +70,8 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         ShardableType::StorageOption(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::StorageMap(key, val) => {
+        ShardableType::StorageMap(key, val)
+        | ShardableType::StorageIMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
