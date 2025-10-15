@@ -693,7 +693,8 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     })
                 }
 
-                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => {
+                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _)
+                | ShardableType::IMap(_, _) | ShardableType::StorageIMap(_, _) => {
                     Expr::Verbatim(quote! {
                         (#cur).union_prefer_right(#e)
                     })
@@ -703,7 +704,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     (#cur).add(#e)
                 }),
 
-                ShardableType::Set(_) => Expr::Verbatim(quote! {
+                ShardableType::Set(_) | ShardableType::ISet(_) => Expr::Verbatim(quote! {
                     ((#cur).union(#e))
                 }),
 
@@ -791,6 +792,8 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
 
             ShardableType::Map(_, _)
             | ShardableType::PersistentMap(_, _)
+            | ShardableType::IMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
             | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
                 (#e).submap_of(#cur)
             }),
@@ -799,7 +802,8 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
                 (#e).subset_of(#cur)
             }),
 
-            ShardableType::Set(_) | ShardableType::PersistentSet(_) => Expr::Verbatim(quote! {
+            ShardableType::Set(_) | ShardableType::PersistentSet(_)
+            | ShardableType::ISet(_) | ShardableType::PersistentISet(_) => Expr::Verbatim(quote! {
                 (#e).subset_of(#cur)
             }),
 
@@ -849,7 +853,8 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 })
             }
 
-            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _)
+            | ShardableType::IMap(_, _) | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
                 (#cur).remove_keys(#e.dom())
             }),
 
@@ -857,7 +862,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 (#cur).sub(#e)
             }),
 
-            ShardableType::Set(_) => Expr::Verbatim(quote! {
+            ShardableType::Set(_) | ShardableType::ISet(_) => Expr::Verbatim(quote! {
                 (#cur).difference(#e)
             }),
 

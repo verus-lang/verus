@@ -49,16 +49,16 @@ tokenized_state_machine! {
             #[sharding(imap)]
             pub clients: IMap<nat, Client>,
 
-            #[sharding(map)]
+            #[sharding(imap)]
             pub slots: IMap<nat, bool>,
 
             #[sharding(variable)]
             pub combiner: Combiner,
 
-            #[sharding(storage_map)]
+            #[sharding(storage_imap)]
             pub requests: IMap<nat, Request>,
 
-            #[sharding(storage_map)]
+            #[sharding(storage_imap)]
             pub responses: IMap<nat, Response>,
         }
 
