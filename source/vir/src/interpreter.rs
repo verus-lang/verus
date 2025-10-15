@@ -161,7 +161,7 @@ impl State {
         if now.duration_since(self.last_warning_time).as_secs() >= WARNING_INTERVAL_SECS {
             let total_time = now.duration_since(self.start_time).as_secs();
             eprintln!(
-                "note: assert_by_compute has been running for {} seconds (depth: {}, iterations: {})",
+                "{{ \"level\": \"note\", \"message\": \"assert_by_compute has been running for {} seconds (depth: {}, iterations: {})\", \"spans\": [], \"rendered\": \"\" }}",
                 total_time, self.depth, self.iterations
             );
             self.last_warning_time = now;
