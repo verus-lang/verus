@@ -63,6 +63,7 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::PersistentSet(_)
@@ -70,6 +71,7 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::PersistentBool
         | ShardableType::Multiset(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Count => {
             panic!("stored_object_type");
@@ -358,9 +360,11 @@ pub fn output_token_types_and_fns(
             | ShardableType::Option(_)
             | ShardableType::PersistentOption(_)
             | ShardableType::Map(..)
+            | ShardableType::IMap(..)
             | ShardableType::PersistentMap(..)
             | ShardableType::Multiset(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::PersistentSet(_)
             | ShardableType::Count
             | ShardableType::PersistentCount
@@ -519,6 +523,7 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
@@ -526,6 +531,7 @@ pub fn exchange_stream(
                 | ShardableType::Bool
                 | ShardableType::PersistentBool
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::PersistentSet(_)
                 | ShardableType::StorageOption(_)
                 | ShardableType::StorageMap(_, _) => {
@@ -863,7 +869,9 @@ pub fn exchange_stream(
                 }
                 ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::Multiset(_)
                 | ShardableType::Count
                 | ShardableType::Bool
@@ -1042,9 +1050,11 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
         ShardableType::Set(_) => None,
+        ShardableType::ISet(_) => None,
         ShardableType::Bool => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::IMap(_, _) => None,
         ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentSet(_) => None,
         ShardableType::PersistentMap(_, _) => None,
@@ -1088,8 +1098,10 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
         | ShardableType::Map(..)
+        | ShardableType::IMap(..)
         | ShardableType::PersistentMap(..) => Some(field_token_collection_type(sm, field)),
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage

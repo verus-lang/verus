@@ -371,7 +371,9 @@ enum ShardingType {
 
     Option,
     Map,
+    IMap,
     Set,
+    ISet,
     Multiset,
     Count,
     Bool,
@@ -427,10 +429,12 @@ fn get_sharding_type(
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
                                 "set" => ShardingType::Set,
+                                "iset" => ShardingType::ISet,
                                 "bool" => ShardingType::Bool,
                                 "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
+                                "imap" => ShardingType::IMap,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
                                 "persistent_option" => ShardingType::PersistentOption,
@@ -619,12 +623,20 @@ fn to_fields(
                 ShardableType::Option(v[0].clone())
             }
             ShardingType::Map => {
-                let v = extract_template_params(&field.ty, "map", "IMap", 2)?;
+                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
+            ShardingType::IMap => {
+                let v = extract_template_params(&field.ty, "map", "IMap", 2)?;
+                ShardableType::IMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::Set => {
-                let v = extract_template_params(&field.ty, "set", "ISet", 1)?;
+                let v = extract_template_params(&field.ty, "set", "Set", 1)?;
                 ShardableType::Set(v[0].clone())
+            }
+            ShardingType::ISet => {
+                let v = extract_template_params(&field.ty, "set", "ISet", 1)?;
+                ShardableType::ISet(v[0].clone())
             }
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;

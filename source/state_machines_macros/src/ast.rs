@@ -65,8 +65,10 @@ pub enum ShardableType {
 
     Option(Type),
     Map(Type, Type),
+    IMap(Type, Type),
     Multiset(Type),
     Set(Type),
+    ISet(Type),
     Count,
     Bool,
 
@@ -445,8 +447,10 @@ impl ShardableType {
 
             ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
+            ShardableType::IMap(_, _) => "imap",
             ShardableType::Multiset(_) => "multiset",
             ShardableType::Set(_) => "set",
+            ShardableType::ISet(_) => "iset",
             ShardableType::Count => "count",
             ShardableType::Bool => "bool",
 
@@ -479,6 +483,7 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::PersistentMap(_, _)
             | ShardableType::PersistentOption(_)
             | ShardableType::PersistentSet(_)
@@ -486,7 +491,8 @@ impl ShardableType {
             | ShardableType::PersistentBool
             | ShardableType::Count
             | ShardableType::Bool
-            | ShardableType::Set(_) => false,
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_) => false,
         }
     }
 
@@ -504,7 +510,9 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::StorageOption(_)
             | ShardableType::StorageMap(_, _)
             | ShardableType::Bool
