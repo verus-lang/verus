@@ -17,7 +17,7 @@ tokenized_state_machine! {InternSystem<T> {
         #[sharding(variable)]
         pub auth: Seq<T>,
 
-        #[sharding(persistent_map)]
+        #[sharding(persistent_imap)]
         pub frag: IMap<int, T>,
     }
 

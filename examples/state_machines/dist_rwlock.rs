@@ -23,7 +23,7 @@ tokenized_state_machine!{
             #[sharding(variable)]
             pub exc_locked: bool,
 
-            #[sharding(map)]
+            #[sharding(imap)]
             pub ref_counts: IMap<int, int>,
 
             #[sharding(option)]

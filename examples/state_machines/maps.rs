@@ -9,7 +9,7 @@ use verus_state_machines_macros::tokenized_state_machine;
 tokenized_state_machine!(
     X {
         fields {
-            #[sharding(map)]
+            #[sharding(imap)]
             pub bool_map: IMap<int, bool>,
 
         }

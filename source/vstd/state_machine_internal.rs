@@ -65,6 +65,14 @@ pub fn assert_add_set(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: to add a singleton iset, the value must not be in the iset before the update")] /* vattr */
+pub fn assert_add_iset(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: to add a value `true`, field must be `false` before the update")] /* vattr */
 pub fn assert_add_bool(b: bool) {
     requires(b);
@@ -75,6 +83,14 @@ pub fn assert_add_bool(b: bool) {
 #[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the update")] /* vattr */
 pub fn assert_add_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the imap before the update")] /* vattr */
+pub fn assert_add_imap(b: bool) {
     requires(b);
     ensures(b);
 }

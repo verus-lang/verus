@@ -46,7 +46,7 @@ tokenized_state_machine! {
             #[sharding(constant)]
             pub num_clients: nat,
 
-            #[sharding(map)]
+            #[sharding(imap)]
             pub clients: IMap<nat, Client>,
 
             #[sharding(map)]

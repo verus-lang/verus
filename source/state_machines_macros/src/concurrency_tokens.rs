@@ -1162,9 +1162,13 @@ fn add_initialization_output_conditions(
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
                 sm,
@@ -1220,6 +1224,17 @@ fn relation_for_collection_of_internal_tokens(
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
+                quote_spanned_vstd! { vstd, span => #vstd::set::Set::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).set())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
+        ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
                 quote_spanned_vstd! { vstd, span => #vstd::set::ISet::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
@@ -1228,6 +1243,17 @@ fn relation_for_collection_of_internal_tokens(
             })
         }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::map::Map::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).map())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
+        | ShardableType::IMap(_, _) | ShardableType::PersistentIMap(_, _) => {
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
@@ -1279,6 +1305,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 matches!(&field.stype, ShardableType::Set(_)),
             )
         }
+        ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Element(ty),
+                matches!(&field.stype, ShardableType::ISet(_)),
+            )
+        }
         ShardableType::Bool | ShardableType::PersistentBool => {
             let token_ty = field_token_type(sm, field);
             token_trait_impls(
@@ -1295,6 +1330,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 &sm.generics,
                 MainTrait::KeyValue(key, val),
                 matches!(&field.stype, ShardableType::Map(_, _)),
+            )
+        }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::KeyValue(key, val),
+                matches!(&field.stype, ShardableType::IMap(_, _)),
             )
         }
         ShardableType::Multiset(ty) => {
@@ -1849,7 +1893,8 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         | ShardableType::Bool
         | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#tok> }),
 
-        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val)
+        | ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MapToken<#key, #val, #tok> })
         }
 
