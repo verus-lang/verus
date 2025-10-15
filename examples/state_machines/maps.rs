@@ -52,10 +52,10 @@ tokenized_state_machine!(
             #[sharding(variable)]
             pub m: int,
 
-            #[sharding(map)]
+            #[sharding(imap)]
             pub map: IMap<int, bool>,
 
-            #[sharding(storage_map)]
+            #[sharding(storage_imap)]
             pub storage_map: IMap<int, bool>,
         }
 

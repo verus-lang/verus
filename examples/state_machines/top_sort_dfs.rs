@@ -45,7 +45,7 @@ tokenized_state_machine!{
             #[sharding(iset)]
             pub unvisited: ISet<V>,
 
-            #[sharding(persistent_set)]
+            #[sharding(persistent_iset)]
             pub visited: ISet<V>,
 
             #[sharding(variable)]

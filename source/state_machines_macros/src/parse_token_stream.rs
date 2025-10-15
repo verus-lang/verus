@@ -633,7 +633,7 @@ fn to_fields(
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
             ShardingType::IMap => {
-                let v = extract_template_params(&field.ty, "map", "IMap", 2)?;
+                let v = extract_template_params(&field.ty, "imap", "IMap", 2)?;
                 ShardableType::IMap(v[0].clone(), v[1].clone())
             }
             ShardingType::Set => {
@@ -641,7 +641,7 @@ fn to_fields(
                 ShardableType::Set(v[0].clone())
             }
             ShardingType::ISet => {
-                let v = extract_template_params(&field.ty, "set", "ISet", 1)?;
+                let v = extract_template_params(&field.ty, "iset", "ISet", 1)?;
                 ShardableType::ISet(v[0].clone())
             }
             ShardingType::StorageOption => {
@@ -670,11 +670,11 @@ fn to_fields(
             }
             ShardingType::PersistentSet => {
                 let v = extract_template_params(&field.ty, "persistent_set", "Set", 1)?;
-                ShardableType::PersistentISet(v[0].clone())
+                ShardableType::PersistentSet(v[0].clone())
             }
             ShardingType::PersistentISet => {
                 let v = extract_template_params(&field.ty, "persistent_iset", "ISet", 1)?;
-                ShardableType::PersistentSet(v[0].clone())
+                ShardableType::PersistentISet(v[0].clone())
             }
         };
 

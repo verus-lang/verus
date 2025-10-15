@@ -105,6 +105,14 @@ pub fn assert_add_persistent_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: if the key is already in the imap, its existing value must agree with the provided value")] /* vattr */
+pub fn assert_add_persistent_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: if the previous value is Some(_), then this existing value must agree with the newly provided value")] /* vattr */
 pub fn assert_add_persistent_option(b: bool) {
     requires(b);
@@ -147,6 +155,14 @@ pub fn assert_withdraw_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw")] /* vattr */
+pub fn assert_withdraw_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the deposit")] /* vattr */
 pub fn assert_deposit_map(b: bool) {
     requires(b);
@@ -155,8 +171,24 @@ pub fn assert_deposit_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the imap before the deposit")] /* vattr */
+pub fn assert_deposit_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key")] /* vattr */
 pub fn assert_guard_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key")] /* vattr */
+pub fn assert_guard_imap(b: bool) {
     requires(b);
     ensures(b);
 }
@@ -177,6 +209,16 @@ pub fn assert_general_add_option(b: bool) {
     "unable to prove inherent safety condition: the sets being composed must be disjoint"
 )] /* vattr */
 pub fn assert_general_add_set(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err(
+    "unable to prove inherent safety condition: the isets being composed must be disjoint"
+)] /* vattr */
+pub fn assert_general_add_iset(b: bool) {
     requires(b);
     ensures(b);
 }
