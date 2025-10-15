@@ -57,8 +57,7 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOption(ty) => ty.clone(),
-        ShardableType::StorageMap(_key, ty)
-        | ShardableType::StorageIMap(_key, ty) => ty.clone(),
+        ShardableType::StorageMap(_key, ty) | ShardableType::StorageIMap(_key, ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
