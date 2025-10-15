@@ -324,7 +324,24 @@ test_verify_one_file! {
     #[test] test_use_map_directly IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(map)] pub t: IMap<int, int>,
+                #[sharding(map)] pub t: Map<int, int>,
+                #[sharding(variable)] pub v: int,
+            }
+
+            transition!{
+                tr() {
+                    update v = pre.t.index(0);
+                }
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "cannot be directly referenced here")
+}
+
+test_verify_one_file! {
+    #[test] test_use_imap_directly IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(imap)] pub t: IMap<int, int>,
                 #[sharding(variable)] pub v: int,
             }
 
@@ -424,7 +441,7 @@ test_verify_one_file! {
     #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(map)] pub v: IMap<int, int>,
+                #[sharding(map)] pub v: Map<int, int>,
             }
 
             transition!{
@@ -1217,7 +1234,7 @@ test_verify_one_file! {
                 pub t: int,
             }
         }}
-    } => Err(e) => assert_vir_error_msg(e, "must be of the form IMap<_, _>")
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
 }
 
 test_verify_one_file! {
@@ -1247,6 +1264,17 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(set)]
+                pub t: Multiset<int>,
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Set<_>")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_iset IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(iset)]
                 pub t: Multiset<int>,
             }
         }}
@@ -1986,7 +2014,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             transition!{
@@ -2068,7 +2096,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             transition!{
@@ -2092,7 +2120,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             transition!{
@@ -2167,7 +2195,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             transition!{
@@ -2592,7 +2620,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(set)]
-                pub t: ISet<int>,
+                pub t: Set<int>,
             }
 
             transition!{
@@ -2626,7 +2654,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>,
+                pub t: Map<int, int>,
             }
 
             transition!{
@@ -2677,7 +2705,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             transition!{
@@ -2711,7 +2739,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(map)]
-                pub t: IMap<int, int>
+                pub t: Map<int, int>
             }
 
             property!{
@@ -3272,7 +3300,7 @@ test_verify_one_file! {
                 pub opt: Option<int>,
 
                 #[sharding(map)]
-                pub map: IMap<int, int>,
+                pub map: Map<int, int>,
 
                 #[sharding(multiset)]
                 pub mset: Multiset<int>,
@@ -3524,7 +3552,7 @@ test_verify_one_file! {
                 pub opt: Option<int>,
 
                 #[sharding(map)]
-                pub map: IMap<int, int>,
+                pub map: Map<int, int>,
 
                 #[sharding(multiset)]
                 pub mset: Multiset<int>,
@@ -4219,7 +4247,7 @@ test_verify_one_file! {
                 pub opt: Option<int>,
 
                 #[sharding(map)]
-                pub map: IMap<int, u64>,
+                pub map: Map<int, u64>,
 
                 #[sharding(storage_map)]
                 pub storage_map: IMap<int, u64>,
@@ -5336,7 +5364,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(map)]
-                pub m: IMap<int, Goo>,
+                pub m: Map<int, Goo>,
 
                 #[sharding(storage_map)]
                 pub storage_m: IMap<int, Goo>,
@@ -6389,7 +6417,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(set)]
-                pub b: ISet<int>,
+                pub b: Set<int>,
             }
 
             init!{
@@ -7284,7 +7312,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ A {
             fields {
                 #[sharding(map)]
-                pub x: IMap<int, Y>,
+                pub x: Map<int, Y>,
             }
 
             init!{
@@ -7309,7 +7337,7 @@ test_verify_one_file! {
         tokenized_state_machine!{ X<T: Tr> {
             fields {
                 #[sharding(map)]
-                pub m: IMap<int, T::AssocType>,
+                pub m: Map<int, T::AssocType>,
             }
 
             init!{

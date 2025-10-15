@@ -279,7 +279,9 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         | ShardableType::Multiset(_)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
         | ShardableType::PersistentMap(_, _)
@@ -314,8 +316,10 @@ fn is_allowed_in_special_op(
         }
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
@@ -411,6 +415,7 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::NotTokenized(_) => false,
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::StorageMap(_, _) => match elt {
             MonoidElt::General(_) => true,
@@ -418,7 +423,9 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
             _ => false,
         },
 
-        ShardableType::Set(_) | ShardableType::PersistentSet(_) => match elt {
+        ShardableType::Set(_)
+        | ShardableType::ISet(_)
+        | ShardableType::PersistentSet(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonSet(_) => true,
             _ => false,

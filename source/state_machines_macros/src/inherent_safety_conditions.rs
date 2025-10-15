@@ -42,6 +42,7 @@ fn check_inherent_condition_for_special_op(
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::IMap(_, _) => CollectionType::IMap,
         ShardableType::PersistentOption(_) => CollectionType::PersistentOption,
         ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
@@ -51,6 +52,7 @@ fn check_inherent_condition_for_special_op(
         ShardableType::Bool => CollectionType::Bool,
         ShardableType::PersistentBool => CollectionType::PersistentBool,
         ShardableType::Set(_) => CollectionType::Set,
+        ShardableType::ISet(_) => CollectionType::ISet,
         ShardableType::PersistentSet(_) => CollectionType::PersistentSet,
 
         ShardableType::Variable(_)
@@ -107,7 +109,9 @@ fn check_inherent_condition_for_special_op(
             CollectionType::Option
             | CollectionType::PersistentOption
             | CollectionType::Map
+            | CollectionType::IMap
             | CollectionType::Set
+            | CollectionType::ISet
             | CollectionType::Bool
             | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
@@ -125,6 +129,7 @@ fn check_inherent_condition_for_special_op(
 #[derive(Copy, Clone)]
 enum CollectionType {
     Map,
+    IMap,
     PersistentMap,
     Multiset,
     Option,
@@ -132,6 +137,7 @@ enum CollectionType {
     Nat,
     PersistentNat,
     Set,
+    ISet,
     PersistentSet,
     Bool,
     PersistentBool,
@@ -143,8 +149,10 @@ impl CollectionType {
             CollectionType::Nat => "count",
             CollectionType::PersistentNat => "persistent_count",
             CollectionType::Map => "map",
+            CollectionType::IMap => "imap",
             CollectionType::PersistentMap => "persistent_map",
             CollectionType::Set => "set",
+            CollectionType::ISet => "iset",
             CollectionType::PersistentSet => "persistent_set",
             CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
