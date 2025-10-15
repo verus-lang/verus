@@ -42,7 +42,7 @@ tokenized_state_machine!{
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,
 
-            #[sharding(set)]
+            #[sharding(iset)]
             pub unvisited: ISet<V>,
 
             #[sharding(persistent_set)]

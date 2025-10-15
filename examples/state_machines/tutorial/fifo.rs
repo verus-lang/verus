@@ -45,7 +45,7 @@ tokenized_state_machine!{FifoQueue<T> {
 
         // All the stored permissions
 
-        #[sharding(storage_map)]
+        #[sharding(storage_imap)]
         pub storage: IMap<nat, cell::PointsTo<T>>,
 
         // Represents the shared `head` field
