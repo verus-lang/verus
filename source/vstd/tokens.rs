@@ -1,5 +1,7 @@
 use super::multiset::*;
 use super::prelude::*;
+use super::set::{Finiteness, Infinite, Finite, GSet};
+use super::map::GMap;
 use core::marker::PhantomData;
 
 pub mod frac;
@@ -247,15 +249,15 @@ pub trait UniqueSimpleToken : SimpleToken {
 }
 
 #[verifier::reject_recursive_types(Key)]
-pub tracked struct MapToken<Key, Value, Token>
+pub tracked struct GMapToken<Key, Value, Token, FINITE: Finiteness>
     where Token: KeyValueToken<Key, Value>
 {
     ghost _v: PhantomData<Value>,
     ghost inst: InstanceId,
-    tracked m: IMap<Key, Token>,
+    tracked m: GMap<Key, Token, FINITE>,
 }
 
-impl<Key, Value, Token> MapToken<Key, Value, Token>
+impl<Key, Value, Token, FINITE: Finiteness> GMapToken<Key, Value, Token, FINITE>
     where Token: KeyValueToken<Key, Value>
 {
     #[verifier::type_invariant]
@@ -268,15 +270,12 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         self.inst
     }
 
-    pub closed spec fn map(self) -> IMap<Key, Value> {
-        IMap::new(
-            |k: Key| self.m.contains_key(k),
-            |k: Key| self.m[k].value(),
-        )
+    pub closed spec fn map(self) -> GMap<Key, Value, FINITE> {
+        self.m.map_values(|t: Token| t.value())
     }
 
     #[verifier::inline]
-    pub open spec fn dom(self) -> ISet<Key> {
+    pub open spec fn dom(self) -> GSet<Key, FINITE> {
         self.map().dom()
     }
 
@@ -293,10 +292,10 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.map() === IMap::empty(),
+            s.map() === GMap::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: IMap::tracked_empty(), _v: PhantomData };
-        assert(s.map() =~= IMap::empty());
+        let tracked s = Self { inst: instance_id, m: GMap::tracked_empty(), _v: PhantomData };
+        assert(s.map() =~= GMap::empty());
         return s;
     }
 
@@ -328,7 +327,7 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: IMap<Key, Token>)
+    pub proof fn into_map(tracked self) -> (tracked map: GMap<Key, Token, FINITE>)
         ensures
             map.dom() == self.map().dom(),
             forall |key|
@@ -340,12 +339,12 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
                  && map[key].value() == self.map()[key]
     {
         use_type_invariant(&self);
-        let tracked MapToken { inst, m, _v } = self;
+        let tracked GMapToken { inst, m, _v } = self;
         assert(m.dom() =~= self.map().dom());
         return m;
     }
 
-    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Key, Token>) -> (tracked s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GMap<Key, Token, FINITE>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
@@ -355,21 +354,24 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
             forall |key| #[trigger] map.dom().contains(key)
                 ==> s.map()[key] == map[key].value()
     {
-        let tracked s = MapToken { inst: instance_id, m: map, _v: PhantomData };
+        let tracked s = GMapToken { inst: instance_id, m: map, _v: PhantomData };
         assert(map.dom() == s.map().dom());
         s
     }
 }
 
+pub type IMapToken<Key, Value, Token> = GMapToken<Key, Value, Token, Infinite>;
+pub type MapToken<Key, Value, Token> = GMapToken<Key, Value, Token, Finite>;
+
 #[verifier::reject_recursive_types(Element)]
-pub tracked struct SetToken<Element, Token>
+pub tracked struct GSetToken<Element, Token, FINITE: Finiteness>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
-    tracked m: IMap<Element, Token>,
+    tracked m: GMap<Element, Token, FINITE>,
 }
 
-impl<Element, Token> SetToken<Element, Token>
+impl<Element, Token, FINITE: Finiteness> GSetToken<Element, Token, FINITE>
     where Token: ElementToken<Element>
 {
     #[verifier::type_invariant]
@@ -382,7 +384,7 @@ impl<Element, Token> SetToken<Element, Token>
         self.inst
     }
 
-    pub closed spec fn set(self) -> ISet<Element> {
+    pub closed spec fn set(self) -> GSet<Element, FINITE> {
         self.m.dom()
     }
 
@@ -394,10 +396,10 @@ impl<Element, Token> SetToken<Element, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.set() === ISet::empty(),
+            s.set() === GSet::empty(),
     {
-        let tracked s = Self { inst: instance_id, m: IMap::tracked_empty() };
-        assert(s.set() =~= ISet::empty());
+        let tracked s = Self { inst: instance_id, m: GMap::tracked_empty() };
+        assert(s.set() =~= GSet::empty());
         return s;
     }
 
@@ -428,7 +430,7 @@ impl<Element, Token> SetToken<Element, Token>
         t
     }
 
-    pub proof fn into_map(tracked self) -> (tracked map: IMap<Element, Token>)
+    pub proof fn into_map(tracked self) -> (tracked map: GMap<Element, Token, FINITE>)
         ensures
             map.dom() == self.set(),
             forall |key|
@@ -439,12 +441,12 @@ impl<Element, Token> SetToken<Element, Token>
                      && map[key].element() == key
     {
         use_type_invariant(&self);
-        let tracked SetToken { inst, m } = self;
+        let tracked GSetToken { inst, m } = self;
         assert(m.dom() =~= self.set());
         return m;
     }
 
-    pub proof fn from_map(instance_id: InstanceId, tracked map: IMap<Element, Token>) -> (tracked s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: GMap<Element, Token, FINITE>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
@@ -452,11 +454,14 @@ impl<Element, Token> SetToken<Element, Token>
             s.instance_id() == instance_id,
             s.set() == map.dom(),
     {
-        let tracked s = SetToken { inst: instance_id, m: map };
+        let tracked s = GSetToken { inst: instance_id, m: map };
         assert(s.set() =~= map.dom());
         s
     }
 }
+
+pub type ISetToken<Element, Token> = GSetToken<Element, Token, Infinite>;
+pub type SetToken<Element, Token> = GSetToken<Element, Token, Finite>;
 
 pub tracked struct MultisetToken<Element, Token>
     where Token: ElementToken<Element>
