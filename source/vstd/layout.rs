@@ -364,6 +364,16 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
         align_of::<*mut T>() == align_of::<usize>(),
 ;
 
+/// Pointers to unsized types have the at least the size and alignment as pointers to sized types
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.unsized)).
+pub broadcast axiom fn layout_of_references_and_pointers_for_unsized_types<T: ?Sized>()
+    ensures
+        #![trigger size_of::<*mut T>()]
+        #![trigger align_of::<*mut T>()]
+        size_of::<*mut T>() >= size_of::<usize>(),
+        align_of::<*mut T>() >= align_of::<usize>(),
+;
+
 /// Slices have the same layout as the underlying type.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#slice-layout)).
 pub broadcast axiom fn layout_of_slices<T>(x: &[T])
@@ -394,6 +404,7 @@ pub broadcast group group_layout_axioms {
     layout_of_unit_tuple,
     layout_of_references_and_pointers,
     layout_of_references_and_pointers_for_sized_types,
+    layout_of_references_and_pointers_for_unsized_types,
     layout_of_slices,
     layout_of_str,
     group_align_properties,

@@ -102,7 +102,7 @@ pub trait TypeRepresentation<T> {
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(v: T) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>)
         ensures
             Self::encode(v, b),
     ;
@@ -146,7 +146,7 @@ impl TypeRepresentation<bool> for BoolRepresentation {
     proof fn encoding_size(v: bool, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(v: bool) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: bool) -> (b: Seq<AbstractByte>) {
         seq![
             AbstractByte::Init(
                 if v {
@@ -185,7 +185,7 @@ impl TypeRepresentation<u8> for U8Representation {
     proof fn encoding_size(v: u8, b: Seq<AbstractByte>) {
     }
 
-    proof fn encoding_exists(v: u8) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: u8) -> (b: Seq<AbstractByte>) {
         seq![AbstractByte::Init(v, None)]
     }
 
@@ -297,7 +297,7 @@ impl TypeRepresentation<u16> for U16Representation {
         unsigned_int_max_bounds();
     }
 
-    proof fn encoding_exists(v: u16) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: u16) -> (b: Seq<AbstractByte>) {
         endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u16>()), None)
     }
 
@@ -338,7 +338,7 @@ impl TypeRepresentation<u32> for U32Representation {
         unsigned_int_max_bounds();
     }
 
-    proof fn encoding_exists(v: u32) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: u32) -> (b: Seq<AbstractByte>) {
         endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u32>()), None)
     }
 
@@ -379,7 +379,7 @@ impl TypeRepresentation<u64> for U64Representation {
         unsigned_int_max_bounds();
     }
 
-    proof fn encoding_exists(v: u64) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: u64) -> (b: Seq<AbstractByte>) {
         endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<u64>()), None)
     }
 
@@ -420,7 +420,7 @@ impl TypeRepresentation<usize> for UsizeRepresentation {
         unsigned_int_max_bounds();
     }
 
-    proof fn encoding_exists(v: usize) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: usize) -> (b: Seq<AbstractByte>) {
         endian_to_bytes(EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<usize>()), None)
     }
 
@@ -433,28 +433,37 @@ impl TypeRepresentation<usize> for UsizeRepresentation {
 
 /* Raw pointers */
 
-// *const T and *mut T have the same representation: https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer
-// The below encoding is only for `T: Sized`. Pointers for DSTs will have a different encoding
+/// This raw pointer representation is shared across *const T and *mut T because they have the same representation.
+/// The below encoding works for types `T` that are both sized and unsized (i.e. DSTs).
+/// The "prefix": the first `size_of::<usize>()` bytes of the encoding will always encode the pointer's address and per-byte provenance.
+/// The "suffix": the next `size_of::<*mut T>() - size_of::<usize>()` bytes will have contents that are unspecified.
+/// - For `T: Sized`, `size_of::<*mut T>() = size_of::<usize>()`, and so the suffix is a sequence of length 0.
+/// - For `T` unsized, the Rust language reference only specifies that `size_of::<*mut T>() >= size_of::<usize>()`,
+/// so this encoding allows the byte sequence to take the necessary (unspecified) length.
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer))
 pub struct RawPtrRepresentation {}
 
-impl<T> TypeRepresentation<*mut T> for RawPtrRepresentation {
+impl<T: ?Sized> TypeRepresentation<*mut T> for RawPtrRepresentation {
     open spec fn encode(value: *mut T, bytes: Seq<AbstractByte>) -> bool {
-        bytes == endian_to_bytes(
-            EndianNat::<u8>::from_nat_with_len(value as nat, size_of::<*mut T>()),
+        let prefix = bytes.subrange(0, size_of::<usize>() as int);
+        &&& bytes.len() == size_of::<*mut T>()
+        &&& prefix == endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(value@.addr as nat, size_of::<usize>()),
             // the abstract encoding preserves the provenance from this pointer
             Some(value@.provenance),
         )
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>, value: *mut T) -> bool {
+        let prefix = bytes.subrange(0, size_of::<usize>() as int);
         // fail if any byte is uninitalized or if the byte sequence is not the necessary length
         &&& bytes.len() == size_of::<*mut T>()
-        &&& AbstractByte::all_init(bytes)
+        &&& AbstractByte::all_init(prefix)
         &&& {
-            let endian = bytes_to_endian(bytes);
+            let endian = bytes_to_endian(prefix);
             // if all bytes in the sequence have the same provenance, then this should be preserved in the decoding.
             // otherwise, the resulting pointer should have no provenance
-            let prov = AbstractByte::shared_provenance(bytes);
+            let prov = AbstractByte::shared_provenance(prefix);
             &&& endian.wf()
             &&& value@.addr == endian.to_nat() as usize
             &&& value@.provenance == prov
@@ -462,16 +471,24 @@ impl<T> TypeRepresentation<*mut T> for RawPtrRepresentation {
     }
 
     proof fn encoding_size(v: *mut T, b: Seq<AbstractByte>) {
+    }
+
+    proof fn encoding_exists(tracked v: *mut T) -> (b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_bounds();
-    }
-
-    proof fn encoding_exists(v: *mut T) -> (b: Seq<AbstractByte>) {
-        endian_to_bytes(
-            EndianNat::<u8>::from_nat_with_len(v as nat, size_of::<*mut T>()),
+        let prefix = endian_to_bytes(
+            EndianNat::<u8>::from_nat_with_len(v@.addr as nat, size_of::<usize>()),
             Some(v@.provenance),
-        )
+        );
+        let suffix = Seq::<AbstractByte>::new(
+            (size_of::<*mut T>() - size_of::<usize>()) as nat,
+            |i| AbstractByte::Uninit,
+        );
+        let b = prefix.add(suffix);
+        assert(b.subrange(0, size_of::<usize>() as int) =~= prefix);
+        assert(b.len() == size_of::<*mut T>());
+        b
     }
 
     proof fn encoding_invertible(v: *mut T, b: Seq<AbstractByte>) {
@@ -506,7 +523,7 @@ pub trait AbstractEncoding where Self: Sized {
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>)
         ensures
             Self::encode(v, b),
     ;
@@ -542,7 +559,7 @@ impl AbstractEncoding for bool {
         BoolRepresentation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         BoolRepresentation::encoding_exists(v)
     }
 
@@ -566,7 +583,7 @@ impl AbstractEncoding for u8 {
         U8Representation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         U8Representation::encoding_exists(v)
     }
 
@@ -590,7 +607,7 @@ impl AbstractEncoding for u16 {
         U16Representation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         U16Representation::encoding_exists(v)
     }
 
@@ -629,7 +646,7 @@ impl AbstractEncoding for u32 {
         U32Representation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         U32Representation::encoding_exists(v)
     }
 
@@ -668,7 +685,7 @@ impl AbstractEncoding for u64 {
         U64Representation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         U64Representation::encoding_exists(v)
     }
 
@@ -707,7 +724,7 @@ impl AbstractEncoding for usize {
         UsizeRepresentation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         UsizeRepresentation::encoding_exists(v)
     }
 
@@ -733,7 +750,7 @@ pub broadcast proof fn usize_encode(v: usize, bytes: Seq<AbstractByte>)
     unsigned_int_max_bounds();
 }
 
-impl<T> AbstractEncoding for *mut T {
+impl<T: ?Sized> AbstractEncoding for *mut T {
     open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
         RawPtrRepresentation::encode(value, bytes)
     }
@@ -746,7 +763,7 @@ impl<T> AbstractEncoding for *mut T {
         RawPtrRepresentation::encoding_size(v, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         RawPtrRepresentation::encoding_exists(v)
     }
 
@@ -757,7 +774,7 @@ impl<T> AbstractEncoding for *mut T {
     axiom fn valid_encoding();
 }
 
-pub broadcast proof fn mut_ptr_encode<T>(v: *mut T, bytes: Seq<AbstractByte>)
+pub broadcast proof fn mut_ptr_sized_encode<T: Sized>(v: *mut T, bytes: Seq<AbstractByte>)
     requires
         #[trigger] <*mut T as AbstractEncoding>::encode(v, bytes),
     ensures
@@ -774,9 +791,14 @@ pub broadcast proof fn mut_ptr_encode<T>(v: *mut T, bytes: Seq<AbstractByte>)
     ;
 
     unsigned_int_max_bounds();
+    let prefix = endian_to_bytes(
+        EndianNat::<u8>::from_nat_with_len(v@.addr as nat, size_of::<usize>()),
+        Some(v@.provenance),
+    );
+    assert(prefix =~= bytes);
 }
 
-impl<T> AbstractEncoding for *const T {
+impl<T: ?Sized> AbstractEncoding for *const T {
     open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
         RawPtrRepresentation::encode(value as *mut T, bytes)
     }
@@ -789,7 +811,7 @@ impl<T> AbstractEncoding for *const T {
         RawPtrRepresentation::encoding_size(v as *mut T, b);
     }
 
-    proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
         RawPtrRepresentation::encoding_exists(v as *mut T)
     }
 
@@ -800,7 +822,7 @@ impl<T> AbstractEncoding for *const T {
     axiom fn valid_encoding();
 }
 
-pub broadcast proof fn const_ptr_encode<T>(v: *const T, bytes: Seq<AbstractByte>)
+pub broadcast proof fn const_ptr_sized_encode<T: Sized>(v: *const T, bytes: Seq<AbstractByte>)
     requires
         #[trigger] <*const T as AbstractEncoding>::encode(v, bytes),
     ensures
@@ -817,6 +839,11 @@ pub broadcast proof fn const_ptr_encode<T>(v: *const T, bytes: Seq<AbstractByte>
     ;
 
     unsigned_int_max_bounds();
+    let prefix = endian_to_bytes(
+        EndianNat::<u8>::from_nat_with_len(v@.addr as nat, size_of::<usize>()),
+        Some(v@.provenance),
+    );
+    assert(prefix =~= bytes);
 }
 
 /* Composite types */
@@ -825,6 +852,11 @@ pub broadcast proof fn const_ptr_encode<T>(v: *const T, bytes: Seq<AbstractByte>
 
 pub trait PrimitiveRepresentation<Primitive: AbstractEncoding + PrimitiveInt> where Self: Sized {
     spec fn to_primitive(v: Self) -> Primitive;
+
+    proof fn to_primitive_tracked(tracked v: Self) -> (tracked p: Primitive)
+        ensures
+            p == Self::to_primitive(v),
+    ;
 
     proof fn layout_of_primitive_repr()
         ensures
@@ -858,8 +890,8 @@ impl<
         Primitive::encoding_size(T::to_primitive(v), b);
     }
 
-    proof fn encoding_exists(v: T) -> (b: Seq<AbstractByte>) {
-        Primitive::encoding_exists(T::to_primitive(v))
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
+        Primitive::encoding_exists(T::to_primitive_tracked(v))
     }
 
     proof fn encoding_invertible(v: T, b: Seq<AbstractByte>) {
@@ -871,6 +903,11 @@ impl<
 
 pub trait TransparentRepresentation<Inner: AbstractEncoding> where Self: Sized {
     spec fn to_inner(v: Self) -> Inner;
+
+    proof fn to_inner_tracked(tracked v: Self) -> (tracked i: Inner)
+        ensures
+            i == Self::to_inner(v),
+    ;
 
     proof fn layout_of_transparent_repr()
         ensures
@@ -903,8 +940,8 @@ impl<Inner: AbstractEncoding, T: TransparentRepresentation<Inner>> TypeRepresent
         Inner::encoding_size(T::to_inner(v), b);
     }
 
-    proof fn encoding_exists(v: T) -> (b: Seq<AbstractByte>) {
-        Inner::encoding_exists(T::to_inner(v))
+    proof fn encoding_exists(tracked v: T) -> (b: Seq<AbstractByte>) {
+        Inner::encoding_exists(T::to_inner_tracked(v))
     }
 
     proof fn encoding_invertible(v: T, b: Seq<AbstractByte>) {
@@ -913,7 +950,7 @@ impl<Inner: AbstractEncoding, T: TransparentRepresentation<Inner>> TypeRepresent
 }
 
 // Helpers for specific transmute ops
-pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
+pub proof fn transmute_usize_mut_ptr<T: Sized>(src: usize) -> (dst: *mut T)
     ensures
         forall|bytes| #[trigger]
             usize::encode(src, bytes) ==> <*mut T as AbstractEncoding>::decode(bytes, dst),
@@ -922,7 +959,14 @@ pub proof fn transmute_usize_mut_ptr<T>(src: usize) -> (dst: *mut T)
 {
     broadcast use usize_encode;
 
-    ptr_mut_from_data(PtrData { addr: src, provenance: Provenance::null(), metadata: () })
+    let dst = ptr_mut_from_data(
+        PtrData { addr: src, provenance: Provenance::null(), metadata: () },
+    );
+    assert forall|bytes| #[trigger]
+        usize::encode(src, bytes) implies <*mut T as AbstractEncoding>::decode(bytes, dst) by {
+        assert(bytes =~= bytes.subrange(0, size_of::<usize>() as int));
+    }
+    dst
 }
 
 // can't have T: ?Sized currently, because value and is_init are not implemented generically for DSTs
