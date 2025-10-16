@@ -3,7 +3,7 @@ use super::prelude::*;
 
 verus! {
 
-broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
+broadcast use {super::set::group_set_lemmas, super::map::group_map_axioms};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -86,7 +86,7 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
 pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
     p1: P,
     s1: Map<K, V>,
-    new_values: Set<(P, Map<K, V>)>,
+    new_values: ISet<(P, Map<K, V>)>,
 ) -> bool {
     forall|q: P, t1: Map<K, V>|
         #![all_triggers]
@@ -122,10 +122,10 @@ pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
         P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1)
 }
 
-pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: Set<(P, Map<K, V>)>, t: P) -> Set<
+pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, Map<K, V>)>, t: P) -> ISet<
     (P, Map<K, V>),
 > {
-    Set::new(|v: (P, Map<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
+    ISet::new(|v: (P, Map<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
@@ -186,7 +186,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 new_p.loc() == p.loc() && new_p.value() == new_p_value && new_s == new_s_value
             }),
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic(p, s, se)
     }
 
@@ -228,7 +228,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     pub proof fn exchange_nondeterministic(
         tracked p: Self,
         tracked s: Map<K, V>,
-        new_values: Set<(P, Map<K, V>)>,
+        new_values: ISet<(P, Map<K, V>)>,
     ) -> (tracked out: (Self, Map<K, V>))
         requires
             exchanges_nondeterministic(p.value(), s, new_values),
@@ -312,7 +312,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_p_value,
             out.1 == new_s_value,
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 
@@ -323,7 +323,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         tracked p: Self,
         tracked x: &Self,
         tracked s: Map<K, V>,
-        new_values: Set<(P, Map<K, V>)>,
+        new_values: ISet<(P, Map<K, V>)>,
     ) -> (tracked out: (Self, Map<K, V>))
         requires
             p.loc() == x.loc(),

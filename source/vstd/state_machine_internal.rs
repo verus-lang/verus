@@ -6,6 +6,7 @@ use super::map::*;
 use super::pervasive::*;
 use super::prelude::*;
 use super::seq::*;
+use super::set::*;
 
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(T))]
@@ -64,6 +65,14 @@ pub fn assert_add_set(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: to add a singleton iset, the value must not be in the iset before the update")] /* vattr */
+pub fn assert_add_iset(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: to add a value `true`, field must be `false` before the update")] /* vattr */
 pub fn assert_add_bool(b: bool) {
     requires(b);
@@ -80,8 +89,24 @@ pub fn assert_add_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the imap before the update")] /* vattr */
+pub fn assert_add_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: if the key is already in the map, its existing value must agree with the provided value")] /* vattr */
 pub fn assert_add_persistent_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: if the key is already in the imap, its existing value must agree with the provided value")] /* vattr */
+pub fn assert_add_persistent_imap(b: bool) {
     requires(b);
     ensures(b);
 }
@@ -130,6 +155,14 @@ pub fn assert_withdraw_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw")] /* vattr */
+pub fn assert_withdraw_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the deposit")] /* vattr */
 pub fn assert_deposit_map(b: bool) {
     requires(b);
@@ -138,8 +171,24 @@ pub fn assert_deposit_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the given key must be absent from the imap before the deposit")] /* vattr */
+pub fn assert_deposit_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key")] /* vattr */
 pub fn assert_guard_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the value being guarded must be stored at the given key")] /* vattr */
+pub fn assert_guard_imap(b: bool) {
     requires(b);
     ensures(b);
 }
@@ -166,6 +215,16 @@ pub fn assert_general_add_set(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err(
+    "unable to prove inherent safety condition: the isets being composed must be disjoint"
+)] /* vattr */
+pub fn assert_general_add_iset(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the boolean values being composed cannot both be `true`")] /* vattr */
 pub fn assert_general_add_bool(b: bool) {
     requires(b);
@@ -182,8 +241,24 @@ pub fn assert_general_add_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the key domains of the imaps being composed must be disjoint")] /* vattr */
+pub fn assert_general_add_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the maps being composed must agree on their values for any key in both domains")] /* vattr */
 pub fn assert_general_add_persistent_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the imaps being composed must agree on their values for any key in both domains")] /* vattr */
+pub fn assert_general_add_persistent_imap(b: bool) {
     requires(b);
     ensures(b);
 }
@@ -232,6 +307,14 @@ pub fn assert_general_withdraw_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the imap being withdrawn must be a submap of the stored imap")] /* vattr */
+pub fn assert_general_withdraw_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint")] /* vattr */
 pub fn assert_general_deposit_map(b: bool) {
     requires(b);
@@ -240,8 +323,24 @@ pub fn assert_general_deposit_map(b: bool) {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the key domains of the imaps being composed must be disjoint")] /* vattr */
+pub fn assert_general_deposit_imap(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
 #[verifier::custom_req_err("unable to prove inherent safety condition: the map being guarded must be a submap of the stored map")] /* vattr */
 pub fn assert_general_guard_map(b: bool) {
+    requires(b);
+    ensures(b);
+}
+
+#[cfg(verus_keep_ghost)]
+#[verifier::proof]
+#[verifier::custom_req_err("unable to prove inherent safety condition: the imap being guarded must be a submap of the stored imap")] /* vattr */
+pub fn assert_general_guard_imap(b: bool) {
     requires(b);
     ensures(b);
 }
@@ -276,7 +375,7 @@ impl<A> Seq<A> {
 }
 
 #[doc(hidden)]
-impl<K, V> Map<K, V> {
+impl<K, V, FINITE: Finiteness> GMap<K, V, FINITE> {
     // note that despite the name, this is allowed to insert
     #[verifier::inline]
     pub open spec fn update_at_index(self, k: K, v: V) -> Self {

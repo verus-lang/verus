@@ -374,7 +374,7 @@ impl<V> DListXor<V> {
                 }
                 (self.perms.borrow_mut()).tracked_map_keys_in_place(
                     Map::<nat, nat>::new(
-                        |j: nat| 0 <= j < old(self)@.len() - 1,
+                        Set::range(0, (old(self)@.len() - 1) as nat),
                         |j: nat| (j + 1) as nat,
                     ),
                 );
@@ -448,7 +448,7 @@ impl<V> DListXor<V> {
                 }
                 self.perms.borrow_mut().tracked_map_keys_in_place(
                     Map::<nat, nat>::new(
-                        |j: nat| 1 <= j <= old(self)@.len(),
+                        Set::range(1, old(self)@.len() + 1),
                         |j: nat| (j - 1) as nat,
                     ),
                 );

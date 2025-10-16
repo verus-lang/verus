@@ -371,19 +371,24 @@ enum ShardingType {
 
     Option,
     Map,
+    IMap,
     Set,
+    ISet,
     Multiset,
     Count,
     Bool,
 
     PersistentOption,
     PersistentMap,
+    PersistentIMap,
     PersistentSet,
+    PersistentISet,
     PersistentCount,
     PersistentBool,
 
     StorageOption,
     StorageMap,
+    StorageIMap,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -427,15 +432,20 @@ fn get_sharding_type(
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
                                 "set" => ShardingType::Set,
+                                "iset" => ShardingType::ISet,
                                 "bool" => ShardingType::Bool,
                                 "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
+                                "imap" => ShardingType::IMap,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "storage_imap" => ShardingType::StorageIMap,
                                 "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
+                                "persistent_imap" => ShardingType::PersistentIMap,
                                 "persistent_set" => ShardingType::PersistentSet,
+                                "persistent_iset" => ShardingType::PersistentISet,
                                 "persistent_count" => ShardingType::PersistentCount,
                                 "persistent_bool" => ShardingType::PersistentBool,
                                 "not_tokenized" => ShardingType::NotTokenized,
@@ -622,9 +632,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
+            ShardingType::IMap => {
+                let v = extract_template_params(&field.ty, "imap", "IMap", 2)?;
+                ShardableType::IMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::Set => {
                 let v = extract_template_params(&field.ty, "set", "Set", 1)?;
                 ShardableType::Set(v[0].clone())
+            }
+            ShardingType::ISet => {
+                let v = extract_template_params(&field.ty, "iset", "ISet", 1)?;
+                ShardableType::ISet(v[0].clone())
             }
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
@@ -634,6 +652,10 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "storage_map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::StorageIMap => {
+                let v = extract_template_params(&field.ty, "storage_imap", "IMap", 2)?;
+                ShardableType::StorageIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentOption => {
                 let v = extract_template_params(&field.ty, "persistent_option", "Option", 1)?;
                 ShardableType::PersistentOption(v[0].clone())
@@ -642,9 +664,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "persistent_map", "Map", 2)?;
                 ShardableType::PersistentMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::PersistentIMap => {
+                let v = extract_template_params(&field.ty, "persistent_imap", "IMap", 2)?;
+                ShardableType::PersistentIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentSet => {
                 let v = extract_template_params(&field.ty, "persistent_set", "Set", 1)?;
                 ShardableType::PersistentSet(v[0].clone())
+            }
+            ShardingType::PersistentISet => {
+                let v = extract_template_params(&field.ty, "persistent_iset", "ISet", 1)?;
+                ShardableType::PersistentISet(v[0].clone())
             }
         };
 

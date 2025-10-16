@@ -65,19 +65,24 @@ pub enum ShardableType {
 
     Option(Type),
     Map(Type, Type),
+    IMap(Type, Type),
     Multiset(Type),
     Set(Type),
+    ISet(Type),
     Count,
     Bool,
 
     PersistentMap(Type, Type),
+    PersistentIMap(Type, Type),
     PersistentOption(Type),
     PersistentSet(Type),
+    PersistentISet(Type),
     PersistentCount,
     PersistentBool,
 
     StorageOption(Type),
     StorageMap(Type, Type),
+    StorageIMap(Type, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -445,19 +450,24 @@ impl ShardableType {
 
             ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
+            ShardableType::IMap(_, _) => "imap",
             ShardableType::Multiset(_) => "multiset",
             ShardableType::Set(_) => "set",
+            ShardableType::ISet(_) => "iset",
             ShardableType::Count => "count",
             ShardableType::Bool => "bool",
 
             ShardableType::PersistentMap(_, _) => "persistent_map",
+            ShardableType::PersistentIMap(_, _) => "persistent_imap",
             ShardableType::PersistentOption(_) => "persistent_option",
             ShardableType::PersistentSet(_) => "persistent_set",
+            ShardableType::PersistentISet(_) => "persistent_iset",
             ShardableType::PersistentCount => "persistent_count",
             ShardableType::PersistentBool => "persistent_bool",
 
             ShardableType::StorageOption(_) => "storage_option",
             ShardableType::StorageMap(_, _) => "storage_map",
+            ShardableType::StorageIMap(_, _) => "storage_imap",
         }
     }
 
@@ -471,7 +481,9 @@ impl ShardableType {
 
     pub fn is_storage(&self) -> bool {
         match self {
-            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => true,
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => true,
 
             ShardableType::Variable(_)
             | ShardableType::Constant(_)
@@ -479,22 +491,28 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
             | ShardableType::PersistentOption(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentBool
             | ShardableType::Count
             | ShardableType::Bool
-            | ShardableType::Set(_) => false,
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_) => false,
         }
     }
 
     pub fn is_persistent(&self) -> bool {
         match self {
             ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
             | ShardableType::PersistentOption(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentBool => true,
 
@@ -504,9 +522,12 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::StorageOption(_)
             | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _)
             | ShardableType::Bool
             | ShardableType::Count => false,
         }
@@ -533,7 +554,9 @@ impl ShardableType {
     pub fn get_map_key_type(&self) -> Type {
         match self {
             ShardableType::Map(key, _val) => key.clone(),
+            ShardableType::IMap(key, _val) => key.clone(),
             ShardableType::StorageMap(key, _val) => key.clone(),
+            ShardableType::StorageIMap(key, _val) => key.clone(),
             _ => panic!("get_map_key_type expected map"),
         }
     }
@@ -542,7 +565,9 @@ impl ShardableType {
     pub fn get_map_value_type(&self) -> Type {
         match self {
             ShardableType::Map(_key, val) => val.clone(),
+            ShardableType::IMap(_key, val) => val.clone(),
             ShardableType::StorageMap(_key, val) => val.clone(),
+            ShardableType::StorageIMap(_key, val) => val.clone(),
             _ => panic!("get_map_value_type expected map"),
         }
     }

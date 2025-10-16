@@ -42,16 +42,21 @@ fn check_inherent_condition_for_special_op(
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::IMap(_, _) => CollectionType::IMap,
         ShardableType::PersistentOption(_) => CollectionType::PersistentOption,
         ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
+        ShardableType::PersistentIMap(_, _) => CollectionType::PersistentIMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
+        ShardableType::StorageIMap(_, _) => CollectionType::IMap,
         ShardableType::Count => CollectionType::Nat,
         ShardableType::PersistentCount => CollectionType::PersistentNat,
         ShardableType::Bool => CollectionType::Bool,
         ShardableType::PersistentBool => CollectionType::PersistentBool,
         ShardableType::Set(_) => CollectionType::Set,
+        ShardableType::ISet(_) => CollectionType::ISet,
         ShardableType::PersistentSet(_) => CollectionType::PersistentSet,
+        ShardableType::PersistentISet(_) => CollectionType::PersistentISet,
 
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
@@ -90,7 +95,8 @@ fn check_inherent_condition_for_special_op(
             | CollectionType::Nat
             | CollectionType::PersistentNat
             | CollectionType::PersistentBool
-            | CollectionType::PersistentSet => {
+            | CollectionType::PersistentSet
+            | CollectionType::PersistentISet => {
                 if user_gave_proof_body {
                     let name = op.stmt.name();
                     let cname = coll_type.name();
@@ -107,9 +113,12 @@ fn check_inherent_condition_for_special_op(
             CollectionType::Option
             | CollectionType::PersistentOption
             | CollectionType::Map
+            | CollectionType::IMap
             | CollectionType::Set
+            | CollectionType::ISet
             | CollectionType::Bool
-            | CollectionType::PersistentMap => {
+            | CollectionType::PersistentMap
+            | CollectionType::PersistentIMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
                 if is_general {
@@ -125,14 +134,18 @@ fn check_inherent_condition_for_special_op(
 #[derive(Copy, Clone)]
 enum CollectionType {
     Map,
+    IMap,
     PersistentMap,
+    PersistentIMap,
     Multiset,
     Option,
     PersistentOption,
     Nat,
     PersistentNat,
     Set,
+    ISet,
     PersistentSet,
+    PersistentISet,
     Bool,
     PersistentBool,
 }
@@ -143,9 +156,13 @@ impl CollectionType {
             CollectionType::Nat => "count",
             CollectionType::PersistentNat => "persistent_count",
             CollectionType::Map => "map",
+            CollectionType::IMap => "imap",
             CollectionType::PersistentMap => "persistent_map",
+            CollectionType::PersistentIMap => "persistent_imap",
             CollectionType::Set => "set",
+            CollectionType::ISet => "iset",
             CollectionType::PersistentSet => "persistent_set",
+            CollectionType::PersistentISet => "persistent_iset",
             CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",

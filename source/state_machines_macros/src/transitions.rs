@@ -279,12 +279,17 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         | ShardableType::Multiset(_)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Count
         | ShardableType::PersistentCount
         | ShardableType::Bool
@@ -314,15 +319,20 @@ fn is_allowed_in_special_op(
         }
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::Option(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::PersistentBool
         | ShardableType::PersistentCount
         | ShardableType::Count => {
@@ -411,14 +421,20 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::NotTokenized(_) => false,
 
         ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
-        | ShardableType::StorageMap(_, _) => match elt {
+        | ShardableType::PersistentIMap(_, _)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonKV(_, _) => true,
             _ => false,
         },
 
-        ShardableType::Set(_) | ShardableType::PersistentSet(_) => match elt {
+        ShardableType::Set(_)
+        | ShardableType::ISet(_)
+        | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonSet(_) => true,
             _ => false,

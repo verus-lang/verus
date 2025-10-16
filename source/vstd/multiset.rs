@@ -15,6 +15,8 @@ use super::set::*;
 
 verus! {
 
+broadcast use group_set_lemmas;
+
 /// `Multiset<V>` is an abstract multiset type for specifications.
 ///
 /// `Multiset<V>` can be encoded as a (total) map from elements to natural numbers,
@@ -30,6 +32,7 @@ verus! {
 ///
 /// To prove that two multisets are equal, it is usually easiest to use the
 /// extensionality operator `=~=`.
+///
 // We could in principle implement the Multiset via an inductive datatype
 // and so we can mark its type argument as accept_recursive_types.
 // Note: Multiset is finite (in contrast to Set, Map, which are infinite) because it
@@ -40,6 +43,12 @@ verus! {
 // (1) would be complicated and it's not clear what the use would be; (2) has some
 // weird properties (e.g., you can't in general define a multiset `map` function
 // since it might map an infinite number of elements to the same one).
+// Also, note that if multiset were infinite, it couldn't accept_recursive_types.
+//
+// Perhaps someday Verus will be able to mark finite-Map as accept_recursive_types, then this file
+// can be rewritten as just a wrapper around Map rather than the present pile of trusted axioms.
+// See https://github.com/verus-lang/verus/discussions/1663
+//
 #[verifier::external_body]
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(V)]
@@ -58,12 +67,11 @@ impl<V> Multiset<V> {
     pub uninterp spec fn empty() -> Self;
 
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose
-    /// multiplicities are given by the corresponding values of `m[element]`. The map `m`
-    /// must be finite, or else this multiset is arbitrary.
+    /// multiplicities are given by the corresponding values of `m[element]`.
     pub uninterp spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
-        Self::from_map(Map::new(|k| m.contains(k), |v| 1))
+        Self::from_map(Map::new(m, |v| 1))
     }
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
@@ -99,7 +107,7 @@ impl<V> Multiset<V> {
     /// Updates the multiplicity of the value `v` in the multiset to `mult`.
     pub open spec fn update(self, v: V, mult: nat) -> Self {
         let map = Map::new(
-            |key: V| (self.contains(key) || key == v),
+            self.dom().insert(v),
             |key: V|
                 if key == v {
                     mult
@@ -151,7 +159,7 @@ impl<V> Multiset<V> {
     /// the elements that "overlap".
     pub open spec fn intersection_with(self, other: Self) -> Self {
         let m = Map::<V, nat>::new(
-            |v: V| self.contains(v),
+            self.dom(),
             |v: V| min(self.count(v) as int, other.count(v) as int) as nat,
         );
         Self::from_map(m)
@@ -160,10 +168,7 @@ impl<V> Multiset<V> {
     /// Returns a multiset containing the difference between the count of a
     /// given element of the two sets.
     pub open spec fn difference_with(self, other: Self) -> Self {
-        let m = Map::<V, nat>::new(
-            |v: V| self.contains(v),
-            |v: V| clip(self.count(v) - other.count(v)),
-        );
+        let m = Map::<V, nat>::new(self.dom(), |v: V| clip(self.count(v) - other.count(v)));
         Self::from_map(m)
     }
 
@@ -176,7 +181,22 @@ impl<V> Multiset<V> {
 
     /// Returns the set of all elements that have a count greater than 0
     pub open spec fn dom(self) -> Set<V> {
-        Set::new(|v: V| self.count(v) > 0)
+        // This module assumes that all well-formed multisets have finite footprint,
+        // so to_finite() here is reasonable.
+        ISet::new(|v: V| self.count(v) > 0).to_finite()
+    }
+
+    // dom() won't mean anything unless we know our domain is finite, which is a soundness
+    // invariant that the present axiom-heavy representation promises to maintain.
+    pub broadcast proof fn dom_ensures(self)
+        ensures
+            #![trigger(self.dom())]
+            forall|v: V| #[trigger]
+                self.dom().contains(v) <==> self.count(v) > 0,
+    {
+        assert(ISet::new(|v: V| self.count(v) > 0).finite()) by {
+            admit();
+        }
     }
 }
 
@@ -209,6 +229,8 @@ pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         m.dom().contains(v),
     ensures
+//         #[trigger] Multiset::from_map(m).dom().contains(v),
+
         #[trigger] Multiset::from_map(m).count(v) == m[v],
 ;
 
@@ -221,6 +243,21 @@ pub broadcast axiom fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
     ensures
         #[trigger] Multiset::from_map(m).count(v) == 0,
 ;
+
+pub broadcast proof fn lemma_from_map_dom<V>(mymap: Map<V, nat>)
+    requires
+        forall|k| #[trigger] mymap.contains_key(k) ==> mymap[k] > 0,
+    ensures
+        #[trigger] Multiset::from_map(mymap).dom() == mymap.dom(),
+{
+    broadcast use {
+        Multiset::dom_ensures,
+        axiom_multiset_contained,
+        axiom_multiset_new_not_contained,
+    };
+
+    assert(Multiset::from_map(mymap).dom() == mymap.dom());  // trigger ensures extn
+}
 
 // Specification of `singleton`
 /// A call to Multiset::singleton with input value `v` will return a multiset that maps
@@ -339,6 +376,7 @@ pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,
     axiom_multiset_new_not_contained,
+    lemma_from_map_dom,
     axiom_multiset_singleton,
     axiom_multiset_singleton_different,
     axiom_multiset_add,
@@ -362,18 +400,13 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
     ensures
         #[trigger] m.update(v, mult).count(v) == mult,
 {
-    broadcast use {group_set_axioms, group_map_axioms, group_multiset_axioms};
+    broadcast use {
+        group_set_lemmas,
+        group_map_axioms,
+        group_multiset_axioms,
+        Multiset::dom_ensures,
+    };
 
-    let map = Map::new(
-        |key: V| (m.contains(key) || key == v),
-        |key: V|
-            if key == v {
-                mult
-            } else {
-                m.count(key)
-            },
-    );
-    assert(map.dom() =~= m.dom().insert(v));
 }
 
 /// The multiset resulting from updating a value `v1` in a multiset `m` to multiplicity `mult` will
@@ -384,18 +417,9 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
     ensures
         #[trigger] m.update(v1, mult).count(v2) == m.count(v2),
 {
-    broadcast use {group_set_axioms, group_map_axioms, group_multiset_axioms};
+    broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
+    broadcast use {axiom_multiset_contained, Multiset::dom_ensures};
 
-    let map = Map::new(
-        |key: V| (m.contains(key) || key == v1),
-        |key: V|
-            if key == v1 {
-                mult
-            } else {
-                m.count(key)
-            },
-    );
-    assert(map.dom() =~= m.dom().insert(v1));
 }
 
 // Lemmas about `insert`
@@ -461,12 +485,10 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     ensures
         #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
-    broadcast use {group_set_axioms, group_map_axioms, group_multiset_axioms};
+    broadcast use {group_set_lemmas, group_map_axioms, group_multiset_axioms};
+    broadcast use {group_multiset_axioms, Multiset::dom_ensures};
 
-    let m = Map::<V, nat>::new(
-        |v: V| a.contains(v),
-        |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
-    );
+    let m = Map::<V, nat>::new(a.dom(), |v: V| min(a.count(v) as int, b.count(v) as int) as nat);
     assert(m.dom() =~= a.dom());
 }
 
@@ -530,10 +552,15 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
     ensures
         #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
 {
-    broadcast use {group_set_axioms, group_map_axioms, group_multiset_axioms};
+    broadcast use {
+        group_set_lemmas,
+        group_map_axioms,
+        group_multiset_axioms,
+        Multiset::dom_ensures,
+    };
 
-    let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| clip(a.count(v) - b.count(v)));
-    assert(m.dom() =~= a.dom());
+    let map = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
+    assert(map.dom() =~= a.dom());
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude

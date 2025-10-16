@@ -45,8 +45,8 @@ tokenized_state_machine!{FifoQueue<T> {
 
         // All the stored permissions
 
-        #[sharding(storage_map)]
-        pub storage: Map<nat, cell::PointsTo<T>>,
+        #[sharding(storage_imap)]
+        pub storage: IMap<nat, cell::PointsTo<T>>,
 
         // Represents the shared `head` field
 
@@ -186,7 +186,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     init!{
-        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::PointsTo<T>>) {
+        initialize(backing_cells: Seq<CellId>, storage: IMap<nat, cell::PointsTo<T>>) {
             // Upon initialization, the user needs to deposit _all_ the relevant
             // cell permissions to start with. Each permission should indicate
             // an empty cell.
@@ -347,7 +347,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     #[inductive(initialize)]
-    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::PointsTo<T>>) {
+    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: IMap<nat, cell::PointsTo<T>>) {
         assert forall|i: nat|
             0 <= i && i < post.len() implies post.valid_storage_at_idx(i)
         by {
@@ -535,7 +535,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
     let mut backing_cells_vec = Vec::<PCell<T>>::new();
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    let tracked mut perms = Map::<nat, cell::PointsTo<T>>::tracked_empty();
+    let tracked mut perms = IMap::<nat, cell::PointsTo<T>>::tracked_empty();
     while backing_cells_vec.len() < len
         invariant
             forall|j: nat|
