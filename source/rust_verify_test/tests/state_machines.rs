@@ -425,7 +425,7 @@ test_verify_one_file! {
     #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)] pub v: IMap<int, int>,
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
             }
 
             transition!{
@@ -457,7 +457,7 @@ test_verify_one_file! {
     #[test] test_use_pre_no_field_withdraw_kv_key IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)] pub v: IMap<int, int>,
+                #[sharding(storage_imap)] pub v: IMap<int, int>,
             }
 
             init!{
@@ -1242,6 +1242,17 @@ test_verify_one_file! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(storage_map)]
+                pub t: int,
+            }
+        }}
+    } => Err(e) => assert_vir_error_msg(e, "must be of the form Map<_, _>")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_storage_imap IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_imap)]
                 pub t: int,
             }
         }}
@@ -2125,7 +2136,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    add t += (IMap::<int, int>::empty().insert(5, 7)) by { }; // FAILS
+                    add t += (Map::<int, int>::empty().insert(5, 7)) by { }; // FAILS
                 }
             }
 
@@ -2252,7 +2263,7 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_withdraw IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub t: IMap<int, int>
             }
 
@@ -2276,7 +2287,7 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub t: IMap<int, int>
             }
 
@@ -2344,7 +2355,7 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub t: IMap<int, int>
             }
 
@@ -2384,7 +2395,7 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub t: IMap<int, int>
             }
 
@@ -2479,7 +2490,7 @@ test_verify_one_file! {
     #[test] inherent_safety_condition_map_deposit IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ X {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub t: IMap<int, int>
             }
 
@@ -3308,7 +3319,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)]
                 pub storage_opt: Option<int>,
 
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub storage_map: IMap<int, int>,
             }
 
@@ -3551,8 +3562,8 @@ test_verify_one_file! {
                 #[sharding(option)]
                 pub opt: Option<int>,
 
-                #[sharding(map)]
-                pub map: Map<int, int>,
+                #[sharding(imap)]
+                pub map: IMap<int, int>,
 
                 #[sharding(multiset)]
                 pub mset: Multiset<int>,
@@ -3560,7 +3571,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)]
                 pub storage_opt: Option<int>,
 
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub storage_map: IMap<int, int>,
             }
 
@@ -4246,10 +4257,10 @@ test_verify_one_file! {
                 #[sharding(option)]
                 pub opt: Option<int>,
 
-                #[sharding(map)]
-                pub map: Map<int, u64>,
+                #[sharding(imap)]
+                pub map: IMap<int, u64>,
 
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub storage_map: IMap<int, u64>,
             }
 
@@ -4849,7 +4860,7 @@ test_verify_one_file! {
     #[test] persistent_map_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_map)]
+                #[sharding(persistent_imap)]
                 pub c: IMap<int, int>,
             }
 
@@ -4934,7 +4945,7 @@ test_verify_one_file! {
     #[test] persistent_set_remove_fail IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_set)]
+                #[sharding(persistent_iset)]
                 pub c: ISet<int>,
             }
 
@@ -5121,7 +5132,7 @@ test_verify_one_file! {
     #[test] persistent_map_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_map)]
+                #[sharding(persistent_imap)]
                 pub c: IMap<int, int>,
             }
 
@@ -5295,7 +5306,7 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub storage_m: IMap<int, Goo>,
 
                 #[sharding(storage_option)]
@@ -5363,10 +5374,10 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(map)]
-                pub m: Map<int, Goo>,
+                #[sharding(imap)]
+                pub m: IMap<int, Goo>,
 
-                #[sharding(storage_map)]
+                #[sharding(storage_imap)]
                 pub storage_m: IMap<int, Goo>,
 
                 #[sharding(option)]
@@ -6422,7 +6433,7 @@ test_verify_one_file! {
 
             init!{
                 initialize() {
-                    init b = ISet::<int>::empty().insert(19);
+                    init b = Set::<int>::empty().insert(19);
                 }
             }
 
@@ -6446,19 +6457,19 @@ test_verify_one_file! {
 
             transition!{
                 tr_add_gen() {
-                    add b += (ISet::<int>::empty().insert(6)); // FAILS
+                    add b += (Set::<int>::empty().insert(6)); // FAILS
                 }
             }
 
             transition!{
                 tr_have_gen() {
-                    have b >= (ISet::<int>::empty().insert(6));
+                    have b >= (Set::<int>::empty().insert(6));
                 }
             }
 
             transition!{
                 tr_remove_gen() {
-                    remove b -= (ISet::<int>::empty().insert(6));
+                    remove b -= (Set::<int>::empty().insert(6));
                 }
             }
         }}
@@ -6497,12 +6508,12 @@ test_verify_one_file! {
 
         spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
             !pre.b.contains(6)
-            ==> post.b === pre.b.union(ISet::<int>::empty().insert(6))
+            ==> post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
             !pre.b.contains(6)
-            && post.b === pre.b.union(ISet::<int>::empty().insert(6))
+            && post.b === pre.b.union(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
@@ -6517,12 +6528,12 @@ test_verify_one_file! {
 
         spec fn rel_tr6(pre: Y::State, post: Y::State) -> bool {
             pre.b.contains(6)
-            && post.b === pre.b.difference(ISet::<int>::empty().insert(6))
+            && post.b === pre.b.difference(Set::<int>::empty().insert(6))
         }
 
         spec fn rel_tr6_strong(pre: Y::State, post: Y::State) -> bool {
             pre.b.contains(6)
-            && post.b === pre.b.difference(ISet::<int>::empty().insert(6))
+            && post.b === pre.b.difference(Set::<int>::empty().insert(6))
         }
 
         proof fn correct_tr(pre: Y::State, post: Y::State) {
@@ -6545,7 +6556,7 @@ test_verify_one_file! {
 
         proof fn test_inst1() {
             let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
-            assert(token_f.set() =~= iset![19]);
+            assert(token_f.set() =~= set![19]);
             assert(token_f.instance_id() == inst.id());
 
             let tracked token1 = inst.tr_add();
@@ -6555,7 +6566,7 @@ test_verify_one_file! {
             inst.tr_remove(token1);
 
             let tracked token_set = inst.tr_add_gen();
-            assert(token_set.set() =~= iset![6]);
+            assert(token_set.set() =~= set![6]);
             assert(token_set.instance_id() == inst.id());
             inst.tr_have_gen(&token_set);
             inst.tr_remove_gen(token_set);
@@ -6569,7 +6580,7 @@ test_verify_one_file! {
     #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
-                #[sharding(persistent_set)]
+                #[sharding(persistent_iset)]
                 pub b: ISet<int>,
             }
 
@@ -7288,7 +7299,7 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ A {
             fields {
-                #[sharding(persistent_map)]
+                #[sharding(persistent_imap)]
                 pub x: IMap<int, Y>,
             }
 
@@ -7317,7 +7328,7 @@ test_verify_one_file! {
 
             init!{
                 initialize() {
-                    init x = IMap::<int, Y>::empty();
+                    init x = Map::<int, Y>::empty();
                 }
             }
         }}
@@ -7336,8 +7347,8 @@ test_verify_one_file! {
 
         tokenized_state_machine!{ X<T: Tr> {
             fields {
-                #[sharding(map)]
-                pub m: Map<int, T::AssocType>,
+                #[sharding(imap)]
+                pub m: IMap<int, T::AssocType>,
             }
 
             init!{

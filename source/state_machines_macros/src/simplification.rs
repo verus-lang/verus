@@ -556,9 +556,13 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             MonoidElt::True => None,
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentSet(_) => None,
+                ShardableType::PersistentISet(_) => None,
                 ShardableType::PersistentCount => None,
                 ShardableType::PersistentBool => None,
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
+                    (#cur).agrees(#e)
+                })),
+                ShardableType::PersistentIMap(_, _) => Some(Expr::Verbatim(quote! {
                     (#cur).agrees(#e)
                 })),
                 ShardableType::PersistentOption(_) => {
@@ -568,7 +572,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     }))
                 }
                 _ => {
-                    panic!("expr_can_add invalid case");
+                    panic!("expr_can_add invalid case {:?}", stype);
                 }
             },
         }
@@ -590,7 +594,8 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     }))
                 }
 
-                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => {
+                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _)
+                | ShardableType::IMap(_, _) | ShardableType::StorageIMap(_, _) => {
                     Some(Expr::Verbatim(quote! {
                         (#cur).dom().disjoint((#e).dom())
                     }))
@@ -601,7 +606,8 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                 ShardableType::Bool => Some(Expr::Verbatim(quote! {
                     (!(#cur) || !(#e))
                 })),
-                ShardableType::Set(_) => Some(Expr::Verbatim(quote! {
+                ShardableType::Set(_)
+                | ShardableType::ISet(_) => Some(Expr::Verbatim(quote! {
                     (#cur).disjoint(#e)
                 })),
 
@@ -636,7 +642,8 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
             MonoidElt::True => Expr::Verbatim(quote! { true }),
             MonoidElt::General(e) => match stype {
-                ShardableType::PersistentMap(_, _) => {
+                ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
                 ShardableType::PersistentOption(_) => {
@@ -645,7 +652,8 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                         #vstd::state_machine_internal::opt_add::<#ty>(#cur, #e)
                     })
                 }
-                ShardableType::PersistentSet(_) => Expr::Verbatim(quote! {
+                ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_) => Expr::Verbatim(quote! {
                     ((#cur).union(#e))
                 }),
                 ShardableType::PersistentCount => Expr::Verbatim(quote_vstd! { vstd =>
@@ -655,7 +663,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     ((#cur) || (#e))
                 }),
                 _ => {
-                    panic!("expr_can_add invalid case");
+                    panic!("expr_can_add invalid case jonh1 {:?}", stype);
                 }
             },
         }
@@ -717,7 +725,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 }),
 
                 _ => {
-                    panic!("expected option/map/multiset");
+                    panic!("expected option/map/multiset (case 1)");
                 }
             },
         }
@@ -794,7 +802,8 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             | ShardableType::PersistentMap(_, _)
             | ShardableType::IMap(_, _)
             | ShardableType::PersistentIMap(_, _)
-            | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
                 (#e).submap_of(#cur)
             }),
 
@@ -820,7 +829,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             }
 
             _ => {
-                panic!("expected option/map/multiset");
+                panic!("expected option/map/multiset (case 2)");
             }
         },
     }
@@ -879,7 +888,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
 
             _ => {
-                panic!("expected option/map/multiset");
+                panic!("expected option/map/multiset (case 3)");
             }
         },
     }
