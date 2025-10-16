@@ -1,7 +1,7 @@
+use super::map::GMap;
 use super::multiset::*;
 use super::prelude::*;
-use super::set::{Finiteness, Infinite, Finite, GSet};
-use super::map::GMap;
+use super::set::{Finite, Finiteness, GSet, Infinite};
 use core::marker::PhantomData;
 
 pub mod frac;

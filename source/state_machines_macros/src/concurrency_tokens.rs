@@ -247,8 +247,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     }
 
     let type_alias_stream = match &field.stype {
-        ShardableType::Map(key, val)
-        | ShardableType::PersistentMap(key, val) => {
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
@@ -258,8 +257,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
         }
-        ShardableType::IMap(key, val)
-        | ShardableType::PersistentIMap(key, val) => {
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
             let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
@@ -269,8 +267,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::IMapToken<#key, #val, #tok>;
             }
         }
-        ShardableType::Set(elem)
-        | ShardableType::PersistentSet(elem) => {
+        ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
             let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
@@ -280,8 +277,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::SetToken<#elem, #tok>;
             }
         }
-        ShardableType::ISet(elem)
-        | ShardableType::PersistentISet(elem) => {
+        ShardableType::ISet(elem) | ShardableType::PersistentISet(elem) => {
             let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
@@ -1917,21 +1913,17 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         | ShardableType::Bool
         | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#tok> }),
 
-        ShardableType::Map(key, val)
-        | ShardableType::PersistentMap(key, val) => {
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MapToken<#key, #val, #tok> })
         }
-        ShardableType::IMap(key, val)
-        | ShardableType::PersistentIMap(key, val) => {
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::IMapToken<#key, #val, #tok> })
         }
 
-        ShardableType::Set(t)
-        | ShardableType::PersistentSet(t) => {
+        ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::SetToken<#t, #tok> })
         }
-        ShardableType::ISet(t)
-        | ShardableType::PersistentISet(t) => {
+        ShardableType::ISet(t) | ShardableType::PersistentISet(t) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::ISetToken<#t, #tok> })
         }
 

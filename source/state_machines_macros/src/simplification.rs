@@ -594,20 +594,19 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     }))
                 }
 
-                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _)
-                | ShardableType::IMap(_, _) | ShardableType::StorageIMap(_, _) => {
-                    Some(Expr::Verbatim(quote! {
-                        (#cur).dom().disjoint((#e).dom())
-                    }))
-                }
+                ShardableType::Map(_, _)
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::IMap(_, _)
+                | ShardableType::StorageIMap(_, _) => Some(Expr::Verbatim(quote! {
+                    (#cur).dom().disjoint((#e).dom())
+                })),
 
                 ShardableType::Multiset(_) => None,
                 ShardableType::Count => None,
                 ShardableType::Bool => Some(Expr::Verbatim(quote! {
                     (!(#cur) || !(#e))
                 })),
-                ShardableType::Set(_)
-                | ShardableType::ISet(_) => Some(Expr::Verbatim(quote! {
+                ShardableType::Set(_) | ShardableType::ISet(_) => Some(Expr::Verbatim(quote! {
                     (#cur).disjoint(#e)
                 })),
 
@@ -642,8 +641,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
             MonoidElt::True => Expr::Verbatim(quote! { true }),
             MonoidElt::General(e) => match stype {
-                ShardableType::PersistentMap(_, _)
-                | ShardableType::PersistentIMap(_, _) => {
+                ShardableType::PersistentMap(_, _) | ShardableType::PersistentIMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
                 ShardableType::PersistentOption(_) => {
@@ -652,10 +650,11 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                         #vstd::state_machine_internal::opt_add::<#ty>(#cur, #e)
                     })
                 }
-                ShardableType::PersistentSet(_)
-                | ShardableType::PersistentISet(_) => Expr::Verbatim(quote! {
-                    ((#cur).union(#e))
-                }),
+                ShardableType::PersistentSet(_) | ShardableType::PersistentISet(_) => {
+                    Expr::Verbatim(quote! {
+                        ((#cur).union(#e))
+                    })
+                }
                 ShardableType::PersistentCount => Expr::Verbatim(quote_vstd! { vstd =>
                     #vstd::state_machine_internal::nat_max(#cur, #e)
                 }),
