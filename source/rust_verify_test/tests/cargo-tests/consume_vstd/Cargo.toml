@@ -1,0 +1,9 @@
+[package]
+name = "consume-vstd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd_macro_usage = { path = "../vstd_macro_usage" }
+
+[workspace]

@@ -32,14 +32,18 @@ proof fn calc_test(x: int, y: int, z: int)
     }
 }
 
-pub fn do_something(x: u64, y: u64, z: u64) 
+pub fn do_something(x: u64, y: u64, z: u64) -> (w: u64)
     requires x + y == z,
 {
     proof {
         calc_test(x as int, y as int, z as int);
     }
+    if x < y {
+        x
+    } else {
+        z
+    }
 }
-
 
 
 } // verus!
