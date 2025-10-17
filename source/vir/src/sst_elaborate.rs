@@ -5,9 +5,12 @@ use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::messages::{ToAny, error_with_label, warning};
-use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, PostConditionSst, Stm, StmX, UniqueIdent,
+};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
+use crate::util::vec_map_result;
 use crate::visitor::Returner;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
@@ -124,7 +127,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             let interp_exp = crate::interpreter::eval_expr(
                 &ctx.global,
                 exp,
-                diagnostics,
+                Some(diagnostics),
                 fun_ssts.clone(),
                 ctx.global.rlimit,
                 ctx.global.arch,
@@ -140,6 +143,33 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
                 ComputeMode::Z3 => Ok(stm.new_x(StmX::Assert(id.clone(), Some(err), interp_exp))),
                 ComputeMode::ComputeOnly => Ok(stm.new_x(StmX::Block(Arc::new(vec![])))),
             }
+        }
+        StmX::AssertBitVector { requires, ensures } => {
+            let reqs = vec_map_result(requires, |e| {
+                crate::interpreter::eval_expr(
+                    &ctx.global,
+                    e,
+                    None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
+                    fun_ssts.clone(),
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    crate::ast::ComputeMode::Z3,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )
+            })?;
+            let ens = vec_map_result(ensures, |e| {
+                crate::interpreter::eval_expr(
+                    &ctx.global,
+                    e,
+                    None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
+                    fun_ssts.clone(),
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    crate::ast::ComputeMode::Z3,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )
+            })?;
+            Ok(stm.new_x(StmX::AssertBitVector { requires: reqs.into(), ensures: ens.into() }))
         }
         _ => Ok(stm.clone()),
     }
@@ -214,6 +244,65 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
     }
 }
 
+struct ElaborateVisitorBv<'a> {
+    ctx: &'a Ctx,
+    fun_ssts: SstMap,
+}
+
+impl<'a> ElaborateVisitorBv<'a> {
+    fn expand(&self, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
+        vec_map_result(&exps, |e| {
+            crate::interpreter::eval_expr(
+                &self.ctx.global,
+                e,
+                None::<&air::messages::Reporter>,
+                self.fun_ssts.clone(),
+                self.ctx.global.rlimit,
+                self.ctx.global.arch,
+                crate::ast::ComputeMode::Z3,
+                &mut self.ctx.global.interpreter_log.lock().unwrap(),
+            )
+        })
+    }
+}
+
+impl<'a> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVisitorBv<'a> {
+    // This is the same as visit_func_check in sst_visitor.rs, except for the call to self.expand(..)
+    fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<FuncCheckSst, VirErr> {
+        let reqs = self.visit_exps(&def.reqs)?;
+        let reqs = self.expand(reqs)?;
+        let post_condition = self.visit_postcondition(&def.post_condition)?;
+        let body = self.visit_stm(&def.body)?;
+        let local_decls =
+            Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
+        let unwind = self.visit_unwind(&def.unwind)?;
+
+        Rewrite::ret(|| FuncCheckSst {
+            reqs: Rewrite::get_vec_a(reqs),
+            post_condition: Arc::new(Rewrite::get(post_condition)),
+            unwind: Rewrite::get(unwind),
+            body: Rewrite::get(body),
+            local_decls: Rewrite::get_vec_a(local_decls),
+            local_decls_decreases_init: Rewrite::get_vec_a(local_decls_decreases_init),
+            statics: def.statics.clone(),
+        })
+    }
+
+    // This is the same as visit_postcondition in sst_visitor.rs, except for the call to self.expand(..)
+    fn visit_postcondition(&mut self, post: &PostConditionSst) -> Result<PostConditionSst, VirErr> {
+        let ens_exps = self.visit_exps(&post.ens_exps)?;
+        let ens_exps = self.expand(ens_exps)?;
+        let ens_spec_precondition_stms = self.visit_stms(&post.ens_spec_precondition_stms)?;
+        Rewrite::ret(|| PostConditionSst {
+            dest: post.dest.clone(),
+            ens_exps: Rewrite::get_vec_a(ens_exps),
+            ens_spec_precondition_stms: Rewrite::get_vec_a(ens_spec_precondition_stms),
+            kind: post.kind,
+        })
+    }
+}
+
 // Triggers and inlining
 pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     ctx: &'a Ctx,
@@ -266,6 +355,19 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
             )?;
             spec_body.body_exp = body_exp;
         }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn elaborate_function_bv<'a>(
+    ctx: &'a Ctx,
+    fun_ssts: SstMap,
+    function: &mut FunctionSst,
+) -> Result<(), VirErr> {
+    if function.x.attrs.bit_vector {
+        let mut visitor = ElaborateVisitorBv { ctx, fun_ssts };
+        *function = visitor.visit_function(function)?;
     }
 
     Ok(())

@@ -44,7 +44,7 @@ pub enum OpKind {
     /// Not skippable.
     Context(ContextOp, Arc<Vec<Command>>),
     /// Contains assertions that need to be proved. Doesn't introduce anything
-    /// new into the context. Maybe be skipped if it's from a different module,
+    /// new into the context. May be skipped if it's from a different module,
     /// or as a result of user options.
     /// The 'CommandsWithContext' allows for additional options like which prover to use
     Query {
