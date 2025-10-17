@@ -470,6 +470,31 @@ pub fn run_cargo_verus(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
+        .expect("could not execute cargo-verus process");
+    let run = child.wait_with_output().expect("cargo-verus wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
+    run
+}
+
+// Assumes normal `cargo` is in the caller's path
+pub fn run_cargo(
+    args: &[&str],
+    dir: &std::path::Path,
+) -> std::process::Output {
+    // if std::env::var("VERUS_IN_VARGO").is_err() {
+    //     panic!("not running in vargo, read the README for instructions");
+    // }
+    let mut child = std::process::Command::new("cargo");
+    child.current_dir(dir);
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .expect("could not execute cargo process");
     let run = child.wait_with_output().expect("cargo wait failed");
     if !run.status.success() {
@@ -478,7 +503,6 @@ pub fn run_cargo_verus(
     }
     run
 }
-
 
 #[allow(dead_code)]
 pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
