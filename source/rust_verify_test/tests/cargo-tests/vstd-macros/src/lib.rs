@@ -1,5 +1,5 @@
 use vstd::prelude::*;
-use vstd::{assert_by_contradiction,assert_maps_equal,assert_seqs_equal,calc};
+use vstd::*;
 
 verus! {
 
@@ -29,6 +29,14 @@ proof fn calc_test(x: int, y: int, z: int)
         x + y; 
             {}
         z;
+    }
+}
+
+pub fn do_something(x: u64, y: u64, z: u64) 
+    requires x + y == z,
+{
+    proof {
+        calc_test(x as int, y as int, z as int);
     }
 }
 
