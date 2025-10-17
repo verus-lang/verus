@@ -2,12 +2,8 @@
 use super::super::prelude::*;
 
 use core::option::Option;
-use core::option::Option::None;
-use core::option::Option::Some;
 
 use core::result::Result;
-use core::result::Result::Err;
-use core::result::Result::Ok;
 
 verus! {
 
@@ -34,6 +30,38 @@ pub trait ResultAdditionalSpecFns<T, E> {
 
     #[allow(non_snake_case)]
     spec fn arrow_Err_0(&self) -> E;
+
+    #[allow(deprecated)]
+    proof fn tracked_unwrap(tracked self) -> (tracked t: T)
+        requires
+            self.is_Ok(),
+        ensures
+            t == self->Ok_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_unwrap_err(tracked self) -> (tracked t: E)
+        requires
+            self.is_Err(),
+        ensures
+            t == self->Err_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
+        requires
+            self.is_Ok(),
+        ensures
+            t == self->Ok_0,
+    ;
+
+    #[allow(deprecated)]
+    proof fn tracked_expect_err(tracked self, msg: &str) -> (tracked t: E)
+        requires
+            self.is_Err(),
+        ensures
+            t == self->Err_0,
+    ;
 }
 
 impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
@@ -65,6 +93,34 @@ impl<T, E> ResultAdditionalSpecFns<T, E> for Result<T, E> {
     #[verifier::inline]
     open spec fn arrow_Err_0(&self) -> E {
         get_variant_field(self, "Err", "0")
+    }
+
+    proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
+        match self {
+            Result::Ok(t) => t,
+            Result::Err(_) => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_unwrap_err(tracked self) -> (tracked t: E) {
+        match self {
+            Result::Ok(_) => proof_from_false(),
+            Result::Err(e) => e,
+        }
+    }
+
+    proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T) {
+        match self {
+            Result::Ok(t) => t,
+            Result::Err(_) => proof_from_false(),
+        }
+    }
+
+    proof fn tracked_expect_err(tracked self, msg: &str) -> (tracked t: E) {
+        match self {
+            Result::Ok(_) => proof_from_false(),
+            Result::Err(e) => e,
+        }
     }
 }
 
