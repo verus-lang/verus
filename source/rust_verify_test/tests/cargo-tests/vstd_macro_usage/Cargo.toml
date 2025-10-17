@@ -1,11 +1,10 @@
 [package]
-name = "state-machine-macros"
+name = "vstd_macro_usage"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 vstd = { path = "../../../../vstd/" }
-verus_state_machines_macros = { path = "../../../../state_machines_macros/" }
 
 [package.metadata.verus]
 verify = true
