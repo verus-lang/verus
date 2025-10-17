@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-state_machine_macro_usage = { path = "../state_machine_macro_usage" }
+state_machine_macro_usage = { path = "../../verified/state_machine_macro_usage" }
 
 [workspace]

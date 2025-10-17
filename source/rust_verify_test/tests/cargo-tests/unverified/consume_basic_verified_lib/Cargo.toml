@@ -1,0 +1,9 @@
+[package]
+name = "unverified_crate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+basic_verified_lib = { path = "../../verified/basic_verified_lib" }
+
+[workspace]

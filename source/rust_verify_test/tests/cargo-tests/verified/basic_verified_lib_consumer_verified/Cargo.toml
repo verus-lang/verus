@@ -1,9 +1,13 @@
 [package]
-name = "unverified_crate"
+name = "basic_verified_lib_consumer_verified"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+vstd = { path = "../../../../../vstd" }
 basic_verified_lib = { path = "../basic_verified_lib" }
+
+[package.metadata.verus]
+verify = true
 
 [workspace]
