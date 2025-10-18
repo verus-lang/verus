@@ -123,7 +123,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vstd-macros"
+name = "vstd_macro_usage"
 version = "0.1.0"
 dependencies = [
  "vstd",
