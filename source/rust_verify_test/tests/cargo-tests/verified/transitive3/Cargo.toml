@@ -1,0 +1,13 @@
+[package]
+name = "transitive3"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+transitive2 = { path = "../transitive2" }
+
+[package.metadata.verus]
+verify = true
+
+[workspace]
