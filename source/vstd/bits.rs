@@ -176,6 +176,48 @@ lemma_shl_is_mul!(lemma_u32_shl_is_mul, lemma_u32_pow2_no_overflow, u32);
 lemma_shl_is_mul!(lemma_u16_shl_is_mul, lemma_u16_pow2_no_overflow, u16);
 lemma_shl_is_mul!(lemma_u8_shl_is_mul, lemma_u8_pow2_no_overflow, u8);
 
+macro_rules! lemma_one_shl_is_pow2 {
+    ($name:ident, $shl_is_mul:ident, $no_overflow:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
+        verus! {
+        pub proof fn $name(n: $uN)
+            requires
+                0 <= n < <$uN>::BITS,
+            ensures
+                1 as $uN << n == pow2(n as nat) as $uN,
+        {
+            $no_overflow(n as nat);
+            $shl_is_mul(1 as $uN, n);
+        }
+        }
+    };
+}
+
+lemma_one_shl_is_pow2!(
+    lemma_u64_one_shl_is_pow2,
+    lemma_u64_shl_is_mul,
+    lemma_u64_pow2_no_overflow,
+    u64
+);
+lemma_one_shl_is_pow2!(
+    lemma_u32_one_shl_is_pow2,
+    lemma_u32_shl_is_mul,
+    lemma_u32_pow2_no_overflow,
+    u32
+);
+lemma_one_shl_is_pow2!(
+    lemma_u16_one_shl_is_pow2,
+    lemma_u16_shl_is_mul,
+    lemma_u16_pow2_no_overflow,
+    u16
+);
+lemma_one_shl_is_pow2!(
+    lemma_u8_one_shl_is_pow2,
+    lemma_u8_shl_is_mul,
+    lemma_u8_pow2_no_overflow,
+    u8
+);
+
 macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
     ($name:ident, $shr_is_div:ident, $uN:ty) => {
         #[cfg(verus_keep_ghost)]
