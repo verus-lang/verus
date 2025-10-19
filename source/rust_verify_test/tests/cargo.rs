@@ -9,8 +9,9 @@ fn run_cargo_verus_for_dir(dir: &str) {
     let current_exe = std::env::current_exe().unwrap();
     let test_dir = current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir);
 
+    // Don't reuse any artifacts from previous runs
     let args = vec!["clean"];
-    let run = run_cargo_verus(&args, &test_dir.as_path());
+    let run = run_cargo(&args, &test_dir.as_path());
     assert!(run.status.success());
 
     let args = vec!["verify"];
