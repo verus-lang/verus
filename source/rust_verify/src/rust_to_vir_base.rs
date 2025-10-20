@@ -1124,6 +1124,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         args.push(mid_ty_to_vir(
                             tcx,
                             verus_items,
+                            None,
                             param_env_src,
                             span,
                             &ty,
@@ -1141,7 +1142,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             (
                 Arc::new(TypX::Opaque {
-                    def_path: def_id_to_vir_path(tcx, verus_items, al_ty.def_id),
+                    def_path: def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None),
                     args: Arc::new(args),
                 }),
                 false,
@@ -2113,6 +2114,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 args.push(mid_ty_to_vir(
                                     ctxt.tcx,
                                     &ctxt.verus_items,
+                                    None,
                                     opaque_ty.def_id.into(),
                                     opaque_ty.span,
                                     &ty,
@@ -2160,6 +2162,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                     mid_ty_to_vir(
                                         ctxt.tcx,
                                         &ctxt.verus_items,
+                                        None,
                                         opaque_ty.def_id.into(),
                                         opaque_ty.span,
                                         &ty,
@@ -2229,7 +2232,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     let opaque_ty_vir = ctxt.spanned_new(
         opaque_ty.span,
         OpaqueTypeX {
-            name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into()),
+            name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into(), None),
             typ_params: Arc::new(args),
             typ_bounds: Arc::new(trait_bounds),
         },
