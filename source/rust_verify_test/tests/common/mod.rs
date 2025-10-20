@@ -412,11 +412,7 @@ pub fn run_verus(
     run
 }
 
-
-pub fn run_cargo_verus(
-    args: &[&str],
-    dir: &std::path::Path,
-) -> std::process::Output {
+pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -445,25 +441,21 @@ pub fn run_cargo_verus(
     let mut child = std::process::Command::new(bin);
     child.current_dir(dir);
 
-    let z3 = 
-        std::env::var("VERUS_Z3_PATH")
-            .map(|p| {
-                let p = std::path::PathBuf::from(p);
-                (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
-                    .into_os_string()
-            })
-            .unwrap_or({
-                if cfg!(target_os = "windows") {
-                    std::ffi::OsString::from("..\\z3.exe")
-                } else {
-                    std::ffi::OsString::from("../z3")
-                }
-            });
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                .into_os_string()
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::ffi::OsString::from("..\\z3.exe")
+            } else {
+                std::ffi::OsString::from("../z3")
+            }
+        });
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
-    child.env(
-        "VERUS_Z3_PATH",
-        z3
-    );
+    child.env("VERUS_Z3_PATH", z3);
 
     let child = child
         .args(&args[..])
@@ -480,10 +472,7 @@ pub fn run_cargo_verus(
 }
 
 // Assumes normal `cargo` is in the caller's path
-pub fn run_cargo(
-    args: &[&str],
-    dir: &std::path::Path,
-) -> std::process::Output {
+pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }

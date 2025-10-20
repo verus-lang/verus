@@ -63,7 +63,8 @@ pub fn cargo_examples(input: TokenStream) -> TokenStream {
         let entry = entry.expect("invalid path");
         let path = entry.path();
 
-        let test_name = name.to_string() + "_"
+        let test_name = name.to_string()
+            + "_"
             + &path.file_prefix().unwrap().to_str().unwrap().replace("-", "_");
         let test_name_ident = syn::Ident::new(&test_name, Span::call_site().into());
 

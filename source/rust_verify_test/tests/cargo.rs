@@ -4,17 +4,27 @@ mod common;
 use std::fs;
 
 use common::*;
+use rust_verify_test_macros::cargo_examples;
 use tempfile::tempdir;
 use toml::Table;
-use rust_verify_test_macros::cargo_examples;
 
 fn run_cargo_verus_for_dir(dir: &str) {
     let current_exe = std::env::current_exe().unwrap();
-    let test_dir = current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir);
+    let test_dir = current_exe
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(dir);
 
     // Check for additional arguments to pass to Verus
     let toml_path = test_dir.join("Cargo.toml");
-    let toml = fs::read_to_string(&toml_path).unwrap_or_else(|_| panic!("cannot open Cargo.toml file: {}", toml_path.display()));
+    let toml = fs::read_to_string(&toml_path)
+        .unwrap_or_else(|_| panic!("cannot open Cargo.toml file: {}", toml_path.display()));
     let toml_table = toml.parse::<Table>().unwrap();
     let mut extra_verus_args = vec![];
     if let Some(package) = toml_table.get("package") {
@@ -49,7 +59,16 @@ fn run_cargo_verus_for_dir(dir: &str) {
 
 fn run_vanilla_cargo_for_dir(dir: &str) {
     let current_exe = std::env::current_exe().unwrap();
-    let test_dir = current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir);
+    let test_dir = current_exe
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(dir);
 
     let args = vec!["clean"];
     let run = run_cargo(&args, &test_dir.as_path());
@@ -64,7 +83,7 @@ fn run_vanilla_cargo_for_dir(dir: &str) {
     assert!(run.status.success());
 }
 
-#[test] 
+#[test]
 fn cargo_new_verifies() {
     // Run cargo verus new in temp_dir
     let temp_dir = tempdir().expect("Failed to create temporary directory");
@@ -76,7 +95,7 @@ fn cargo_new_verifies() {
     assert!(run.status.success());
 }
 
-#[test] 
+#[test]
 fn cargo_new_builds() {
     // Run cargo verus new in temp_dir
     let temp_dir = tempdir().expect("Failed to create temporary directory");
