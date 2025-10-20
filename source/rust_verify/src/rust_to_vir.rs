@@ -10,9 +10,7 @@ use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
-use crate::rust_to_vir_base::{
-    check_fn_opaque_ty, def_id_to_vir_path_option, mk_visibility,
-};
+use crate::rust_to_vir_base::{check_fn_opaque_ty, def_id_to_vir_path_option, mk_visibility};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
