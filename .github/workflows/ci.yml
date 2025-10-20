@@ -116,6 +116,10 @@ jobs:
               cargo build
               ;;
           esac
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: |
+          cargo build
       - name: build verus release
         if: matrix.features == ''
         working-directory: ./source
