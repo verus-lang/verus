@@ -436,7 +436,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety), VirErr> {
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
     let is_builtin_external = matches!(
@@ -462,9 +462,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(sig.span, "`assume_specification` declaration not supported here");
     }
 
-    let (external_id, kind) =
+    let (external_id, kind, is_const) =
         if let Some(external_id) = external_fn_specification_via_external_trait {
-            (external_id, kind)
+            (external_id, kind, false)
         } else {
             let body_id = match body_id {
                 CheckItemFnEither::BodyId(body_id) => body_id,
@@ -479,6 +479,7 @@ pub(crate) fn handle_external_fn<'tcx>(
             get_external_def_id(ctxt, id, body_id, body, sig)?
         };
     let external_path = ctxt.def_id_to_vir_path(external_id);
+    let external_item_visibility = mk_visibility(ctxt, external_id);
 
     if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
         && &*external_path.last_segment() != "clone"
@@ -513,6 +514,35 @@ pub(crate) fn handle_external_fn<'tcx>(
 
     let ty1 = ctxt.tcx.type_of(id).skip_binder();
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
+
+    if is_const {
+        let substs1_early = get_substs_early(ty1, sig.span)?;
+        let poly_sig1 = ctxt.tcx.fn_sig(id);
+        let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early);
+        if substs1_early.len() + poly_sig1.skip_binder().bound_vars().len() != 0 {
+            return err_span(
+                sig.span,
+                "generics are not allowed in external specification for const",
+            );
+        }
+        let sig1 = poly_sig1x.skip_binder();
+        use rustc_middle::ty::FnSig;
+        let FnSig { inputs_and_output: io1, c_variadic: _, safety: _, abi: _ } = &sig1;
+        if io1.len() != 1 {
+            return err_span(sig.span, "external specification for const must have 0 parameters");
+        }
+        let ty1 = io1[0];
+        if !compare_external_ty(ctxt.tcx, &ctxt.verus_items, &ty1, &ty2, external_trait_from_to) {
+            return assume_specification_mismatch_type_error(
+                ctxt,
+                sig.span,
+                external_id,
+                ty1.to_string(),
+                ty2.to_string(),
+            );
+        }
+        return Ok((external_path, external_item_visibility, kind, false, Safety::Safe, true));
+    }
 
     let substs1_early = get_substs_early(ty1, sig.span)?;
     let substs2_early = get_substs_early(ty2, sig.span)?;
@@ -594,7 +624,6 @@ pub(crate) fn handle_external_fn<'tcx>(
         return Err(err);
     }
 
-    let external_item_visibility = mk_visibility(ctxt, external_id);
     if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
         return err_span(
             sig.span,
@@ -610,7 +639,7 @@ pub(crate) fn handle_external_fn<'tcx>(
 
     let safety = ctxt.tcx.fn_sig(external_id).skip_binder().safety();
 
-    Ok((external_path, external_item_visibility, kind, has_self_parameter, safety))
+    Ok((external_path, external_item_visibility, kind, has_self_parameter, safety, false))
 }
 
 pub(crate) fn get_substs_early<'tcx>(
@@ -1027,7 +1056,7 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let (path, proxy, visibility, kind, has_self_param, safety) = if vattrs
+    let (path, proxy, visibility, kind, has_self_param, safety, is_external_const) = if vattrs
         .external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
     {
@@ -1038,7 +1067,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility, kind, has_self_param, safety) =
+        let (external_path, external_item_visibility, kind, has_self_param, safety, is_const) =
             handle_external_fn(
                 ctxt,
                 id,
@@ -1054,9 +1083,9 @@ pub(crate) fn check_item_fn<'tcx>(
                 external_info,
             )?;
 
-        let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
+        let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
 
-        (external_path, Some(proxy), external_item_visibility, kind, has_self_param, safety)
+        (external_path, proxy, external_item_visibility, kind, has_self_param, safety, is_const)
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
@@ -1064,7 +1093,7 @@ pub(crate) fn check_item_fn<'tcx>(
             HeaderSafety::Normal(s) => s,
             _ => Safety::Unsafe,
         };
-        (this_path.clone(), None, visibility, kind, has_self_param, safety)
+        (this_path.clone(), None, visibility, kind, has_self_param, safety, false)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -1487,7 +1516,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
     // 'f_body', we rewrite it to a function without mut params and body
     // 'let mut x_0 = x_0; ...; let mut x_n = x_n; f_body'.
-    let body_with_mut_redecls = if vir_mut_params.is_empty() {
+    let body = if vir_mut_params.is_empty() {
         body
     } else {
         body.map(move |body| {
@@ -1505,16 +1534,49 @@ pub(crate) fn check_item_fn<'tcx>(
     let (ensure0, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.0);
     let (ensure1, _ns_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.1);
 
+    let (publish, mode, ensure, returns, item_kind, body) =
+        match (is_external_const, header.returns) {
+            (true, Some(returns)) => {
+                // In an external const declaration, use returns expression as spec function body:
+                let private_vis = Visibility { restricted_to: Some(module_path.clone()) };
+                let publish = match (visibility == private_vis, &vattrs.publish) {
+                    (false, None) => Some(AttrPublish::Open),
+                    _ => vattrs.publish.clone(),
+                };
+                (
+                    publish,
+                    Mode::Spec,
+                    (Arc::new(vec![]), Arc::new(vec![])),
+                    None,
+                    ItemKind::Const,
+                    Some(returns),
+                )
+            }
+            (true, None) => {
+                // In an external const declaration, no returns means exec-only:
+                assert!(mode == Mode::Exec);
+                (vattrs.publish.clone(), mode, (ensure0, ensure1), None, ItemKind::Const, body)
+            }
+            (_, returns) => (
+                vattrs.publish.clone(),
+                mode,
+                (ensure0, ensure1),
+                returns,
+                ItemKind::Function,
+                body,
+            ),
+        };
+
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         sig.span,
         &visibility,
-        vattrs.publish.clone(),
+        publish,
         &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
         mode,
         module_path,
-        body_with_mut_redecls.is_some(),
+        body.is_some(),
     )?;
 
     ctxt.push_body_erasure(
@@ -1537,17 +1599,17 @@ pub(crate) fn check_item_fn<'tcx>(
         ret,
         ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
-        returns: header.returns,
-        ensure: (ensure0, ensure1),
+        returns,
+        ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
         unwind_spec: header.unwind_spec,
-        item_kind: ItemKind::Function,
+        item_kind,
         attrs: fattrs,
-        body: body_with_mut_redecls,
+        body,
         extra_dependencies: header.extra_dependencies,
     };
 
@@ -1997,7 +2059,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     body_id: &BodyId,
     body: &Body<'tcx>,
     sig: &'tcx FnSig<'tcx>,
-) -> Result<(rustc_span::def_id::DefId, FunctionKind), VirErr> {
+) -> Result<(rustc_span::def_id::DefId, FunctionKind, bool), VirErr> {
     let tcx = ctxt.tcx;
 
     let err = || {
@@ -2029,7 +2091,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
     let types = body_id_to_types(tcx, body_id);
 
-    let (external_id, hir_id) = match &expr.kind {
+    let (external_id, hir_id, is_const) = match &expr.kind {
         ExprKind::Call(fun, _args) => match &fun.kind {
             ExprKind::Path(qpath) => {
                 let def = types.qpath_res(&qpath, fun.hir_id);
@@ -2038,7 +2100,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                         // We don't need to check the args match or anything,
                         // the type signature check done by the handle_external_fn
                         // is sufficient.
-                        (def_id, fun.hir_id)
+                        (def_id, fun.hir_id, false)
                     }
                     _ => {
                         return err();
@@ -2054,7 +2116,18 @@ pub(crate) fn get_external_def_id<'tcx>(
             // 'assume_specification' style
             let def_id =
                 types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
-            (def_id, expr.hir_id)
+            (def_id, expr.hir_id, false)
+        }
+        ExprKind::Path(qpath) => {
+            use rustc_hir::def::{DefKind, Res};
+            let res = types.qpath_res(&qpath, expr.hir_id);
+            if let Res::Def(DefKind::Const, def_id) = res {
+                (def_id, expr.hir_id, true)
+            } else if let Res::Def(DefKind::AssocConst, def_id) = res {
+                (def_id, expr.hir_id, true)
+            } else {
+                return err();
+            }
         }
         _ => {
             return err();
@@ -2113,11 +2186,11 @@ pub(crate) fn get_external_def_id<'tcx>(
                     trait_path: trait_path,
                     trait_typ_args: Arc::new(types),
                 };
-                Ok((impl_item_id, kind))
+                Ok((impl_item_id, kind, is_const))
             }
         }
     } else {
-        Ok((external_id, FunctionKind::Static))
+        Ok((external_id, FunctionKind::Static, is_const))
     }
 }
 
@@ -2171,7 +2244,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     };
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`assume_specification` attribute not supported for const");
+        return err_span(span, "use `external_fn_specification` on fn whose body is a const");
     }
 
     let body = find_body(ctxt, body_id);

@@ -327,13 +327,53 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration must be at least as visible as the function it provides a spec for")
 }
 
+test_verify_one_file! {
+    #[test] const_wrong_type verus_code! {
+        assume_specification[char::REPLACEMENT_CHARACTER] -> u8;
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file! {
+    #[test] const_assoc_const verus_code! {
+        assume_specification[char::REPLACEMENT_CHARACTER] -> (c: char) ensures c != '7';
+        fn test() {
+            let z = char::REPLACEMENT_CHARACTER;
+            assert(z != '7');
+            assert(z != '8'); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] const_exec_not_spec verus_code! {
+        assume_specification[char::REPLACEMENT_CHARACTER] -> (c: char) ensures c != '7';
+        fn test() {
+            assert(char::REPLACEMENT_CHARACTER != '7');
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] const_exec_and_spec verus_code! {
+        #[verifier::external]
+        const C: u8 = 7;
+        assume_specification[C] -> u8 returns 7u8;
+        fn test() {
+            assert(C == 7);
+            let z = C;
+            assert(z == 7);
+            assert(z == 8); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // Test the attribute in weird places
 
 test_verify_one_file! {
     #[test] test_attr_on_const verus_code! {
         #[verifier(external_fn_specification)]
         const x: u8 = 5;
-    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` attribute not supported for const")
+    } => Err(err) => assert_vir_error_msg(err, "use `external_fn_specification` on fn whose body is a const")
 }
 
 test_verify_one_file! {
