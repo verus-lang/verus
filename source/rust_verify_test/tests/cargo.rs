@@ -8,18 +8,13 @@ use rust_verify_test_macros::cargo_examples;
 use tempfile::tempdir;
 use toml::Table;
 
-fn run_cargo_verus_for_dir(dir: &str) {
+fn compute_test_dir(dir: &str) -> std::path::PathBuf {
     let current_exe = std::env::current_exe().unwrap();
-    let test_dir = current_exe
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(dir);
+    current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir)
+}
+
+fn run_cargo_verus_for_dir(dir: &str) {
+    let test_dir = compute_test_dir(dir);
 
     // Check for additional arguments to pass to Verus
     let toml_path = test_dir.join("Cargo.toml");
@@ -58,18 +53,9 @@ fn run_cargo_verus_for_dir(dir: &str) {
 }
 
 fn run_vanilla_cargo_for_dir(dir: &str) {
-    let current_exe = std::env::current_exe().unwrap();
-    let test_dir = current_exe
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(dir);
+    let test_dir = compute_test_dir(dir);
 
+    // Don't reuse any artifacts from previous runs
     let args = vec!["clean"];
     let run = run_cargo(&args, &test_dir.as_path());
     assert!(run.status.success());
