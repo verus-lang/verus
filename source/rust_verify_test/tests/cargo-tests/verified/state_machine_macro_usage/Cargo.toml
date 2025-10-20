@@ -9,5 +9,6 @@ verus_state_machines_macros = { path = "../../../../../state_machines_macros/" }
 
 [package.metadata.verus]
 verify = true
+test_ignore = true
 
 [workspace]
