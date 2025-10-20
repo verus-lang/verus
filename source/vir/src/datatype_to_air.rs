@@ -76,8 +76,9 @@ pub(crate) fn field_typ_args<A: Default>(num_variants: usize, f: impl Fn() -> A)
 
 fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Int(_) => false,
         TypX::Bool => false,
+        TypX::Int(_) => false,
+        TypX::Float(_) => false,
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -98,6 +99,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
+        TypX::MutRef(_) => false,
     }
 }
 
@@ -827,6 +829,8 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let resolve_axiom_commands = crate::resolve_axioms::resolve_axioms(ctx);
+
     let mut commands: Vec<Command> = Vec::new();
     commands.extend(pointee_metadata_commands);
     commands.append(&mut opaque_sort_commands);
@@ -839,5 +843,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut axiom_commands);
     commands.extend(array_commands);
     commands.extend(strslice_commands);
+    commands.extend(resolve_axiom_commands);
     Arc::new(commands)
 }

@@ -1,9 +1,9 @@
 #![allow(unused_imports)]
 
 // ANCHOR: full
-use builtin::*;
-use builtin_macros::*;
-use state_machines_macros::tokenized_state_machine;
+use verus_builtin::*;
+use verus_builtin_macros::*;
+use verus_state_machines_macros::tokenized_state_machine;
 use std::sync::Arc;
 use vstd::atomic_ghost::*;
 use vstd::modes::*;

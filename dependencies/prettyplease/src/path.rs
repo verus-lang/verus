@@ -2,7 +2,7 @@ use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
 use std::ptr;
-use syn_verus::{
+use verus_syn::{
     AngleBracketedGenericArguments, AssocConst, AssocType, Constraint, GenericArgument,
     ParenthesizedGenericArguments, Path, PathArguments, PathSegment, QSelf,
 };

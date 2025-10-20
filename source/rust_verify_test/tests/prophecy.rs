@@ -119,7 +119,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] proph_dep_trait_impl PROPH.to_string() + verus_code_str! {
+    #[test] trait_not_proph_impl_proph_err PROPH.to_string() + verus_code_str! {
         trait Tr {
             spec fn f(&self) -> bool;
         }
@@ -128,7 +128,92 @@ test_verify_one_file! {
             #[verifier::prophetic]
             spec fn f(&self) -> bool { self.value() }
         }
-    } => Err(err) => assert_vir_error_msg(err, "prophetic attribute not supported on trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "implementation of trait function cannot be marked prophetic if the trait function is not")
+}
+
+test_verify_one_file! {
+    #[test] trait_and_impl_both_proph_ok PROPH.to_string() + verus_code_str! {
+        trait Tr {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool;
+        }
+
+        impl Tr for Prophecy<bool> {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool { self.value() }
+        }
+
+        #[verifier::prophetic]
+        spec fn general_fn<T: Tr>(t: &T) -> bool {
+            t.f()
+        }
+
+        #[verifier::prophetic]
+        spec fn specific_fn(t: &Prophecy<bool>) -> bool {
+            t.f()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_and_impl_both_proph_err PROPH.to_string() + verus_code_str! {
+        trait Tr {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool;
+        }
+
+        impl Tr for Prophecy<bool> {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool { self.value() }
+        }
+
+        spec fn specific_fn(t: &Prophecy<bool>) -> bool {
+            t.f()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] trait_proph_err PROPH.to_string() + verus_code_str! {
+        trait Tr {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool;
+        }
+
+        spec fn general_fn<T: Tr>(t: &T) -> bool {
+            t.f()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] trait_proph_and_impl_not_proph_ok PROPH.to_string() + verus_code_str! {
+        trait Tr {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool;
+        }
+
+        impl Tr for Prophecy<bool> {
+            spec fn f(&self) -> bool { true }
+        }
+
+        spec fn specific_fn(t: &Prophecy<bool>) -> bool {
+            t.f()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_proph_and_impl_not_proph_err PROPH.to_string() + verus_code_str! {
+        trait Tr {
+            #[verifier::prophetic]
+            spec fn f(&self) -> bool;
+        }
+
+        impl Tr for Prophecy<bool> {
+            spec fn f(&self) -> bool { self.value() }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
 }
 
 test_verify_one_file! {
@@ -197,4 +282,45 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] decreases_clause_proof_fn_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        proof fn test()
+            decreases foo()
+        {
+            test();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] decreases_clause_exec_fn_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        fn test()
+            decreases foo()
+        {
+            test();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
+}
+
+test_verify_one_file! {
+    #[test] decreases_clause_loop_cannot_be_prophetic verus_code! {
+        #[verifier::prophetic]
+        uninterp spec fn foo() -> int;
+
+        fn test()
+        {
+            loop
+                decreases foo()
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call prophecy-dependent function in prophecy-independent context")
 }

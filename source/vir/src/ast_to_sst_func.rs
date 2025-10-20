@@ -1,7 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent,
-    VirErr,
+    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
+    VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
@@ -231,14 +231,15 @@ fn func_body_to_sst(
 
     let termination_check =
         if crate::recursion::fun_is_recursive(ctx, function) && verifying_owning_bucket {
-            let (mut termination_decls, termination_stm) = crate::recursion::check_termination_stm(
-                ctx,
-                diagnostics,
-                function,
-                Some(proof_body_stm),
-                &check_body_stm,
-                false,
-            )?;
+            let (mut termination_decls, termination_inits, termination_stm) =
+                crate::recursion::check_termination_stm(
+                    ctx,
+                    diagnostics,
+                    function,
+                    Some(proof_body_stm),
+                    &check_body_stm,
+                    false,
+                )?;
             termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
             let termination_check = FuncCheckSst {
@@ -254,6 +255,7 @@ fn func_body_to_sst(
                 }),
                 body: termination_stm,
                 local_decls: Arc::new(termination_decls),
+                local_decls_decreases_init: termination_inits,
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
                 unwind: UnwindSst::NoUnwind,
@@ -458,18 +460,29 @@ pub(crate) fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<ExprX>>,
     param_renames: &HashMap<VarIdent, VarIdent>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Message> {
-    ast_visitor::map_expr_visitor(e, &|expr| {
-        Ok(match &expr.x {
-            ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
-            ExprX::VarLoc(i) => {
-                expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
-            }
-            ExprX::VarAt(i, at) => {
-                expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
-            }
-            _ => expr.clone(),
-        })
-    })
+    ast_visitor::map_expr_place_visitor(
+        e,
+        &|expr| {
+            Ok(match &expr.x {
+                ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
+                ExprX::VarLoc(i) => {
+                    expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                ExprX::VarAt(i, at) => {
+                    expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
+                }
+                _ => expr.clone(),
+            })
+        },
+        &|place| {
+            Ok(match &place.x {
+                PlaceX::Local(i) => {
+                    place.new_x(PlaceX::Local(param_renames.get(i).unwrap_or(i).clone()))
+                }
+                _ => place.clone(),
+            })
+        },
+    )
 }
 
 struct InheritanceSubstitutions {
@@ -823,9 +836,9 @@ pub fn func_def_to_sst(
         && (function.x.attrs.exec_allows_no_decreases_clause
             || function.x.attrs.exec_assume_termination);
     let no_termination_check = function.x.decrease.len() == 0 && exec_with_no_termination_check;
-    let (decls, stm) =
+    let (decls, local_decls_decreases_init, stm) =
         if no_termination_check || ctx.checking_spec_preconditions() || check_api_safety {
-            (vec![], stm)
+            (vec![], Arc::new(vec![]), stm)
         } else {
             crate::recursion::check_termination_stm(
                 ctx,
@@ -860,6 +873,7 @@ pub fn func_def_to_sst(
         unwind: unwind_sst,
         body: stm,
         local_decls: Arc::new(local_decls),
+        local_decls_decreases_init,
         statics: Arc::new(statics.into_iter().collect()),
     })
 }

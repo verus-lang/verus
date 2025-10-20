@@ -58,7 +58,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_impl_mod_1 verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
 
             #[derive(PartialEq, Eq)]
             pub struct Bike {
@@ -79,7 +79,7 @@ test_verify_one_file! {
 
         mod M2 {
             use super::M1::Bike;
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test_impl_1(b: Bike)
                 requires b.is_hard_tail()
@@ -112,7 +112,7 @@ test_verify_one_file! {
 
         mod M2 {
             use super::M1::Bike;
-            use builtin::*;
+            use verus_builtin::*;
 
             fn test_impl_1(b: Bike)
                 requires b.is_hard_tail()

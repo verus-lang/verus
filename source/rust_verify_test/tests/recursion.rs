@@ -684,11 +684,11 @@ test_verify_one_file! {
     #[test] termination_checked_across_modules verus_code! {
         // We expect this to complain about the lack of 'decreases' clause
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f1(i: int) -> int { crate::M2::f2(i - 1) }
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int { crate::M1::f1(i - 1) }
         }
     } => Err(err) => {
@@ -703,7 +703,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] termination_checked_across_modules2 verus_code! {
         mod M1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f1(i: int) -> int
                 decreases i
             {
@@ -711,7 +711,7 @@ test_verify_one_file! {
             }
         }
         mod M2 {
-            use builtin::*;
+            use verus_builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int
                 decreases i
             {
@@ -1334,7 +1334,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decreases_by_other_module_1_regression_249 verus_code! {
         mod A {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             pub open spec fn f(a: nat) -> nat
                 decreases a
             {
@@ -1353,7 +1353,7 @@ test_verify_one_file! {
         }
 
         mod B {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             #[allow(unused_imports)] use crate::A::f;
 
             spec fn g() -> nat {
@@ -1366,7 +1366,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decreases_by_other_module_2 verus_code! {
         mod A {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             pub open spec fn f(a: nat) -> nat
                 decreases a
             {
@@ -1381,7 +1381,7 @@ test_verify_one_file! {
         }
 
         mod B {
-            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use verus_builtin::*;
             #[verifier(decreases_by)]
             pub proof fn termination_f(a: nat) {
                 assert(false);
@@ -1638,7 +1638,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] decrease_through_abstract_type verus_code! {
         mod m1 {
-            use builtin::*;
+            use verus_builtin::*;
             pub struct S<A, B>(A, B);
             impl<A, B> S<A, B> {
                 pub closed spec fn get0(self) -> A { self.0 }
@@ -1654,7 +1654,7 @@ test_verify_one_file! {
         }
 
         mod m2 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -1671,7 +1671,7 @@ test_verify_one_file! {
         }
 
         mod m3 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -1687,7 +1687,7 @@ test_verify_one_file! {
         }
 
         mod m4 {
-            use builtin::*;
+            use verus_builtin::*;
             use crate::m1::*;
             enum Q {
                 Nil,
@@ -2149,6 +2149,23 @@ test_verify_one_file! {
                     None => Set::empty(),
                     Some(node) => node.left.as_set().union(node.right.as_set()).insert(node.key),
                 }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lemma_decreases_generic verus_code! {
+        use vstd::prelude::*;
+
+        pub open spec fn test<T>(s:Seq<T>) -> int
+            decreases s
+        {
+            if s.len() == 0 {
+                0
+            }
+            else {
+                test(s.drop_last())
             }
         }
     } => Ok(())

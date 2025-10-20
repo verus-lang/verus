@@ -4,10 +4,11 @@ use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
+    check_generics_bounds_no_polarity, def_id_to_vir_path, no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir, pat_to_mut_var};
+use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
+use crate::rustc_type_ir::inherent::IntoKind;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -16,9 +17,11 @@ use rustc_hir::{
     HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv, ValTreeKind, Value,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
+    Value,
 };
+use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -26,8 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
-    Visibility,
+    KrateX, Mode, Opaqueness, ParamX, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -150,7 +152,7 @@ fn handle_autospec<'tcx>(
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
                 ret: spec_ret_param,
-                ens_has_return: false,
+                ens_has_return: true,
                 require: functionx.require.clone(), // requires becomes recommends
                 ensure: (Arc::new(vec![]), Arc::new(vec![])),
                 returns: None,
@@ -208,25 +210,27 @@ pub(crate) fn body_id_to_types<'tcx>(
     tcx.typeck(id.hir_id.owner.def_id)
 }
 
-pub(crate) fn body_to_vir<'tcx>(
+fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     fun_id: DefId,
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
     external_body: bool,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
         ctxt: ctxt.clone(),
         types,
         fun_id,
+        external_trait_from_to: external_trait_from_to.as_ref().map(|e| Arc::new(e.clone())),
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
     };
-    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+    let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
     if external_body {
         match &e.x {
@@ -262,7 +266,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, &output_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(id, span, &output_ty, false)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -326,10 +330,10 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::Uint(_), _) => ty1 == ty2,
         (TyKind::Int(_), _) => ty1 == ty2,
         (TyKind::Char, _) => ty1 == ty2,
+        (TyKind::Float(_), _) => ty1 == ty2,
         (TyKind::Closure(..), _) => ty1 == ty2,
         (TyKind::Str, _) => ty1 == ty2,
         (TyKind::Never, _) => ty1 == ty2,
-        (TyKind::Float(..), _) => ty1 == ty2,
         (TyKind::Param(_), _) => ty1 == ty2,
         (TyKind::Ref(_, t1, m1), TyKind::Ref(_, t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Tuple(_), TyKind::Tuple(_)) => check_ts(ty1.tuple_fields(), ty2.tuple_fields()),
@@ -352,8 +356,8 @@ fn compare_external_ty_or_true<'tcx>(
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
-                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1);
-                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2);
+                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1, None);
+                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2, None);
                     if trait_path1 == *from_path {
                         trait_path1 = to_path.clone();
                     }
@@ -472,18 +476,18 @@ pub(crate) fn handle_external_fn<'tcx>(
                 }
             };
             let body = find_body(ctxt, body_id);
-            get_external_def_id(ctxt.tcx, &ctxt.verus_items, id, body_id, body, sig)?
+            get_external_def_id(ctxt, id, body_id, body, sig)?
         };
-    let external_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_id);
+    let external_path = ctxt.def_id_to_vir_path(external_id);
     let external_item_visibility = mk_visibility(ctxt, external_id);
 
-    if external_path.krate == Some(Arc::new("builtin".to_string()))
+    if external_path.krate == Some(Arc::new("verus_builtin".to_string()))
         && &*external_path.last_segment() != "clone"
         && !is_builtin_external
     {
         return err_span(
             sig.span,
-            "cannot apply `assume_specification` to Verus builtin functions",
+            "cannot apply `assume_specification` to Verus verus_builtin functions",
         );
     }
 
@@ -638,14 +642,16 @@ pub(crate) fn handle_external_fn<'tcx>(
     Ok((external_path, external_item_visibility, kind, has_self_parameter, safety, false))
 }
 
-fn get_substs_early<'tcx>(
+pub(crate) fn get_substs_early<'tcx>(
     ty: rustc_middle::ty::Ty<'tcx>,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
     match ty.kind() {
-        rustc_middle::ty::FnDef(_, substs) => Ok(substs),
+        // The following TyKind Variants have a I::GenericArgs of early-bound generic arguments:
+        // Adt, FnDef, Coroutine, Closure, CoroutineClosure, CoroutineWitness
+        rustc_middle::ty::Adt(_, substs) | rustc_middle::ty::FnDef(_, substs) => Ok(substs),
         _ => {
-            crate::internal_err!(span, "expected FnDef")
+            crate::internal_err!(span, "expected Adt or FnDef")
         }
     }
 }
@@ -756,10 +762,37 @@ fn mismatch_type_error_user_str_early<'tcx>(
     substs: GenericArgsRef<'tcx>,
     poly_sig: rustc_middle::ty::EarlyBinder<'tcx, rustc_middle::ty::PolyFnSig<'tcx>>,
 ) -> String {
+    let mut idx = 0;
+    let substs = substs
+        .iter()
+        .map(|arg| match arg.kind() {
+            GenericArgKind::Lifetime(region) => match region.kind() {
+                RegionKind::ReEarlyParam(r) => {
+                    if r.name.to_string() == "'_" {
+                        let mut r = r;
+                        r.name = rustc_span::Symbol::intern(&format!("'_{:}", idx));
+                        idx += 1;
+                        GenericArg::from(Region::new_from_kind(
+                            ctxt.tcx,
+                            RegionKind::ReEarlyParam(r),
+                        ))
+                    } else {
+                        arg
+                    }
+                }
+                _ => arg,
+            },
+            _ => arg,
+        })
+        .collect::<Vec<_>>();
+    let substs = ctxt.tcx.mk_args(&substs);
+
+    let early_binder_str = substs_to_string(&substs);
+
     let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
     use rustc_middle::ty::FnSig;
 
-    let binder_str = binders_to_str(&poly_sig.bound_vars());
+    let binder_str = binders_to_string(&poly_sig.bound_vars());
 
     let mut args: Vec<String> = vec![];
     let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
@@ -767,10 +800,42 @@ fn mismatch_type_error_user_str_early<'tcx>(
         args.push(format!("{:}", t));
     }
 
-    format!("{:}({:}) -> {:}", binder_str, args[0..args.len() - 1].join(", "), args[args.len() - 1],)
+    format!(
+        "{:}{:}({:}) -> {:}",
+        early_binder_str,
+        binder_str,
+        args[0..args.len() - 1].join(", "),
+        args[args.len() - 1],
+    )
 }
 
-fn binders_to_str(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
+fn substs_to_string<'tcx>(substs: &GenericArgsRef<'tcx>) -> String {
+    if substs.len() == 0 {
+        return "".to_string();
+    }
+
+    let mut v = vec![];
+    for arg in substs.iter() {
+        let s = match &arg.kind() {
+            GenericArgKind::Lifetime(region) => match region.kind() {
+                RegionKind::ReEarlyParam(r) => r.name.to_string(),
+                _ => format!("(Region {:?})", region),
+            },
+            GenericArgKind::Type(ty) => match ty.kind() {
+                TyKind::Param(pty) => pty.name.to_string(),
+                _ => format!("(Type {:?})", ty),
+            },
+            GenericArgKind::Const(c) => match c.kind() {
+                ConstKind::Param(pc) => pc.name.to_string(),
+                _ => format!("(Const {:?})", c),
+            },
+        };
+        v.push(s);
+    }
+    format!("{:}{:}{:}", "for<", v.join(", "), "> ")
+}
+
+fn binders_to_string(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
     use rustc_middle::ty::BoundTyKind;
     use rustc_middle::ty::BoundVariableKind;
     if l.len() == 0 {
@@ -935,7 +1000,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
 ) -> Result<Option<Fun>, VirErr> {
-    let mut this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let mut this_path = ctxt.def_id_to_vir_path(id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
@@ -956,7 +1021,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, sig.span, &ty, false)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false)?;
 
         let fun = check_item_const_or_static(
             ctxt,
@@ -979,8 +1044,8 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
-        let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
-        let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
+        let from_path = ctxt.def_id_to_vir_path(from_trait_id);
+        let to_path = ctxt.def_id_to_vir_path(to_trait_id);
         let to_spec_path = if let Some(name) = to_spec_name {
             Some(from_path.pop_segment().push_segment(Arc::new(name.clone())))
         } else {
@@ -1107,20 +1172,15 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
-        let is_ref_mut = is_mut_ty(ctxt, *input);
+        let is_ref_mut =
+            if ctxt.cmd_line_args.new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
 
         let typ = {
-            let typ = mid_ty_to_vir(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-            )?;
+            let typ =
+                ctxt.mid_ty_to_vir(id, span, is_ref_mut.map(|(t, _)| t).unwrap_or(input), false)?;
             if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
                 Arc::new(TypX::Decorate(decoration, None, typ))
             } else {
@@ -1141,6 +1201,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 unwrapped_info: None,
             },
         );
+
+        // TODO(new_mut_ref): be more precise here
+        // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
+        let is_mut_var = is_mut_var || (ctxt.cmd_line_args.new_mut_ref && param_mode != Mode::Spec);
+
         if is_mut_var {
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
@@ -1157,13 +1222,20 @@ pub(crate) fn check_item_fn<'tcx>(
                 vir_param.clone(),
                 is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
             ));
+            // TODO(new_mut_ref): resolve_inference expects no shadowing
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
-                vir::ast::PatternX::Var { name: name.clone(), mutable: true },
+                vir::ast::PatternX::Var(vir::ast::PatternBinding {
+                    name: name.clone(),
+                    mutable: true,
+                    by_ref: vir::ast::ByRef::No,
+                    typ: typ.clone(),
+                    copy: false,
+                }),
             );
             let new_init_expr =
-                ctxt.spanned_typed_new(span, &typ, vir::ast::ExprX::Var(name.clone()));
+                ctxt.spanned_typed_new(span, &typ, vir::ast::PlaceX::Local(name.clone()));
             if let Some(hir_id) = hir_id {
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_binding_pat.span.id));
                 ctxt.erasure_info.borrow_mut().hir_vir_ids.push((hir_id, new_init_expr.span.id));
@@ -1188,7 +1260,8 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+            let mut vir_body =
+                body_to_vir(ctxt, id, body_id, body, mode, external_body, &external_trait_from_to)?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
             (Some(vir_body), header, Some(body.value.hir_id))
@@ -1269,7 +1342,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     "unexpected named return value for function with default return",
                 );
             }
-            (Some((_, typ)), Some((ret_typ, _))) => {
+            (Some((_, Some(typ))), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
@@ -1280,6 +1353,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     );
                 }
             }
+            (Some(_), Some(_)) => {}
         }
     }
 
@@ -1446,10 +1520,10 @@ pub(crate) fn check_item_fn<'tcx>(
         body
     } else {
         body.map(move |body| {
-            SpannedTyped::new(
-                &body.span.clone(),
-                &body.typ.clone(),
-                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body)),
+            ctxt.spanned_typed_new_vir(
+                &body.span,
+                &body.typ,
+                vir::ast::ExprX::Block(Arc::new(mut_params_redecl), Some(body.clone())),
             )
         })
     };
@@ -1504,6 +1578,11 @@ pub(crate) fn check_item_fn<'tcx>(
         module_path,
         body.is_some(),
     )?;
+
+    ctxt.push_body_erasure(
+        id.expect_local(),
+        BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+    );
 
     let mut func = FunctionX {
         name: name.clone(),
@@ -1912,7 +1991,6 @@ pub(crate) fn predicates_match<'tcx>(
     // So they have to be equal.
     //
     // Regardless, it makes sense to keep this as a sanity check.
-
     let preds1 = preds1.iter().map(|p| tcx.anonymize_bound_vars(p.kind()));
     let mut preds2: Vec<_> = preds2.iter().map(|p| tcx.anonymize_bound_vars(p.kind())).collect();
 
@@ -1976,13 +2054,14 @@ fn all_predicates<'tcx>(
 }
 
 pub(crate) fn get_external_def_id<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    verus_items: &crate::verus_items::VerusItems,
+    ctxt: &Context<'tcx>,
     proxy_fun_id: DefId,
     body_id: &BodyId,
     body: &Body<'tcx>,
     sig: &'tcx FnSig<'tcx>,
 ) -> Result<(rustc_span::def_id::DefId, FunctionKind, bool), VirErr> {
+    let tcx = ctxt.tcx;
+
     let err = || {
         err_span(
             sig.span,
@@ -2077,7 +2156,10 @@ pub(crate) fn get_external_def_id<'tcx>(
             ),
             ResolutionResult::Builtin(b) => err_span(
                 sig.span,
-                format!("Verus assume_specification does not support this builtin impl '{:?}'", b),
+                format!(
+                    "Verus assume_specification does not support this verus_builtin impl '{:?}'",
+                    b
+                ),
             ),
             ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
                 unsupported_err!(sig.span, "assume_specification for a provided trait method");
@@ -2088,28 +2170,19 @@ pub(crate) fn get_external_def_id<'tcx>(
                 impl_item_args: _,
                 resolved_item: ResolvedItem::FromImpl(impl_item_id, _args),
             } => {
-                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+                let trait_path = ctxt.def_id_to_vir_path(trait_def_id);
 
                 let mut types: Vec<Typ> = vec![];
 
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(mid_ty_to_vir(
-                        tcx,
-                        &verus_items,
-                        impl_item_id,
-                        sig.span,
-                        &ty,
-                        false,
-                    )?);
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
-                    method: Arc::new(FunX {
-                        path: def_id_to_vir_path(tcx, verus_items, external_id),
-                    }),
-                    impl_path: def_id_to_vir_path(tcx, verus_items, impl_def_id),
+                    method: Arc::new(FunX { path: ctxt.def_id_to_vir_path(external_id) }),
+                    impl_path: ctxt.def_id_to_vir_path(impl_def_id),
                     trait_path: trait_path,
                     trait_typ_args: Arc::new(types),
                 };
@@ -2133,7 +2206,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     body_id: &BodyId,
     is_static: bool,
 ) -> Result<Fun, VirErr> {
-    let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let mut path = ctxt.def_id_to_vir_path(id);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     if vattrs.unerased_proxy {
@@ -2175,7 +2248,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let body = find_body(ctxt, body_id);
-    let mut vir_body = body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body)?;
+    let mut vir_body =
+        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None)?;
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),
@@ -2226,6 +2300,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         module_path,
         !vattrs.external_body,
     )?;
+
+    ctxt.push_body_erasure(
+        id.expect_local(),
+        BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
+    );
 
     let mut functionx = FunctionX {
         name: name.clone(),
@@ -2284,7 +2363,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let path = ctxt.def_id_to_vir_path(id);
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
@@ -2314,14 +2393,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-        )?;
+        let typ =
+            ctxt.mid_ty_to_vir(id, param.span, is_mut.map(|(t, _)| t).unwrap_or(input), false)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,

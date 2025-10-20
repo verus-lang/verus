@@ -8,14 +8,14 @@ use crate::util::{expr_from_tokens, pat_from_tokens};
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use std::rc::Rc;
-use syn_verus::parse;
-use syn_verus::parse::{Parse, ParseStream};
-use syn_verus::parse2;
-use syn_verus::punctuated::Punctuated;
-use syn_verus::spanned::Spanned;
-use syn_verus::token;
-use syn_verus::visit::Visit;
-use syn_verus::{
+use verus_syn::parse;
+use verus_syn::parse::{Parse, ParseStream};
+use verus_syn::parse2;
+use verus_syn::punctuated::Punctuated;
+use verus_syn::spanned::Spanned;
+use verus_syn::token;
+use verus_syn::visit::Visit;
+use verus_syn::{
     Block, Error, Expr, ExprBlock, ExprLet, Ident, Macro, Pat, PatIdent, PatOr, Token, Type,
     braced, bracketed, parenthesized,
 };

@@ -371,6 +371,8 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
+                Constant::Float32(c) => (format!("'{}'", c), 99),
+                Constant::Float64(c) => (format!("'{}'", c), 99),
             },
             Var(id) | VarLoc(id) => (format!("{}", user_local_name(id)), 99),
             VarAt(id, _at) => (format!("old({})", user_local_name(id)), 99),
@@ -431,6 +433,9 @@ impl ExpX {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
+                UnaryOp::FloatToBits => {
+                    (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
@@ -450,6 +455,12 @@ impl ExpX {
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
                 }
+                UnaryOp::MutRefCurrent => {
+                    (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::MutRefFuture => {
+                    (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
@@ -459,6 +470,9 @@ impl ExpX {
                     }
                     HasType(t) => {
                         (format!("has_type({}, {:?})", exp.x.to_user_string(global), t), 99)
+                    }
+                    HasResolved(t) => {
+                        (format!("has_resolved::<{:?}>({})", t, exp.x.to_user_string(global)), 99)
                     }
                     IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
                         (format!("usize::BITS"), 99)
@@ -759,6 +773,24 @@ pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 
+pub fn sst_mut_ref_current(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_current expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefCurrent;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
+pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*e1.typ {
+        TypX::MutRef(t) => t,
+        _ => panic!("sst_mut_ref_future expected MutRef type"),
+    };
+    let op = UnaryOp::MutRefFuture;
+    SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
 pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {
     match ext {
         None => sst_equal(span, e1, e2),
@@ -815,6 +847,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
             LocalDeclKind::Nondeterministic => false,
+            LocalDeclKind::BorrowMut => false,
         }
     }
 }

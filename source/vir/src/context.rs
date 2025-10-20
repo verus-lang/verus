@@ -58,6 +58,7 @@ pub struct GlobalCtx {
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
+    pub new_mut_ref: bool,
 }
 
 // Context for verifying one function
@@ -87,6 +88,7 @@ pub struct Ctx {
     pub(crate) spec_fn_types: Vec<usize>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
+    pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
@@ -199,7 +201,9 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
-                        TypX::Bool | TypX::AnonymousClosure(..) => {}
+                        TypX::Bool => {}
+                        TypX::Float(_) => {}
+                        TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::ConstBool(_) => {}
@@ -214,6 +218,9 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::MutRef(_) => {
+                            roots.insert(container_name.clone());
+                        }
                     }
                 }
             }
@@ -267,6 +274,7 @@ impl GlobalCtx {
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
+        new_mut_ref: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -653,6 +661,7 @@ impl GlobalCtx {
             solver,
             check_api_safety,
             axiom_usage_info,
+            new_mut_ref,
         })
     }
 
@@ -682,6 +691,7 @@ impl GlobalCtx {
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
+            new_mut_ref: self.new_mut_ref,
         }
     }
 
@@ -712,6 +722,7 @@ impl Ctx {
         spec_fn_types: Vec<usize>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
+        resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -757,6 +768,7 @@ impl Ctx {
             spec_fn_types,
             used_builtins,
             fndef_types,
+            resolved_typs,
             fndef_type_set,
             functions,
             func_map,

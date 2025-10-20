@@ -275,6 +275,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         let t = self.visit_typ(t)?;
                         R::ret(|| UnaryOpr::HasType(R::get(t)))
                     }
+                    UnaryOpr::HasResolved(t) => {
+                        let t = self.visit_typ(t)?;
+                        R::ret(|| UnaryOpr::HasResolved(R::get(t)))
+                    }
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
@@ -642,6 +646,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
         let unwind = self.visit_unwind(&def.unwind)?;
 
         R::ret(|| FuncCheckSst {
@@ -650,6 +655,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             unwind: R::get(unwind),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
+            local_decls_decreases_init: R::get_vec_a(local_decls_decreases_init),
             statics: def.statics.clone(),
         })
     }

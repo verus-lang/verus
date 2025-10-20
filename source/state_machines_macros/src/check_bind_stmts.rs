@@ -1,5 +1,5 @@
 use crate::ast::{MonoidElt, MonoidStmtType, SM, SplitKind, TransitionStmt};
-use syn_verus::parse::Error;
+use verus_syn::parse::Error;
 
 pub fn check_bind_stmts(sm: &SM, ts: &mut TransitionStmt, errors: &mut Vec<Error>) {
     match ts {

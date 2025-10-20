@@ -263,14 +263,16 @@ pub fn run_verus(
         .join(profile);
 
     let verus_target_path_str = verus_target_path.to_str().unwrap();
-    let lib_builtin_path = verus_target_path.join("libbuiltin.rlib");
+
+    let lib_builtin_path = verus_target_path.join("libverus_builtin.rlib");
     assert!(lib_builtin_path.exists());
     let lib_builtin_path = lib_builtin_path.to_str().unwrap();
-    let lib_builtin_macros_path = verus_target_path.join(format!("{}builtin_macros.{}", pre, dl));
+    let lib_builtin_macros_path =
+        verus_target_path.join(format!("{}verus_builtin_macros.{}", pre, dl));
     assert!(lib_builtin_macros_path.exists());
     let lib_builtin_macros_path = lib_builtin_macros_path.to_str().unwrap();
     let lib_state_machines_macros_path =
-        verus_target_path.join(format!("{}state_machines_macros.{}", pre, dl));
+        verus_target_path.join(format!("{}verus_state_machines_macros.{}", pre, dl));
     assert!(lib_state_machines_macros_path.exists());
     let lib_state_machines_macros_path = lib_state_machines_macros_path.to_str().unwrap();
 
@@ -314,6 +316,9 @@ pub fn run_verus(
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
+        } else if *option == "new-mut-ref" {
+            verus_args.push("-V".to_string());
+            verus_args.push("new-mut-ref".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -336,15 +341,15 @@ pub fn run_verus(
     );
     if !is_core {
         verus_args.extend(
-            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+            vec!["--extern".to_string(), format!("verus_builtin={lib_builtin_path}")].into_iter(),
         );
     }
     verus_args.extend(
         vec![
             "--extern".to_string(),
-            format!("builtin_macros={lib_builtin_macros_path}"),
+            format!("verus_builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
-            format!("state_machines_macros={lib_state_machines_macros_path}"),
+            format!("verus_state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
             // suppress Rust's generation of long-type files
@@ -374,6 +379,10 @@ pub fn run_verus(
             "--import".to_string(),
             format!("vstd={lib_vstd_vir_path}"),
         ]);
+    }
+
+    if !import_vstd {
+        verus_args.append(&mut vec!["--cfg".to_string(), "verus_no_vstd".to_string()]);
     }
 
     let mut child = std::process::Command::new(bin);
@@ -416,12 +425,13 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
+    #![feature(ptr_metadata)]
 };
 
 #[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
-    use builtin::*;
-    use builtin_macros::*;
+    use verus_builtin::*;
+    use verus_builtin_macros::*;
 };
 
 #[allow(dead_code)]
@@ -433,7 +443,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         if *x == "exec_allows_no_decreases_clause" {
             exec_allows_no_decreases_clause = true;
             false
-        } else if *x == "no-auto-import-builtin" {
+        } else if *x == "no-auto-import-verus_builtin" {
             no_prelude = true;
             false
         } else {
@@ -597,11 +607,45 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert!(
+        expected_msgs
+            .iter()
+            .all(|expected_msg| err.errors.iter().any(|x| x.rendered.contains(expected_msg)))
+    );
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
-    assert!(err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+    // usually we can use the existence of an error code to tell if something is a
+    // Rust error message, though some error messages don't come with error codes
+    assert!(
+        err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)
+            || err.errors[0].message.contains("lifetime may not live long enough")
+    ); // thus a Rust error
     assert!(err.errors[0].message.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert_eq!(err.errors.len(), expected_msgs.len());
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    // usually we can use the existence of an error code to tell if something is a
+    // Rust error message, though some error messages don't come with error codes
+    assert!(
+        err.errors[0].code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)
+            || err.errors[0].message.contains("lifetime may not live long enough")
+    ); // thus a Rust error
+    for (error, expected_msg) in err.errors.iter().zip(expected_msgs.iter()) {
+        assert!(error.message.contains(expected_msg));
+    }
 }
 
 #[allow(dead_code)]
@@ -612,6 +656,20 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
         assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
         assert!(e.message.contains(expected_msg));
     }
+}
+
+#[allow(dead_code)]
+pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.len() >= 1);
+    let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
+    let mut found = false;
+    for e in &err.errors {
+        assert!(e.code.as_ref().map(|x| error_re.is_match(&x.code)) == Some(true)); // thus a Rust error
+        if e.message.contains(expected_msg) {
+            found = true;
+        }
+    }
+    assert!(found);
 }
 
 #[allow(dead_code)]

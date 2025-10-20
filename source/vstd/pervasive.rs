@@ -240,9 +240,9 @@ macro_rules! assert_by_contradiction {
 #[macro_export]
 macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
-        ::builtin::assert_by($predicate, {
+        ::verus_builtin::assert_by($predicate, {
             if !$predicate {
-                $bblock::builtin::assert_(false);
+                $bblock::verus_builtin::assert_(false);
             }
         });
     };
@@ -368,7 +368,7 @@ macro_rules! assert_by_contradiction_internal {
 /// # Example using a container type (TODO)
 ///
 /// # Macro Expansion (TODO)
-pub use builtin_macros::struct_with_invariants;
+pub use verus_builtin_macros::struct_with_invariants;
 
 verus! {
 
@@ -427,8 +427,8 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
 }
 
 } // verus!
-
 verus! {
+
 /// The default behavior of the vstd library enforces writing panic-free code.
 /// While developers may still use panic, verification should ensure that any
 /// panic is provably unreachable.
@@ -440,8 +440,8 @@ pub open spec fn allow_panic() -> bool {
 #[doc(hidden)]
 #[verifier(external_body)]
 pub fn __call_panic(out: &[&str]) -> !
-requires
-    allow_panic()
+    requires
+        allow_panic(),
 {
     core::panic!("__call_panic {:?}", out);
 }
@@ -455,7 +455,6 @@ pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
 }
 
 } // verus!
-
 /// Replace panic macro with vpanic when needed.
 /// panic!{} may call panic_fmt with private rt::Argument, which could not
 /// be supported in verus.

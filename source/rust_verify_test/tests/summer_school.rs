@@ -356,8 +356,8 @@ test_verify_one_file! {
 // -- e10 --
 
 const DIRECTIONS_SHARED_CODE: &str = verus_code_str! {
-    #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use builtin_macros::*;
+    #[allow(unused_imports)] use verus_builtin::*;
+    #[allow(unused_imports)] use verus_builtin_macros::*;
 
     pub enum Direction {
         North,
@@ -468,8 +468,8 @@ test_verify_one_file! {
 // -- e12 --
 //
 const LUNCH_SHARED_CODE: &str = verus_code_str! {
-    #[allow(unused_imports)] use builtin::*;
-    #[allow(unused_imports)] use builtin_macros::*;
+    #[allow(unused_imports)] use verus_builtin::*;
+    #[allow(unused_imports)] use verus_builtin_macros::*;
 
     pub enum Meat { Salami, Ham }
 
@@ -493,8 +493,8 @@ fn e13_pass() {
             "test.rs".to_string(),
             "#![feature(fmt_internals)]#![allow(macro_expanded_macro_exports_accessed_by_absolute_paths)]\n".to_string()
                 + &verus_code! {
-                    #[allow(unused_imports)] use builtin::*;
-                    #[allow(unused_imports)] use builtin_macros::*;
+                    #[allow(unused_imports)] use verus_builtin::*;
+                    #[allow(unused_imports)] use verus_builtin_macros::*;
                     mod directions; use directions::{Direction, turn_left, turn_right};
                     mod lunch; use lunch::*;
 
@@ -504,7 +504,7 @@ fn e13_pass() {
 
                     proof fn forall_lemma() {
                         // NB: The original version here fails with:
-                        // "Could not automatically infer triggers for this quantifer."
+                        // "Could not automatically infer triggers for this quantifier."
                         // We decided that this use case -- a forall that can be proven but
                         // never used (in any reasonable setting because no way is Chris
                         // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
@@ -793,7 +793,7 @@ test_verify_one_file_with_options! {
                 reveal_with_fuel(fibo, 11);
             }
 
-            // TODO(chris): "Could not automatically infer triggers for this quantifer." but there's fibo
+            // TODO(chris): "Could not automatically infer triggers for this quantifier." but there's fibo
             // RIGHT THERE! Error should say "matching loop" instead.
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 

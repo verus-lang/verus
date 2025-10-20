@@ -812,3 +812,34 @@ test_verify_one_file! {
         pub const X: u64 = const_fn(1);
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_const_fn_with_ghost code!{
+        use vstd::prelude::*;
+        #[verus_spec(ret =>
+            with Ghost(g): Ghost<u64>
+        )]
+        #[allow(unused_variables)]
+        pub const fn const_fn(x: u64) -> u64 {
+            proof!{
+                assert(true);
+            }
+            {
+                proof!{assert(true);}
+            }
+            x
+        }
+
+        #[verus_spec(
+            with Ghost(g): Ghost<u64>
+        )]
+        pub const fn call_const_fn(x: u64) -> u64 {
+            proof_with!{Ghost(g)}
+            const_fn(x)
+        }
+
+
+        // external call to const_fn does not need ghost var.
+        pub const X: u64 = const_fn(1);
+    } => Ok(())
+}

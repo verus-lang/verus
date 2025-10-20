@@ -344,7 +344,7 @@ test_verify_one_file! {
     #[test] fn_calls_bad3 verus_code! {
         mod privacy_invasion {
             #[allow(unused_imports)]
-            use builtin::assert_by_compute_only;
+            use verus_builtin::assert_by_compute_only;
 
             mod mostly_private {
                 pub closed spec fn f() -> u32 { 1 }
@@ -777,6 +777,46 @@ test_verify_one_file! {
             proof fn test() {
                 assert(BIN_HUGE == 12) by(compute_only);
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] depth_tracking_infinite_recursion verus_code! {
+        use vstd::prelude::*;
+
+        spec fn infinite_recursion(n: int) -> nat
+            decreases n,
+        {
+            infinite_recursion(1)  // Infinite recursion - should trigger depth limit
+        }
+
+        proof fn test_depth_limit() {
+            assert(infinite_recursion(42) >= 0) by(compute);
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert!(err.errors[0].rendered.contains("assert_by_compute exceeded maximum recursion depth"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] depth_tracking_deep_but_finite verus_code! {
+        use vstd::prelude::*;
+
+        spec fn count_down(n: nat) -> nat
+            decreases n,
+        {
+            if n == 0 {
+                0
+            } else {
+                count_down((n - 1) as nat)
+            }
+        }
+
+        proof fn test_deep_recursion() {
+            // This should succeed - finite recursion within reasonable depth
+            assert(count_down(50) == 0) by(compute);
         }
     } => Ok(())
 }
