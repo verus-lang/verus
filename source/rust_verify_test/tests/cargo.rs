@@ -13,25 +13,50 @@ fn compute_test_dir(dir: &str) -> std::path::PathBuf {
     current_exe.parent().unwrap().parent().unwrap().parent().unwrap().parent().unwrap().join(dir)
 }
 
-fn run_cargo_verus_for_dir(dir: &str) {
-    let test_dir = compute_test_dir(dir);
+fn parse_toml_file(path: &std::path::Path) -> Table {
+    let toml_content = fs::read_to_string(path)
+        .unwrap_or_else(|_| panic!("cannot open Cargo.toml file: {}", path.display()));
+    toml_content.parse::<Table>().unwrap()
+}
 
-    // Check for additional arguments to pass to Verus
-    let toml_path = test_dir.join("Cargo.toml");
-    let toml = fs::read_to_string(&toml_path)
-        .unwrap_or_else(|_| panic!("cannot open Cargo.toml file: {}", toml_path.display()));
-    let toml_table = toml.parse::<Table>().unwrap();
-    let mut extra_verus_args = vec![];
-    if let Some(package) = toml_table.get("package") {
+fn find_verus_config<'a>(table: &'a Table, entry: &str) -> Option<&'a str> {
+    if let Some(package) = table.get("package") {
         if let Some(meta) = package.get("metadata") {
             if let Some(verus) = meta.get("verus") {
-                if let Some(args) = verus.get("test_args") {
-                    if let Some(args) = args.as_str() {
-                        extra_verus_args.extend(args.split(" "));
+                if let Some(value) = verus.get(entry) {
+                    if value.is_bool() {
+                        return Some(if value.as_bool().unwrap() { "true" } else { "false" });
+                    } else if value.is_str() {
+                        return Some(value.as_str().unwrap());
+                    } else {
+                        return None;
                     }
                 }
             }
         }
+    } 
+    None
+}
+
+fn run_cargo_verus_for_dir(dir: &str) {
+    let test_dir = compute_test_dir(dir);
+
+    // Check for additional Verus-related metadata 
+    let toml_path = test_dir.join("Cargo.toml");
+    let toml_table = parse_toml_file(&toml_path);
+
+    // See if this test is currently being ignored
+    let ignore = find_verus_config(&toml_table, "test_ignore")
+        .map_or(false, |v| v == "true");
+    if ignore {
+        eprintln!("Ignoring cargo verus test in {}", dir);
+        return;
+    }
+
+    // Check for extra verus args
+    let mut extra_verus_args = vec![];
+    if let Some(args) = find_verus_config(&toml_table, "test_args") {
+        extra_verus_args.extend(args.split(" "));
     }
 
     // Don't reuse any artifacts from previous runs
@@ -54,6 +79,18 @@ fn run_cargo_verus_for_dir(dir: &str) {
 
 fn run_vanilla_cargo_for_dir(dir: &str) {
     let test_dir = compute_test_dir(dir);
+
+    // Check for additional Verus-related metadata 
+    let toml_path = test_dir.join("Cargo.toml");
+    let toml_table = parse_toml_file(&toml_path);
+
+    // See if this test is currently being ignored
+    let ignore = find_verus_config(&toml_table, "test_ignore")
+        .map_or(false, |v| v == "true");
+    if ignore {
+        eprintln!("Ignoring cargo verus test in {}", dir);
+        return;
+    }
 
     // Don't reuse any artifacts from previous runs
     let args = vec!["clean"];
