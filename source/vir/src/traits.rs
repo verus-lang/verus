@@ -447,6 +447,10 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
             // skip external traits and marker traits
             continue;
         }
+        if trait_impl.x.auto_imported {
+            // skip external impls
+            continue;
+        }
         for default_function in &default_methods[&trait_impl.x.trait_path] {
             let impl_path = &trait_impl.x.impl_path;
             let method = &default_function.x.name;

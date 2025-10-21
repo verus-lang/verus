@@ -637,6 +637,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_default_ensures_extern_impl verus_code! {
+        trait T {
+            fn f();
+            fn g() {
+                Self::f();
+            }
+        }
+
+        #[verifier::external]
+        impl T for bool {
+            fn f() {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_default_ensures_extern1 verus_code! {
         #[verifier::external]
         trait T {
@@ -768,7 +785,9 @@ test_verify_one_file! {
             assert(forall|r| call_ensures(<u8 as T>::f, (6,), r) ==> r == 3);
         }
         fn inheritor2() {
-            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r == 3);
+            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r <= 6);
+            // Because T for i8 is external, we shouldn't know whether it inherits the default
+            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r == 3); // FAILS
         }
         fn overrider1() {
             assert(forall|r| call_ensures(<u16 as T>::f, (6,), r) ==> r == 3); // FAILS
@@ -785,5 +804,5 @@ test_verify_one_file! {
         fn overrider5() {
             assert(forall|r| call_ensures(<bool as T>::f, (21,), r) ==> r == 3);
         }
-    } => Err(err) => assert_fails(err, 4)
+    } => Err(err) => assert_fails(err, 5)
 }
