@@ -34,20 +34,19 @@ fn find_verus_config<'a>(table: &'a Table, entry: &str) -> Option<&'a str> {
                 }
             }
         }
-    } 
+    }
     None
 }
 
 fn run_cargo_verus_for_dir(dir: &str) {
     let test_dir = compute_test_dir(dir);
 
-    // Check for additional Verus-related metadata 
+    // Check for additional Verus-related metadata
     let toml_path = test_dir.join("Cargo.toml");
     let toml_table = parse_toml_file(&toml_path);
 
     // See if this test is currently being ignored
-    let ignore = find_verus_config(&toml_table, "test_ignore")
-        .map_or(false, |v| v == "true");
+    let ignore = find_verus_config(&toml_table, "test_ignore").map_or(false, |v| v == "true");
     if ignore {
         eprintln!("Ignoring cargo verus test in {}", dir);
         return;
@@ -80,13 +79,12 @@ fn run_cargo_verus_for_dir(dir: &str) {
 fn run_vanilla_cargo_for_dir(dir: &str) {
     let test_dir = compute_test_dir(dir);
 
-    // Check for additional Verus-related metadata 
+    // Check for additional Verus-related metadata
     let toml_path = test_dir.join("Cargo.toml");
     let toml_table = parse_toml_file(&toml_path);
 
     // See if this test is currently being ignored
-    let ignore = find_verus_config(&toml_table, "test_ignore")
-        .map_or(false, |v| v == "true");
+    let ignore = find_verus_config(&toml_table, "test_ignore").map_or(false, |v| v == "true");
     if ignore {
         eprintln!("Ignoring cargo verus test in {}", dir);
         return;
