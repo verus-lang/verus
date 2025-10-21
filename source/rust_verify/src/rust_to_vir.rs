@@ -178,7 +178,7 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
-            check_fn_opaque_ty(ctxt, vir, &sig.decl.output)?;
+            check_fn_opaque_ty(ctxt, vir, &item.owner_id.to_def_id())?;
             check_item_fn(
                 ctxt,
                 &mut vir.functions,

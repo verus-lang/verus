@@ -2080,164 +2080,149 @@ pub(crate) fn ty_remove_references<'tcx>(
 pub(crate) fn check_fn_opaque_ty<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut vir::ast::KrateX,
-    fn_ret_ty: &rustc_hir::FnRetTy,
+    fn_def_id: &DefId,
 ) -> Result<(), VirErr> {
-    if let rustc_hir::FnRetTy::Return(ty) = fn_ret_ty {
-        match ty.kind {
-            rustc_hir::TyKind::OpaqueDef(opaque_ty) => {
-                let opaque_ty = ctxt.tcx.hir_expect_opaque_ty(opaque_ty.def_id);
-                crate::rust_to_vir_base::opaque_def_to_vir(ctxt, vir, opaque_ty)?;
-            }
-            _ => {}
-        }
-    }
+    let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
+    opaque_def_to_vir(ctxt, vir, &ty)?;
     Ok(())
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut vir::ast::KrateX,
-    opaque_ty: &rustc_hir::OpaqueTy,
+    ty: &rustc_middle::ty::Ty<'tcx>,
 ) -> Result<(), VirErr> {
-    let mut trait_bounds = Vec::new();
-    let mut args = Vec::new();
-
-    match opaque_ty.origin {
-        rustc_hir::OpaqueTyOrigin::FnReturn { parent, .. } => {
-            let ty = ctxt.tcx.fn_sig(parent).skip_binder().output().skip_binder();
-            match ty.kind() {
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
-                    for arg in al_ty.args {
-                        match arg.unpack() {
-                            rustc_type_ir::GenericArgKind::Lifetime(_) => {}
-                            rustc_type_ir::GenericArgKind::Type(ty) => {
-                                args.push(mid_ty_to_vir(
-                                    ctxt.tcx,
-                                    &ctxt.verus_items,
-                                    None,
-                                    opaque_ty.def_id.into(),
-                                    opaque_ty.span,
-                                    &ty,
-                                    false,
-                                )?);
-                            }
-                            rustc_type_ir::GenericArgKind::Const(cnst) => {
-                                args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                                    ctxt.tcx,
-                                    Some(opaque_ty.span),
-                                    &cnst,
-                                )?);
-                            }
-                        }
+    match ty.kind() {
+        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
+            let span = ctxt.tcx.def_span(al_ty.def_id);
+            let mut trait_bounds = Vec::new();
+            let mut args = Vec::new();
+            for arg in al_ty.args {
+                match arg.unpack() {
+                    rustc_type_ir::GenericArgKind::Lifetime(_) => {}
+                    rustc_type_ir::GenericArgKind::Type(ty) => {
+                        args.push(mid_ty_to_vir(
+                            ctxt.tcx,
+                            &ctxt.verus_items,
+                            None,
+                            al_ty.def_id.into(),
+                            span,
+                            &ty,
+                            false,
+                        )?);
                     }
-
-                    let instantiated_bounds =
-                        ctxt.tcx.item_bounds(opaque_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
-                    for bound in instantiated_bounds {
-                        match bound.kind().skip_binder() {
-                            ClauseKind::Trait(TraitPredicate {
-                                trait_ref,
-                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
-                            }) => {
-                                let substs = trait_ref.args;
-                                let trait_def_id = trait_ref.def_id;
-                                let generic_bound = check_generic_bound(
-                                    ctxt.tcx,
-                                    &ctxt.verus_items,
-                                    al_ty.def_id,
-                                    opaque_ty.span,
-                                    trait_def_id,
-                                    substs,
-                                )?
-                                .unwrap();
-                                trait_bounds.push(generic_bound);
-                            }
-                            ClauseKind::Projection(pred) => {
-                                let item_def_id = pred.projection_term.def_id;
-
-                                if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
-                                    continue;
-                                }
-                                let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
-                                    mid_ty_to_vir(
-                                        ctxt.tcx,
-                                        &ctxt.verus_items,
-                                        None,
-                                        opaque_ty.def_id.into(),
-                                        opaque_ty.span,
-                                        &ty,
-                                        false,
-                                    )?
-                                } else {
-                                    return err_span(
-                                        opaque_ty.span,
-                                        "Verus does not yet support this type of bound",
-                                    );
-                                };
-                                let substs = pred.projection_term.args;
-                                let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
-                                let assoc_item = ctxt.tcx.associated_item(item_def_id);
-                                let name = Arc::new(assoc_item.name().to_string());
-                                let generic_bound = check_generic_bound(
-                                    ctxt.tcx,
-                                    &ctxt.verus_items,
-                                    opaque_ty.def_id.into(),
-                                    opaque_ty.span,
-                                    trait_def_id,
-                                    substs,
-                                )?;
-                                if let Some(generic_bound) = generic_bound {
-                                    if let GenericBoundX::Trait(TraitId::Path(path), typs) =
-                                        &*generic_bound
-                                    {
-                                        let bound = GenericBoundX::TypEquality(
-                                            path.clone(),
-                                            typs.clone(),
-                                            name.clone(),
-                                            typ.clone(),
-                                        );
-                                        trait_bounds.push(Arc::new(bound));
-                                    } else {
-                                        return err_span(
-                                            opaque_ty.span,
-                                            "Verus does not yet support this type of bound",
-                                        );
-                                    }
-                                } else {
-                                    panic!(
-                                        "internal error: generic_bound should return GenericBoundX::Trait"
-                                    )
-                                }
-                            }
-                            _ => {}
-                        }
+                    rustc_type_ir::GenericArgKind::Const(cnst) => {
+                        args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                            ctxt.tcx,
+                            Some(span),
+                            &cnst,
+                        )?);
                     }
-                }
-                _ => {
-                    return err_span(
-                        opaque_ty.span,
-                        "`external_type_specification` attribute not supported here",
-                    );
                 }
             }
-        }
-        _ => {
-            return err_span(
-                opaque_ty.span,
-                "Verus only support opaque types defined by function returns now",
+
+            let instantiated_bounds =
+                ctxt.tcx.item_bounds(al_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
+            for bound in instantiated_bounds {
+                match bound.kind().skip_binder() {
+                    ClauseKind::Trait(TraitPredicate {
+                        trait_ref,
+                        polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                    }) => {
+                        let substs = trait_ref.args;
+                        let trait_def_id = trait_ref.def_id;
+                        let generic_bound = check_generic_bound(
+                            ctxt.tcx,
+                            &ctxt.verus_items,
+                            al_ty.def_id,
+                            span,
+                            trait_def_id,
+                            substs,
+                        )?
+                        .unwrap();
+                        trait_bounds.push(generic_bound);
+                    }
+                    ClauseKind::Projection(pred) => {
+                        let item_def_id = pred.projection_term.def_id;
+
+                        if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
+                            continue;
+                        }
+                        let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                            mid_ty_to_vir(
+                                ctxt.tcx,
+                                &ctxt.verus_items,
+                                None,
+                                al_ty.def_id.into(),
+                                span,
+                                &ty,
+                                false,
+                            )?
+                        } else {
+                            return err_span(span, "Verus does not yet support this type of bound");
+                        };
+                        let substs = pred.projection_term.args;
+                        let trait_def_id = pred.projection_term.trait_def_id(ctxt.tcx);
+                        let assoc_item = ctxt.tcx.associated_item(item_def_id);
+                        let name = Arc::new(assoc_item.name().to_string());
+                        let generic_bound = check_generic_bound(
+                            ctxt.tcx,
+                            &ctxt.verus_items,
+                            al_ty.def_id.into(),
+                            span,
+                            trait_def_id,
+                            substs,
+                        )?;
+                        if let Some(generic_bound) = generic_bound {
+                            if let GenericBoundX::Trait(TraitId::Path(path), typs) = &*generic_bound
+                            {
+                                let bound = GenericBoundX::TypEquality(
+                                    path.clone(),
+                                    typs.clone(),
+                                    name.clone(),
+                                    typ.clone(),
+                                );
+                                trait_bounds.push(Arc::new(bound));
+                            } else {
+                                return err_span(
+                                    span,
+                                    "Verus does not yet support this type of bound",
+                                );
+                            }
+                        } else {
+                            panic!(
+                                "internal error: generic_bound should return GenericBoundX::Trait"
+                            )
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let opaque_ty_vir = ctxt.spanned_new(
+                span,
+                OpaqueTypeX {
+                    name: def_id_to_vir_path(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        al_ty.def_id.into(),
+                        None,
+                    ),
+                    typ_params: Arc::new(args),
+                    typ_bounds: Arc::new(trait_bounds),
+                },
             );
+
+            vir.opaque_types.push(opaque_ty_vir);
         }
+        rustc_middle::ty::TyKind::Tuple(tys) => {
+            for ty in tys.iter() {
+                opaque_def_to_vir(ctxt, vir, &ty)?;
+            }
+        }
+        rustc_middle::ty::TyKind::Array(ty, _) => opaque_def_to_vir(ctxt, vir, &ty)?,
+        rustc_middle::ty::TyKind::Pat(ty, _) => opaque_def_to_vir(ctxt, vir, &ty)?,
+        rustc_middle::ty::TyKind::Slice(ty) => opaque_def_to_vir(ctxt, vir, &ty)?,
+        _ => {}
     }
-
-    let opaque_ty_vir = ctxt.spanned_new(
-        opaque_ty.span,
-        OpaqueTypeX {
-            name: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, opaque_ty.def_id.into(), None),
-            typ_params: Arc::new(args),
-            typ_bounds: Arc::new(trait_bounds),
-        },
-    );
-
-    vir.opaque_types.push(opaque_ty_vir);
     Ok(())
 }
