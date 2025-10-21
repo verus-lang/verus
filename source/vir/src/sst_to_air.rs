@@ -2014,41 +2014,28 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // Set `dest_id` variable to the returned expression.
 
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
-                    let (is_in_opaque_func, ret_op) = ctx
-                        .fun
-                        .as_ref()
-                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map_or((false, None), |fun| {
-                            (
-                                matches!(fun.x.ret.x.typ.as_ref(), TypX::Opaque { .. }),
-                                Some(fun.x.ret.clone()),
-                            )
-                        });
-
-                    let ret_exp =
+                    let ret_exp: &Arc<SpannedTyped<ExpX>> =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
 
                     let mut stmts =
                         stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
-                    if is_in_opaque_func {
-                        let ret = ret_op.as_ref().expect("opaque function has no return type");
-                        let ret_expr_typs = typ_to_ids(&ret_exp.typ);
-                        let ret_value_typs = typ_to_ids(&ret.x.typ);
-                        let decr = ExprX::Binary(
-                            air::ast::BinaryOp::Eq,
-                            ret_expr_typs[0].clone(),
-                            ret_value_typs[0].clone(),
-                        );
-                        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
-                        let typ = ExprX::Binary(
-                            air::ast::BinaryOp::Eq,
-                            ret_expr_typs[1].clone(),
-                            ret_value_typs[1].clone(),
-                        );
-                        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
-                        stmts.push(assume_decr);
-                        stmts.push(assume_typ);
+
+                    // if return value exists, check if we need to emit additional assumes for nested opaque types
+                    let ret_op = ctx
+                        .fun
+                        .as_ref()
+                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
+                        .map_or(None, |fun| Some(fun.x.ret.x.typ.clone()));
+                    if ret_op.is_some() {
+                        stmts.extend(opaque_ty_additional_stmts(
+                            ctx,
+                            state,
+                            &ret_exp.span,
+                            &ret_exp.typ,
+                            &ret_op.unwrap(),
+                        )?);
                     }
+
                     stmts
                 } else {
                     // If there is no `dest_id`, then the returned expression
@@ -3131,4 +3118,66 @@ pub(crate) fn body_stm_to_air(
         ));
     }
     Ok((state.commands, state.snap_map))
+}
+
+fn opaque_ty_additional_stmts(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    ret_exp_typ: &Typ,
+    ret_typ: &Typ,
+) -> Result<Vec<Stmt>, VirErr> {
+    let mut stmts = vec![];
+    match &**ret_typ {
+        TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths) => {
+            if let TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths) = &**ret_exp_typ {
+                if items_ret_typ.len() != items_ret_exp_typ.len() {
+                    crate::messages::internal_error(
+                        span,
+                        "return exp and return value types has different length",
+                    );
+                }
+                if dt_ret_exp_typ != dt_ret_typ {
+                    crate::messages::internal_error(
+                        span,
+                        "return exp and return value types has different types",
+                    );
+                }
+                for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
+                    stmts.extend(opaque_ty_additional_stmts(
+                        ctx,
+                        state,
+                        span,
+                        ret_exp_typ,
+                        ret_typ,
+                    )?);
+                }
+            } else {
+                crate::messages::internal_error(
+                    span,
+                    "return exp and return value has different types",
+                );
+            }
+        }
+        TypX::Opaque { .. } => {
+            let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
+            let ret_value_typs = typ_to_ids(ctx, &ret_typ);
+            let decr = ExprX::Binary(
+                air::ast::BinaryOp::Eq,
+                ret_expr_typs[0].clone(),
+                ret_value_typs[0].clone(),
+            );
+            let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
+            let typ = ExprX::Binary(
+                air::ast::BinaryOp::Eq,
+                ret_expr_typs[1].clone(),
+                ret_value_typs[1].clone(),
+            );
+            let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
+            stmts.push(assume_decr);
+            stmts.push(assume_typ);
+        }
+        _ => {}
+    }
+    Ok(stmts)
 }
