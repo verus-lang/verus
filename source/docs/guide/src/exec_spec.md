@@ -1,4 +1,4 @@
-# `exec_spec!` macro
+# Producing executable code from spec functions with the `exec_spec!` macro
 
 When writing proofs in Verus, we occasionally need to
 implement some simple function or data structure in both exec
@@ -60,5 +60,6 @@ Currently, `exec_spec!` supports these basic features:
 
 ## Related
 
-`exec_spec!` compiles spec items to exec items, which might not be desirable in some settings.
-For other options, see [this discussion](https://github.com/verus-lang/verus/discussions/1429), [dual mode](https://github.com/verus-lang/verus/pull/1608), and also the `when_used_as_spec` attribute.
+`exec_spec!` compiles spec items to exec items, which might not cover your use case.
+For example, you may want to go from [exec to spec](exec_to_spec.html), 
+or use the [`when_used_as_spec` attribute](reference-attributes.html).
