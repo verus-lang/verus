@@ -705,7 +705,9 @@ impl<Inner: AbstractEncoding, T: TransparentRepresentation<Inner>> TypeRepresent
 
 /// This trait is used to define a `TypeRepresentation` for the given type by imposing a scalar range restriction (implemented on `nat`s) on an existing `TypeRepresentation` for this type.
 /// The corresponding `TypeRepresentation` is implemented on the struct `ScalarRangeRepresentationEncoding<Repr, Self>`.
-/// This models the `#[rustc_layout_scalar_valid_range_start(...)]` and `#[rustc_layout_scalar_valid_range_enc(...)]` attributes.
+/// This models the `#[rustc_layout_scalar_valid_range_start(...)]` and `#[rustc_layout_scalar_valid_range_end(...)]` attributes.
+/// These additional range restrictions on the encoding are needed when the type's representation is a transparent representation
+/// because we must forbid values outside of the allowed range from being decoded.
 pub trait ScalarRangeRepresentation<Repr: TypeRepresentation<Self>> where Self: Sized {
     spec fn min() -> nat;
 
