@@ -2149,6 +2149,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             continue;
                         }
                         let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                            opaque_def_to_vir(ctxt, vir, &ty)?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
