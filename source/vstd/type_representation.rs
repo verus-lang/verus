@@ -558,7 +558,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     #[trigger] <*$mutability T as AbstractEncoding>::encode(v, bytes),
                 ensures
                     bytes.len() == size_of::<*$mutability T>(),
-                    bytes =~= bytes.subrange(0, size_of::<*$mutability T>() as int),
+                    bytes == bytes.subrange(0, size_of::<*$mutability T>() as int),
                     AbstractByte::all_init(bytes),
                     AbstractByte::shared_provenance(bytes) == v@.provenance,
                     bytes_to_endian(bytes).to_nat() as usize == v@.addr,
