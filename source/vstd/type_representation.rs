@@ -80,6 +80,9 @@ impl AbstractByte {
     }
 }
 
+/// Is encoding allowed for this type?
+pub uninterp spec fn can_be_encoded<T: ?Sized>() -> bool;
+
 /// Can 'value' be encoded to the given bytes?
 pub uninterp spec fn abs_encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
 
@@ -96,9 +99,9 @@ pub trait AbstractEncoding where Self: Sized {
 
     // Required properties for a valid encoding.
     /// Any encoding should match the size of this type.
-    broadcast proof fn encoding_size(v: Self, b: Seq<AbstractByte>)
+    proof fn encoding_size(v: Self, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
             b.len() == size_of::<Self>(),
     ;
@@ -110,21 +113,27 @@ pub trait AbstractEncoding where Self: Sized {
     ;
 
     /// Any encoding should be able to be decoded back to the same value.
-    broadcast proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>)
+    proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
-            #[trigger] Self::decode(b, v),
+            Self::decode(b, v),
     ;
 
     /// Ensures that the encoding defined here matches the axiomatized encoding functions `abs_encode` and `abs_decode`.
     /// This is intended to be implemented as an axiom.
-    broadcast proof fn valid_encoding(v: Self, b: Seq<AbstractByte>)
+    proof fn valid_encoding(v: Self, b: Seq<AbstractByte>)
         ensures
-            #![trigger abs_encode::<Self>(&v, b)]
-            #![trigger abs_decode::<Self>(b, &v)]
             Self::encode(v, b) <==> abs_encode::<Self>(&v, b),
             Self::decode(b, v) <==> abs_decode::<Self>(b, &v),
+            can_be_encoded::<Self>(),
+    ;
+
+    /// Ensures that encoding is allowed for this type (`can_be_encoded`).
+    /// This is intended to be implemented as an axiom.
+    proof fn can_be_encoded()
+        ensures
+            can_be_encoded::<Self>(),
     ;
 }
 
@@ -173,6 +182,8 @@ impl AbstractEncoding for bool {
     }
 
     axiom fn valid_encoding(v: Self, b: Seq<AbstractByte>);
+
+    axiom fn can_be_encoded();
 }
 
 // We utilize the EndianNat type to transform an unsigned int to its byte representation.
@@ -294,6 +305,8 @@ macro_rules! unsigned_int_encoding {
                 }
 
                 axiom fn valid_encoding(v: Self, b: Seq<AbstractByte>);
+
+                axiom fn can_be_encoded();
             }
 
             pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
@@ -386,6 +399,8 @@ macro_rules! signed_int_encoding {
                 }
 
                 axiom fn valid_encoding(v: Self, b: Seq<AbstractByte>);
+
+                axiom fn can_be_encoded();
             }
         }
     )+};
@@ -413,9 +428,9 @@ pub trait TypeRepresentation<T> {
 
     // Required properties for a valid encoding.
     /// Any encoding should match the size of this type.
-    broadcast proof fn encoding_size(v: T, b: Seq<AbstractByte>)
+    proof fn encoding_size(v: T, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
             b.len() == size_of::<T>(),
     ;
@@ -427,11 +442,11 @@ pub trait TypeRepresentation<T> {
     ;
 
     /// Any encoding should be able to be decoded back to the same value.
-    broadcast proof fn encoding_invertible(v: T, b: Seq<AbstractByte>)
+    proof fn encoding_invertible(v: T, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
-            #[trigger] Self::decode(b, v),
+            Self::decode(b, v),
     ;
 }
 
@@ -534,6 +549,8 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 }
 
                 axiom fn valid_encoding(v: Self, b: Seq<AbstractByte>);
+
+                axiom fn can_be_encoded();
             }
 
             pub broadcast proof fn $sized_lemma_name<T: Sized>(v: *$mutability T, bytes: Seq<AbstractByte>)
@@ -786,6 +803,8 @@ macro_rules! encoding_from_type_representation {
                 }
 
                 axiom fn valid_encoding(v: Self, b: Seq<AbstractByte>);
+
+                axiom fn can_be_encoded();
             }
         }
     )+};
@@ -804,9 +823,9 @@ pub trait AbstractEncodingUnsized<T: ?Sized> {
 
     // Required properties for encoding (sanity check for any implementation of this trait)
     /// Any encoding should match the size of the corresponding value.
-    broadcast proof fn encoding_size(v: &T, b: Seq<AbstractByte>)
+    proof fn encoding_size(v: &T, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
             b.len() == spec_size_of_val::<T>(v),
     ;
@@ -818,21 +837,27 @@ pub trait AbstractEncodingUnsized<T: ?Sized> {
     ;
 
     /// Any byte encoding should be able to be decoded back to the same value.
-    broadcast proof fn encoding_invertible(v: &T, b: Seq<AbstractByte>)
+    proof fn encoding_invertible(v: &T, b: Seq<AbstractByte>)
         requires
-            #[trigger] Self::encode(v, b),
+            Self::encode(v, b),
         ensures
-            #[trigger] Self::decode(b, v),
+            Self::decode(b, v),
     ;
 
     /// Ensures that the encoding defined here matches the axiomatized encoding functions `abs_encode` and `abs_decode`.
     /// This is intended to be implemented as an axiom.
-    broadcast proof fn valid_encoding(v: &T, b: Seq<AbstractByte>)
+    proof fn valid_encoding(v: &T, b: Seq<AbstractByte>)
         ensures
-            #![trigger Self::encode(v, b), abs_encode::<T>(v, b)]
-            #![trigger Self::decode(b, v), abs_decode::<T>(b, v)]
             Self::encode(v, b) <==> abs_encode::<T>(v, b),
             Self::decode(b, v) <==> abs_decode::<T>(b, v),
+            can_be_encoded::<T>(),
+    ;
+
+    /// Ensures that encoding is allowed for this type (`can_be_encoded`).
+    /// This is intended to be implemented as an axiom.
+    proof fn can_be_encoded()
+        ensures
+            can_be_encoded::<T>(),
     ;
 }
 
@@ -862,6 +887,21 @@ impl AbstractEncodingUnsized<[u8]> for EncodingU8Slice {
     }
 
     axiom fn valid_encoding(v: &[u8], b: Seq<AbstractByte>);
+
+    axiom fn can_be_encoded();
+}
+
+pub broadcast group group_type_representation_axioms {
+    u8_encode,
+    u16_encode,
+    u32_encode,
+    u64_encode,
+    u128_encode,
+    usize_encode,
+    mut_ptr_sized_encode,
+    mut_ptr_unsized_encode,
+    const_ptr_sized_encode,
+    const_ptr_unsized_encode,
 }
 
 } // verus!
