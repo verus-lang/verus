@@ -238,7 +238,7 @@ pub broadcast proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, 
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, Some(prov));
-        assert(bytes.drop_last() =~= endian_to_bytes(endian.drop_last(), Some(prov)));
+        assert(bytes.drop_last() == endian_to_bytes(endian.drop_last(), Some(prov)));
         endian_to_bytes_shared_provenance(endian.drop_last(), prov);
     }
 }
@@ -255,7 +255,7 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, None);
-        assert(bytes.drop_last() =~= endian_to_bytes(endian.drop_last(), None));
+        assert(bytes.drop_last() == endian_to_bytes(endian.drop_last(), None));
         endian_to_bytes_shared_provenance_none(endian.drop_last());
     }
 }
@@ -502,7 +502,7 @@ impl<T: ?Sized> TypeRepresentation<*mut T> for RawPtrRepresentation {
             |i| AbstractByte::Uninit,
         );
         let b = prefix.add(suffix);
-        assert(b.subrange(0, size_of::<usize>() as int) =~= prefix);
+        assert(b.subrange(0, size_of::<usize>() as int) == prefix);
         assert(b.len() == size_of::<*mut T>());
         b
     }
@@ -575,7 +575,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     EndianNat::<u8>::from_nat_with_len(v@.addr as nat, size_of::<usize>()),
                     Some(v@.provenance),
                 );
-                assert(prefix =~= bytes);
+                assert(prefix == bytes);
             }
 
             pub broadcast proof fn $unsized_lemma_name<T: ?Sized>(v: *$mutability T, bytes: Seq<AbstractByte>)
@@ -602,7 +602,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                     EndianNat::<u8>::from_nat_with_len(v@.addr as nat, size_of::<usize>()),
                     Some(v@.provenance),
                 );
-                assert(prefix =~= bytes.subrange(0, size_of::<usize>() as int));
+                assert(prefix == bytes.subrange(0, size_of::<usize>() as int));
             }
         }
     )+};
@@ -883,7 +883,7 @@ impl AbstractEncodingUnsized<[u8]> for EncodingU8Slice {
     }
 
     proof fn encoding_invertible(v: &[u8], b: Seq<AbstractByte>) {
-        assert(v@ =~= b.map_values(|bt: AbstractByte| bt.byte()));
+        assert(v@ == b.map_values(|bt: AbstractByte| bt.byte()));
     }
 
     axiom fn valid_encoding(v: &[u8], b: Seq<AbstractByte>);
