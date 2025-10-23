@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test1 verus_code! {
         proof fn test1(b: u32) {
             assert(b & 7 == b % 8) by(bit_vector);
@@ -27,7 +27,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test2 verus_code! {
         proof fn test2(b: u32) {
             assert(b << 2 == mul(b, 4)) by(bit_vector);
@@ -40,7 +40,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test3 verus_code! {
         proof fn test3(b: u32) {
             assert(sub(mul(2, b), b) == b) by(bit_vector);
@@ -55,7 +55,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test4 verus_code! {
         proof fn test4(u1: u32, u2:u32) {
             assert( (u1 as u64) << 32u64 | (u2 as u64)  == add(mul(u1 as u64, 0x100000000), u2 as u64))
@@ -65,7 +65,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test5 verus_code! {
         proof fn test5(u:u64) {
             assert( (u >> 32) as u32  ==  (u / 0x100000000) as u32)
@@ -75,7 +75,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test6 verus_code! {
         proof fn test6(a:u64, b:u64, c:u64) {
             assert((a ^ b == a ^ c) ==> (b == c)) by(bit_vector);
@@ -84,7 +84,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test7 verus_code! {
         proof fn test7(b1:u64, b2:u64, b3:u64) {
             assert( !b1 != !b2 ==> !(b1 == b2)) by(bit_vector);
@@ -95,7 +95,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test8 verus_code! {
         proof fn test8(b: u32) {
             assert(forall|a: u32, b: u32| #[trigger] (a & b) == b & a) by(bit_vector);
@@ -105,7 +105,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test9 verus_code! {
         proof fn test9(x: u32, y:u32) {
             let max:u32 = 0xffff_ffff;
@@ -118,7 +118,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test1_fails verus_code! {
         proof fn test1(b: u32) {
             assert(b | b > b) by(bit_vector); // FAILS
@@ -126,7 +126,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test2_fails verus_code! {
         proof fn test2(b: u32) {
             assert(add(b, 1) == b) by(bit_vector); // FAILS
@@ -134,7 +134,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test3_fails verus_code! {
         proof fn test3(b: u32) {
             assert(b & 0 > 0) by(bit_vector); // FAILS
@@ -142,7 +142,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test4_fails verus_code! {
         proof fn test4(b: u32) {
             assert( (b << 2) >> 2 == b) by(bit_vector); // FAILS
@@ -150,7 +150,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test5_fails verus_code! {
         proof fn test5(b: u32) {
             assert((b << 1) == mul(b, 2)) by(bit_vector);
@@ -159,7 +159,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test6_fails verus_code! {
         proof fn test6(b: u32) {
             assert(b << 2 == mul(b, 4)) by(bit_vector);
@@ -168,7 +168,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test6_fails2 verus_code! {
         proof fn test6(b: u32) {
             assert(b << 2 == b * 4) by(bit_vector); // FAILS
@@ -176,7 +176,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test7_fails verus_code! {
         proof fn test7(b: u32) {
             assert(!0u32 == 0xffffffffu32) by(bit_vector);
@@ -186,7 +186,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test8_ok verus_code! {
         proof fn test8(b: i32) {
             assert(b <= b) by(bit_vector);
@@ -194,7 +194,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     //https://github.com/verus-lang/verus/issues/191 (@matthias-brun)
     #[test] test10_fails verus_code! {
         #[verifier(bit_vector)]
@@ -204,7 +204,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] usize_in_by_bit_vector verus_code! {
         proof fn test_usize(x: usize) {
             assert(x & x == x) by (bit_vector);
@@ -212,7 +212,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] const_usize_in_by_bit_vector verus_code! {
         proof fn test_usize() {
             assert(1usize == 1usize) by (bit_vector);
@@ -220,7 +220,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] not_supported_int_in_by_bit_vector verus_code! {
         proof fn test_int(x: int, y: int) {
             assert(x == y) by (bit_vector);
@@ -228,7 +228,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expected finite-width integer")
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] not_supported_datatype_in_by_bit_vector verus_code! {
         struct X { }
         proof fn test_int(x: X, y: X) {
@@ -237,7 +237,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "bit_vector prover cannot handle this type")
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] const_int_in_by_bit_vector verus_code! {
         proof fn test_int() {
             assert(0int == 0int) by (bit_vector);
@@ -245,7 +245,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] usize_cast_in_by_bit_vector verus_code! {
         proof fn test_usize(x: u64) {
             assert((x as usize) == (x as usize)) by (bit_vector);
@@ -253,7 +253,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] bit_vector_with_usize_valid_expr verus_code! {
         spec fn stuff(x: usize, y: usize, z: usize) -> usize {
             (x | y) & !z
@@ -287,7 +287,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file_with_options! {
+test_verify_one_bv_file_with_options! {
     #[test] bit_vector_usize_as_32bit ["vstd"] => verus_code! {
         global size_of usize == 4;
 
@@ -322,7 +322,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file_with_options! {
+test_verify_one_bv_file_with_options! {
     #[test] bit_vector_usize_as_64bit ["vstd"] => verus_code! {
         global size_of usize == 8;
 
@@ -356,7 +356,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_casting_to_higher_width_issue386 verus_code! {
         proof fn test() {
             let b: u8 = 20;
@@ -380,7 +380,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_bool_variable_issue369 verus_code! {
         proof fn test() {
             let b: bool = true;
@@ -389,7 +389,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_issue415 verus_code! {
         #[verifier(bit_vector)]
         proof fn lemma_shift_right_u64_upper_bound(val: u64, amt: u64, upper_bound: u64)
@@ -402,7 +402,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] bitvector_in_decreases_by verus_code! {
         spec fn stuff(n: u64) -> int
             decreases n
@@ -422,7 +422,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] bitvector_ineq_different_bitwidth verus_code! {
         proof fn test() {
             let b: u8 = 5;
@@ -447,7 +447,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic1 verus_code! {
         fn test_arith_4_4() {
             assert(((-1i32) ^ (7i32)) + ((-1i32) ^ (7i32)) == -16) by(bit_vector);
@@ -484,7 +484,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic2 verus_code! {
         fn test_arith_8_8() {
             assert(((-1i32) ^ (127i32)) + ((-1i32) ^ (127i32)) == -256) by(bit_vector);
@@ -518,7 +518,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic3 verus_code! {
         fn test_arith_8_16() {
             assert(((-1i32) ^ (127i32)) + ((-1i32) ^ (32767i32)) == -32896) by(bit_vector);
@@ -552,7 +552,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic4 verus_code! {
         fn test_arith_16_8() {
             assert(((-1i32) ^ (32767i32)) + ((-1i32) ^ (127i32)) == -32896) by(bit_vector);
@@ -586,7 +586,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic5 verus_code! {
         fn test_arith_15_16() {
             assert(((-1i32) ^ (16383i32)) + ((-1i32) ^ (32767i32)) == -49152) by(bit_vector);
@@ -623,7 +623,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_extreme_cases_arithmetic6 verus_code! {
         fn test_arith_16_15() {
             assert(((-1i32) ^ (32767i32)) + ((-1i32) ^ (16383i32)) == -49152) by(bit_vector);
@@ -660,7 +660,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_double_arch_ok verus_code! {
         proof fn test_works_both(a: usize, b: usize, c: u32) {
             assert(
@@ -670,7 +670,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_double_arch_fail32 verus_code! {
         proof fn test(c: u32) {
             assert(((c as usize) << 32) >> 32 == c) by(bit_vector);
@@ -678,7 +678,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails_bv_32bit(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_double_arch_fail64 verus_code! {
         proof fn test(a: usize, b: usize) {
             assert((a as u32) == (b as u32) ==> a == b) by(bit_vector);
@@ -686,7 +686,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails_bv_64bit(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_double_arch_fail_both verus_code! {
         proof fn test_works_neither(a: usize, b: usize) {
             assert((a as u32) == (b as u32)) by(bit_vector);
@@ -694,7 +694,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails_bv_32bit_64bit(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_double_arch_fail64_req_ens verus_code! {
         proof fn test_only_32_2(a: usize) by(bit_vector)
             requires (a as u32) != a
@@ -703,7 +703,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails_bv_64bit(err)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shl_signed_unsupported verus_code! {
         fn test_shl_neg(x: i32, y: i32) {
             assert(x << y == x) by(bit_vector);
@@ -711,7 +711,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shr_signed_unsupported verus_code! {
         fn test_shl_neg(x: i32, y: i32) {
             assert(x >> y == x) by(bit_vector);
@@ -719,7 +719,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "not supported: bit-shift with possibly negative shift")
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_eq_ineq verus_code! {
         fn test_eq(x: u8, y: i8) {
             assert(x == y as u8 ==> y == x) by(bit_vector); // FAILS
@@ -735,7 +735,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_eq_ineq2 verus_code! {
         fn test_comparisons(a: u32, b: i32) {
             assert(a < b <==> (b & (-0x8000_0000i32) == 0) && (a < (b as u32))) by(bit_vector);
@@ -775,7 +775,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 6)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_clipping_and_casting verus_code! {
         fn test_clipping(a: u32, b: i32) {
             assert(a as u64 == a) by(bit_vector);
@@ -804,7 +804,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 6)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_or verus_code! {
         fn test_or(x: u16, y: u16, z: i16) {
             assert((x | y) == (x as i16 | y as i16) as u16) by(bit_vector);
@@ -820,7 +820,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_and verus_code! {
         fn test_and(x: u16, y: u16, z: i16) {
             assert((x & y) == (x as i16 & y as i16) as u16) by(bit_vector);
@@ -834,7 +834,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_xor verus_code! {
         fn test_xor(x: u16, y: u16, z: i16) {
             assert((x ^ y) == (x as i16 ^ y as i16) as u16) by(bit_vector);
@@ -850,7 +850,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shl verus_code! {
         fn test_shl(x: u32, y: u16) {
             assert(x == y ==> (x << 2) == (y << 2)) by(bit_vector); // FAILS
@@ -871,7 +871,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shl_signed verus_code! {
         fn test_shl_signed(x: i32, y: i16, z: i32) {
             assert(x & (0xff000000u32 as i32) == 0 ==> (x << 2) == x * 4) by(bit_vector);
@@ -898,7 +898,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shr verus_code! {
         fn test_shr(x: u32, y: u16) {
             assert(x == y ==> (x >> 2) == (y >> 2)) by(bit_vector);
@@ -916,7 +916,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_shr_signed verus_code! {
         fn test_shr_signed(x: i32, y: i16, z: i32) {
             assert(x & 0x3 == 0 ==> (x >> 2) * 4 == x) by(bit_vector);
@@ -941,7 +941,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 5)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] div_signed_euclidean verus_code! {
         fn div_signed_euclidean() {
            assert(7i32 / 3i32 == 2i32) by(bit_vector);
@@ -959,7 +959,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] div_signed_overflow verus_code! {
         fn div_signed_overflow() {
             assert(-128i8 / -1i8 == 128) by(bit_vector);
@@ -974,7 +974,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] div_mod_signed_properties verus_code! {
         fn div_mod_signed_properties(x: i8, y: i8) {
             assert(y != 0 ==> (x / y) * y + (x % y) == x) by(bit_vector);
@@ -986,7 +986,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] div0_underspecified verus_code! {
         fn div_0_underspecified(x: u32, y: u32) {
             assert(0u32 / y == 0) by(bit_vector); // FAILS
@@ -1000,7 +1000,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] mod_signed_euclidean verus_code! {
         fn mod_signed_euclidean() {
            assert(7i32 % 3i32 == 1i32) by(bit_vector);
@@ -1018,7 +1018,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] mod0_underspecified verus_code! {
         fn mod_0_underspecified(x: u32, y: u32) {
             assert(0u32 % y == 0) by(bit_vector); // FAILS
@@ -1032,6 +1032,15 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
+test_verify_one_file_with_options! {
+    #[test] mod0_div0_consistency_no_simplify ["no-bv-simplify"] => verus_code! {
+        fn mod_0_div_0_consistency(x: u32, y: u32) {
+            assert(x % y == x % y) by(bit_vector); // FAILS
+            assert(x / y == x / y) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
 test_verify_one_file! {
     #[test] mod0_div0_consistency verus_code! {
         fn mod_0_div_0_consistency(x: u32, y: u32) {
@@ -1041,7 +1050,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] bitnot verus_code! {
         fn test_bitnot_unsigned(x: u32, y: u64) {
             assert(x == y ==> (!x) == (!y)) by(bit_vector); // FAILS
@@ -1070,7 +1079,7 @@ test_verify_one_file! {
 // by comparing the results to the same operation done on a higher number of bits
 // to get a '9 bit' thing, we add two 8 bits things together (e.g., ai + ai2)
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_add verus_code! {
         fn test_add(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: i32, y: i32) {
             assert(ai == x && bi == y ==> (ai + bi) == (x + y)) by(bit_vector);
@@ -1089,7 +1098,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_sub verus_code! {
         fn test_sub(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: i32, y: i32) {
             assert(ai == x && bi == y ==> (ai - bi) == (x - y)) by(bit_vector);
@@ -1108,7 +1117,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_mul verus_code! {
         fn test_mul(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: i32, y: i32) {
             assert(ai == x && bi == y ==> (ai * bi) == (x * y)) by(bit_vector);
@@ -1127,7 +1136,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_le verus_code! {
         fn test_le(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: i32, y: i32) {
             assert(ai == x && bi == y ==> (ai <= bi) == (x <= y)) by(bit_vector);
@@ -1146,7 +1155,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_div verus_code! {
         fn test_div(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) / (bi as int) == x / y) by(bit_vector);
@@ -1165,7 +1174,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_mod verus_code! {
         fn test_mod(au: u8, au2: u8, bu: u8, bu2: u8, ai: i8, ai2: i8, bi: i8, bi2: i8, x: u32, y: u32) {
             assert(y != 0 ==> ai == x && bi == y ==> (ai as int) % (bi as int) == x % y) by(bit_vector);
@@ -1184,7 +1193,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_shr verus_code! {
         fn test_shr(au8: u8, au16: u16, bu8: u8, bu16: u16, ai8: i8, ai16: i16, x: i32, y: u32) {
             assert(ai8 == x && bu8 == y ==> (ai8 >> bu8) == (x >> y)) by(bit_vector);
@@ -1197,7 +1206,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_by_equating_shl verus_code! {
         fn test_shl(au8: u8, au16: u16, bu8: u8, bu16: u16, ai8: i8, ai16: i16, x: i32, y: u32) {
             assert(ai8 == x && bu8 == y ==> (ai8 << bu8) == (x << y) as i8) by(bit_vector);
@@ -1210,7 +1219,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_signed_and_unsigned verus_code! {
         fn test_signed_comparing_to_unsigned(x: i8, y: i8, a: u8, b: u8) {
             // + / +
@@ -1308,7 +1317,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_forall verus_code! {
         proof fn test() {
             assert(forall |x: i32, y: i16| x == y ==> (x >> 2) == (y >> 2)) by(bit_vector);
@@ -1317,7 +1326,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_let_binder verus_code! {
         proof fn test(x: i32, y: i16) {
             assert({let z = y; x == y ==> (x >> 2) == (z >> 2)}) by(bit_vector);
@@ -1326,7 +1335,7 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
+test_verify_one_bv_file! {
     #[test] test_normal_solver verus_code! {
         fn test_unsigned(x: u16, y: u16) {
             assert((x | y) == (x as u32) | (y as u32));
@@ -1402,9 +1411,9 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 5)
 }
 
+// Only verify with simplification, since this won't succeed without it
 test_verify_one_file! {
     #[test] test_functions verus_code! {
-
         const LIFE: u32 = 42;
 
         spec fn shifter(u: u32) -> u32 {
