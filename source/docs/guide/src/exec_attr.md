@@ -38,6 +38,10 @@ Here is an example:
 Use #[verus_verify(...)] to provide hints to verifier to mark function as
 external, external_body, rlimit(xx), etc.
 
+In additionally, dual mode (spec + exec) function is supported via
+[`verus_verify(dual_spec)`](exec_to_spec.md)  to generate a spec function from
+an executable function.
+
 ## Adding proofs inside function
 
 With #[verus_spec(...)], we can introduce proofs directly inside executable
