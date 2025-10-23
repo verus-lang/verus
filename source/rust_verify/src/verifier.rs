@@ -2061,6 +2061,7 @@ impl Verifier {
             self.args.check_api_safety,
             self.args.axiom_usage_info,
             self.args.new_mut_ref,
+            self.args.no_bv_simplify,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

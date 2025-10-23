@@ -145,6 +145,9 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             }
         }
         StmX::AssertBitVector { requires, ensures } => {
+            if ctx.global.no_bv_simplify {
+                return Ok(stm.clone());
+            }
             let reqs = vec_map_result(requires, |e| {
                 crate::interpreter::eval_expr(
                     &ctx.global,
@@ -365,7 +368,7 @@ pub(crate) fn elaborate_function_bv<'a>(
     fun_ssts: SstMap,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    if function.x.attrs.bit_vector {
+    if !ctx.global.no_bv_simplify && function.x.attrs.bit_vector {
         let mut visitor = ElaborateVisitorBv { ctx, fun_ssts };
         *function = visitor.visit_function(function)?;
     }

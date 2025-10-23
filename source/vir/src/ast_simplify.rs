@@ -1474,6 +1474,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.check_api_safety,
         ctx.axiom_usage_info,
         ctx.new_mut_ref,
+        ctx.no_bv_simplify,
     )?;
     Ok(krate)
 }
