@@ -3,6 +3,8 @@
 use super::group_vstd_default;
 use super::prelude::*;
 use crate::vstd::arithmetic::power::*;
+use crate::vstd::arithmetic::power2::*;
+use crate::vstd::bits::*;
 
 verus! {
 
@@ -284,6 +286,37 @@ pub proof fn usize_size_pow2()
     assert(is_power_2(8)) by (compute);
 }
 
+pub proof fn unsigned_int_max_bounds()
+    ensures
+        (usize::MAX as nat) < pow2(usize::BITS as nat),
+        (usize::MAX as nat) < pow(256, size_of::<usize>()),
+        (u8::MAX as nat) < pow2(u8::BITS as nat),
+        (u8::MAX as nat) < pow(256, size_of::<u8>()),
+        (u16::MAX as nat) < pow2(u16::BITS as nat),
+        (u16::MAX as nat) < pow(256, size_of::<u16>()),
+        (u32::MAX as nat) < pow2(u32::BITS as nat),
+        (u32::MAX as nat) < pow(256, size_of::<u32>()),
+        (u64::MAX as nat) < pow2(u64::BITS as nat),
+        (u64::MAX as nat) < pow(256, size_of::<u64>()),
+        (u128::MAX as nat) < pow2(u128::BITS as nat),
+        (u128::MAX as nat) < pow(256, size_of::<u128>()),
+{
+    broadcast use layout_of_primitives;
+
+    reveal(pow);
+    reveal(pow2);
+    assert(0x100 - 1 < pow2(8)) by (compute);
+    assert(0x1_0000 - 1 < pow2(16)) by (compute);
+    assert(0x1_0000_0000 - 1 < pow2(32)) by (compute);
+    assert(0x1_0000_0000_0000_0000 - 1 < pow2(64)) by (compute);
+    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 - 1 < pow2(128)) by (compute);
+    assert(pow(256, 1) == pow2(8)) by (compute);
+    assert(pow(256, 2) == pow2(16)) by (compute);
+    assert(pow(256, 4) == pow2(32)) by (compute);
+    assert(pow(256, 8) == pow2(64)) by (compute);
+    assert(pow(256, 16) == pow2(128)) by (compute);
+}
+
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
 pub broadcast axiom fn layout_of_unit_tuple()
     ensures
@@ -316,6 +349,16 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
         align_of::<*mut T>() == align_of::<usize>(),
 ;
 
+/// Pointers to unsized types have the at least the size and alignment as pointers to sized types
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.unsized)).
+pub broadcast axiom fn layout_of_references_and_pointers_for_unsized_types<T: ?Sized>()
+    ensures
+        #![trigger size_of::<*mut T>()]
+        #![trigger align_of::<*mut T>()]
+        size_of::<*mut T>() >= size_of::<usize>(),
+        align_of::<*mut T>() >= align_of::<usize>(),
+;
+
 /// Slices have the same layout as the underlying type.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#slice-layout)).
 pub broadcast axiom fn layout_of_slices<T>(x: &[T])
@@ -346,6 +389,7 @@ pub broadcast group group_layout_axioms {
     layout_of_unit_tuple,
     layout_of_references_and_pointers,
     layout_of_references_and_pointers_for_sized_types,
+    layout_of_references_and_pointers_for_unsized_types,
     layout_of_slices,
     layout_of_str,
     group_align_properties,
