@@ -28,8 +28,8 @@ verus! {
 
 The `vstd::prelude` exports the `verus!` macro along with some other Verus utilities.
 
-The `verus!` macro, besides extending Rust's syntax, also has the function of
-_instructing Verus to verify the functions contained within_.
+The `verus!` macro, besides extending Rust's syntax, also 
+_tells Verus to verify the functions contained within_.
 By default, Verus verifies everything inside the `verus!` macro and ignores anything
 defined outside the `verus!` macro. There are various attributes and directives to modify
 this behavior (e.g., see [this chapter](./interacting-with-unverified-code.md)), but for
@@ -41,3 +41,8 @@ In the remainder of this guide, we will omit these declarations from the example
 However, remember that any example code should be placed inside the `verus! { ... }` block,
 and that the file should contain `use vstd::prelude::*;`.
 
+**Alternate syntax.**
+Verus also supports an alternate, [attribute-based syntax](exec_attr.md).
+This syntax may be helpful when you want to minimize changes to an existing Rust project.
+However, because the `verus!` syntax is cleaner and simpler, we'll stick to that in this
+tutorial.
