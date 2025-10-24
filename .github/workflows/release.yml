@@ -72,8 +72,8 @@ jobs:
           cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml update
           git config --global user.name 'Version Bumper Bot'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git diff
           git commit -am "Update crate version numbers"
-          git push
           
       - name: Publish updated crates to crates.io
         env:
