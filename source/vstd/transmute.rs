@@ -60,7 +60,6 @@ pub broadcast proof fn abs_encode_unsized_impl<T: ?Sized, EncodingT: AbstractEnc
         #![trigger abs_decode::<T>(b, v), EncodingT::decode(b, v)]
         abs_encode::<T>(v, b) <==> EncodingT::encode(v, b),
         abs_decode::<T>(b, v) <==> EncodingT::decode(b, v),
-        can_be_encoded::<T>(),
 {
     EncodingT::valid_encoding(v, b);
 }

@@ -100,10 +100,9 @@ pub trait AbstractEncoding where Self: Sized {
     // Required properties for a valid encoding.
     /// Any encoding should match the size of this type.
     proof fn encoding_size(v: Self, b: Seq<AbstractByte>)
-        requires
-            Self::encode(v, b),
         ensures
-            b.len() == size_of::<Self>(),
+            Self::encode(v, b) ==> b.len() == size_of::<Self>(),
+            Self::decode(b, v) ==> b.len() == size_of::<Self>(),
     ;
 
     /// Every value should have at least one encoding.
@@ -126,7 +125,6 @@ pub trait AbstractEncoding where Self: Sized {
         ensures
             Self::encode(v, b) <==> abs_encode::<Self>(&v, b),
             Self::decode(b, v) <==> abs_decode::<Self>(b, &v),
-            can_be_encoded::<Self>(),
     ;
 
     /// Ensures that encoding is allowed for this type (`can_be_encoded`).
@@ -429,10 +427,9 @@ pub trait TypeRepresentation<T> {
     // Required properties for a valid encoding.
     /// Any encoding should match the size of this type.
     proof fn encoding_size(v: T, b: Seq<AbstractByte>)
-        requires
-            Self::encode(v, b),
         ensures
-            b.len() == size_of::<T>(),
+            Self::encode(v, b) ==> b.len() == size_of::<T>(),
+            Self::decode(b, v) ==> b.len() == size_of::<T>(),
     ;
 
     /// Every value should have at least one encoding.
@@ -824,10 +821,9 @@ pub trait AbstractEncodingUnsized<T: ?Sized> {
     // Required properties for encoding (sanity check for any implementation of this trait)
     /// Any encoding should match the size of the corresponding value.
     proof fn encoding_size(v: &T, b: Seq<AbstractByte>)
-        requires
-            Self::encode(v, b),
         ensures
-            b.len() == spec_size_of_val::<T>(v),
+            Self::encode(v, b) ==> b.len() == spec_size_of_val::<T>(v),
+            Self::decode(b, v) ==> b.len() == spec_size_of_val::<T>(v),
     ;
 
     /// Every value should have at least one encoding.
@@ -850,7 +846,6 @@ pub trait AbstractEncodingUnsized<T: ?Sized> {
         ensures
             Self::encode(v, b) <==> abs_encode::<T>(v, b),
             Self::decode(b, v) <==> abs_decode::<T>(b, v),
-            can_be_encoded::<T>(),
     ;
 
     /// Ensures that encoding is allowed for this type (`can_be_encoded`).
