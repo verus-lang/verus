@@ -1,12 +1,12 @@
 # Verus attributes for executable code
 
-To add verus proof and spec to executable codes without sacrificing readability,
-`#[verus_spec]` attribute macro helps on it.
+The `#[verus_spec]` attribute macro can help add Verus specifications and proofs
+to existing executable code without sacrificing readability.
 
-## When to use `#[verus_spec]` instead of `verus!` macro
+## When to use `#[verus_spec]` instead of the `verus!` macro
 
 The default way to write Verus code is by using the `verus!` macro. However,
-embedding specifications and proofs directly through `verus!` in executable code
+using `verus!` to embed specifications and proofs directly in executable code
 may not always be ideal for production settings. This is particularly true when
 developers want to integrate verification into an existing Rust project and aim
 to:
@@ -15,14 +15,15 @@ to:
    include tracked or ghost arguments, and preserve native Rust syntax for
    maintainability.
 2. Adopt verification incrementally — apply Verus gradually to a large, existing
-   codebase without requiring a full rewrite to function APIs.
+   codebase without requiring a full rewrite of the function APIs.
 3. Maintain readability — ensure the verified code remains clean and
-   understandable for developers who are not familiar with Verus.
-4. Optimize dependency management — use Verus components (builtin,
-   builtin-macro, and vstd) in a modular way, allowing projects to define custom
-   stub macros and control Verus dependencies via feature flags.
+   understandable for developers who are not familiar with Verus or
+   want to ignore verification-related annotations.
+4. Optimize dependency management — use Verus components (`verus_builtin`,
+   `verus_builtin_macros`, and `vstd`) in a modular way, allowing projects to
+   define custom stub macros and control Verus dependencies via feature flags.
 
-## Adding specifications to function 
+## Adding specifications to a function 
 
 Use `#[verus_spec(requires ... ensures ...)]` to attach a specification to a
 function signature.
@@ -35,55 +36,53 @@ Here is an example:
 
 ## Adding verification hints
 
-Use #[verus_verify(...)] to provide hints to verifier to mark function as
-external, external_body, rlimit(xx), etc.
+Use `#[verus_verify(...)]` to provide hints to the verifier to mark a function
+as `external`, `external_body`, `spinoff_prover`, or specify a different
+resource limit via `rlimit(amount)`.
 
-In additionally, dual mode (spec + exec) function is supported via
-[`verus_verify(dual_spec)`](exec_to_spec.md)  to generate a spec function from
-an executable function.
+In addition, you can create a dual mode (spec + exec) function the via
+[`verus_verify(dual_spec)`](exec_to_spec.md) attribute, which will attempt to
+generate a spec function from an executable function.
 
 ## Adding proofs inside function
 
-With #[verus_spec(...)], we can introduce proofs directly inside executable
-functions using proof macros.
+When a function has the `#[verus_spec(...)]` attribute, we can introduce 
+proofs directly inside executable functions using the proof macros described below.
 
-When build the code without using verus, #[verus_spec(...)] will erase all proof
-codes.
+When Rust builds the code (without using Verus), the `#[verus_spec(...)]` attribute will
+ensure all proof code is erased.
 
-### Simple Proof Blocks
+### Simple proof blocks
 
-Use `proof!` to add proof block, equivalent to proof { ... } inside `verus!`
-macro. Thus, the ghost/tracked variable defined inside `proof!` is local to its
-proof block and cannot be used in other proof blocks.
+Use `proof!` to add a proof block; this is equivalent to using `proof { ... }`
+inside the `verus!` macro.  This implies that ghost/tracked variables defined inside
+of `proof!` are local to that proof block and cannot be used in other proof blocks.
 
-### Ghost/Tracked Variables cross proof blocks
+### Ghost/Tracked variables across proof blocks
 
-Use `proof_decl!` when you need use ghost or tracked variables cross different
-proof blocks, which introduce proof block and declare function-scoped
-ghost/tracked variables.
-
-Here is the example:
-
+Use `proof_decl!` when you need to use ghost or tracked variables across different
+proof blocks.  It will allow you to introduce a proof block and declare function-scoped
+ghost/tracked variables, as shown in this example:
 ```rust
 {{#include ../../../../examples/guide/exec_attr.rs:proof}}
 ```
 
-### Ghost/Tracked variables cross executable function
+### Adding ghost/tracked variables to executable function calls
 
 * `#[verus_spec(with ...)]`: Adds tracked or ghost variables as parameters or
   return values in an executable function.
 
-   This generates two function versions: 
+   This generates two versions of the original function: 
    * A verified version (with ghost/tracked parameters), used in verified code.
-   * An unverified version (original signature), callable from unverified code.
+   * An unverified version (with the original signature), callable from unverified code.
 
 * `proof_with!`
    Works in combination with `verus_spec` to pass tracked/ghost variables to a callee.
    
    When `proof_with!` precedes a function call, the verified version is used;
    otherwise, the unverified version is chosen. The unverified version includes
-   a `requires false` precondition, ensuring that improper use of proof_with!
-   will cause verification failure when called from a verified code.
+   a `requires false` precondition, ensuring that improper use of `proof_with!`
+   will cause a verification failure when called from verified code.
 
 Here is an example:
 
@@ -91,28 +90,28 @@ Here is an example:
 {{#include ../../../../examples/guide/exec_attr.rs:proof_with}}
 ```
 
-### Mix the use of `#[verus_spec]` and `verus!`
+### Using a mix of `#[verus_spec]` and `verus!`
 
-A preferred way to use `#[verus_spec]` and `verus!` is to use `#[verus_spec]`
+The preferred way to use `#[verus_spec]` and `verus!` is to use `#[verus_spec]`
 for all executable functions, and use `verus!` for spec/proof functions.
 
-To be noted, the combination of `#[verus_spec(with ...)]` + `proof_with!`
-currently has compatibility issues with executable function defined in `verus!`,
-if ghost/tracked variable used cross functions. 
+NOTE: The combination of `#[verus_spec(with ...)]` + `proof_with!`
+currently has compatibility issues with executable functions defined in `verus!`
+if the functions involved receive or return ghost/tracked variables. 
 
 Specifically, `proof_with!` works with exec functions verified via
-`#[verus_spec]`. Using `proof_with!` to pass ghost/tracked variable to an exec function
-verified via `verus!` causes compilation error
+`#[verus_spec]`. Using `proof_with!` to pass ghost/tracked variables to an exec
+function verified via `verus!` will result in this error:
 
 ```text
 [E0425]: cannot find function `_VERUS_VERIFIED_xxx` in this scope.
 ```
 
-This is because `verus!` always require a real changes in function signature and
-has a single function definition, while `#[verus_spec]` expects a verified and
-an unverified version of functions.
+This is because `verus!` always requires a real change to the function's
+signature and has a single function definition, while `#[verus_spec]` expects a
+verified and an unverified version of the function.
 
-To use function verified by `verus!`, a work-around is to create a trusted
+To use a function verified by `verus!`, a workaround is to create a trusted
 wrapper function and then use it.
 
 ```
@@ -134,7 +133,7 @@ fn ptr_mut_read<'a, T>(ptr: *const T)  -> T
 ```
 
 
-## More example and tests
+## More examples and tests
 
 ```rust
 {{#include ../../../../examples/syntax_attr.rs}}

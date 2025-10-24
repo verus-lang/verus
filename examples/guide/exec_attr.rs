@@ -41,7 +41,7 @@ fn exec_with_proof() {
    }
    test_for_loop(10);
    proof!{
-    assert(i == 0);
+     assert(i == 0);
    }
 }
 // ANCHOR_END: proof
@@ -72,11 +72,11 @@ fn exec_tracked(x: u32) -> u32 {
 #[verus_spec]
 fn exec_tracked_test(x: u32) {
   proof_decl!{
-   let ghost mut z = 0u32;
-   let tracked mut y = 0u32;
+    let ghost mut z = 0u32;
+    let tracked mut y = 0u32;
   }
 
-  proof_with!{Tracked(&mut y), Ghost(0)=> Ghost(z)}
+  proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)}
   let x = exec_tracked(1);
 
   proof!{
