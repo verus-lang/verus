@@ -717,59 +717,6 @@ impl<Inner: AbstractEncoding, T: TransparentRepresentation<Inner>> TypeRepresent
     }
 }
 
-/// This trait is used to define a `TypeRepresentation` for the given type by imposing a scalar range restriction (implemented on `nat`s) on an existing `TypeRepresentation` for this type.
-/// The corresponding `TypeRepresentation` is implemented on the struct `ScalarRangeRepresentationEncoding<Repr, Self>`.
-/// This models the `#[rustc_layout_scalar_valid_range_start(...)]` and `#[rustc_layout_scalar_valid_range_end(...)]` attributes.
-/// These additional range restrictions on the encoding are needed when the type's representation is a transparent representation
-/// because we must forbid values outside of the allowed range from being decoded.
-pub trait ScalarRangeRepresentation<Repr: TypeRepresentation<Self>> where Self: Sized {
-    spec fn min() -> nat;
-
-    spec fn max() -> nat;
-
-    spec fn to_nat(v: Self) -> nat;
-
-    proof fn valid_scalar_range_repr(tracked v: &Self)
-        ensures
-            Self::min() <= Self::to_nat(*v) <= Self::max(),
-    ;
-}
-
-pub struct ScalarRangeRepresentationEncoding<
-    Repr: TypeRepresentation<T>,
-    T: ScalarRangeRepresentation<Repr>,
-> {
-    _t: T,
-    _repr: Repr,
-}
-
-impl<Repr: TypeRepresentation<T>, T: ScalarRangeRepresentation<Repr>> TypeRepresentation<
-    T,
-> for ScalarRangeRepresentationEncoding<Repr, T> {
-    open spec fn encode(value: T, bytes: Seq<AbstractByte>) -> bool {
-        &&& Repr::encode(value, bytes)
-        &&& T::min() <= T::to_nat(value) <= T::max()
-    }
-
-    open spec fn decode(bytes: Seq<AbstractByte>, value: T) -> bool {
-        &&& Repr::decode(bytes, value)
-        &&& T::min() <= T::to_nat(value) <= T::max()
-    }
-
-    proof fn encoding_size(v: T, b: Seq<AbstractByte>) {
-        Repr::encoding_size(v, b);
-    }
-
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>) {
-        T::valid_scalar_range_repr(&v);
-        Repr::encoding_exists(v)
-    }
-
-    proof fn encoding_invertible(v: T, b: Seq<AbstractByte>) {
-        Repr::encoding_invertible(v, b);
-    }
-}
-
 // This macro can't yet handle generics, but it can be used to reduce repeated code in simple cases.
 #[allow(unused_macros)]
 macro_rules! encoding_from_type_representation {
