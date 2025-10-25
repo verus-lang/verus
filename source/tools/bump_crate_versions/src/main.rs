@@ -2,7 +2,9 @@ use std::{collections::{HashMap, HashSet}, fs, path::Path, process::Stdio, sync:
 use toml_edit::DocumentMut;
 use regex::Regex;
 use clap::Parser as ClapParser;
-
+use petgraph::graph::DiGraph;
+use petgraph::algo::toposort;
+//use petgraph::dot::{Dot, Config}; // Used for debugging graphs
 
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
@@ -87,6 +89,36 @@ fn display_dep_map(dep_map: &HashMap<Crate, Vec<Crate>>, tab_depth: usize) {
         let names = dependents.iter().map(|c| c.name.clone()).collect::<Vec<String>>();
         println!("{}", names.join(", "));
     }
+}
+
+fn dep_map_to_graph(dep_map: &HashMap<Crate, Vec<Crate>>) -> DiGraph<Crate, ()> {
+    let mut graph = DiGraph::<Crate, ()>::new();
+    let mut node_indices: HashMap<Crate, petgraph::prelude::NodeIndex> = HashMap::new();
+
+    // Add nodes
+    for krate in dep_map.keys() {
+        let index = graph.add_node(krate.clone());
+        node_indices.insert(krate.clone(), index);
+    }
+    for dependents in dep_map.values() {
+        for krate in dependents {
+            if !node_indices.contains_key(krate) {
+                let index = graph.add_node(krate.clone());
+                node_indices.insert(krate.clone(), index);
+            }
+        }
+    }
+
+    // Add edges
+    for (krate, dependents) in dep_map {
+        let from_index = node_indices.get(krate).unwrap();
+        for dependent in dependents {
+            let to_index = node_indices.get(dependent).unwrap();
+            graph.add_edge(*from_index, *to_index, ());
+        }
+    }
+
+    graph
 }
 
 // Given a path to a directory, run git to check for the most recent change to the Cargo.toml file
@@ -266,16 +298,18 @@ fn update_crates(crates: Vec<Crate>) {
 
 }
 
-fn publish_crates(crates: Vec<Crate>, dry_run: bool) {
-    for krate in crates {
+fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) {
+    let sorted_nodes = toposort(&crate_graph, None).expect("Dependency graph has cycles");
+    //println!("{:?}", Dot::with_config(&crate_graph, &[Config::EdgeNoLabel]));
+    for node_index in sorted_nodes {
+        let krate = &crate_graph[node_index];
         if dry_run {
-            println!("Performing a dry-run publish of modified crate {}", krate.name);
+            println!("Performing a dry-run publish of crate {}", krate.name);
         } else {
-            println!("Publishing modified crate {}", krate.name);
+            println!("Publishing crate {}", krate.name);
         }
         publish(&Path::new(&krate.path), dry_run);
     }
-
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -295,7 +329,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             path: "source/builtin_macros".to_string(),
         },
         Crate {
-            name: "verus_state_machine_macros".to_string(),
+            name: "verus_state_machines_macros".to_string(),
             path: "source/state_machines_macros".to_string(),
         },
         Crate {
@@ -315,7 +349,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &args.command {
         Command::Update => update_crates(crates),
-        Command::Publish { dry_run } => publish_crates(crates, *dry_run),
+        Command::Publish { dry_run } => {
+            let dep_map = compute_immediate_deps(&crates);
+            let graph = dep_map_to_graph(&dep_map);
+            display_dep_map(&dep_map, 2);
+            publish_crates(graph, *dry_run)
+        }
     }
 
     Ok(())
