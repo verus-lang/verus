@@ -403,6 +403,58 @@ of `verus!`.  To work with the verus_syn representation, complete this additiona
   It can also optionally emit new items/impl_items by adding them to new_items.
 ***/
 
+/// This macro takes an expresion of the form:
+/// `set_build!{ elem_expr: optional_typ | x1: typ1 in ..., ..., xn: typn in ..., cond1, ..., condm }`
+/// or just:
+/// `set_build!{ x: typ in ..., cond1, ..., condm }`
+/// where each `xk: typk in ...` has one of the following forms:
+/// - `xk: typk` for finite types (implementing FiniteFull)
+/// - `xk: typk in expr`, where expr has type Set<typk>
+/// - `xk: typk in lo..hi`, where lo and hi have type typk, where typk implements FiniteRange
+/// - `xk: typk in lo..=hi`, where lo and hi have type typk, where typk implements FiniteRange
+/// and each condk is a boolean expression.
+/// From this, the setbuild macro uses map_by, map_flatten_by, filter, etc. to build a set of
+/// elements specified by elem_expr.
+/// Important restriction: the elem_expr must be a variable, tuple, or datatype such that
+/// all of the variables x1, ..., xn can be easily found with nothing more that tuple/datatype
+/// field accesses.  In exchange for this restriction, set_build guarantees not to introduce
+/// any extra existential quantifiers into to constructed set.  This makes it easy for proofs
+/// to use sets constructed with set_build, when compared to other forms of Set construction
+/// (like Set::map or Set::flatten) that do introduce existential quantifiers.
+/// Example:
+/// `set_build!{ (x, y, x - y): (int, int, int) | x: int in 10..20, y: int in x..20, x + y != 25 }`
+/// From this, set_build generates:
+/// ```
+/// Set::<int>::range(10, 20)
+///     .map_flatten_by(
+///         |__VERUS_x: int| {
+///             let x = __VERUS_x;
+///             Set::<int>::range(x, 20)
+///                 .map_by(
+///                     |y: int| ((x, y, x - y)),
+///                     |__VERUS_x: (int, int, int)| (__VERUS_x.1),
+///                 )
+///         },
+///         |__VERUS_x: (int, int, int)| __VERUS_x.0,
+///     )
+///     .filter(|__VERUS_x: (int, int, int)| {
+///         let x = __VERUS_x.0;
+///         let y = __VERUS_x.1;
+///         x + y != 25
+///     })
+/// ```
+/// (Note: set_build_debug is like set_build, but also prints the generated builder to stderr)
+#[proc_macro]
+pub fn set_build(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::set_build::set_build(input, false)
+}
+
+/// Same as set_build, but prints the generated set builder to stderr
+#[proc_macro]
+pub fn set_build_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::set_build::set_build(input, true)
+}
+
 /// This copies the body of an exec function into a "returns" clause,
 /// so that the exec function will be also usable as a spec function.
 /// For example,
