@@ -313,15 +313,21 @@
         "path": {
           "syn": "Path"
         },
-        "paren_token": {
-          "group": "Paren"
-        },
         "inputs": {
-          "punctuated": {
-            "element": {
-              "syn": "FnArg"
-            },
-            "punct": "Comma"
+          "option": {
+            "tuple": [
+              {
+                "group": "Paren"
+              },
+              {
+                "punctuated": {
+                  "element": {
+                    "syn": "FnArg"
+                  },
+                  "punct": "Comma"
+                }
+              }
+            ]
           }
         },
         "output": {

@@ -1445,8 +1445,8 @@ where
         bracket_token: node.bracket_token,
         qself: (node.qself).map(|it| f.fold_qself(it)),
         path: f.fold_path(node.path),
-        paren_token: node.paren_token,
-        inputs: crate::punctuated::fold(node.inputs, f, F::fold_fn_arg),
+        inputs: (node.inputs)
+            .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_fn_arg))),
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),

@@ -7,5 +7,7 @@ edition = "2024"
 chrono = "0.4.41"
 regex = "1.11.1"
 toml_edit = "0.23.3"
+clap = { version = "4.5.26", features = ["derive"] }
+petgraph = "0.8.3"
 
 [workspace]

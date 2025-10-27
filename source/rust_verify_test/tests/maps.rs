@@ -100,11 +100,62 @@ test_verify_one_file! {
     #[test] map_contains verus_code! {
         use vstd::set::*;
         use vstd::map::*;
+        use vstd::map_lib::group_map_extra;
 
         proof fn test() {
+            broadcast use group_map_extra;
+
             let m = map![10int => 100int, 20int => 200int];
             assert(m.contains_key(10));
-            assert(m.contains_value(100));
+            assert(m.contains_value(200));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] map_insert_implies_contains verus_code! {
+        use vstd::set::*;
+        use vstd::map::*;
+        use vstd::map_lib::group_map_extra;
+
+        proof fn test(m: Map<int, int>) {
+            broadcast use group_map_extra;
+
+            let m2 = m.insert(1int, 2int).insert(3int, 4int);
+            assert(m2.contains_key(1));
+            assert(m2.contains_value(4));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] map_overwrite verus_code! {
+        use vstd::set::*;
+        use vstd::map::*;
+        use vstd::map_lib::group_map_extra;
+
+        proof fn test() {
+            broadcast use group_map_extra;
+
+            let m = map![
+                1int => 1int,
+                2int => 3int,
+            ].insert(1, 2).insert(2, 4);
+
+            // inclusions
+            assert(m.contains_value(2));
+            assert(m.contains_value(4));
+
+            // non-inclusions
+            assert(!m.contains_value(1));
+            assert(!m.contains_value(3));
+            assert(!m.contains_value(5));
+
+            // overwrite one of the keys
+            let m2 = m.insert(1, 3);
+            assert(m.insert(1, 3).contains_value(3)); // it has the new value
+            assert(!m.insert(1, 3).contains_value(2)); // it does not have the old value
+            assert(m.insert(1, 3).contains_value(4)); // it retains the unrelated value from the other key
         }
     } => Ok(())
 }

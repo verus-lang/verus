@@ -386,8 +386,7 @@ ast_struct! {
         pub bracket_token: token::Bracket,
         pub qself: Option<QSelf>,
         pub path: Path,
-        pub paren_token: token::Paren,
-        pub inputs: Punctuated<FnArg, Token![,]>,
+        pub inputs: Option<(token::Paren, Punctuated<FnArg, Token![,]>)>,
         pub output: ReturnType,
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
@@ -1496,11 +1495,16 @@ pub mod parsing {
             let (qself, path) = path::parsing::qpath(&content, true)?;
 
             let content;
-            let paren_token = parenthesized!(content in input);
-            let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
-            if variadic.is_some() {
-                return Err(content.error("variadic parameters not allowed"));
-            }
+            let inputs = if input.peek(token::Paren) {
+                let paren_token = parenthesized!(content in input);
+                let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
+                if variadic.is_some() {
+                    return Err(content.error("variadic parameters not allowed"));
+                }
+                Some((paren_token, inputs))
+            } else {
+                None
+            };
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
@@ -1522,7 +1526,6 @@ pub mod parsing {
                 generics,
                 qself,
                 path,
-                paren_token,
                 inputs,
                 output,
                 requires,
@@ -2407,9 +2410,11 @@ mod printing {
                 path::printing::print_qpath(tokens, &self.qself, &self.path, PathStyle::Mod)
             });
 
-            self.paren_token.surround(tokens, |tokens| {
-                self.inputs.to_tokens(tokens);
-            });
+            if let Some((paren_token, inputs)) = &self.inputs {
+                paren_token.surround(tokens, |tokens| {
+                    inputs.to_tokens(tokens);
+                });
+            }
 
             self.output.to_tokens(tokens);
             self.generics.where_clause.to_tokens(tokens);

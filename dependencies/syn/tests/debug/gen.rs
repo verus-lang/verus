@@ -226,8 +226,21 @@ impl Debug for Lite<syn::AssumeSpecification> {
             formatter.field("qself", Print::ref_cast(val));
         }
         formatter.field("path", Lite(&self.value.path));
-        if !self.value.inputs.is_empty() {
-            formatter.field("inputs", Lite(&self.value.inputs));
+        if let Some(val) = &self.value.inputs {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(
+                (syn::token::Paren, syn::punctuated::Punctuated<syn::FnArg, Comma>),
+            );
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("inputs", Print::ref_cast(val));
         }
         formatter.field("output", Lite(&self.value.output));
         if let Some(val) = &self.value.requires {
