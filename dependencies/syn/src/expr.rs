@@ -2515,11 +2515,12 @@ pub(crate) mod parsing {
             let pat = Pat::parse_multi_with_leading_vert(input)?;
 
             let in_token: Token![in] = input.parse()?;
-            let expr_name = if input.peek2(Token![:]) && input.peek(Ident) {
-                Some(Box::new((input.parse()?, input.parse()?)))
-            } else {
-                None
-            };
+            let expr_name =
+                if input.peek2(Token![:]) && !input.peek3(Token![:]) && input.peek(Ident) {
+                    Some(Box::new((input.parse()?, input.parse()?)))
+                } else {
+                    None
+                };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
             let invariant = input.parse()?;
             let decreases = input.parse()?;
