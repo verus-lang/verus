@@ -247,65 +247,6 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
     }
 }
 
-struct ElaborateVisitorBv<'a> {
-    ctx: &'a Ctx,
-    fun_ssts: SstMap,
-}
-
-impl<'a> ElaborateVisitorBv<'a> {
-    fn expand(&self, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
-        vec_map_result(&exps, |e| {
-            crate::interpreter::eval_expr(
-                &self.ctx.global,
-                e,
-                None::<&air::messages::Reporter>,
-                self.fun_ssts.clone(),
-                self.ctx.global.rlimit,
-                self.ctx.global.arch,
-                crate::ast::ComputeMode::Z3,
-                &mut self.ctx.global.interpreter_log.lock().unwrap(),
-            )
-        })
-    }
-}
-
-impl<'a> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVisitorBv<'a> {
-    // This is the same as visit_func_check in sst_visitor.rs, except for the call to self.expand(..)
-    fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<FuncCheckSst, VirErr> {
-        let reqs = self.visit_exps(&def.reqs)?;
-        let reqs = self.expand(reqs)?;
-        let post_condition = self.visit_postcondition(&def.post_condition)?;
-        let body = self.visit_stm(&def.body)?;
-        let local_decls =
-            Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
-        let local_decls_decreases_init = self.visit_stms(&def.local_decls_decreases_init)?;
-        let unwind = self.visit_unwind(&def.unwind)?;
-
-        Rewrite::ret(|| FuncCheckSst {
-            reqs: Rewrite::get_vec_a(reqs),
-            post_condition: Arc::new(Rewrite::get(post_condition)),
-            unwind: Rewrite::get(unwind),
-            body: Rewrite::get(body),
-            local_decls: Rewrite::get_vec_a(local_decls),
-            local_decls_decreases_init: Rewrite::get_vec_a(local_decls_decreases_init),
-            statics: def.statics.clone(),
-        })
-    }
-
-    // This is the same as visit_postcondition in sst_visitor.rs, except for the call to self.expand(..)
-    fn visit_postcondition(&mut self, post: &PostConditionSst) -> Result<PostConditionSst, VirErr> {
-        let ens_exps = self.visit_exps(&post.ens_exps)?;
-        let ens_exps = self.expand(ens_exps)?;
-        let ens_spec_precondition_stms = self.visit_stms(&post.ens_spec_precondition_stms)?;
-        Rewrite::ret(|| PostConditionSst {
-            dest: post.dest.clone(),
-            ens_exps: Rewrite::get_vec_a(ens_exps),
-            ens_spec_precondition_stms: Rewrite::get_vec_a(ens_spec_precondition_stms),
-            kind: post.kind,
-        })
-    }
-}
-
 // Triggers and inlining
 pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     ctx: &'a Ctx,
@@ -363,15 +304,47 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
     Ok(())
 }
 
+// Expand expressions using the interpreter
+fn expand<'a>(ctx: &'a Ctx, fun_ssts: &SstMap, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
+    vec_map_result(&exps, |e| {
+        crate::interpreter::eval_expr(
+            &ctx.global,
+            e,
+            None::<&air::messages::Reporter>,
+            fun_ssts.clone(),
+            ctx.global.rlimit,
+            ctx.global.arch,
+            crate::ast::ComputeMode::Z3,
+            &mut ctx.global.interpreter_log.lock().unwrap(),
+        )
+    })
+}
+
+// Use the interpreter to inline spec functions (and otherwise apply its usual simplifications)
+// to bit-vector assertions/proofs
 pub(crate) fn elaborate_function_bv<'a>(
     ctx: &'a Ctx,
     fun_ssts: SstMap,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    if !ctx.global.no_bv_simplify && function.x.attrs.bit_vector {
-        let mut visitor = ElaborateVisitorBv { ctx, fun_ssts };
-        *function = visitor.visit_function(function)?;
-    }
+    if function.x.attrs.bit_vector {
+        if function.x.exec_proof_check.is_some() {
+            // Expand reqs and ens_exps using the interpreter
+            let exec_proof_check = function.x.exec_proof_check.as_ref().unwrap();
+            let reqs = expand(ctx, &fun_ssts, exec_proof_check.reqs.to_vec())?;
+            let ens_exps =
+                expand(ctx, &fun_ssts, exec_proof_check.post_condition.ens_exps.to_vec())?;
 
+            // Reassemble the exec_proof_check with the expanded expressions
+            let mut new_exec_proof_check = function.x.exec_proof_check.clone();
+            let new_exec_proof_check = Arc::make_mut(new_exec_proof_check.as_mut().unwrap());
+            new_exec_proof_check.reqs = Arc::new(reqs);
+            let new_post = Arc::make_mut(&mut new_exec_proof_check.post_condition);
+            new_post.ens_exps = Arc::new(ens_exps);
+            new_exec_proof_check.post_condition = Arc::new(new_post.clone());
+            Arc::make_mut(function).x.exec_proof_check =
+                Some(Arc::new(new_exec_proof_check.clone()));
+        }
+    }
     Ok(())
 }
