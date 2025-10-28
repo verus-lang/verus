@@ -328,22 +328,17 @@ pub(crate) fn elaborate_function_bv<'a>(
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
     if function.x.attrs.bit_vector {
-        if function.x.exec_proof_check.is_some() {
+        if let Some(exec_proof_check_arc) = &mut Arc::make_mut(function).x.exec_proof_check {
+            let exec_proof_check_mut = Arc::make_mut(exec_proof_check_arc);
             // Expand reqs and ens_exps using the interpreter
-            let exec_proof_check = function.x.exec_proof_check.as_ref().unwrap();
-            let reqs = expand(ctx, &fun_ssts, exec_proof_check.reqs.to_vec())?;
+            let reqs = expand(ctx, &fun_ssts, exec_proof_check_mut.reqs.to_vec())?;
             let ens_exps =
-                expand(ctx, &fun_ssts, exec_proof_check.post_condition.ens_exps.to_vec())?;
+                expand(ctx, &fun_ssts, exec_proof_check_mut.post_condition.ens_exps.to_vec())?;
 
-            // Reassemble the exec_proof_check with the expanded expressions
-            let mut new_exec_proof_check = function.x.exec_proof_check.clone();
-            let new_exec_proof_check = Arc::make_mut(new_exec_proof_check.as_mut().unwrap());
-            new_exec_proof_check.reqs = Arc::new(reqs);
-            let new_post = Arc::make_mut(&mut new_exec_proof_check.post_condition);
-            new_post.ens_exps = Arc::new(ens_exps);
-            new_exec_proof_check.post_condition = Arc::new(new_post.clone());
-            Arc::make_mut(function).x.exec_proof_check =
-                Some(Arc::new(new_exec_proof_check.clone()));
+            // Update the exec_proof_check fields directly
+            exec_proof_check_mut.reqs = Arc::new(reqs);
+            let post = Arc::make_mut(&mut exec_proof_check_mut.post_condition);
+            post.ens_exps = Arc::new(ens_exps);
         }
     }
     Ok(())
