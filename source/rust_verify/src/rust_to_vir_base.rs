@@ -938,12 +938,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 
-                if let Some(RustItem::AllocGlobal) = rust_item {
-                    return Ok((
-                        Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
-                        false,
-                    ));
-                }
+                // if let Some(RustItem::AllocGlobal) = rust_item {
+                //     return Ok((
+                //         Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
+                //         false,
+                //     ));
+                // }
 
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {

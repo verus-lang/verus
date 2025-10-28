@@ -225,7 +225,7 @@ fn check_item<'tcx>(
                 variant_data,
                 generics,
                 adt_def,
-                external_info,
+                // external_info,
             )?;
         }
         ItemKind::Enum(_ident, enum_def, generics) => {
