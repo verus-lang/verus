@@ -63,7 +63,7 @@ pub fn verify_files(
     verify_files_vstd(name, files, entry_file, false, options)
 }
 
-use std::cell::RefCell;
+use std::{cell::RefCell, path};
 thread_local! {
     pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
 }
@@ -409,6 +409,87 @@ pub fn run_verus(
         .spawn()
         .expect("could not execute test rustc process");
     let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    run
+}
+
+pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let exe = "";
+
+    #[cfg(target_os = "windows")]
+    let exe = ".exe";
+
+    // Compute the path to the cargo-verus executable,
+    // following the pattern from run_verus
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+        .join("target-verus")
+        .join(profile);
+    let bin = verus_target_path.join(format!("cargo-verus{exe}"));
+
+    let mut child = std::process::Command::new(bin);
+    child.current_dir(dir);
+
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                .into_os_string()
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::ffi::OsString::from("..\\z3.exe")
+            } else {
+                std::ffi::OsString::from("../z3")
+            }
+        });
+    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
+    child.env("VERUS_Z3_PATH", z3);
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo-verus process");
+    let run = child.wait_with_output().expect("cargo-verus wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
+    run
+}
+
+// Assumes normal `cargo` is in the caller's path
+pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    // if std::env::var("VERUS_IN_VARGO").is_err() {
+    //     panic!("not running in vargo, read the README for instructions");
+    // }
+    let mut child = std::process::Command::new("cargo");
+    child.current_dir(dir);
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo process");
+    let run = child.wait_with_output().expect("cargo wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
     run
 }
 

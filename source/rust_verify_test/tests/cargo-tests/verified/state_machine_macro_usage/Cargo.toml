@@ -1,0 +1,14 @@
+[package]
+name = "state_machine_macro_usage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd/" }
+verus_state_machines_macros = { path = "../../../../../state_machines_macros/" }
+
+[package.metadata.verus]
+verify = true
+test_ignore = true
+
+[workspace]
