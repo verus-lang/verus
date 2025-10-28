@@ -69,6 +69,17 @@ fn test_success(x: u32, y: u32)
 }
 // ANCHOR_END: bitvector_success
 
+
+// ANCHOR: bitvector_spec_fn
+spec fn get_bit(val: u32, index: u32) -> bool {
+    0x1u32 & (val >> index) == 1
+}
+
+fn test_get_bit() {
+    assert(get_bit(128u32, 7)) by (bit_vector);
+}
+// ANCHOR_END: bitvector_spec_fn
+
 fn main() {
 }
 

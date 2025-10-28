@@ -59,6 +59,7 @@ pub struct GlobalCtx {
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
     pub new_mut_ref: bool,
+    pub no_bv_simplify: bool,
 }
 
 // Context for verifying one function
@@ -275,6 +276,7 @@ impl GlobalCtx {
         check_api_safety: bool,
         axiom_usage_info: bool,
         new_mut_ref: bool,
+        no_bv_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -662,6 +664,7 @@ impl GlobalCtx {
             check_api_safety,
             axiom_usage_info,
             new_mut_ref,
+            no_bv_simplify,
         })
     }
 
@@ -692,6 +695,7 @@ impl GlobalCtx {
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
             new_mut_ref: self.new_mut_ref,
+            no_bv_simplify: self.no_bv_simplify,
         }
     }
 

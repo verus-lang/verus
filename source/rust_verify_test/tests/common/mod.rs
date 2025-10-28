@@ -319,6 +319,9 @@ pub fn run_verus(
         } else if *option == "new-mut-ref" {
             verus_args.push("-V".to_string());
             verus_args.push("new-mut-ref".to_string());
+        } else if *option == "no-bv-simplify" {
+            verus_args.push("-V".to_string());
+            verus_args.push("no-bv-simplify".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -592,6 +595,76 @@ macro_rules! test_verify_one_file {
     };
     ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
         test_verify_one_file_with_options!($(#[$attrs])* $name [] => $body => $result);
+    };
+}
+
+// We run the bit-vector tests twice; once with interpreter-based simplification on
+// (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
+// of bit-vector operations is correct).
+#[macro_export]
+macro_rules! test_verify_one_bv_file_with_options {
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat => $assertions:expr ) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_verify_one_bv_file {
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result => $assertions);
+    };
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result);
     };
 }
 
