@@ -51,6 +51,7 @@ Currently, `exec_spec!` supports these basic features:
   - If, match and "matches"
   - Field expressions
   - Spec function calls and recursion
+  - Bounded quantifiers of the form `forall |i| <lower> <= i < <upper> ==> <expr>` and `exists |i| <lower> <= i < <upper> && <expr>`
   - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), indexing, len, `seq!` literals
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
