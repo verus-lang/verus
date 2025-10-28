@@ -2497,7 +2497,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let (mut stms, au_raw_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
             let au_raw_exp = unwrap_or_return_never!(au_raw_exp, stms);
-            let au_typ = &au_expr.typ;
+            let au_typ = undecorate_typ(&au_expr.typ);
 
             let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
                 dbg!(&au_typ);

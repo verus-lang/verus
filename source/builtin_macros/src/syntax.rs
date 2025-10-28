@@ -528,10 +528,13 @@ impl Visitor {
                     subpat: None,
                 };
 
+                let colon_token: verus_syn::Token![:] =
+                    parse_quote_spanned! { receiver.span() => : };
+
                 let pat_type = PatType {
                     attrs: receiver.attrs.clone(),
                     pat: Box::new(Pat::Ident(pat_ident)),
-                    colon_token: Default::default(),
+                    colon_token,
                     ty,
                 };
 
@@ -634,15 +637,21 @@ impl Visitor {
         let mut args_ty_tokens = TokenStream::new();
         let mut args_pat_tokens = TokenStream::new();
         let mut args_use_tokens = TokenStream::new();
-        let mut self_ident = None;
+        let mut args_full_tokens = TokenStream::new();
 
-        for pair in sig.inputs.pairs() {
+        let mut self_ident = None;
+        for (idx, pair) in sig.inputs.pairs_mut().enumerate() {
             let (fn_arg, comma) = pair.into_tuple();
-            match &fn_arg.kind {
+            match &mut fn_arg.kind {
                 FnArgKind::Typed(pat_type) => {
                     pat_type.pat.to_tokens(&mut args_use_tokens);
                     pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.pat.to_tokens(&mut args_full_tokens);
+
+                    pat_type.colon_token.to_tokens(&mut args_full_tokens);
+
                     pat_type.ty.to_tokens(&mut args_ty_tokens);
+                    pat_type.ty.to_tokens(&mut args_full_tokens);
                 }
 
                 FnArgKind::Receiver(receiver) => {
@@ -652,13 +661,19 @@ impl Visitor {
 
                     receiver.self_token.to_tokens(&mut args_use_tokens);
                     pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.pat.to_tokens(&mut args_full_tokens);
+
+                    pat_type.colon_token.to_tokens(&mut args_full_tokens);
+
                     pat_type.ty.to_tokens(&mut args_ty_tokens);
+                    pat_type.ty.to_tokens(&mut args_full_tokens);
                 }
             };
 
-            comma.to_tokens(&mut args_use_tokens);
-            comma.to_tokens(&mut args_pat_tokens);
             comma.to_tokens(&mut args_ty_tokens);
+            comma.to_tokens(&mut args_pat_tokens);
+            comma.to_tokens(&mut args_use_tokens);
+            comma.to_tokens(&mut args_full_tokens);
         }
 
         let mut generics = sig.generics.clone();
@@ -698,11 +713,22 @@ impl Visitor {
             quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
         }
 
+        let mut args_use_tokens_renamed = args_use_tokens.clone();
         if let Some(ident) = &self_ident {
             args_pat_tokens = replace_self_with_ident(args_pat_tokens, ident);
+            args_full_tokens = replace_self_with_ident(args_full_tokens, ident);
             atomic_req = replace_self_with_ident(atomic_req, ident);
             atomic_ens = replace_self_with_ident(atomic_ens, ident);
         }
+
+        self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            impl #generics #pred_ident #generics #where_clause {
+                #vis open spec fn args(self, #args_full_tokens ) -> bool {
+                    #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
+                        == ( #args_pat_tokens )
+                }
+            }
+        ));
 
         let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
             open spec fn req(self, #old_val: #old_ty) -> bool {

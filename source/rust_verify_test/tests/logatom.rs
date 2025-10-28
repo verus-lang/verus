@@ -238,6 +238,9 @@ const ATOMIC_FUNCTION_ARGS: &'static str = verus_code_str! {
         },
         requires a == 2,
     {
+        // make sure `au` knows about `a`
+        assert(au.pred().args(a));
+
         open_atomic_update!(au, mut n => {
             assert(n == 2);
             proof { n += 3_u32; };
@@ -252,6 +255,7 @@ test_verify_one_file! {
     ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
         proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
             let ghost n: u32 = vstd::atomic::pred_args(au.pred());
+            assert(au.pred().args(n));
             assert forall |a: u32| au.req(a) <==> a == n by {}
             assert forall |a: u32, b: u32| au.ens(a, b) <==> b == a + 3 by {}
         }
