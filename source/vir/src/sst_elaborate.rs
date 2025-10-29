@@ -5,9 +5,7 @@ use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::messages::{ToAny, error_with_label, warning};
-use crate::sst::{
-    BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, PostConditionSst, Stm, StmX, UniqueIdent,
-};
+use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
 use crate::util::vec_map_result;
