@@ -160,7 +160,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
         return Err(crate::util::error(
             "Cannot build specification for unresolved trait item.  Consider an external_trait_specification declaration.",
         ));
-    } else if let Some(impl_def_id) = ctxt.tcx.impl_of_method(external_def_id) {
+    } else if let Some(impl_def_id) = ctxt.tcx.impl_of_assoc(external_def_id) {
         if let Some(impl_trait) = ctxt.tcx.impl_trait_header(impl_def_id) {
             let trait_ref = impl_trait.trait_ref.skip_binder();
             let self_ty = trait_ref.self_ty().fold_with(&mut region_renamer);
