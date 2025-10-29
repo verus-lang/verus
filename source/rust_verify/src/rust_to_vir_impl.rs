@@ -360,21 +360,21 @@ pub(crate) fn translate_impl<'tcx>(
         };
 
     let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
-        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+        let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
         let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
         Some(crate::automatic_derive::get_action(rust_item))
     } else {
         None
     };
 
-    for impl_item_ref in impll.items {
+    for impl_item_id in impll.items {
         if vattrs.external_trait_blanket {
             continue;
         }
-        let impl_item = ctxt.tcx.hir_impl_item(impl_item_ref.id);
+        let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
         let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
 
-        if crate_items.is_impl_item_external(impl_item_ref.id) {
+        if crate_items.is_impl_item_external(impl_item_id.owner_id) {
             if trait_path_typ_args.is_some() {
                 // sanity check - this should be redundant with prior check in external.rs
                 return err_span(
@@ -384,8 +384,8 @@ pub(crate) fn translate_impl<'tcx>(
             }
             continue;
         }
-
-        match impl_item_ref.kind {
+        let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().local_id.to_def_id());
+        match assoc_item.kind {
             AssocItemKind::Fn { has_self: true | false } => {
                 let impl_item_visibility = mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                 match &impl_item.kind {
@@ -393,7 +393,7 @@ pub(crate) fn translate_impl<'tcx>(
                         let kind = if let Some((trait_path, trait_typ_args)) =
                             trait_path_typ_args.clone()
                         {
-                            let ident = impl_item_ref.ident.to_string();
+                            let ident = impl_item.ident.to_string();
                             let ident = Arc::new(ident);
                             let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
                             let fun = FunX { path };
@@ -434,7 +434,7 @@ pub(crate) fn translate_impl<'tcx>(
                             autoderive_action.as_ref(),
                         )?;
                     }
-                    _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),
+                    _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
                 }
             }
             AssocItemKind::Type(_aliased) => {
@@ -444,7 +444,7 @@ pub(crate) fn translate_impl<'tcx>(
                     unsupported_err!(
                         item.span,
                         "unsupported generics on associated type",
-                        impl_item_ref
+                        impl_item_id
                     );
                 }
                 if let ImplItemKind::Type(_ty) = impl_item.kind {
@@ -463,10 +463,10 @@ pub(crate) fn translate_impl<'tcx>(
                         )?;
                         vir.assoc_type_impls.push(assoc_type_impl);
                     } else {
-                        unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
+                        unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
                     }
                 } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
+                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
                 }
             }
             AssocItemKind::Const(_const_item) => {
@@ -490,7 +490,7 @@ pub(crate) fn translate_impl<'tcx>(
                         false,
                     )?;
                 } else {
-                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
+                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
                 }
             }
         }
