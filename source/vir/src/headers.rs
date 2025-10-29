@@ -1,7 +1,5 @@
 use crate::ast::{
-    Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
-    Visibility,
+    Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants, MaskSpec, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -489,7 +487,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
         // Remove these added Sized bounds so that we can match the remaining bounds.
         use crate::ast::{GenericBoundX, TraitId};
-        if let GenericBoundX::Trait(TraitId::Sizedness(_), _) = &**typ_bounds.last().unwrap() {
+        if let GenericBoundX::Trait(TraitId::Sizedness(Sizedness::Sized), _) = &**typ_bounds.last().unwrap() {
             Arc::make_mut(&mut typ_bounds).pop();
         }
     }

@@ -5,7 +5,7 @@
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, Place, RevealGroup,
-    Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
+    Sizedness, Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -355,8 +355,13 @@ fn traverse_generic_bounds(
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
             crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
-            crate::ast::GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
-                continue;
+            crate::ast::GenericBoundX::Trait(TraitId::Sizedness(sizedness), _) => {
+                match sizedness {
+                    Sizedness::Sized => {
+                        continue;
+                    }
+                    Sizedness::MetaSized(path) | Sizedness::PointeeSized(path) => path
+                }
             }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                 reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
@@ -1019,7 +1024,9 @@ pub fn prune_krate_for_module_or_krate(
             match &**bound {
                 crate::ast::GenericBoundX::Trait(tid, typ_args) => {
                     match tid {
-                        TraitId::Path(path) => {
+                        TraitId::Path(path)
+                        // | TraitId::Sizedness(Sizedness::MetaSized(path))
+                        | TraitId::Sizedness(Sizedness::PointeeSized(path)) => {
                             bound_traits.push(path.clone());
                         }
                         TraitId::Sizedness(_) => {}
