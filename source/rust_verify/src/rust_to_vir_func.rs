@@ -907,17 +907,19 @@ fn binders_to_string<'tcx>(
     }
     let mut v = vec![];
     for k in l.iter() {
+        let sym;
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
-                let sym = tcx.item_name(def_id);
+                sym = tcx.item_name(def_id);
                 sym.as_str()
             }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
             BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
-                let sym = tcx.item_name(def_id);
+                sym = tcx.item_name(def_id);
                 sym.as_str()
             }
+            BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
