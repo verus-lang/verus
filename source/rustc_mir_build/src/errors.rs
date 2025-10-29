@@ -1,8 +1,7 @@
-use rustc_data_structures::fx::FxIndexMap;
 use rustc_errors::codes::*;
 use rustc_errors::{
     Applicability, Diag, DiagArgValue, DiagCtxtHandle, Diagnostic, EmissionGuarantee, Level,
-    MultiSpan, Subdiagnostic, pluralize,
+    MultiSpan, Subdiagnostic,
 };
 use rustc_macros::{Diagnostic, LintDiagnostic, Subdiagnostic};
 use rustc_middle::ty::{self, Ty};
@@ -721,6 +720,18 @@ pub(crate) struct WantedConstant {
     pub(crate) const_path: String,
 }
 
+#[derive(LintDiagnostic)]
+#[diag(mir_build_unreachable_due_to_uninhabited)]
+pub(crate) struct UnreachableDueToUninhabited<'desc, 'tcx> {
+    pub descr: &'desc str,
+    #[label]
+    pub expr: Span,
+    #[label(mir_build_label_orig)]
+    #[note]
+    pub orig: Span,
+    pub ty: Ty<'tcx>,
+}
+
 #[derive(Diagnostic)]
 #[diag(mir_build_const_pattern_depends_on_generic_parameter, code = E0158)]
 pub(crate) struct ConstPatternDependsOnGenericParameter {
@@ -976,15 +987,6 @@ pub(crate) struct NonEmptyNeverPattern<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_exceeds_mcdc_condition_limit)]
-pub(crate) struct MCDCExceedsConditionLimit {
-    #[primary_span]
-    pub(crate) span: Span,
-    pub(crate) num_conditions: usize,
-    pub(crate) max_conditions: usize,
-}
-
-#[derive(Diagnostic)]
 #[diag(mir_build_pattern_not_covered, code = E0005)]
 pub(crate) struct PatternNotCovered<'s, 'tcx> {
     #[primary_span]
@@ -994,14 +996,15 @@ pub(crate) struct PatternNotCovered<'s, 'tcx> {
     pub(crate) uncovered: Uncovered,
     #[subdiagnostic]
     pub(crate) inform: Option<Inform>,
-    #[label(mir_build_confused)]
-    pub(crate) interpreted_as_const: Option<Span>,
     #[subdiagnostic]
-    pub(crate) interpreted_as_const_sugg: Option<InterpretedAsConst>,
+    pub(crate) interpreted_as_const: Option<InterpretedAsConst>,
+    #[subdiagnostic]
+    pub(crate) interpreted_as_const_sugg: Option<InterpretedAsConstSugg>,
     #[subdiagnostic]
     pub(crate) adt_defined_here: Option<AdtDefinedHere<'tcx>>,
     #[note(mir_build_privately_uninhabited)]
     pub(crate) witness_1_is_privately_uninhabited: bool,
+    pub(crate) witness_1: String,
     #[note(mir_build_pattern_ty)]
     pub(crate) _p: (),
     pub(crate) pattern_ty: Ty<'tcx>,
@@ -1015,6 +1018,14 @@ pub(crate) struct PatternNotCovered<'s, 'tcx> {
 #[note(mir_build_inform_irrefutable)]
 #[note(mir_build_more_information)]
 pub(crate) struct Inform;
+
+#[derive(Subdiagnostic)]
+#[label(mir_build_confused)]
+pub(crate) struct InterpretedAsConst {
+    #[primary_span]
+    pub(crate) span: Span,
+    pub(crate) variable: String,
+}
 
 pub(crate) struct AdtDefinedHere<'tcx> {
     pub(crate) adt_def_span: Span,
@@ -1046,7 +1057,7 @@ impl<'tcx> Subdiagnostic for AdtDefinedHere<'tcx> {
     applicability = "maybe-incorrect",
     style = "verbose"
 )]
-pub(crate) struct InterpretedAsConst {
+pub(crate) struct InterpretedAsConstSugg {
     #[primary_span]
     pub(crate) span: Span,
     pub(crate) variable: String,
@@ -1087,65 +1098,110 @@ pub(crate) enum MiscPatternSuggestion {
     },
 }
 
-#[derive(LintDiagnostic)]
-#[diag(mir_build_rust_2024_incompatible_pat)]
-pub(crate) struct Rust2024IncompatiblePat {
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_invalid_update)]
+pub(crate) struct LoopMatchInvalidUpdate {
+    #[primary_span]
+    pub lhs: Span,
+    #[label]
+    pub scrutinee: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_invalid_match)]
+#[note]
+pub(crate) struct LoopMatchInvalidMatch {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_unsupported_type)]
+#[note]
+pub(crate) struct LoopMatchUnsupportedType<'tcx> {
+    #[primary_span]
+    pub span: Span,
+    pub ty: Ty<'tcx>,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_bad_statements)]
+pub(crate) struct LoopMatchBadStatements {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_bad_rhs)]
+pub(crate) struct LoopMatchBadRhs {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_missing_assignment)]
+pub(crate) struct LoopMatchMissingAssignment {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_loop_match_arm_with_guard)]
+pub(crate) struct LoopMatchArmWithGuard {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_const_continue_not_const)]
+#[help]
+pub(crate) struct ConstContinueNotMonomorphicConst {
+    #[primary_span]
+    pub span: Span,
+
     #[subdiagnostic]
-    pub(crate) sugg: Rust2024IncompatiblePatSugg,
-    pub(crate) bad_modifiers: bool,
-    pub(crate) bad_ref_pats: bool,
-    pub(crate) is_hard_error: bool,
+    pub reason: ConstContinueNotMonomorphicConstReason,
 }
 
-pub(crate) struct Rust2024IncompatiblePatSugg {
-    /// If true, our suggestion is to elide explicit binding modifiers.
-    /// If false, our suggestion is to make the pattern fully explicit.
-    pub(crate) suggest_eliding_modes: bool,
-    pub(crate) suggestion: Vec<(Span, String)>,
-    pub(crate) ref_pattern_count: usize,
-    pub(crate) binding_mode_count: usize,
-    /// Labels for where incompatibility-causing by-ref default binding modes were introduced.
-    pub(crate) default_mode_labels: FxIndexMap<Span, ty::Mutability>,
+#[derive(Subdiagnostic)]
+pub(crate) enum ConstContinueNotMonomorphicConstReason {
+    #[label(mir_build_const_continue_not_const_constant_parameter)]
+    ConstantParameter {
+        #[primary_span]
+        span: Span,
+    },
+
+    #[label(mir_build_const_continue_not_const_const_block)]
+    ConstBlock {
+        #[primary_span]
+        span: Span,
+    },
+
+    #[label(mir_build_const_continue_not_const_const_other)]
+    Other {
+        #[primary_span]
+        span: Span,
+    },
 }
 
-impl Subdiagnostic for Rust2024IncompatiblePatSugg {
-    fn add_to_diag<G: EmissionGuarantee>(self, diag: &mut Diag<'_, G>) {
-        // Format and emit explanatory notes about default binding modes. Reversing the spans' order
-        // means if we have nested spans, the innermost ones will be visited first.
-        for (span, def_br_mutbl) in self.default_mode_labels.into_iter().rev() {
-            // Don't point to a macro call site.
-            if !span.from_expansion() {
-                let note_msg = "matching on a reference type with a non-reference pattern changes the default binding mode";
-                let label_msg =
-                    format!("this matches on type `{}_`", def_br_mutbl.ref_prefix_str());
-                let mut label = MultiSpan::from(span);
-                label.push_span_label(span, label_msg);
-                diag.span_note(label, note_msg);
-            }
-        }
+#[derive(Diagnostic)]
+#[diag(mir_build_const_continue_bad_const)]
+pub(crate) struct ConstContinueBadConst {
+    #[primary_span]
+    #[label]
+    pub span: Span,
+}
 
-        // Format and emit the suggestion.
-        let applicability =
-            if self.suggestion.iter().all(|(span, _)| span.can_be_used_for_suggestions()) {
-                Applicability::MachineApplicable
-            } else {
-                Applicability::MaybeIncorrect
-            };
-        let msg = if self.suggest_eliding_modes {
-            let plural_modes = pluralize!(self.binding_mode_count);
-            format!("remove the unnecessary binding modifier{plural_modes}")
-        } else {
-            let plural_derefs = pluralize!(self.ref_pattern_count);
-            let and_modes = if self.binding_mode_count > 0 {
-                format!(" and variable binding mode{}", pluralize!(self.binding_mode_count))
-            } else {
-                String::new()
-            };
-            format!("make the implied reference pattern{plural_derefs}{and_modes} explicit")
-        };
-        // FIXME(dianne): for peace of mind, don't risk emitting a 0-part suggestion (that panics!)
-        if !self.suggestion.is_empty() {
-            diag.multipart_suggestion_verbose(msg, self.suggestion, applicability);
-        }
-    }
+#[derive(Diagnostic)]
+#[diag(mir_build_const_continue_missing_label_or_value)]
+pub(crate) struct ConstContinueMissingLabelOrValue {
+    #[primary_span]
+    pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(mir_build_const_continue_unknown_jump_target)]
+pub(crate) struct ConstContinueUnknownJumpTarget {
+    #[primary_span]
+    pub span: Span,
 }
