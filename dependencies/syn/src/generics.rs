@@ -105,42 +105,42 @@ impl Default for Generics {
 impl Generics {
     return_impl_trait! {
         /// Iterator over the lifetime parameters in `self.params`.
-        pub fn lifetimes(&self) -> impl Iterator<Item = &LifetimeParam> [Lifetimes] {
+        pub fn lifetimes(&self) -> impl Iterator<Item = &LifetimeParam> [Lifetimes<'_>] {
             Lifetimes(self.params.iter())
         }
     }
 
     return_impl_trait! {
         /// Iterator over the lifetime parameters in `self.params`.
-        pub fn lifetimes_mut(&mut self) -> impl Iterator<Item = &mut LifetimeParam> [LifetimesMut] {
+        pub fn lifetimes_mut(&mut self) -> impl Iterator<Item = &mut LifetimeParam> [LifetimesMut<'_>] {
             LifetimesMut(self.params.iter_mut())
         }
     }
 
     return_impl_trait! {
         /// Iterator over the type parameters in `self.params`.
-        pub fn type_params(&self) -> impl Iterator<Item = &TypeParam> [TypeParams] {
+        pub fn type_params(&self) -> impl Iterator<Item = &TypeParam> [TypeParams<'_>] {
             TypeParams(self.params.iter())
         }
     }
 
     return_impl_trait! {
         /// Iterator over the type parameters in `self.params`.
-        pub fn type_params_mut(&mut self) -> impl Iterator<Item = &mut TypeParam> [TypeParamsMut] {
+        pub fn type_params_mut(&mut self) -> impl Iterator<Item = &mut TypeParam> [TypeParamsMut<'_>] {
             TypeParamsMut(self.params.iter_mut())
         }
     }
 
     return_impl_trait! {
         /// Iterator over the constant parameters in `self.params`.
-        pub fn const_params(&self) -> impl Iterator<Item = &ConstParam> [ConstParams] {
+        pub fn const_params(&self) -> impl Iterator<Item = &ConstParam> [ConstParams<'_>] {
             ConstParams(self.params.iter())
         }
     }
 
     return_impl_trait! {
         /// Iterator over the constant parameters in `self.params`.
-        pub fn const_params_mut(&mut self) -> impl Iterator<Item = &mut ConstParam> [ConstParamsMut] {
+        pub fn const_params_mut(&mut self) -> impl Iterator<Item = &mut ConstParam> [ConstParamsMut<'_>] {
             ConstParamsMut(self.params.iter_mut())
         }
     }
@@ -173,7 +173,7 @@ impl Generics {
     /// ```
     #[cfg(feature = "printing")]
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
-    pub fn split_for_impl(&self) -> (ImplGenerics, TypeGenerics, Option<&WhereClause>) {
+    pub fn split_for_impl(&self) -> (ImplGenerics<'_>, TypeGenerics<'_>, Option<&WhereClause>) {
         (
             ImplGenerics(self),
             TypeGenerics(self),

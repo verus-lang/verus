@@ -350,7 +350,9 @@ pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
 /// NOTE: Trait aliases are not yet supported,
 /// so we use `Pointee<Metadata = ()>` instead of `core::ptr::Thin` here
 #[verifier::inline]
-pub open spec fn ptr_null<T: ::core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>>() -> *const T {
+pub open spec fn ptr_null<
+    T: ::core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
+>() -> *const T {
     ptr_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
 }
 
@@ -369,7 +371,9 @@ pub assume_specification<
 /// NOTE: Trait aliases are not yet supported,
 /// so we use `Pointee<Metadata = ()>` instead of `core::ptr::Thin` here
 #[verifier::inline]
-pub open spec fn ptr_null_mut<T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>>() -> *mut T {
+pub open spec fn ptr_null_mut<
+    T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
+>() -> *mut T {
     ptr_mut_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
 }
 

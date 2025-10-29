@@ -9,7 +9,6 @@ use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
-use rustc_ast::ast::AssocItemKind;
 use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
 use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;

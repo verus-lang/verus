@@ -12,7 +12,7 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
-    GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    GenericArgKind, GenericParamDefKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
@@ -1538,16 +1538,15 @@ pub(crate) fn check_generic_bound<'tcx>(
                 }
             }
         }
-        let trait_name = 
-            if Some(trait_def_id) == tcx.lang_items().sized_trait() {
-                TraitId::Sizedness(Sizedness::Sized)
-            } else if Some(trait_def_id) == tcx.lang_items().meta_sized_trait() {
-                TraitId::Sizedness(Sizedness::MetaSized)
-            } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
-                TraitId::Sizedness(Sizedness::PointeeSized)
-            } else {
-                TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
-            };
+        let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
+            TraitId::Sizedness(Sizedness::Sized)
+        } else if Some(trait_def_id) == tcx.lang_items().meta_sized_trait() {
+            TraitId::Sizedness(Sizedness::MetaSized)
+        } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
+            TraitId::Sizedness(Sizedness::PointeeSized)
+        } else {
+            TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
+        };
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
 }
