@@ -2672,7 +2672,7 @@ fn lit_to_vir<'tcx>(
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::mir::interpret::LitToConstInput;
-                let lit_const = LitToConstInput { lit: &lit.node, ty, neg: negated };
+                let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
                 let c = bctx.ctxt.tcx.lit_to_const(lit_const);
                 if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
                     if let Some(i) = v.valtree.try_to_scalar_int() {
@@ -3368,10 +3368,10 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
                 && verus_items::get_rust_item(tcx, adt_def_data2.did)
                     == Some(verus_items::RustItem::Box) =>
         {
-            let rustc_middle::ty::GenericArgKind::Type(t1) = args1[0].unpack() else {
+            let Some(t1) = args1[0].as_type() else {
                 panic!("unexpected type argument")
             };
-            let rustc_middle::ty::GenericArgKind::Type(t2) = args2[0].unpack() else {
+            let Some(t2) = args2[0].as_type() else {
                 panic!("unexpected type argument")
             };
             remove_decoration_typs_for_unsizing(tcx, t1, t2)
