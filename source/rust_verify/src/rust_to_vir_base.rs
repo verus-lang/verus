@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
-    Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -1501,11 +1501,16 @@ pub(crate) fn check_generic_bound<'tcx>(
                 }
             }
         }
-        let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
-            TraitId::Sized
-        } else {
-            TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
-        };
+        let trait_name = 
+            if Some(trait_def_id) == tcx.lang_items().sized_trait() {
+                TraitId::Sizedness(Sizedness::Sized)
+            } else if Some(trait_def_id) == tcx.lang_items().meta_sized_trait() {
+                TraitId::Sizedness(Sizedness::MetaSized)
+            } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
+                TraitId::Sizedness(Sizedness::PointeeSized)
+            } else {
+                TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
+            };
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
 }

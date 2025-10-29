@@ -168,7 +168,7 @@ fn expand_extension_trait(
         "allow",
         quote_spanned!(span => non_camel_case_types),
     ));
-    blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + ?Sized));
+    blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + core::marker::PointeeSized));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));

@@ -164,7 +164,7 @@ pub(crate) fn translate_trait<'tcx>(
                         return false;
                     }
                 }
-                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
+                GenericBoundX::Trait(TraitId::Sizedness(_), _tp) => {}
                 GenericBoundX::TypEquality(..) => {}
                 GenericBoundX::ConstTyp(..) => {}
             }
