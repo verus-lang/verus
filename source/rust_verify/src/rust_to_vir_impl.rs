@@ -11,7 +11,7 @@ use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_ast::ast::AssocItemKind;
 use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
-use rustc_middle::ty::{GenericArgKind, PseudoCanonicalInput, TypingEnv};
+use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
@@ -374,7 +374,7 @@ pub(crate) fn translate_impl<'tcx>(
         let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
         let fn_attrs = ctxt.tcx.hir_attrs(impl_item.hir_id());
 
-        if crate_items.is_impl_item_external(impl_item_id.owner_id) {
+        if crate_items.is_impl_item_external(*impl_item_id) {
             if trait_path_typ_args.is_some() {
                 // sanity check - this should be redundant with prior check in external.rs
                 return err_span(
@@ -384,9 +384,9 @@ pub(crate) fn translate_impl<'tcx>(
             }
             continue;
         }
-        let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().local_id.to_def_id());
+        let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
         match assoc_item.kind {
-            AssocItemKind::Fn { has_self: true | false } => {
+            AssocKind::Fn { name: _name, has_self: true | false } => {
                 let impl_item_visibility = mk_visibility(&ctxt, impl_item.owner_id.to_def_id());
                 match &impl_item.kind {
                     ImplItemKind::Fn(sig, body_id) => {
@@ -437,7 +437,7 @@ pub(crate) fn translate_impl<'tcx>(
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),
                 }
             }
-            AssocItemKind::Type(_aliased) => {
+            AssocKind::Type { .. } => {
                 if impl_item.generics.predicates.len() != 0
                     || impl_item.generics.has_where_clause_predicates
                 {
@@ -469,7 +469,7 @@ pub(crate) fn translate_impl<'tcx>(
                     unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);
                 }
             }
-            AssocItemKind::Const(_const_item) => {
+            AssocKind::Const { name: _name } => {
                 if trait_path_typ_args.is_some() {
                     unsupported_err!(item.span, "not yet supported: const trait member")
                 }
@@ -582,11 +582,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
     // Process only the new implementations that could be visible to Verus:
     'impls: for impl_def_id in auto_import_impls {
-        let trait_ref = if let Some(trait_ref) = tcx.impl_trait_ref(&impl_def_id) {
-            trait_ref
-        } else {
-            continue;
-        };
+        let trait_ref = tcx.impl_trait_ref(&impl_def_id);
         for arg in trait_ref.skip_binder().args.iter() {
             if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                 ctxt,
@@ -691,7 +687,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+        let trait_ref = tcx.impl_trait_ref(impl_def_id);
         let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = ctxt.def_id_to_vir_path(trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {
