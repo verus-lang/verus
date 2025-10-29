@@ -3,8 +3,8 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::TokenTree as TokenTree2;
 use quote::ToTokens;
 use verus_syn::parse::{Parse, ParseStream};
-use verus_syn::{Block, Error, Expr, ExprPath, Ident, Member, Pat, Stmt, Token, Type};
-use verus_syn::{parse_quote_spanned, parse2, token};
+use verus_syn::{Error, Expr, ExprPath, Ident, Member, Pat, Token, Type};
+use verus_syn::{parse_quote_spanned, parse2};
 
 #[derive(Debug)]
 struct Element {
@@ -24,6 +24,7 @@ struct Decl {
     x: Ident,
     typ: Type,
     source: Source,
+    is_exists: bool,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,12 @@ impl Parse for Element {
 
 impl Parse for DeclOrCond {
     fn parse(input: ParseStream) -> Result<Self, Error> {
+        let is_exists = if input.peek(Token![exists]) && input.peek3(Token![:]) {
+            let _ = input.parse::<Token![exists]>();
+            true
+        } else {
+            false
+        };
         if input.peek2(Token![:]) {
             // x: typ in expr
             let x = Ident::parse(input)?;
@@ -91,7 +98,7 @@ impl Parse for DeclOrCond {
             } else {
                 Source::FiniteType
             };
-            let decl = Decl { x, typ, source };
+            let decl = Decl { x, typ, source, is_exists };
             Ok(DeclOrCond::Decl(decl))
         } else {
             let expr = Expr::parse(input)?;
@@ -296,7 +303,7 @@ fn reverse(build: &SetBuild, x: &Ident) -> Result<Expr, Error> {
         Ok(rev)
     } else {
         let msg = format!(
-            "Could not find variable {x} in a field of the set element (the set element must construct a datatype containing each declared variable)"
+            "Could not find variable {x} in a field of the set element (the set element must construct a datatype containing each declared variable, or use `exists {x}:` instead of `{x}:`)"
         );
         Err(Error::new(span, msg))
     }
@@ -331,15 +338,21 @@ pub fn set_build_inner(input: TokenStream2, debug: bool) -> Result<TokenStream2,
         }
         if !is_exactly_x(x, element) {
             let span = element.span();
-            let rev = reverse(&set_build, x)?;
-            if let Some(elem_typ) = element_type {
+            if decl.is_exists {
                 expr = parse_quote_spanned!(span =>
-                    #expr.map_by(|#x: #typ| (#element), |__VERUS_x: #elem_typ| (#rev))
+                    #expr.map(|#x: #typ| (#element))
                 );
             } else {
-                expr = parse_quote_spanned!(span =>
-                    #expr.map_by(|#x: #typ| (#element), |__VERUS_x| (#rev))
-                );
+                let rev = reverse(&set_build, x)?;
+                if let Some(elem_typ) = element_type {
+                    expr = parse_quote_spanned!(span =>
+                        #expr.map_by(|#x: #typ| (#element), |__VERUS_x: #elem_typ| (#rev))
+                    );
+                } else {
+                    expr = parse_quote_spanned!(span =>
+                        #expr.map_by(|#x: #typ| (#element), |__VERUS_x| (#rev))
+                    );
+                }
             }
         }
         expr
@@ -358,8 +371,7 @@ pub fn set_build_inner(input: TokenStream2, debug: bool) -> Result<TokenStream2,
         let mut expr = decl_to_expr(&decls[0]);
         let mut typs = decls[0].typ.clone();
         let mut xtuple: Pat = parse_quote_spanned!(span => #x);
-        let mut revs = reverse(&set_build, x)?;
-        let mut letrevs: Vec<Stmt> = vec![parse_quote_spanned!(span => let #x = #revs;)];
+        let mut revs = if decls[0].is_exists { None } else { Some(reverse(&set_build, x)?) };
         for (n, decl) in decls.iter().enumerate().skip(1) {
             assert!(0 < n && n < decls.len());
             let span = decl.x.span();
@@ -371,13 +383,16 @@ pub fn set_build_inner(input: TokenStream2, debug: bool) -> Result<TokenStream2,
             // revs == ((...(rev_x0(VERUS_x) ...), rev_x_n-1(VERUS_x)), rev_x_n(VERUS_x))
             let x = &decl.x;
             let typ = &decl.typ;
-            let rev = reverse(&set_build, x)?;
+            let rev = if decl.is_exists { None } else { Some(reverse(&set_build, x)?) };
             let next_typs = parse_quote_spanned!(span => (#typs, #typ));
             let next_xtuple = parse_quote_spanned!(span => (#xtuple, #x));
-            let next_revs = parse_quote_spanned!(span => (#revs, (#rev)));
-            letrevs.push(parse_quote_spanned!(span => let #x = #rev;));
+            let next_revs = if let (Some(revs), Some(rev)) = (&revs, &rev) {
+                Some(parse_quote_spanned!(span => (#revs, (#rev))))
+            } else {
+                None
+            };
 
-            let source = decl_to_expr(&decl);
+            let mut source = decl_to_expr(&decl);
             if n < decls.len() - 1 {
                 // Example: n = 2
                 // use map_flatten_by to generate tuples ((x0, x1), x2)
@@ -405,53 +420,58 @@ pub fn set_build_inner(input: TokenStream2, debug: bool) -> Result<TokenStream2,
                 // expr.map_flatten_by(
                 //     |VERUS_x: (((typ0, typ1), typ2), typ3)| {
                 //         let (((x0, x1), x2), x3) = VERUS_x;
-                //         source4.map_by(
-                //             |x4: typ4| element,
-                //             |VERUS_x: elem_typ| rev_x4(VERUS_x),
-                //         )
+                //         source4
+                //             .filter(
+                //                 |x4: typ4| conds,
+                //             )
+                //             .map_by(
+                //                 |x4: typ4| element,
+                //                 |VERUS_x: elem_typ| rev_x4(VERUS_x),
+                //             )
                 //     }
                 //     |VERUS_x: elem_typ| (((rev_x0(VERUS_x), ...), rev_x3(VERUS_x)),
                 // )
+                if conds.len() != 0 {
+                    let conds = conds_to_expr(&conds);
+                    source = parse_quote_spanned!(span => #source.filter(|#x: #typ| (#conds)));
+                }
+                // Note:
+                // the last x (x4) can be "exists" independently
+                // the others (x0..x3) are all "exists" if any of them are "exists"
                 let f_fwd: Expr = parse_quote_spanned!(span => |#x: #typ| (#element));
-                let f_rev: Expr = if let Some(elem_typ) = element_type {
-                    parse_quote_spanned!(elem_span => |__VERUS_x: #elem_typ| (#rev))
+                let body: Expr = if let Some(rev) = rev {
+                    let f_rev: Expr = if let Some(elem_typ) = element_type {
+                        parse_quote_spanned!(elem_span => |__VERUS_x: #elem_typ| (#rev))
+                    } else {
+                        parse_quote_spanned!(elem_span => |__VERUS_x| (#rev))
+                    };
+                    parse_quote_spanned!(span => {
+                        let #xtuple = __VERUS_x;
+                        #source.map_by(#f_fwd, #f_rev)
+                    })
                 } else {
-                    parse_quote_spanned!(elem_span => |__VERUS_x| (#rev))
+                    parse_quote_spanned!(span => {
+                        let #xtuple = __VERUS_x;
+                        #source.map(#f_fwd)
+                    })
                 };
-                let body: Expr = parse_quote_spanned!(span => {
-                    let #xtuple = __VERUS_x;
-                    #source.map_by(#f_fwd, #f_rev)
-                });
                 let g_fwd: Expr = parse_quote_spanned!(span => |__VERUS_x: #typs| #body);
-                let g_rev: Expr = if let Some(elem_typ) = element_type {
-                    parse_quote_spanned!(elem_span => |__VERUS_x: #elem_typ| #revs)
+                if let Some(revs) = revs {
+                    let g_rev: Expr = if let Some(elem_typ) = element_type {
+                        parse_quote_spanned!(elem_span => |__VERUS_x: #elem_typ| #revs)
+                    } else {
+                        parse_quote_spanned!(elem_span => |__VERUS_x| #revs)
+                    };
+                    expr = parse_quote_spanned!(span => #expr.map_flatten_by(#g_fwd, #g_rev));
                 } else {
-                    parse_quote_spanned!(elem_span => |__VERUS_x| #revs)
-                };
-                expr = parse_quote_spanned!(span => #expr.map_flatten_by(#g_fwd, #g_rev));
+                    // TODO: add map_flatten to set_lib
+                    //expr = parse_quote_spanned!(span => #expr.map_flatten(#g_fwd));
+                    expr = parse_quote_spanned!(span => #expr.map(#g_fwd).flatten());
+                }
             }
             typs = next_typs;
             xtuple = next_xtuple;
             revs = next_revs;
-        }
-        if conds.len() != 0 {
-            // expr.filter(|VERUS_x: elem_typ| {
-            //     let x1 = rev1(VERUS_x);
-            //     ...
-            //     let xn = revn(VERUS_x);
-            //     condition
-            // })
-            let mut stmts = letrevs.clone();
-            let conds = conds_to_expr(&conds);
-            stmts.push(Stmt::Expr(conds, None));
-            let brace_token = token::Brace(span);
-            let block = Block { brace_token, stmts };
-            if let Some(elem_typ) = element_type {
-                expr =
-                    parse_quote_spanned!(elem_span => #expr.filter(|__VERUS_x: #elem_typ| #block));
-            } else {
-                expr = parse_quote_spanned!(elem_span => #expr.filter(|__VERUS_x| #block));
-            }
         }
         expr
     };

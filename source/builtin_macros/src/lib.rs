@@ -415,12 +415,16 @@ of `verus!`.  To work with the verus_syn representation, complete this additiona
 /// and each condk is a boolean expression.
 /// From this, the setbuild macro uses map_by, map_flatten_by, filter, etc. to build a set of
 /// elements specified by elem_expr.
-/// Important restriction: the elem_expr must be a variable, tuple, or datatype such that
-/// all of the variables x1, ..., xn can be easily found with nothing more that tuple/datatype
+/// Important restriction: by default, the elem_expr must be a variable, tuple, or datatype such
+/// that all of the variables x1, ..., xn can be easily found with nothing more that tuple/datatype
 /// field accesses.  In exchange for this restriction, set_build guarantees not to introduce
 /// any extra existential quantifiers into to constructed set.  This makes it easy for proofs
 /// to use sets constructed with set_build, when compared to other forms of Set construction
 /// (like Set::map or Set::flatten) that do introduce existential quantifiers.
+/// To override this default and remove this restriction, you can mark one or more variables as
+/// `exists x: typ` rather than just `x: typ`, and set_build will use map/flatten for these
+/// variables. This will, however, make proofs about the constructed set more difficult.
+///
 /// Example:
 /// `set_build!{ (x, y, x - y): (int, int, int) | x: int in 10..20, y: int in x..20, x + y != 25 }`
 /// From this, set_build generates:
