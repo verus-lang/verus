@@ -640,9 +640,9 @@ impl Visitor {
         let mut args_full_tokens = TokenStream::new();
 
         let mut self_ident = None;
-        for (idx, pair) in sig.inputs.pairs_mut().enumerate() {
+        for pair in sig.inputs.pairs() {
             let (fn_arg, comma) = pair.into_tuple();
-            match &mut fn_arg.kind {
+            match &fn_arg.kind {
                 FnArgKind::Typed(pat_type) => {
                     pat_type.pat.to_tokens(&mut args_use_tokens);
                     pat_type.pat.to_tokens(&mut args_pat_tokens);
@@ -713,7 +713,6 @@ impl Visitor {
             quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
         }
 
-        let mut args_use_tokens_renamed = args_use_tokens.clone();
         if let Some(ident) = &self_ident {
             args_pat_tokens = replace_self_with_ident(args_pat_tokens, ident);
             args_full_tokens = replace_self_with_ident(args_full_tokens, ident);

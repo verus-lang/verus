@@ -8,26 +8,68 @@ verus! {
 
 type FlipAU = AtomicUpdate<FlagToken, FlagToken, FlipPred>;
 
-enum Protocol {
-    Empty,
-    Offering(GhostVar<FlipAU>, Tracked<FlipAU>),
-    Accepted(GhostVar<FlipAU>),
+pub enum Protocol {
+    Empty(GhostVarAuth<Option<FlipAU>>),
+    Offering(Tracked<FlipAU>),
+    Accepted,
 }
 
-type K = (int, int, int);
-type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, Option<FlipAU>);
+use Protocol::*;
+
+impl Protocol {
+    proof fn take_empty(tracked self) -> (tracked out: GhostVarAuth<Option<FlipAU>>)
+        requires self is Empty,
+        ensures self == Empty(out),
+    {
+        match self {
+            Empty(gva) => gva,
+            _ => proof_from_false(),
+        }
+    }
+
+    proof fn take_offer(tracked self) -> (tracked out: Tracked<FlipAU>)
+        requires self is Offering,
+        ensures self == Offering(out),
+    {
+        match self {
+            Offering(au) => au,
+            _ => proof_from_false(),
+        }
+    }
+}
+
+type K = (int, int, int, int);
+type V = (PermissionBool, PermissionU32, GhostVarAuth<bool>, GhostVar<Option<FlipAU>>, Protocol);
 
 pub struct FlagInv;
 impl InvariantPredicate<K, V> for FlagInv {
     open spec fn inv(k: K, v: V) -> bool {
-        let (value_id, pend_id, auth_id) = k;
-        let (value_perm, pend_perm, auth, stored_au) = v;
-
+        let (value_id, pend_id, state_id, gv_id) = k;
+        let (value_perm, pend_perm, state, gv, proto) = v;
         &&& value_perm.id() == value_id
         &&& pend_perm.id() == pend_id
-        &&& auth.id() == auth_id
+        &&& state.id() == state_id
+        &&& gv.id() == gv_id
         &&& pend_perm.value() < 3
-        &&& stored_au is Some <==> pend_perm.value() == 1
+        &&& match proto {
+            Empty(gva) => {
+                &&& pend_perm.value() == 0
+                &&& gva.id() == gv_id
+                &&& gv@ is None
+                &&& gva@ is None
+                &&& gv@ == gva@
+            }
+            Offering(au) => {
+                &&& pend_perm.value() == 1
+                &&& gv@ is Some
+                &&& gv@->0 == au@
+            },
+            Accepted => {
+                &&& pend_perm.value() == 2
+                &&& gv@ is Some
+                &&& gv@->0.resolves()
+            }
+        }
     }
 }
 
@@ -58,15 +100,16 @@ impl Flag {
     {
         let (value, Tracked(value_perm)) = PAtomicBool::new(false);
         let (pending, Tracked(pending_perm)) = PAtomicU32::new(0);
-        let tracked (auth, var) = GhostVarAuth::new(false);
+        let tracked (state_auth, state_var) = GhostVarAuth::new(false);
+        let tracked (au_auth, au_var) = GhostVarAuth::new(None);
         let tracked inv = AtomicInvariant::new(
-            (value.id(), pending.id(), auth.id()),
-            (value_perm, pending_perm, auth, None),
+            (value.id(), pending.id(), state_auth.id(), au_auth.id()),
+            (value_perm, pending_perm, state_auth, au_var, Empty(au_auth)),
             arbitrary()
         );
 
         let this = Self { value, pending, inv: Tracked(inv) };
-        let tracked token = FlagToken { value: var };
+        let tracked token = FlagToken { value: state_var };
         (this, Tracked(token))
     }
 
@@ -75,9 +118,9 @@ impl Flag {
     {
         let out;
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut other_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             out = self.value.load(Tracked(&value_perm));
-            proof { v = (value_perm, pend_perm, auth, other_au); }
+            proof { v = (value_perm, pend_perm, auth, gv, proto); }
         });
 
         return out;
@@ -98,6 +141,7 @@ impl Flag {
         requires self.wf(),
     {
         let tracked mut au = atomic_update;
+
         loop invariant
             self.wf(),
             au == atomic_update,
@@ -122,7 +166,7 @@ impl Flag {
     fn try_cancel_two_flips(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
-            vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
+            au.pred().args(self),
         ensures
             match out {
                 Some(ret_au) => ret_au == au,
@@ -133,13 +177,16 @@ impl Flag {
         let res;
 
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut maybe_other_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.pending.compare_exchange(Tracked(&mut pend_perm), 1, 2);
 
             proof {
                 if res.is_ok() {
-                    let tracked other_au = maybe_other_au.tracked_take();
                     let tracked au = maybe_au.tracked_take();
+                    let tracked other_au = proto.take_offer();
+
+                    assert(gv@ is Some);
+                    assert(gv@->0 == other_au);
 
                     open_atomic_update!(au, mut token => {
                         let ghost old = auth@;
@@ -147,14 +194,19 @@ impl Flag {
                         token
                     });
 
-                    open_atomic_update!(other_au, mut token => {
+                    open_atomic_update!(other_au.get(), mut token => {
                         let ghost old = auth@;
                         auth.update(&mut token.value, !old);
                         token
                     });
+
+                    assert(gv@ is Some);
+                    assert(gv@->0.resolves());
+
+                    proto = Accepted;
                 }
 
-                v = (value_perm, pend_perm, auth, maybe_other_au);
+                v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
 
@@ -168,7 +220,7 @@ impl Flag {
     fn try_simple_flip(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
-            vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
+            au.pred().args(self),
         ensures
             match out {
                 Some(ret_au) => ret_au == au,
@@ -179,7 +231,7 @@ impl Flag {
         let res;
 
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut other_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.value.compare_exchange(Tracked(&mut value_perm), true, false);
             proof {
                 if res.is_ok() {
@@ -191,7 +243,7 @@ impl Flag {
                     });
                 }
 
-                v = (value_perm, pend_perm, auth, other_au);
+                v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
 
@@ -202,7 +254,7 @@ impl Flag {
         let res;
 
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut other_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.value.compare_exchange(Tracked(&mut value_perm), false, true);
             proof {
                 if res.is_ok() {
@@ -214,7 +266,7 @@ impl Flag {
                     });
                 }
 
-                v = (value_perm, pend_perm, auth, other_au);
+                v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
 
@@ -228,7 +280,7 @@ impl Flag {
     fn try_handshake(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
-            vstd::atomic::pred_args::<FlipPred, &Flag>(au.pred()) == self,
+            au.pred().args(self),
         ensures
             match out {
                 Some(ret_au) => ret_au == au,
@@ -236,20 +288,29 @@ impl Flag {
             }
     {
         let tracked mut maybe_au = Some(au);
+        let tracked mut auth_au = None;
         let res;
 
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut stored_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.pending.compare_exchange(Tracked(&mut pend_perm), 0, 1);
 
             proof {
                 if res.is_ok() {
                     let tracked au = maybe_au.tracked_take();
-                    assert(stored_au is None);
-                    stored_au = Some(au);
+                    assert(proto is Empty);
+
+                    let tracked mut gva = proto.take_empty();
+                    assert(gva.id() == gv.id());
+                    assert(gva@ is None);
+
+                    gva.update(&mut gv, Some(au));
+                    auth_au = Some(gva);
+
+                    proto = Offering(Tracked(au));
                 }
 
-                v = (value_perm, pend_perm, auth, stored_au);
+                v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
 
@@ -257,27 +318,55 @@ impl Flag {
             return Some(Tracked(maybe_au.tracked_take()));
         }
 
+        assert(auth_au is Some);
+
         let res;
+
         open_atomic_invariant!(self.inv.borrow() => v => {
-            let tracked (mut value_perm, mut pend_perm, mut auth, mut stored_au) = v;
+            let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.pending.compare_exchange(Tracked(&mut pend_perm), 1, 0);
 
             proof {
                 if res.is_ok() {
-                    let tracked au = stored_au.tracked_take();
+                    assert(proto is Offering);
                     assert(maybe_au is None);
-                    maybe_au = Some(au);
+                    assert(auth_au is Some);
+
+                    let tracked mut au = proto.take_offer();
+                    let tracked mut gva = auth_au.tracked_take();
+                    gva.agree(&gv);
+
+                    gva.update(&mut gv, None);
+                    assert(gva@ is None);
+
+                    maybe_au = Some(au.get());
+                    proto = Empty(gva);
+                } else {
+                    assert(auth_au is Some);
+                    let tracked mut gva = auth_au.tracked_borrow();
+                    gva.agree(&gv);
+
+                    assert(proto is Accepted);
+                    assert(gva@ is Some);
+                    let ghost au = gva@->0;
+                    assert(au.resolves());
                 }
 
-                v = (value_perm, pend_perm, auth, stored_au);
+                v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
 
         if res.is_err() {
             open_atomic_invariant!(self.inv.borrow() => v => {
-                let tracked (mut value_perm, mut pend_perm, mut auth, mut stored_au) = v;
+                let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
                 self.pending.store(Tracked(&mut pend_perm), 0);
-                proof { v = (value_perm, pend_perm, auth, stored_au); }
+
+                proof {
+                    let tracked mut gva = auth_au.tracked_take();
+                    gva.update(&mut gv, None);
+                    proto = Empty(gva);
+                    v = (value_perm, pend_perm, auth, gv, proto);
+                }
             });
 
             return None;
