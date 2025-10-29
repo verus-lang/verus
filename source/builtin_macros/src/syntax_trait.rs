@@ -84,7 +84,7 @@ Generate additional items:
         fn sn(...) -> ...;
     }
     #[verus::internal(external_trait_blanket)]
-    impl<A: T + ?Sized> TSpec for A {
+    impl<A: T + PointeeSized> TSpec for A {
         // omitted for erase_all
         #[verifier::external_body]
         fn s1(...) -> ... { panic!() }

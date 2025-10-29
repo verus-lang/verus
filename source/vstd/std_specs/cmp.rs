@@ -32,6 +32,11 @@ pub trait ExEq: PartialEq + PointeeSized {
     type ExternalTraitSpecificationFor: Eq;
 }
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExAssertParamIsEq<T: Eq + PointeeSized>(core::cmp::AssertParamIsEq<T>);
+
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialOrdSpec via PartialOrdSpecImpl)]
 pub trait ExPartialOrd<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {

@@ -71,6 +71,7 @@ test_verify_one_file! {
 const M1: &str = verus_code_str! {
     mod M1 {
         use verus_builtin::*;
+        use vstd::prelude::*;
 
         #[derive(PartialEq, Eq)]
         pub struct Car {
@@ -107,6 +108,7 @@ test_verify_one_file! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};
             use verus_builtin::*;
+            use vstd::prelude::*;
 
             fn test_opaque_struct_1(c: Car)
                 requires
