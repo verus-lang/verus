@@ -1873,7 +1873,7 @@ fn check_generics_for_invariant_fn<'tcx>(
     if inputs.len() != 1 {
         return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
     }
-    if tcx.trait_of_item(id).is_some() {
+    if tcx.trait_of_assoc(id).is_some() {
         return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
     }
 
@@ -2196,7 +2196,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         }
     };
 
-    if let Some(trait_def_id) = tcx.trait_of_item(external_id) {
+    if let Some(trait_def_id) = tcx.trait_of_assoc(external_id) {
         // If this is a trait function, then the DefId we have right now points to
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.

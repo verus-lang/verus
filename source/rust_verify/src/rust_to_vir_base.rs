@@ -1152,7 +1152,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
-            let resolved = if tcx.trait_of_item(*def_id).is_none() {
+            let resolved = if tcx.trait_of_assoc(*def_id).is_none() {
                 None
             } else {
                 let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
