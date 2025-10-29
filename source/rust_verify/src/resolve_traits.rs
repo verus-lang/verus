@@ -31,7 +31,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
     trait_item_id: DefId,
     args: GenericArgsRef<'tcx>,
 ) -> Result<ResolutionResult<'tcx>, VirErr> {
-    let Some(trait_def_id) = tcx.trait_of_item(trait_item_id) else {
+    let Some(trait_def_id) = tcx.trait_of_assoc(trait_item_id) else {
         crate::internal_err!(span, "resolve_trait_method called for non-trait item");
     };
 
@@ -74,7 +74,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
                 args0,
                 leaf_def.defining_node,
             );
-            let impl_item_args = infcx.tcx.erase_regions(args1);
+            let impl_item_args = infcx.tcx.erase_and_anonymize_regions(args1);
 
             let item_def_id = leaf_def.item.def_id;
 

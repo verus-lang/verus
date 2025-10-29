@@ -8,7 +8,7 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use rustc_ast::ast::AssocItemKind;
-use rustc_hir::{ItemKind, MaybeOwner, OwnerNode};
+use rustc_hir::{ItemKind, ImplItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
@@ -77,10 +77,11 @@ pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
                         tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
                     }
                     ItemKind::Impl(impll) => {
-                        for item in impll.items {
+                        for item_id in impll.items {
+                            let item = tcx.hir_impl_item(*item_id);
                             match item.kind {
-                                AssocItemKind::Fn { .. } => {
-                                    tcx.ensure_ok().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                ImplItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
                                 }
                                 _ => {}
                             }
