@@ -110,12 +110,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
             // operation in the SMT encoding.)
-            let arg_typ = match node_substs[0].unpack() {
-                GenericArgKind::Type(ty) => ty,
-                _ => {
-                    panic!("clone expected type argument");
-                }
-            };
+            let arg_typ = node_substs[0].expect_ty();
 
             if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
@@ -173,7 +168,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     unsupported_err_unless!(
         bctx.ctxt
             .tcx
-            .impl_of_method(f)
+            .impl_of_assoc(f)
             .and_then(|method_def_id| bctx.ctxt.tcx.trait_id_of_impl(method_def_id))
             .is_none(),
         expr.span,

@@ -675,7 +675,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         crate::attributes::AutoDerivesAttr::Regular => false,
                         crate::attributes::AutoDerivesAttr::AllExternal => true,
                         crate::attributes::AutoDerivesAttr::SomeExternal(names) => {
-                            let def_path = ctxt.tcx.def_path(of_trait.path.res.def_id());
+                            let def_path = ctxt.tcx.def_path(of_trait.trait_ref.path.res.def_id());
                             def_path
                                 .data
                                 .last()
@@ -699,7 +699,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                     }
 
                     if opts_in_to_verus(&type_eattrs) {
-                        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+                        let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
                         match action {

@@ -690,7 +690,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 m.1.push((*def_id, *span));
             }
             None => {
-                let impl_def_id = tcx.impl_of_method(*def_id).unwrap();
+                let impl_def_id = tcx.impl_of_assoc(*def_id).unwrap();
                 new_trait_impls.insert(trait_impl, (impl_def_id, vec![(*def_id, *span)]));
             }
         }

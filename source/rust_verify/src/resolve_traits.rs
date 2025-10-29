@@ -78,7 +78,7 @@ pub(crate) fn resolve_trait_item<'tcx>(
 
             let item_def_id = leaf_def.item.def_id;
 
-            let resolved_item = match tcx.impl_of_method(item_def_id) {
+            let resolved_item = match tcx.impl_of_assoc(item_def_id) {
                 Some(impl_def_id_containing_item) => {
                     if impl_def_id_containing_item != impl_def_id {
                         crate::internal_err!(
