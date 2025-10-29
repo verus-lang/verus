@@ -390,7 +390,7 @@ pub(crate) fn get_fn_path<'tcx>(
         ExprKind::Path(qpath) => {
             let id = bctx.types.qpath_res(qpath, expr.hir_id).def_id();
             if let Some(_) =
-                bctx.ctxt.tcx.impl_of_method(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
+                bctx.ctxt.tcx.impl_of_assoc(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
