@@ -3070,7 +3070,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.check_mod_deathness = |_, _| {};
 
                 providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                    Ok(tcx.arena.alloc(rustc_middle::mir::DefinitionSiteHiddenTypes(
                         rustc_data_structures::fx::FxIndexMap::default(),
                     )))
                 };

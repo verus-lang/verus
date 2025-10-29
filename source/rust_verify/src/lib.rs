@@ -9,7 +9,6 @@ extern crate rustc_driver;
 
 extern crate rustc_arena;
 extern crate rustc_ast;
-extern crate rustc_attr_data_structures;
 extern crate rustc_data_structures;
 extern crate rustc_error_messages;
 extern crate rustc_errors;

@@ -9,7 +9,8 @@ use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
-use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
+use rustc_ast::ast::AssocItemKind;
+use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::{GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -442,7 +443,7 @@ pub(crate) fn translate_impl<'tcx>(
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),
                 }
             }
-            AssocItemKind::Type => {
+            AssocItemKind::Type(_aliased) => {
                 if impl_item.generics.predicates.len() != 0
                     || impl_item.generics.has_where_clause_predicates
                 {
@@ -474,7 +475,7 @@ pub(crate) fn translate_impl<'tcx>(
                     unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
                 }
             }
-            AssocItemKind::Const => {
+            AssocItemKind::Const(_const_item) => {
                 if trait_path_typ_args.is_some() {
                     unsupported_err!(item.span, "not yet supported: const trait member")
                 }

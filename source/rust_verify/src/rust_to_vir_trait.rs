@@ -6,7 +6,7 @@ use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
-use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
+use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemId};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -67,7 +67,7 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 
 pub(crate) fn external_trait_specification_of<'tcx>(
     tcx: TyCtxt<'tcx>,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
@@ -122,7 +122,7 @@ pub(crate) fn translate_trait<'tcx>(
     visibility: Visibility,
     module_path: &vir::ast::Path,
     trait_generics: &'tcx Generics,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
