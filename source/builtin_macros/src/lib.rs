@@ -434,6 +434,7 @@ of `verus!`.  To work with the verus_syn representation, complete this additiona
 ///         |__VERUS_x: int| {
 ///             let x = __VERUS_x;
 ///             Set::<int>::range(x, 20)
+///                 .filter(|y: int| (x + y != 25))
 ///                 .map_by(
 ///                     |y: int| ((x, y, x - y)),
 ///                     |__VERUS_x: (int, int, int)| (__VERUS_x.1),
@@ -441,11 +442,6 @@ of `verus!`.  To work with the verus_syn representation, complete this additiona
 ///         },
 ///         |__VERUS_x: (int, int, int)| __VERUS_x.0,
 ///     )
-///     .filter(|__VERUS_x: (int, int, int)| {
-///         let x = __VERUS_x.0;
-///         let y = __VERUS_x.1;
-///         x + y != 25
-///     })
 /// ```
 /// (Note: set_build_debug is like set_build, but also prints the generated builder to stderr)
 #[proc_macro]
