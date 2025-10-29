@@ -157,7 +157,7 @@ impl<T: core::marker::PointeeSized> View for *mut T {
 
 /// Compares the address and metadata of two pointers.
 ///
-/// Note that this DOES not compare provenance, which does not exist in the runtime
+/// Note that this does NOT compare provenance, which does not exist in the runtime
 /// pointer representation (i.e., it only exists in the Rust abstract machine).
 pub assume_specification<T: core::marker::PointeeSized>[ <*mut T as PartialEq<*mut T>>::eq ](
     x: &*mut T,

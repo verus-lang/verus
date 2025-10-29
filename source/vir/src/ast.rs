@@ -1074,11 +1074,12 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
-#[derive(Copy, Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum Sizedness {
     Sized,
-    MetaSized,
-    PointeeSized,
+    // TODO(1.91.0): revisit if these paths are actually needed
+    MetaSized(Path),
+    PointeeSized(Path),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]

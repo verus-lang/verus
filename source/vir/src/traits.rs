@@ -1,8 +1,5 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place,
-    SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility,
-    WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -727,7 +724,8 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
             GenericBoundX::Trait(trait_id, typ_args) => {
                 let skip = match trait_id {
                     TraitId::Path(path) => !ctx.trait_map.contains_key(path),
-                    TraitId::Sizedness(_) => false,
+                    TraitId::Sizedness(Sizedness::Sized | Sizedness::MetaSized(_)) => false,
+                    TraitId::Sizedness(_) => true,
                 };
                 if skip {
                     continue;

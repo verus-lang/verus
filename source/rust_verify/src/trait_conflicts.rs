@@ -201,7 +201,7 @@ fn gen_generics(
             }
             GenericBoundX::Trait(TraitId::Sizedness(sizedness), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                if Sizedness::Sized == *sizedness {
+                if matches!(sizedness, Sizedness::Sized) {
                     let bound = Bound::Sized;
                     generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
                 }
