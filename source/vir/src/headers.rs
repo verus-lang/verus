@@ -489,7 +489,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
         // Remove these added Sized bounds so that we can match the remaining bounds.
         use crate::ast::{GenericBoundX, TraitId};
-        if let GenericBoundX::Trait(TraitId::Sized, _) = &**typ_bounds.last().unwrap() {
+        if let GenericBoundX::Trait(TraitId::Sizedness(_), _) = &**typ_bounds.last().unwrap() {
             Arc::make_mut(&mut typ_bounds).pop();
         }
     }

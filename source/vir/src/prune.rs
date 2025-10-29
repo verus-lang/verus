@@ -373,7 +373,7 @@ fn traverse_generic_bounds(
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
             crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
-            crate::ast::GenericBoundX::Trait(TraitId::Sized, _) => {
+            crate::ast::GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                 continue;
             }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
@@ -1067,7 +1067,7 @@ pub fn prune_krate_for_module_or_krate(
                         TraitId::Path(path) => {
                             bound_traits.push(path.clone());
                         }
-                        TraitId::Sized => {}
+                        TraitId::Sizedness(_) => {}
                     }
                     for t in typ_args.iter() {
                         bound_types.push(typ_to_reached_type(t));

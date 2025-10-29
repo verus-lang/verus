@@ -29,7 +29,7 @@ pub assume_specification[ <char as Clone>::clone ](c: &char) -> (res: char)
 ;
 
 #[allow(suspicious_double_ref_op)]
-pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Clone>::clone ](b: &'a &'b T) -> (res: &'b T)
+pub assume_specification<'b, T: core::marker::PointeeSized, 'a>[ <&'b T as Clone>::clone ](b: &'a &'b T) -> (res: &'b T)
     ensures
         res == b,
 ;

@@ -29,7 +29,7 @@ use crate::lifetime_ast::*;
 use crate::lifetime_generate::*;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TraitId,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, Sizedness, TraitId,
     TypDecoration, TypDecorationArg,
 };
 
@@ -188,6 +188,10 @@ fn gen_generics(
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
+                // TODO(1.91.0): handle this properly if this works:
+                if format!("{:?}", path).contains("Destruct") {
+                    continue;
+                }
                 let bound = {
                     let args = gen_typ_slice(state, &typs[1..]);
                     let trait_path = state.trait_name(&path);
@@ -195,10 +199,13 @@ fn gen_generics(
                 };
                 generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
             }
-            GenericBoundX::Trait(TraitId::Sized, typs) => {
+            GenericBoundX::Trait(TraitId::Sizedness(sizedness), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                let bound = Bound::Sized;
-                generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+                if Sizedness::Sized == *sizedness {
+                    let bound = Bound::Sized;
+                    generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+                }
+                // TODO(1.91.0): Do we need to do something for other size-related traits?
             }
             GenericBoundX::TypEquality(path, typs, x, eq_typ) => {
                 let typ = gen_typ(state, &typs[0]);

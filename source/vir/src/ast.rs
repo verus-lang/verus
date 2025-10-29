@@ -1074,10 +1074,17 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+#[derive(Copy, Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum Sizedness {
+    Sized,
+    MetaSized,
+    PointeeSized,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum TraitId {
     Path(Path),
-    Sized,
+    Sizedness(Sizedness),
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
