@@ -3017,7 +3017,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| rustc_index::bit_set::DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 providers.mir_borrowck = |tcx, _local_def_id| {
@@ -3031,7 +3031,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| rustc_index::bit_set::DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);

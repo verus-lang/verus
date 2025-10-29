@@ -342,7 +342,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
-            Ok(PatternX::Expr(lit_to_vir(bctx, span, &lit, negated, pat_typ, None)?))
+            Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
@@ -1971,7 +1971,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Lit(lit) => Ok(ExprOrPlace::Expr(lit_to_vir(
             bctx,
             expr.span,
-            lit,
+            lit.clone(),
             false,
             &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
             Some(bctx.types.node_type(expr.hir_id)),
@@ -2087,7 +2087,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     return Ok(ExprOrPlace::Expr(lit_to_vir(
                         bctx,
                         expr.span,
-                        lit,
+                        *lit,
                         true,
                         &typ_of_node(bctx, expr.span, &arg.hir_id, false)?,
                         Some(bctx.types.node_type(arg.hir_id)),
@@ -2635,13 +2635,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             unsupported_err!(expr.span, format!("unsafe binder cast"))
         }
         ExprKind::Use(..) => unsupported_err!(expr.span, "use expressions"),
+        ExprKind::AddrOf(rustc_ast::BorrowKind::Pin, _, _) => unsupported_err!(expr.span, "pin"),
     }
 }
 
 fn lit_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
-    lit: &'tcx Lit,
+    lit: Lit,
     negated: bool,
     typ: &Typ,
     ty: Option<rustc_middle::ty::Ty<'tcx>>,

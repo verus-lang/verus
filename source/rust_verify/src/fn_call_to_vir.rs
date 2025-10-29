@@ -2106,12 +2106,18 @@ fn mk_typ_args<'tcx>(
     let tcx = bctx.ctxt.tcx;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
-        if let Some(ty) = typ_arg.as_type() {
-            typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
-        } else if let Some(cnst) = typ_arg.as_const() {
-            typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
-        } else {
-            unsupported_err!(span, "unsupported generic argument: {typ_arg:#?}");
+        match typ_arg.kind() {
+            GenericArgKind::Type(ty) => {
+                typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
+            }
+            GenericArgKind::Lifetime(_) => {}
+            GenericArgKind::Const(cnst) => {
+                typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                    tcx,
+                    Some(span),
+                    &cnst,
+                )?);
+            }
         }
     }
     Ok(Arc::new(typ_args))
