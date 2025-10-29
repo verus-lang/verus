@@ -1194,6 +1194,14 @@ impl<Key, S> View for HashSet<Key, S> {
     uninterp spec fn view(&self) -> Set<Key>;
 }
 
+impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
+    type V = Set<Key::V>;
+
+    open spec fn deep_view(&self) -> Set<Key::V> {
+        self@.map(|x: Key| x.deep_view())
+    }
+}
+
 pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
