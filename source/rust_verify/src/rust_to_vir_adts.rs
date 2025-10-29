@@ -9,7 +9,7 @@ use crate::util::err_span;
 use air::ast_util::str_ident;
 use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind, TypingEnv, TypingMode};
+use rustc_middle::ty::{AdtDef, GenericArgsRef, TyKind, TypingEnv, TypingMode};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;

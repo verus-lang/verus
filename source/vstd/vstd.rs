@@ -13,7 +13,6 @@
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
-#![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
 #![cfg_attr(verus_keep_ghost, feature(freeze))]
 #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
