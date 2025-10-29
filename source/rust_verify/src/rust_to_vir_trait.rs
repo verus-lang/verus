@@ -6,7 +6,7 @@ use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
-use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemId};
+use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
