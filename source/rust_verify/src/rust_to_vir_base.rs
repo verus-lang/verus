@@ -11,9 +11,9 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
+    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -321,7 +321,9 @@ where
 
     fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
         match *t.kind() {
-            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty) if debruijn == self.current_index => {
+            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty)
+                if debruijn == self.current_index =>
+            {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
@@ -336,9 +338,13 @@ where
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br) if debruijn >= self.current_index => {
+            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br)
+                if debruijn >= self.current_index =>
+            {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) = region.kind() {
+                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
+                    region.kind()
+                {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -352,7 +358,9 @@ where
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const) if debruijn == self.current_index => {
+            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const)
+                if debruijn == self.current_index =>
+            {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
@@ -1460,26 +1468,24 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                 assert!(args.len() == 6);
                 let arg_mode_tuple = &args[2];
                 let ret_mode_typ = &args[3];
-                let ret_mode =
-                    if let Some(ty) = ret_mode_typ.as_type() {
-                        get_proof_fn_one_mode(ctxt, span, &ty)?
-                    } else {
-                        panic!("unexpected FnProof argument")
-                    };
-                let arg_modes =
-                    if let Some(ty) = arg_mode_tuple.as_type() {
-                        if let TyKind::Tuple(_) = ty.kind() {
-                            let mut modes: Vec<Mode> = Vec::new();
-                            for t in ty.tuple_fields().iter() {
-                                modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
-                            }
-                            modes
-                        } else {
-                            panic!("unexpected FnProof argument")
+                let ret_mode = if let Some(ty) = ret_mode_typ.as_type() {
+                    get_proof_fn_one_mode(ctxt, span, &ty)?
+                } else {
+                    panic!("unexpected FnProof argument")
+                };
+                let arg_modes = if let Some(ty) = arg_mode_tuple.as_type() {
+                    if let TyKind::Tuple(_) = ty.kind() {
+                        let mut modes: Vec<Mode> = Vec::new();
+                        for t in ty.tuple_fields().iter() {
+                            modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
                         }
+                        modes
                     } else {
                         panic!("unexpected FnProof argument")
-                    };
+                    }
+                } else {
+                    panic!("unexpected FnProof argument")
+                };
                 return Ok(Some((arg_modes, ret_mode)));
             }
             Ok(None)
@@ -1792,10 +1798,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (
-                GenericArgKind::Const(c),
-                GenericParamKind::Const { ty: _, default: _ },
-            ) => {
+            (GenericArgKind::Const(c), GenericParamKind::Const { ty: _, default: _ }) => {
                 match c.kind() {
                     ConstKind::Param(param) if param.name.as_str() == param_name => {
                         // okay

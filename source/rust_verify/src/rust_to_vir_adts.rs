@@ -437,8 +437,8 @@ fn get_sized_constraint<'tcx>(
     // manually iterate the process.
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
-    use rustc_middle::ty::SizedTraitKind;
     use crate::rustc_trait_selection::traits::NormalizeExt;
+    use rustc_middle::ty::SizedTraitKind;
     let tcx = ctxt.tcx;
 
     let param_env = tcx.param_env(adt_def.did());

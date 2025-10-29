@@ -2109,11 +2109,7 @@ fn mk_typ_args<'tcx>(
         if let Some(ty) = typ_arg.as_type() {
             typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
         } else if let Some(cnst) = typ_arg.as_const() {
-            typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                tcx,
-                Some(span),
-                &cnst,
-            )?);
+            typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
         } else {
             unsupported_err!(span, "unsupported generic argument: {typ_arg:#?}");
         }

@@ -223,11 +223,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     Ok(suggestion_text)
 }
 
-fn prepend_crate_if_local_for_type<'tcx>(
-    ctxt: &Context<'tcx>,
-    ty: &Ty<'tcx>,
-    s: String,
-) -> String {
+fn prepend_crate_if_local_for_type<'tcx>(ctxt: &Context<'tcx>, ty: &Ty<'tcx>, s: String) -> String {
     match ty.kind() {
         rustc_type_ir::TyKind::Adt(adt_def, _) => prepend_crate_if_local(adt_def.did(), s),
         rustc_type_ir::TyKind::FnDef(did, _) => prepend_crate_if_local(*did, s),
@@ -239,7 +235,8 @@ fn prepend_crate_if_local_for_type<'tcx>(
                     + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
             }
             None => {
-                "&".to_owned() + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
+                "&".to_owned()
+                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
             }
         },
         _ => s,

@@ -8,7 +8,7 @@ use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use rustc_ast::ast::AssocItemKind;
-use rustc_hir::{ItemKind, ImplItemKind, MaybeOwner, OwnerNode};
+use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;

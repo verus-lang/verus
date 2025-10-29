@@ -291,7 +291,15 @@ fn check_item<'tcx>(
             unsupported_err!(item.span, "static mut");
         }
         ItemKind::Macro(_, _, _) => {}
-        ItemKind::Trait(_constness, IsAuto::No, safety, _ident, trait_generics, _bounds, trait_items) => {
+        ItemKind::Trait(
+            _constness,
+            IsAuto::No,
+            safety,
+            _ident,
+            trait_generics,
+            _bounds,
+            trait_items,
+        ) => {
             let trait_def_id = item.owner_id.to_def_id();
             crate::rust_to_vir_trait::translate_trait(
                 ctxt,

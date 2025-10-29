@@ -3368,12 +3368,8 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
                 && verus_items::get_rust_item(tcx, adt_def_data2.did)
                     == Some(verus_items::RustItem::Box) =>
         {
-            let Some(t1) = args1[0].as_type() else {
-                panic!("unexpected type argument")
-            };
-            let Some(t2) = args2[0].as_type() else {
-                panic!("unexpected type argument")
-            };
+            let Some(t1) = args1[0].as_type() else { panic!("unexpected type argument") };
+            let Some(t2) = args2[0].as_type() else { panic!("unexpected type argument") };
             remove_decoration_typs_for_unsizing(tcx, t1, t2)
         }
         _ => (ty1, ty2),

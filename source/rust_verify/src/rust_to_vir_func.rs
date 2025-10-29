@@ -733,8 +733,7 @@ fn equalize_substs<'tcx>(
         return None;
     }
 
-    let mut reg =
-        substs1_early.iter().filter(|g| matches!(g.kind(), GenericArgKind::Lifetime(_)));
+    let mut reg = substs1_early.iter().filter(|g| matches!(g.kind(), GenericArgKind::Lifetime(_)));
     let mut other =
         substs1_early.iter().filter(|g| !matches!(g.kind(), GenericArgKind::Lifetime(_)));
 
@@ -897,7 +896,10 @@ fn substs_to_string<'tcx>(substs: &GenericArgsRef<'tcx>) -> String {
     format!("{:}{:}{:}", "for<", v.join(", "), "> ")
 }
 
-fn binders_to_string<'tcx>(tcx: TyCtxt<'tcx>, l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
+fn binders_to_string<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>,
+) -> String {
     use rustc_middle::ty::BoundTyKind;
     use rustc_middle::ty::BoundVariableKind;
     if l.len() == 0 {
@@ -910,7 +912,7 @@ fn binders_to_string<'tcx>(tcx: TyCtxt<'tcx>, l: &rustc_middle::ty::List<rustc_m
             BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
                 let sym = tcx.item_name(def_id);
                 sym.as_str()
-            },
+            }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
             BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
                 let sym = tcx.item_name(def_id);
