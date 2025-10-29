@@ -437,6 +437,7 @@ fn get_sized_constraint<'tcx>(
     // manually iterate the process.
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
+    use rustc_middle::ty::SizedTraitKind;
     use crate::rustc_trait_selection::traits::NormalizeExt;
     let tcx = ctxt.tcx;
 
@@ -446,7 +447,7 @@ fn get_sized_constraint<'tcx>(
         return Ok(None);
     }
 
-    let sized_constraint_opt = adt_def.sized_constraint(tcx);
+    let sized_constraint_opt = adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
     let Some(sized_constraint) = sized_constraint_opt else {
         return Ok(None);
     };
@@ -472,7 +473,7 @@ fn get_sized_constraint<'tcx>(
         let norm = at.normalize(*ty);
         if norm.value != *ty {
             for arg in norm.value.walk().into_iter() {
-                if let GenericArgKind::Type(t) = arg.unpack() {
+                if let Some(t) = arg.as_type() {
                     assert!(!matches!(t.kind(), TyKind::Infer(..)));
                 }
             }
@@ -484,7 +485,7 @@ fn get_sized_constraint<'tcx>(
 
         let sc3 = match sc2.kind() {
             TyKind::Adt(other_adt_def, args) => {
-                let opt = other_adt_def.sized_constraint(tcx);
+                let opt = other_adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
                 let Some(sc3) = opt else {
                     return Ok(None);
                 };
