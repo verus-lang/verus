@@ -96,7 +96,7 @@ fn trait_impl_to_vir<'tcx>(
         return Ok(None);
     }
 
-    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id);
     let trait_did = trait_ref.skip_binder().def_id;
     let impl_paths = crate::rust_to_vir_base::get_impl_paths(
         ctxt.tcx,
@@ -112,7 +112,7 @@ fn trait_impl_to_vir<'tcx>(
     let mut types: Vec<Typ> = Vec::new();
     let args = trait_ref.skip_binder().args;
     for arg in args.iter() {
-        match arg.unpack() {
+        match arg.kind() {
             GenericArgKind::Lifetime(_) => {}
             GenericArgKind::Type(ty) => {
                 types.push(ctxt.mid_ty_to_vir(impl_def_id, span, &ty, false)?);
@@ -164,7 +164,7 @@ fn translate_assoc_type<'tcx>(
     trait_typ_args: Typs,
 ) -> Result<AssocTypeImpl, VirErr> {
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
-    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id);
     let ty = ctxt.tcx.type_of(impl_item_id).skip_binder();
     let typ = ctxt.mid_ty_to_vir(impl_item_id, impl_item_span, &ty, false)?;
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(

@@ -963,12 +963,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
-                    if let Some(t) = arg.as_type() {
-                        typ_args.push(t_rec(&t)?);
-                    } else if let Some(cnst) = arg.as_const() {
-                        typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
-                    } else {
-                        unsupported_err!(span, "unhandled kind of generic arg: {arg:#?}");
+                    match arg.kind() {
+                        rustc_middle::ty::GenericArgKind::Type(t) => {
+                            typ_args.push(t_rec(&t)?);
+                        }
+                        rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                        rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                            typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
+                        }
                     }
                 }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
@@ -1094,12 +1096,16 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let mut trait_typ_args = Vec::new();
 
                     for arg in t_args.iter() {
-                        if let Some(t) = arg.as_type() {
-                            trait_typ_args.push(t_rec_flags(&t, false)?.0);
-                        } else if let Some(cnst) = arg.as_const() {
-                            trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
-                        } else {
-                            unsupported_err!(span, "unhandled kind of generic arg: {arg:#?}");
+                        match arg.kind() {
+                            rustc_middle::ty::GenericArgKind::Type(t) => {
+                                trait_typ_args.push(t_rec_flags(&t, false)?.0);
+                            }
+                            rustc_middle::ty::GenericArgKind::Lifetime(_) => {
+                                panic!("already filtered out lifetimes");
+                            }
+                            rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                                trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                            }
                         }
                     }
 

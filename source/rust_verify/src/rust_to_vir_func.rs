@@ -1898,6 +1898,7 @@ fn check_generics_for_invariant_fn<'tcx>(
             }
             assert!(adt_def.is_struct() || adt_def.is_enum());
             crate::rust_to_vir_base::check_item_external_generics(
+                tcx,
                 self_generics,
                 generics,
                 true,
@@ -1967,7 +1968,7 @@ fn is_mut_ty<'tcx>(
             )) = verus_item
             {
                 assert_eq!(args.len(), 1);
-                if let GenericArgKind::Type(t) = args[0].unpack() {
+                if let Some(t) = args[0].as_type() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
                         let mode_and_decoration = match bt {
                             BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
@@ -1998,7 +1999,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
             if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
             {
-                if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
+                if let Some(ty) = tp.trait_ref.args[0].as_type() {
                     match ty.kind() {
                         // ignore Self: T bound for trait T
                         ty::TyKind::Param(param)
@@ -2244,7 +2245,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
                 let mut types: Vec<Typ> = vec![];
 
-                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+                let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
                     types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);
