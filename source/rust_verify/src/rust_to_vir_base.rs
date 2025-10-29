@@ -1178,7 +1178,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             let mut typ_args: Vec<(Typ, bool)> = Vec::new();
             for arg in args.iter() {
-                match arg.unpack() {
+                match arg.kind() {
                     rustc_middle::ty::GenericArgKind::Type(t) => {
                         typ_args.push(mid_ty_to_vir_ghost(
                             tcx,
@@ -1370,7 +1370,7 @@ pub(crate) fn implements_structural<'tcx>(
         .expect("structural trait is not defined");
 
     let infcx = ctxt.tcx.infer_ctxt().build(TypingMode::PostAnalysis);
-    let ty = ctxt.tcx.erase_regions(ty);
+    let ty = ctxt.tcx.erase_and_anonymize_regions(ty);
     if ty.has_escaping_bound_vars() {
         return false;
     }
@@ -1461,13 +1461,13 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                 let arg_mode_tuple = &args[2];
                 let ret_mode_typ = &args[3];
                 let ret_mode =
-                    if let rustc_middle::ty::GenericArgKind::Type(ty) = ret_mode_typ.unpack() {
+                    if let Some(ty) = ret_mode_typ.as_type() {
                         get_proof_fn_one_mode(ctxt, span, &ty)?
                     } else {
                         panic!("unexpected FnProof argument")
                     };
                 let arg_modes =
-                    if let rustc_middle::ty::GenericArgKind::Type(ty) = arg_mode_tuple.unpack() {
+                    if let Some(ty) = arg_mode_tuple.as_type() {
                         if let TyKind::Tuple(_) = ty.kind() {
                             let mut modes: Vec<Mode> = Vec::new();
                             for t in ty.tuple_fields().iter() {
@@ -1508,7 +1508,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     } else {
         let mut vir_args = vec![];
         for arg in args.iter() {
-            match arg.unpack() {
+            match arg.kind() {
                 GenericArgKind::Lifetime(_) => {}
                 GenericArgKind::Type(ty) => {
                     vir_args.push(mid_ty_to_vir(
@@ -1643,7 +1643,7 @@ where
                     // trait which Fn/FnMut/FnOnce all get automatically.)
                     continue;
                 }
-                let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                let typ = if let Some(ty) = pred.term.as_type() {
                     mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false)?
                 } else {
                     return err_span(*span, "Verus does not yet support this type of bound");
@@ -1692,6 +1692,7 @@ where
 
 // REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    tcx: TyCtxt<'tcx>,
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
     skip_implicit_lifetimes: bool,
@@ -1722,7 +1723,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
     // the types from the external definition)
     let n_skip = if skip_self { 1 } else { 0 };
     let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
-    substs_ref.retain(|arg| match arg.unpack() {
+    substs_ref.retain(|arg| match arg.kind() {
         GenericArgKind::Const(cnst) => {
             if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
                 if let ValTreeKind::Leaf(ScalarInt::TRUE) = *valtree {
@@ -1770,13 +1771,13 @@ pub(crate) fn check_item_external_generics<'tcx>(
             }
         };
 
-        match (generic_arg.unpack(), &generic_param.kind) {
+        match (generic_arg.kind(), &generic_param.kind) {
             (
                 GenericArgKind::Lifetime(region),
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
             ) => {
                 // I guess this check doesn't really matter since we ignore lifetimes anyway
-                match region.get_name() {
+                match region.get_name(tcx) {
                     Some(name) if name.as_str() == param_name => { /* okay */ }
                     _ => {
                         return err();
@@ -1793,7 +1794,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             }
             (
                 GenericArgKind::Const(c),
-                GenericParamKind::Const { ty: _, default: _, synthetic: false },
+                GenericParamKind::Const { ty: _, default: _ },
             ) => {
                 match c.kind() {
                     ConstKind::Param(param) if param.name.as_str() == param_name => {

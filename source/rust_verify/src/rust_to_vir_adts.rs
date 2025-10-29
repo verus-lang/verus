@@ -580,7 +580,7 @@ pub(crate) fn check_item_external<'tcx>(
     // Check that the type args match.
 
     crate::rust_to_vir_base::check_item_external_generics(
-        None, generics, false, substs_ref, false, span,
+        ctxt.tcx, None, generics, false, substs_ref, false, span,
     )?;
 
     // Check that the trait bounds match.
