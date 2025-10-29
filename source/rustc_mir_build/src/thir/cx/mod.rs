@@ -134,9 +134,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
 //                 .all(|attr| !attr.has_name(rustc_span::sym::custom_mir)),
 //             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
 // =======
+// >>>>>>> 61ea30e1 (Updating forked Rust code: from 1.88.0 (6b00bc3880198600130e1cf62b8f8a93494488cc) to beta (3b4dd9bf1410f8da6329baa36ce5e37673cbbd1f))
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
-// >>>>>>> 61ea30e1 (Updating forked Rust code: from 1.88.0 (6b00bc3880198600130e1cf62b8f8a93494488cc) to beta (3b4dd9bf1410f8da6329baa36ce5e37673cbbd1f))
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
 
