@@ -10,7 +10,7 @@ use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_ast::ast::AssocItemKind;
-use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitRef};
+use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
 use rustc_middle::ty::{GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -177,7 +177,7 @@ fn translate_assoc_type<'tcx>(
     )?;
 
     let ai = ctxt.tcx.associated_item(impl_item_id);
-    let assoc_def_id = ai.trait_item_def_id.unwrap();
+    let assoc_def_id = ai.trait_item_def_id().unwrap();
     let bounds = ctxt.tcx.item_bounds(assoc_def_id);
     let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
     let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
@@ -243,11 +243,9 @@ pub(crate) fn translate_impl<'tcx>(
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
 
-    if impll.safety != Safety::Safe && impll.of_trait.is_none() {
-        return err_span(item.span, "the verifier does not support `unsafe` here");
-    }
-
-    if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
+    if let Some(TraitImplHeader { trait_ref: TraitRef { path, hir_ref_id: _ }, safety, .. }) =
+        impll.of_trait
+    {
         let trait_def_id = path.res.def_id();
 
         let rust_item = verus_items::get_rust_item(ctxt.tcx, trait_def_id);
@@ -260,7 +258,7 @@ pub(crate) fn translate_impl<'tcx>(
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
 
-        if impll.safety != Safety::Safe {
+        if *safety != Safety::Safe {
             if matches!(rust_item, Some(RustItem::Send)) {
                 return err_span(item.span, "unsafe impl for `Send` is not allowed");
             }
@@ -287,7 +285,7 @@ pub(crate) fn translate_impl<'tcx>(
             {
                 rustc_middle::ty::TyKind::Adt(
                     def.to_owned(),
-                    ctxt.tcx.mk_args_from_iter(substs.iter().map(|g| match g.unpack() {
+                    ctxt.tcx.mk_args_from_iter(substs.iter().map(|g| match g.kind() {
                         rustc_middle::ty::GenericArgKind::Type(_) => (*ctxt.tcx).types.never.into(),
                         _ => g,
                     })),
@@ -309,26 +307,21 @@ pub(crate) fn translate_impl<'tcx>(
         };
 
         if ignore {
-            for impl_item_ref in impll.items {
-                match impl_item_ref.kind {
-                    AssocItemKind::Fn { has_self } if has_self => {
-                        let impl_item = ctxt.tcx.hir_impl_item(impl_item_ref.id);
-                        if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
-                            ctxt.erasure_info
-                                .borrow_mut()
-                                .ignored_functions
-                                .push((impl_item.owner_id.to_def_id(), sig.span.data()));
-                        } else {
-                            panic!("Fn impl item expected");
-                        }
-                    }
-                    _ => {}
+            for impl_item_id in impll.items {
+                let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
+                if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
+                    ctxt.erasure_info
+                        .borrow_mut()
+                        .ignored_functions
+                        .push((impl_item.owner_id.to_def_id(), sig.span.data()));
+                } else {
+                    panic!("Fn impl item expected");
                 }
             }
             return Ok(());
         } else {
             /* sealed, `unsafe` */
-            let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
+            let trait_attrs = ctxt.tcx.get_all_attrs(trait_def_id);
             let sealed = crate::attributes::is_sealed(
                 trait_attrs,
                 Some(&mut *ctxt.diagnostics.borrow_mut()),
@@ -341,29 +334,30 @@ pub(crate) fn translate_impl<'tcx>(
     }
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    let trait_path_typ_args = if let Some(TraitRef { path, .. }) = &impll.of_trait {
-        let impl_def_id = item.owner_id.to_def_id();
-        external_info.internal_trait_impls.insert(impl_def_id);
-        let path_span = path.span.to(impll.self_ty.span);
-        if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
-            ctxt,
-            item.span,
-            path_span,
-            impl_def_id,
-            Some(impll.generics),
-            external_info,
-            module_path.clone(),
-            false,
-            vattrs.external_trait_blanket,
-        )? {
-            vir.trait_impls.push(trait_impl);
-            Some((trait_path, types))
+    let trait_path_typ_args =
+        if let Some(TraitImplHeader { trait_ref: TraitRef { path, .. }, .. }) = &impll.of_trait {
+            let impl_def_id = item.owner_id.to_def_id();
+            external_info.internal_trait_impls.insert(impl_def_id);
+            let path_span = path.span.to(impll.self_ty.span);
+            if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
+                ctxt,
+                item.span,
+                path_span,
+                impl_def_id,
+                Some(impll.generics),
+                external_info,
+                module_path.clone(),
+                false,
+                vattrs.external_trait_blanket,
+            )? {
+                vir.trait_impls.push(trait_impl);
+                Some((trait_path, types))
+            } else {
+                None
+            }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
     let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
         let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
