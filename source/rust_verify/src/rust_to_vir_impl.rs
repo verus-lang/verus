@@ -307,14 +307,20 @@ pub(crate) fn translate_impl<'tcx>(
 
         if ignore {
             for impl_item_id in impll.items {
-                let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
-                if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
-                    ctxt.erasure_info
-                        .borrow_mut()
-                        .ignored_functions
-                        .push((impl_item.owner_id.to_def_id(), sig.span.data()));
-                } else {
-                    panic!("Fn impl item expected");
+                let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
+                match assoc_item.kind {
+                    AssocKind::Fn { has_self, .. } if has_self => {
+                        let impl_item = ctxt.tcx.hir_impl_item(*impl_item_id);
+                        if let ImplItemKind::Fn(sig, _) = &impl_item.kind {
+                            ctxt.erasure_info
+                                .borrow_mut()
+                                .ignored_functions
+                                .push((impl_item.owner_id.to_def_id(), sig.span.data()));
+                        } else {
+                            panic!("Fn impl item expected");
+                        }
+                    }
+                    _ => {}
                 }
             }
             return Ok(());
