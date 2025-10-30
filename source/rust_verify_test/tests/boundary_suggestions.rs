@@ -135,7 +135,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
            where
-           F: std::ops::FnOnce(T,) -> std::option::Option<U>,;")
+           F: std::ops::FnOnce(T,) -> std::option::Option<U> + std::marker::Destruct,;")
 }
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_correct code! {
@@ -174,8 +174,8 @@ test_verify_one_file! {
         verus! {
             pub assume_specification<'a, 'b, A, B> [<&'b A as std::cmp::PartialEq<&B>>::eq] (_0: &&'b A, _1: &&B) -> bool
             where
-            A: std::cmp::PartialEq<B> + ?Sized,
-            B: ?Sized,;
+            A: std::cmp::PartialEq<B> + core::marker::PointeeSized,
+            B: core::marker::PointeeSized,;
 
 
             fn foo(x: &str, y: &str) -> (res: bool)
