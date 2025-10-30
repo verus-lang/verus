@@ -391,7 +391,7 @@ test_verify_one_file_with_options! {
 
         global layout S is size == 16, align == 16;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected alignment"));
     }
 }
@@ -403,7 +403,7 @@ test_verify_one_file_with_options! {
 
         global layout S is size == 8, align == 8;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected size"));
     }
 }
