@@ -1193,7 +1193,7 @@ test_verify_one_file! {
         fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `verus_builtin::Ghost` in the current scope")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `verus_builtin::Ghost<A>` in the current scope")
 }
 
 test_verify_one_file! {
