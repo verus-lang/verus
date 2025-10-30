@@ -287,6 +287,15 @@ pub(crate) fn rewrite_verus_spec(
     if !erase.keep() {
         return input;
     }
+
+    // Remove the last `,` if `input` has one.
+    let mut tokens: Vec<_> = proc_macro2::TokenStream::from(input).into_iter().collect();
+    if matches!(tokens.last(), Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',') {
+        tokens.pop();
+    }
+    let input: proc_macro::TokenStream =
+        tokens.into_iter().collect::<proc_macro2::TokenStream>().into();
+
     let f = match syn::parse::<VerusSpecTarget>(input) {
         Ok(f) => f,
         Err(err) => {
