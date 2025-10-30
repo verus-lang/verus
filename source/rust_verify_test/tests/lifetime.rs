@@ -748,7 +748,7 @@ test_verify_one_file! {
         fn test2(t: Tracked<T>) {
             test(t.clone());
         }
-    } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `Tracked<T>`, but its trait bounds were not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "the method `clone` exists for struct `verus_builtin::Tracked<T>`, but its trait bounds were not satisfied")
 }
 
 test_verify_one_file! {
