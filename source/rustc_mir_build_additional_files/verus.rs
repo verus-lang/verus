@@ -681,7 +681,6 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             ty: _,
             subpattern,
             is_primary: _,
-            is_shorthand: _,
         } => {
             if let Some(subpat) = subpattern {
                 erase_pat_rec(emode, subpat);
@@ -1559,7 +1558,6 @@ pub(crate) fn make_let<'tcx>(
             ty,
             subpattern: None,
             is_primary: true,
-            is_shorthand: false, // TODO(1.91.0): is this right?
         },
     });
 
