@@ -378,7 +378,7 @@ fn traverse_generic_bounds(
                     Sizedness::Sized => {
                         continue;
                     }
-                    Sizedness::MetaSized(path) | Sizedness::PointeeSized(path) => path
+                    Sizedness::MetaSized(path, _) | Sizedness::PointeeSized(path) => path
                 }
             }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
@@ -1071,7 +1071,8 @@ pub fn prune_krate_for_module_or_krate(
                     match tid {
                         TraitId::Path(path)
                         // | TraitId::Sizedness(Sizedness::MetaSized(path))
-                        | TraitId::Sizedness(Sizedness::PointeeSized(path)) => {
+                        // | TraitId::Sizedness(Sizedness::PointeeSized(path))
+                        => {
                             bound_traits.push(path.clone());
                         }
                         TraitId::Sizedness(_) => {}

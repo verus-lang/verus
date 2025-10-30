@@ -724,7 +724,9 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
             GenericBoundX::Trait(trait_id, typ_args) => {
                 let skip = match trait_id {
                     TraitId::Path(path) => !ctx.trait_map.contains_key(path),
-                    TraitId::Sizedness(Sizedness::Sized | Sizedness::MetaSized(_)) => false,
+                    // TraitId::Sizedness(Sizedness::Sized | Sizedness::MetaSized(_)) => false,
+                    TraitId::Sizedness(Sizedness::Sized) => false,
+
                     TraitId::Sizedness(_) => true,
                 };
                 if skip {
@@ -768,7 +770,10 @@ pub(crate) fn trait_bound_to_air(
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sizedness(_) => {
+        TraitId::Sizedness(Sizedness::MetaSized(path, _) | Sizedness::PointeeSized(path)) => {
+            None
+        }
+        TraitId::Sizedness(Sizedness::Sized) => {
             // sized bound only takes decorate param
             let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());
             Some(ident_apply(&crate::def::sized_bound(), &typ_exprs))

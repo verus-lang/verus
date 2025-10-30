@@ -1078,7 +1078,7 @@ pub struct ParamX {
 pub enum Sizedness {
     Sized,
     // TODO(1.91.0): revisit if these paths are actually needed
-    MetaSized(Path),
+    MetaSized(Path, bool), // boolean indicates if const
     PointeeSized(Path),
 }
 
