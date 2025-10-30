@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs ignore --- incomplete proof
+// rust_verify/tests/example.rs ignore --- wip
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
@@ -50,6 +50,7 @@ impl InvariantPredicate<K, V> for FlagInv {
         &&& pend_perm.id() == pend_id
         &&& state.id() == state_id
         &&& gv.id() == gv_id
+        &&& state@ == value_perm.value()
         &&& pend_perm.value() < 3
         &&& match proto {
             Empty(gva) => {
@@ -77,6 +78,12 @@ pub struct FlagToken {
     pub value: GhostVar<bool>,
 }
 
+impl FlagToken {
+    pub open spec fn id(self) -> int {
+        self.value.id()
+    }
+}
+
 pub struct Flag {
     pub value: PAtomicBool,
     pub pending: PAtomicU32,
@@ -93,19 +100,20 @@ impl Flag {
         self.inv@.constant().2
     }
 
-    pub fn new() -> (out: (Self, Tracked<FlagToken>))
+    pub fn new(init: bool) -> (out: (Self, Tracked<FlagToken>))
         ensures
             out.0.wf(),
-            out.0.token_id() == out.1@.value.id(),
+            out.0.token_id() == out.1@.id(),
+            out.1@.value@ == init,
     {
-        let (value, Tracked(value_perm)) = PAtomicBool::new(false);
+        let (value, Tracked(value_perm)) = PAtomicBool::new(init);
         let (pending, Tracked(pending_perm)) = PAtomicU32::new(0);
-        let tracked (state_auth, state_var) = GhostVarAuth::new(false);
+        let tracked (state_auth, state_var) = GhostVarAuth::new(init);
         let tracked (au_auth, au_var) = GhostVarAuth::new(None);
         let tracked inv = AtomicInvariant::new(
             (value.id(), pending.id(), state_auth.id(), au_auth.id()),
             (value_perm, pending_perm, state_auth, au_var, Empty(au_auth)),
-            arbitrary()
+            2
         );
 
         let this = Self { value, pending, inv: Tracked(inv) };
@@ -113,14 +121,23 @@ impl Flag {
         (this, Tracked(token))
     }
 
-    pub fn read(&self) -> bool
-        requires self.wf(),
+    pub fn read(&self, tracked token: &FlagToken) -> (out: bool)
+        requires
+            self.wf(),
+            token.id() == self.token_id(),
+        ensures
+            out == token.value@,
     {
         let out;
         open_atomic_invariant!(self.inv.borrow() => v => {
             let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             out = self.value.load(Tracked(&value_perm));
-            proof { v = (value_perm, pend_perm, auth, gv, proto); }
+
+            proof {
+                auth.agree(&token.value);
+                assert(value_perm.value() == token.value@);
+                v = (value_perm, pend_perm, auth, gv, proto);
+            }
         });
 
         return out;
@@ -133,10 +150,12 @@ impl Flag {
             type FlipPred,
             (old_token: FlagToken) -> (new_token: FlagToken),
             requires
-                old_token.value.id() == self.token_id(),
+                old_token.id() == self.token_id(),
             ensures
                 new_token.value@ == !old_token.value@,
-                new_token.value.id() == old_token.value.id(),
+                new_token.id() == old_token.id(),
+            outer_mask any,
+            inner_mask none,
         },
         requires self.wf(),
     {
@@ -146,24 +165,24 @@ impl Flag {
             self.wf(),
             au == atomic_update,
         {
-            match self.try_cancel_two_flips(au) {
+            match self.try_cancel_two_flips(Tracked(au)) {
                 Some(upd) => proof { au = upd.get() },
                 None => return,
             }
 
-            match self.try_simple_flip(au) {
+            match self.try_simple_flip(Tracked(au)) {
                 Some(upd) => proof { au = upd.get() },
                 None => return,
             }
 
-            match self.try_handshake(au) {
+            match self.try_handshake(Tracked(au)) {
                 Some(upd) => proof { au = upd.get() },
                 None => return,
             }
         }
     }
 
-    fn try_cancel_two_flips(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
+    fn try_cancel_two_flips(&self, Tracked(au): Tracked<FlipAU>) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
             au.pred().args(self),
@@ -217,7 +236,7 @@ impl Flag {
         Some(Tracked(maybe_au.tracked_take()))
     }
 
-    fn try_simple_flip(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
+    fn try_simple_flip(&self, Tracked(au): Tracked<FlipAU>) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
             au.pred().args(self),
@@ -277,7 +296,7 @@ impl Flag {
         Some(Tracked(maybe_au.tracked_take()))
     }
 
-    fn try_handshake(&self, tracked au: FlipAU) -> (out: Option<Tracked<FlipAU>>)
+    fn try_handshake(&self, Tracked(au): Tracked<FlipAU>) -> (out: Option<Tracked<FlipAU>>)
         requires
             self.wf(),
             au.pred().args(self),
@@ -374,6 +393,29 @@ impl Flag {
 
         Some(Tracked(maybe_au.tracked_take()))
     }
+}
+
+pub struct UserInv;
+impl InvariantPredicate<int, FlagToken> for UserInv {
+    open spec fn inv(id: int, token: FlagToken) -> bool {
+        &&& token.id() == id
+    }
+}
+
+fn main() {
+    let (flag, Tracked(token)) = Flag::new(false);
+    assert(token.value@ == false);
+
+    let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(token.id(), token, 5);
+    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+
+    flag.flip() atomically |update| {
+        open_atomic_invariant!(credit => &inv => token => {
+            let prev = token.value@;
+            token = update(token);
+            assert(token.value@ != prev);
+        });
+    };
 }
 
 } // verus!
