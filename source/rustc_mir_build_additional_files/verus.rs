@@ -14,7 +14,7 @@ use rustc_middle::thir::{
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
-    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
+    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVariableKind,
     CapturedPlace, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
@@ -1170,12 +1170,9 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ReErasedReplacer<'tcx> {
                     BoundRegion { var: BoundVar::from_usize(var), kind: BoundRegionKind::Anon },
                 )
             }
-            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), _br) => {
+            rustc_middle::ty::ReBound(debruijn, _br) => {
                 assert!(debruijn < self.current_index);
                 r
-            }
-            rustc_middle::ty::ReBound(BoundVarIndexKind::Canonical, _br) => {
-                todo!("Canonical");
             }
             _ => r,
         }
