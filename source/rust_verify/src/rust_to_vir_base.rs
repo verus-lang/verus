@@ -11,7 +11,7 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
     GenericArgKind, GenericParamDefKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
@@ -321,7 +321,7 @@ where
 
     fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
         match *t.kind() {
-            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty)
+            rustc_middle::ty::Bound(debruijn, bound_ty)
                 if debruijn == self.current_index =>
             {
                 let ty = self.delegate.replace_ty(bound_ty);
@@ -330,19 +330,17 @@ where
             }
             _ if t.has_vars_bound_at_or_above(self.current_index) => t.super_fold_with(self),
             _ => t,
-            // TODO(1.91.0): Do we need to handle BoundVarIndexKind::Canonical?
-            // probably not since it can't match bound_ty?
         }
     }
 
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br)
+            rustc_middle::ty::ReBound(debruijn, br)
                 if debruijn >= self.current_index =>
             {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
+                if let rustc_middle::ty::ReBound(debruijn1, br) =
                     region.kind()
                 {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
@@ -351,14 +349,13 @@ where
                     region
                 }
             }
-            // TODO(1.91.0): Do we need special handling for BoundVarIndexKind::Canonical?
             _ => r,
         }
     }
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const)
+            ConstKind::Bound(debruijn, bound_const)
                 if debruijn == self.current_index =>
             {
                 let ct = self.delegate.replace_const(bound_const);
