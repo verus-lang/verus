@@ -325,6 +325,23 @@ pub fn rewrite_external_bounds(
             GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
                 GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
             ),
+            GenericBoundX::TypEquality(path, ts, x, t)
+                if path == to_path
+                    && (match &**t {
+                        TypX::Projection { trait_typ_args, trait_path, name } => {
+                            name == x
+                                && crate::ast_util::n_types_equal(trait_typ_args, ts)
+                                && trait_path == from_path
+                        }
+                        _ => false,
+                    }) =>
+            {
+                // In order to aid Rust type checking of external trait specs,
+                // allow external trait specs to match associated types with the real trait via:
+                //   Self: T<X = <Self as ExT>::X>
+                // which we ignore here
+                continue;
+            }
             _ => bound.clone(),
         };
         bs.push(b);
