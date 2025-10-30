@@ -353,6 +353,40 @@ pub fn rewrite_external_function(
     .expect("rewrite_external_function")
 }
 
+// For T<A1, ..., An>, remove the Self: T<A1, ..., An> bound introduced by rustc
+pub fn remove_self_is_itself_bound(
+    typ_bounds: &mut GenericBounds,
+    trait_path: &Path,
+    generics_params: &crate::ast::TypPositives,
+) {
+    Arc::make_mut(typ_bounds).retain(|gb| {
+        match &**gb {
+            GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
+                if bnd == trait_path {
+                    let gp: Vec<_> = Some(crate::def::trait_self_type_param())
+                        .into_iter()
+                        .chain(generics_params.iter().map(|(p, _)| p.clone()))
+                        .map(|p| Some(p))
+                        .collect();
+                    let tp: Vec<_> = tp
+                        .iter()
+                        .map(|p| match &**p {
+                            TypX::TypParam(p) => Some(p.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(*tp, *gp);
+                    return false;
+                }
+            }
+            GenericBoundX::Trait(TraitId::Sized, _tp) => {}
+            GenericBoundX::TypEquality(..) => {}
+            GenericBoundX::ConstTyp(..) => {}
+        }
+        true
+    });
+}
+
 /*
 In Rust, traits can have default implementations of methods.  For example:
     trait T {
@@ -469,6 +503,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                 let mut subst_map: HashMap<Ident, Typ> = HashMap::new();
                 assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
                 let tr_params = tr.x.typ_params.iter().map(|(x, _)| x);
+                let n_outer = 1 + tr_params.len(); // Self + trait params
                 for (x, t) in vec![crate::def::trait_self_type_param()]
                     .iter()
                     .chain(tr_params)
@@ -476,6 +511,19 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                 {
                     assert!(!subst_map.contains_key(x));
                     subst_map.insert(x.clone(), t.clone());
+                }
+                // Note: Rust won't let tr_params conflict with f_typ_params.
+                // However, trait_impl.x.typ_params could have the same names as f_typ_params.
+                // So we have to rename f_typ_params.
+                let rename_f_typ_param = |x: &Ident| -> Ident {
+                    let s = format!("{}{}", crate::def::PREFIX_DEFAULT_TYP_PARAM, x);
+                    Arc::new(s)
+                };
+                let f_typ_params: Vec<Ident> =
+                    default_function.x.typ_params.iter().skip(n_outer).cloned().collect();
+                for x in &f_typ_params {
+                    let r = rename_f_typ_param(x);
+                    subst_map.insert(x.clone(), Arc::new(TypX::TypParam(r)));
                 }
                 let ft = |_: &mut (), t: &Typ| -> Result<Typ, VirErr> {
                     match &**t {
@@ -502,6 +550,20 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                         .clone()
                         .and(trait_impl.x.owning_module.clone()),
                 };
+                let f_typ_params = f_typ_params.iter().map(rename_f_typ_param);
+                let typ_params: Vec<Ident> =
+                    trait_impl.x.typ_params.iter().cloned().chain(f_typ_params).collect();
+                let mut f_typ_bounds = default_function.x.typ_bounds.clone();
+                remove_self_is_itself_bound(
+                    &mut f_typ_bounds,
+                    &trait_impl.x.trait_path,
+                    &tr.x.typ_params,
+                );
+                let f_typ_bounds =
+                    crate::ast_visitor::map_generic_bounds_visitor(&f_typ_bounds, &mut (), &ft)
+                        .expect("map_generic_bounds_visitor");
+                let typ_bounds: Vec<GenericBound> =
+                    trait_impl.x.typ_bounds.iter().chain(f_typ_bounds.iter()).cloned().collect();
                 let inherit_functionx = FunctionX {
                     name,
                     proxy: None,
@@ -512,8 +574,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     opaqueness: default_function.x.opaqueness.clone(),
                     owning_module: trait_impl.x.owning_module.clone(),
                     mode: default_function.x.mode,
-                    typ_params: trait_impl.x.typ_params.clone(),
-                    typ_bounds: trait_impl.x.typ_bounds.clone(),
+                    typ_params: Arc::new(typ_params),
+                    typ_bounds: Arc::new(typ_bounds),
                     params,
                     ret,
                     ens_has_return: default_function.x.ens_has_return,
