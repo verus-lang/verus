@@ -1971,7 +1971,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Lit(lit) => Ok(ExprOrPlace::Expr(lit_to_vir(
             bctx,
             expr.span,
-            lit.clone(),
+            *lit,
             false,
             &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
             Some(bctx.types.node_type(expr.hir_id)),

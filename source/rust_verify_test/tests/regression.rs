@@ -1458,7 +1458,8 @@ test_verify_one_file_with_options! {
         // declare a foreign type that is unlikely to be supported in future Verus versions:
         extern "C" { type T; }
 
-        impl Clone for Box<T> where T: Sized { fn clone(&self) -> Self { todo!() } }
+        trait ToBool { fn to_bool(&self) -> bool; }
+        impl ToBool for Box<T> where { fn to_bool(&self) -> bool { todo!() } }
     } => Ok(())
 }
 
