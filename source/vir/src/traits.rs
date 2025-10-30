@@ -770,7 +770,7 @@ pub(crate) fn trait_bound_to_air(
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sizedness(Sizedness::MetaSized(path, _) | Sizedness::PointeeSized(path)) => {
+        TraitId::Sizedness(Sizedness::MetaSized(_, _) | Sizedness::PointeeSized(_)) => {
             None
         }
         TraitId::Sizedness(Sizedness::Sized) => {
