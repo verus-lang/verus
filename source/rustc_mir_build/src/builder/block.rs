@@ -286,7 +286,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                 block,
                                 node,
                                 span,
-                                false,
                                 OutsideGuard,
                                 ScheduleDrops::Yes,
                             );
