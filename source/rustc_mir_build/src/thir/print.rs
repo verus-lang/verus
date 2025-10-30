@@ -689,9 +689,7 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
         print_indented!(self, "kind: PatKind {", depth_lvl);
 
         match pat_kind {
-            PatKind::Missing => {
-                print_indented!(self, "Missing", depth_lvl + 1);
-            }
+            PatKind::Missing => unreachable!(),
             PatKind::Wild => {
                 print_indented!(self, "Wild", depth_lvl + 1);
             }
@@ -705,14 +703,13 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 self.print_pat(subpattern, depth_lvl + 3);
                 print_indented!(self, "}", depth_lvl + 1);
             }
-            PatKind::Binding { name, mode, var, ty, subpattern, is_primary, is_shorthand } => {
+            PatKind::Binding { name, mode, var, ty, subpattern, is_primary } => {
                 print_indented!(self, "Binding {", depth_lvl + 1);
                 print_indented!(self, format!("name: {:?}", name), depth_lvl + 2);
                 print_indented!(self, format!("mode: {:?}", mode), depth_lvl + 2);
                 print_indented!(self, format!("var: {:?}", var), depth_lvl + 2);
                 print_indented!(self, format!("ty: {:?}", ty), depth_lvl + 2);
                 print_indented!(self, format!("is_primary: {:?}", is_primary), depth_lvl + 2);
-                print_indented!(self, format!("is_shorthand: {:?}", is_shorthand), depth_lvl + 2);
 
                 if let Some(subpattern) = subpattern {
                     print_indented!(self, "subpattern: Some( ", depth_lvl + 2);

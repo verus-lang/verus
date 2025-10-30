@@ -309,8 +309,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 let actual = self.temp(usize_ty, test.span);
 
                 // actual = len(place)
-                let length_op = self.len_of_slice_or_array(block, place, test.span, source_info);
-                self.cfg.push_assign(block, source_info, actual, Rvalue::Use(length_op));
+                self.cfg.push_assign(block, source_info, actual, Rvalue::Len(place));
 
                 // expected = <N>
                 let expected = self.push_usize(block, source_info, len);
