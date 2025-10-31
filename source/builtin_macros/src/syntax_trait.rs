@@ -176,7 +176,6 @@ fn expand_extension_trait<'tcx>(
             },
         )
     };
-    // we need
     blanket_impl
         .generics
         .params
