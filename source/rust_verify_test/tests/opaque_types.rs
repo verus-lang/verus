@@ -300,3 +300,150 @@ test_verify_one_file! {
         }
     }  => Err(err) => assert_vir_error_msg(err, "`returns` clause is not allowed for function that returns opaque type")
 }
+
+test_verify_one_file! {
+    #[test] test_tuple_of_opaque_types_ok verus_code! {
+        use vstd::prelude::*;
+        trait DummyTrait{
+            spec fn bar(&self) -> bool;
+        }
+        impl DummyTrait for bool{
+            spec fn bar(&self) -> bool{
+                true
+            }
+        }
+        fn foo() -> (ret:(impl DummyTrait, impl DummyTrait))
+            ensures
+                ret.0.bar(),
+                ret.1.bar(),
+        {
+            (true, true)
+        }
+    }  => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_from_opaque_type_ok verus_code! {
+        use vstd::prelude::*;
+        trait DummyTrait{
+            spec fn bar(&self) -> bool;
+        }
+        impl DummyTrait for bool{
+            spec fn bar(&self) -> bool{
+                true
+            }
+        }
+        fn foo() -> (ret:(impl DummyTrait, impl DummyTrait))
+            ensures
+                ret.0.bar(),
+                ret.1.bar(),
+        {
+            (true, true)
+        }
+        fn bar() -> (ret:(impl DummyTrait, impl DummyTrait))
+            ensures
+                ret.0.bar(),
+                ret.1.bar(),
+        {
+            foo()
+        }
+    }  => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_projection_fail verus_code! {
+        use vstd::prelude::*;
+        trait Tr{
+            spec fn dummy_spec(&self) -> bool;
+            type T;
+            type Y;
+            spec fn ret_y(&self) -> Self::Y;
+        }
+        impl Tr for bool{
+            spec fn dummy_spec(&self) -> bool{
+                true
+            }
+            type T = bool;
+            type Y = Self;
+            uninterp spec fn ret_y(&self) -> Self::Y;
+        }
+        fn boo() -> (ret: impl Tr<T = impl Tr<T = bool>, Y = impl Tr<T = bool>>)
+            ensures
+                // ret.ret_y().dummy_spec(),
+        {
+            true
+        }
+        fn bar() -> (ret: impl Tr<Y = impl Tr<T = bool>, T = impl Tr<T = bool>>)
+            ensures
+                ret.ret_y().dummy_spec(), // FAILS
+        {
+            boo()
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_projection_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr{
+            spec fn dummy_spec(&self) -> bool;
+            type T;
+            type Y;
+            spec fn ret_y(&self) -> Self::Y;
+        }
+        impl Tr for bool{
+            spec fn dummy_spec(&self) -> bool{
+                true
+            }
+            type T = bool;
+            type Y = Self;
+            uninterp spec fn ret_y(&self) -> Self::Y;
+        }
+
+        fn boo() -> (ret: impl Tr<T = impl Tr<T = bool>, Y = impl Tr<T = bool>>)
+            ensures
+                ret.ret_y().dummy_spec(),
+        {
+            true
+        }
+        fn bar() -> (ret: impl Tr<Y = impl Tr<T = bool>, T = impl Tr<T = bool>>)
+            ensures
+                ret.ret_y().dummy_spec(),
+        {
+            boo()
+        }
+    }  => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_type_projection_inherent_ok verus_code! {
+        use vstd::prelude::*;
+        trait Tr{
+            spec fn dummy_spec(&self) -> bool;
+            type T;
+            type Y;
+            spec fn ret_y(&self) -> Self::Y;
+        }
+        impl Tr for bool{
+            spec fn dummy_spec(&self) -> bool{
+                true
+            }
+            type T = bool;
+            type Y = Self;
+            uninterp spec fn ret_y(&self) -> Self::Y;
+        }
+
+        fn boo() -> (ret: impl Tr<T = impl Tr<T = bool>, Y = bool>)
+            ensures
+                // ret.ret_y().dummy_spec(),
+        {
+            true
+        }
+        fn bar() -> (ret: impl Tr<Y = impl Tr<T = bool>, T = impl Tr<T = bool>>)
+            ensures
+                ret.ret_y().dummy_spec(),
+        {
+            boo()
+        }
+    } => Ok(())
+}

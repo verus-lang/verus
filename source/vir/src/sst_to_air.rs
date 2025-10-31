@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
-    VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX, Ident, Idents,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX,
+    Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -43,7 +43,7 @@ use air::ast_util::{
 };
 use air::context::SmtSolver;
 use num_bigint::BigInt;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -3120,6 +3120,8 @@ pub(crate) fn body_stm_to_air(
     Ok((state.commands, state.snap_map))
 }
 
+/// At function returns, we need to tell the SMT solver that the newly created opaque type is indeed the same type
+/// as the returned expression.
 fn opaque_ty_additional_stmts(
     ctx: &Ctx,
     state: &mut State,
@@ -3128,54 +3130,80 @@ fn opaque_ty_additional_stmts(
     ret_typ: &Typ,
 ) -> Result<Vec<Stmt>, VirErr> {
     let mut stmts = vec![];
-    match &**ret_typ {
-        TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths) => {
-            if let TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths) = &**ret_exp_typ {
-                if items_ret_typ.len() != items_ret_exp_typ.len() {
-                    crate::messages::internal_error(
-                        span,
-                        "return exp and return value types has different length",
-                    );
+    let mut emit_eq_stmts = || {
+        let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
+        let ret_value_typs = typ_to_ids(ctx, &ret_typ);
+        let decr = ExprX::Binary(
+            air::ast::BinaryOp::Eq,
+            ret_expr_typs[0].clone(),
+            ret_value_typs[0].clone(),
+        );
+        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
+        let typ = ExprX::Binary(
+            air::ast::BinaryOp::Eq,
+            ret_expr_typs[1].clone(),
+            ret_value_typs[1].clone(),
+        );
+        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
+        stmts.push(assume_decr);
+        stmts.push(assume_typ);
+    };
+    match (&**ret_typ, &**ret_exp_typ) {
+        (
+            TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths_ret_typ),
+            TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths_ret_exp_typ),
+        ) => {
+            if items_ret_typ.len() != items_ret_exp_typ.len() {
+                crate::messages::internal_error(
+                    span,
+                    "return exp and return value types has different length",
+                );
+            }
+            if dt_ret_exp_typ != dt_ret_typ {
+                crate::messages::internal_error(
+                    span,
+                    "return exp and return value types has different types",
+                );
+            }
+            for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
+                stmts.extend(opaque_ty_additional_stmts(ctx, state, span, ret_exp_typ, ret_typ)?);
+            }
+        }
+        (
+            TypX::Opaque { def_path: ret_exp_def_path, args: _ret_exp_args },
+            TypX::Opaque { def_path: ret_typ_def_path, args: _ret_typ_args },
+        ) => {
+            emit_eq_stmts();
+            let ret_exp_opaque_typ = &ctx.opaque_type_map[ret_exp_def_path];
+            let ret_typ_opaque_typ = &ctx.opaque_type_map[ret_typ_def_path];
+
+            let mut ret_exp_projection_map = HashMap::new();
+            let mut ret_typ_projection_map = HashMap::new();
+
+            for (ret_exp_bound, ret_typ_bound) in
+                ret_exp_opaque_typ.x.typ_bounds.iter().zip(ret_typ_opaque_typ.x.typ_bounds.iter())
+            {
+                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_exp_bound {
+                    ret_exp_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
                 }
-                if dt_ret_exp_typ != dt_ret_typ {
-                    crate::messages::internal_error(
-                        span,
-                        "return exp and return value types has different types",
-                    );
+                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_typ_bound {
+                    ret_typ_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
                 }
-                for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
+            }
+            for trait_path_id in ret_exp_projection_map.keys() {
+                if ret_typ_projection_map.contains_key(trait_path_id) {
                     stmts.extend(opaque_ty_additional_stmts(
                         ctx,
                         state,
                         span,
-                        ret_exp_typ,
-                        ret_typ,
+                        ret_exp_projection_map[trait_path_id],
+                        ret_typ_projection_map[trait_path_id],
                     )?);
                 }
-            } else {
-                crate::messages::internal_error(
-                    span,
-                    "return exp and return value has different types",
-                );
             }
         }
-        TypX::Opaque { .. } => {
-            let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
-            let ret_value_typs = typ_to_ids(ctx, &ret_typ);
-            let decr = ExprX::Binary(
-                air::ast::BinaryOp::Eq,
-                ret_expr_typs[0].clone(),
-                ret_value_typs[0].clone(),
-            );
-            let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
-            let typ = ExprX::Binary(
-                air::ast::BinaryOp::Eq,
-                ret_expr_typs[1].clone(),
-                ret_value_typs[1].clone(),
-            );
-            let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
-            stmts.push(assume_decr);
-            stmts.push(assume_typ);
+        (TypX::Opaque { .. }, _) => {
+            emit_eq_stmts();
         }
         _ => {}
     }

@@ -1425,6 +1425,7 @@ pub type Datatypes = Vec<Datatype>;
 /// Opaque type constructors
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct OpaqueTypeX {
+    pub def_fun: Fun,
     pub name: Path,
     pub typ_params: Typs,
     pub typ_bounds: GenericBounds,

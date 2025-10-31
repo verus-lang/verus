@@ -2081,20 +2081,23 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut vir::ast::KrateX,
     fn_def_id: &DefId,
-) -> Result<(), VirErr> {
+) -> Result<Vec<Path>, VirErr> {
     let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
-    opaque_def_to_vir(ctxt, vir, &ty)?;
-    Ok(())
+    opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut vir::ast::KrateX,
+    fn_def_id: &DefId,
     ty: &rustc_middle::ty::Ty<'tcx>,
-) -> Result<(), VirErr> {
+) -> Result<Vec<Path>, VirErr> {
+    let mut defined_opaque_types = vec![];
     match ty.kind() {
         rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
             let span = ctxt.tcx.def_span(al_ty.def_id);
+            let opaque_type_path =
+                def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, al_ty.def_id.into(), None);
             let mut trait_bounds = Vec::new();
             let mut args = Vec::new();
             for arg in al_ty.args {
@@ -2149,7 +2152,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             continue;
                         }
                         let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
-                            opaque_def_to_vir(ctxt, vir, &ty)?;
+                            opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
@@ -2202,28 +2205,33 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             let opaque_ty_vir = ctxt.spanned_new(
                 span,
                 OpaqueTypeX {
-                    name: def_id_to_vir_path(
-                        ctxt.tcx,
-                        &ctxt.verus_items,
-                        al_ty.def_id.into(),
-                        None,
-                    ),
+                    def_fun: Arc::new(vir::ast::FunX {
+                        path: def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *fn_def_id, None),
+                    }),
+                    name: opaque_type_path.clone(),
                     typ_params: Arc::new(args),
                     typ_bounds: Arc::new(trait_bounds),
                 },
             );
 
             vir.opaque_types.push(opaque_ty_vir);
+            defined_opaque_types.push(opaque_type_path.clone());
         }
         rustc_middle::ty::TyKind::Tuple(tys) => {
             for ty in tys.iter() {
-                opaque_def_to_vir(ctxt, vir, &ty)?;
+                defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?);
             }
         }
-        rustc_middle::ty::TyKind::Array(ty, _) => opaque_def_to_vir(ctxt, vir, &ty)?,
-        rustc_middle::ty::TyKind::Pat(ty, _) => opaque_def_to_vir(ctxt, vir, &ty)?,
-        rustc_middle::ty::TyKind::Slice(ty) => opaque_def_to_vir(ctxt, vir, &ty)?,
+        rustc_middle::ty::TyKind::Array(ty, _) => {
+            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+        }
+        rustc_middle::ty::TyKind::Pat(ty, _) => {
+            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+        }
+        rustc_middle::ty::TyKind::Slice(ty) => {
+            defined_opaque_types.extend(opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?)
+        }
         _ => {}
     }
-    Ok(())
+    Ok(defined_opaque_types)
 }
