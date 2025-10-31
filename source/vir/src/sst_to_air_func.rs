@@ -781,9 +781,18 @@ pub fn func_axioms_to_air(
                 {
                     // Emit axiom that says our method equals the default method we inherit from
                     // (if trait bounds are satisfied)
-                    let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+                    let (mut trait_typ_args, holes) =
+                        crate::traits::hide_projections(trait_typ_args);
                     let (typ_params, eqs) =
                         hide_projections_air(ctx, &function.x.typ_params, holes);
+                    let n_inner_typ_params =
+                        ctx.func_map[f_trait].x.typ_params.len() - trait_typ_args.len();
+                    let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
+                    let inner_typ_params = typ_params[inner_typ_params_lo..].to_vec();
+                    for x in &inner_typ_params {
+                        Arc::make_mut(&mut trait_typ_args)
+                            .push(Arc::new(TypX::TypParam(x.clone())));
+                    }
                     let mut args: Vec<Expr> =
                         trait_typ_args.iter().map(typ_to_ids).flatten().collect();
                     for p in function.x.pars.iter() {

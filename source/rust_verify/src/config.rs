@@ -116,6 +116,7 @@ pub struct ArgsX {
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub new_mut_ref: bool,
+    pub no_bv_simplify: bool,
 }
 
 impl ArgsX {
@@ -163,6 +164,7 @@ impl ArgsX {
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             new_mut_ref: Default::default(),
+            no_bv_simplify: Default::default(),
         }
     }
 }
@@ -400,6 +402,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
+    const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -428,6 +431,10 @@ pub fn parse_args_with_imports(
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
         (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
+        (
+            EXTENDED_NO_BV_SIMPLIFY,
+            "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -819,6 +826,7 @@ pub fn parse_args_with_imports(
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
         new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
+        no_bv_simplify: extended.get(EXTENDED_NO_BV_SIMPLIFY).is_some(),
     };
 
     if args.new_mut_ref {

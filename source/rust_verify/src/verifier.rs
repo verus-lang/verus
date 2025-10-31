@@ -2061,6 +2061,7 @@ impl Verifier {
             self.args.check_api_safety,
             self.args.axiom_usage_info,
             self.args.new_mut_ref,
+            self.args.no_bv_simplify,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2489,7 +2490,7 @@ impl Verifier {
                 }
             }
 
-            // join with all worker threads, theys should all have exited by now.
+            // join with all worker threads, they should all have exited by now.
             // merge the verifier and global contexts
             for worker in workers {
                 let res = worker.join().unwrap();

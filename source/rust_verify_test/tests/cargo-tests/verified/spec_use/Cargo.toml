@@ -1,0 +1,13 @@
+[package]
+name = "spec_use"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+spec_def = { path = "../spec_def" }
+
+[package.metadata.verus]
+verify = true
+
+[workspace]

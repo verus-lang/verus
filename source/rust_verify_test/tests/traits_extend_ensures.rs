@@ -806,3 +806,38 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] test_default_ensures_inner_typ_params verus_code! {
+        trait T1<A1> {}
+        trait T2<A2, B2> {}
+
+        trait Q<A: T1<A>, Z> {
+            proof fn p<B: T2<A, B>>(a: &A, b: &B, z: &Z) -> (i: int)
+                requires
+                    a == a,
+                default_ensures
+                    i == 5,
+            {
+                5
+            }
+
+            spec fn f<B: T2<A, B>>(a: &A, b: &B, z: &Z) -> int {
+                5
+            }
+        }
+
+        impl T1<u16> for u16 {}
+        impl T2<u16, f32> for f32 {}
+
+        impl<C> Q<u16, C> for bool {
+        }
+
+        proof fn test() {
+            assert(<bool as Q<u16, nat>>::f::<f32>(&6u16, &1.0, &7nat) == 5);
+            let i = <bool as Q<u16, nat>>::p::<f32>(&6u16, &1.0, &7nat);
+            assert(i == 5);
+            assert(i == 6); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

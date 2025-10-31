@@ -65,6 +65,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
 pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
 pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";

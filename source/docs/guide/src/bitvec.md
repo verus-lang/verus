@@ -60,25 +60,33 @@ However, it can also be decent at arithmetic (`+`, `-`, `*`, `/`, `%`) over boun
 
 ## Examples and tips
 
-### Functions vs. macros
+### Functions
 
-The `bit_vector` solver doesn't allow arbitrary functions. However, you can use _macros_.
-This is useful when certain operations need a common shorthand, like
-"get the <i>i<sup>th</sup></i> bit of an integer".
+The `bit_vector` solver supports the use of constants and `spec` functions.
+However, those functions are still restricted to using the same bit-vector and
+arithemtic operations listed above (internally, function support works by
+inlining the functions).  
 
+Function support means that you can write and use descriptive helper functions.
+For example, you might define:
+
+```rust
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_spec_fn}}
 ```
-macro_rules! get_bit_macro {
-    ($a:expr, $b:expr) => {{
-        (0x1u32 & ($a >> $b)) == 1
-    }};
-}
 
-macro_rules! get_bit {
-    ($($a:tt)*) => {
-        verus_proof_macro_exprs!(get_bit_macro!($($a)*))
-    }
+Note that recursive functions are only supported if they can be statically determined to 
+terminate (e.g., computing Fibonacci on a constant).
+
+If you want to reason about a function opaquely (i.e., without inlining its body), you can
+assign its result to a (ghost) variable and then use it in a bit-vector assertion.  For example:
+```rust
+proof fn test_overflow_check(a: u8, b: u8) {
+    // Because we call `complex_f` here, it remains opaque in the assertion.
+    let c = complex_f(a, b);
+    assert(c >> 1 == c / 2) by(bit_vector);
 }
 ```
+
 
 ### Overflow checking
 
