@@ -843,3 +843,49 @@ test_verify_one_file! {
         pub const X: u64 = const_fn(1);
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_impl_method code!{
+        use vstd::prelude::*;
+
+        pub struct Foo;
+        
+        #[verus_verify]
+        impl Foo {
+            #[verus_spec(ret =>
+                with
+                    Tracked(c): Tracked<&mut ()>
+                requires
+                    true,
+                ensures
+                    ret == 1,
+            )]
+            fn test(a: u64, b: u64) -> u64 {
+                1
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file!{
+    #[test] test_no_verus_verify_attribute_on_impl_block_fails code!{
+        use vstd::prelude::*;
+
+        pub struct Foo;
+        
+        impl Foo {
+            #[verus_verify]
+            #[verus_spec(ret =>
+                with
+                    Tracked(c): Tracked<&mut ()>
+                requires
+                    true,
+                ensures
+                    ret == 1,
+            )]
+            fn test(a: u64, b: u64) -> u64 {
+                1
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot find function `_VERUS_VERIFIED_test` in this scope")
+}
