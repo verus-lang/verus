@@ -150,6 +150,7 @@ pub ghost struct PointsToData<T> {
     pub opt_value: MemContents<T>,
 }
 
+#[cfg(verus_keep_ghost)]
 impl<T: core::marker::PointeeSized> View for *mut T {
     type V = PtrData<T>;
 
