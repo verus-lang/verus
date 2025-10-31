@@ -376,24 +376,29 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
             // Check if this function has the impl method marker attribute.
-            let is_impl_fn = fun.attrs.iter().any(
-                |attr| {
-                    if let Some(ident) = attr.path().get_ident() {
-                        if ident == "allow" {
-                            if let syn::Meta::List(meta_list) = &attr.meta {
-                                return meta_list.tokens.to_string().contains("verus_impl_method_marker");
-                            }
+            let is_impl_fn = fun.attrs.iter().any(|attr| {
+                if let Some(ident) = attr.path().get_ident() {
+                    if ident == "allow" {
+                        if let syn::Meta::List(meta_list) = &attr.meta {
+                            return meta_list
+                                .tokens
+                                .to_string()
+                                .contains("verus_impl_method_marker");
                         }
                     }
-                    false
-                });
-            
+                }
+                false
+            });
+
             //Remove the marker attribute as it is only for internal use.
             fun.attrs.retain(|attr| {
                 if let Some(ident) = attr.path().get_ident() {
                     if ident == "allow" {
                         if let syn::Meta::List(meta_list) = &attr.meta {
-                            return !meta_list.tokens.to_string().contains("verus_impl_method_marker");
+                            return !meta_list
+                                .tokens
+                                .to_string()
+                                .contains("verus_impl_method_marker");
                         }
                     }
                 }
@@ -411,7 +416,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             }
 
             // Update function signature based on verus_spec.
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
+            let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {

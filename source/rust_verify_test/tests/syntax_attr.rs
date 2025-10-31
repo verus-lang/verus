@@ -849,7 +849,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         pub struct Foo;
-        
+
         #[verus_verify]
         impl Foo {
             #[verus_spec(ret =>
@@ -867,12 +867,12 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file!{
+test_verify_one_file! {
     #[test] test_no_verus_verify_attribute_on_impl_block_fails code!{
         use vstd::prelude::*;
 
         pub struct Foo;
-        
+
         impl Foo {
             #[verus_verify]
             #[verus_spec(ret =>
