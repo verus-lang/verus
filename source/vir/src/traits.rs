@@ -396,7 +396,7 @@ pub fn remove_self_is_itself_bound(
                     return false;
                 }
             }
-            GenericBoundX::Trait(TraitId::Sized, _tp) => {}
+            GenericBoundX::Trait(TraitId::Sizedness(_), _tp) => {}
             GenericBoundX::TypEquality(..) => {}
             GenericBoundX::ConstTyp(..) => {}
         }
