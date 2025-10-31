@@ -176,10 +176,7 @@ fn expand_extension_trait<'tcx>(
             },
         )
     };
-    blanket_impl
-        .generics
-        .params
-        .push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
+    blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));
