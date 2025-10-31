@@ -1,6 +1,6 @@
 use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_rust_attr_syn, mk_verus_attr};
 use quote::{quote, quote_spanned};
-use verus_syn::parse_quote_spanned;
+use verus_syn::{TraitBound, parse_quote_spanned};
 use verus_syn::spanned::Spanned;
 use verus_syn::{
     Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Stmt, Token,
@@ -96,7 +96,7 @@ Generate additional items:
 Note: these generated items are trusted;
 the code here that generates them is part of the trusted computing base.
 */
-fn expand_extension_trait(
+fn expand_extension_trait<'tcx>(
     erase_all: bool,
     new_items: &mut Vec<Item>,
     t: &Path,
@@ -168,15 +168,33 @@ fn expand_extension_trait(
         "allow",
         quote_spanned!(span => non_camel_case_types),
     ));
+    let blanket_bound: TypeParamBound = {
+        tr.supertraits.iter().filter(|tpb| is_sizedness_bound(tpb)).cloned().next().unwrap_or_else(|| {
+            let span = tr.generics.span();
+            parse_quote_spanned!(span => core::marker::MetaSized)
+        })
+    };
+    // we need 
     blanket_impl
         .generics
         .params
-        .push(parse_quote_spanned!(span => #self_x: #t + core::marker::PointeeSized));
+        // .push(parse_quote_spanned!(span => #self_x: #t + core::marker::PointeeSized));
+        .push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
+        // .push(parse_quote_spanned!(span => #self_x: #t));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));
     new_items.push(Item::Trait(tspec_impl));
     new_items.push(Item::Impl(blanket_impl));
+}
+
+fn is_sizedness_bound(tp: &TypeParamBound) -> bool {
+    // Hacky test to see if this even works
+    match tp {
+        TypeParamBound::Trait(TraitBound { path , .. }) =>
+            format!("{}", path.segments.last().unwrap().ident).contains("Sized"),
+        _ => false
+    }
 }
 
 pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
