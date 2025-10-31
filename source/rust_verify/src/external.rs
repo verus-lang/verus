@@ -436,7 +436,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                    format!("In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro: {general_item:#?}"),
+                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro",
                     ));
                 } else {
                     if let Some(module_path) = self.module_path.clone() {
@@ -702,7 +702,6 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
-                        // println!("automatic derive action for: {trait_def_id:#?} -> {action:?}");
                         match action {
                             AutomaticDeriveAction::Special(_)
                             | AutomaticDeriveAction::VerifyAsIs => Some(type_eattrs),
