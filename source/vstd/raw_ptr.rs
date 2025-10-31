@@ -82,7 +82,7 @@ impl Provenance {
 pub type Metadata<T> = <T as core::ptr::Pointee>::Metadata;
 
 #[cfg(not(verus_keep_ghost))]
-pub struct FakeMetadata<T: core::marker::PointeeSized> {
+pub struct FakeMetadata<T: ?Sized> {
     t: *mut T,
 }
 
@@ -91,6 +91,7 @@ pub type Metadata<T> = FakeMetadata<T>;
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
 /// In addition to the address, each pointer has its corresponding provenance and metadata.
+#[cfg(verus_keep_ghost)]
 pub ghost struct PtrData<T: core::marker::PointeeSized> {
     pub addr: usize,
     pub provenance: Provenance,
@@ -159,6 +160,7 @@ impl<T: core::marker::PointeeSized> View for *mut T {
 ///
 /// Note that this does NOT compare provenance, which does not exist in the runtime
 /// pointer representation (i.e., it only exists in the Rust abstract machine).
+#[cfg(verus_keep_ghost)]
 pub assume_specification<T: core::marker::PointeeSized>[ <*mut T as PartialEq<*mut T>>::eq ](
     x: &*mut T,
     y: &*mut T,
@@ -167,6 +169,7 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*mut T as PartialEq<*m
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
+#[cfg(verus_keep_ghost)]
 impl<T: core::marker::PointeeSized> View for *const T {
     type V = PtrData<T>;
 
@@ -180,6 +183,7 @@ impl<T: core::marker::PointeeSized> View for *const T {
 ///
 /// Note that this DOES not compare provenance, which does not exist in the runtime
 /// pointer representation (i.e., it only exists in the Rust abstract machine).
+#[cfg(verus_keep_ghost)]
 pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<*const T>>::eq ](
     x: &*const T,
     y: &*const T,
@@ -548,6 +552,7 @@ macro_rules! pointer_specs {
             pub open spec fn spec_addr<T: ::core::marker::PointeeSized>(p: *$mu T) -> usize { p@.addr }
 
             #[verifier::when_used_as_spec(spec_addr)]
+            #[cfg(verus_keep_ghost)]
             pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::addr](p: *$mu T) -> (addr: usize)
                 ensures addr == spec_addr(p)
                 opens_invariants none
@@ -558,6 +563,7 @@ macro_rules! pointer_specs {
             }
 
             #[verifier::when_used_as_spec(spec_with_addr)]
+            #[cfg(verus_keep_ghost)]
             pub assume_specification<T: ::core::marker::PointeeSized>[<*$mu T>::with_addr](p: *$mu T, addr: usize) -> (q: *$mu T)
                 ensures q == spec_with_addr(p, addr)
                 opens_invariants none
