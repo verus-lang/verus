@@ -1,11 +1,11 @@
 use crate::syntax::{VERUS_SPEC, mk_rust_attr, mk_rust_attr_syn, mk_verus_attr};
 use quote::{quote, quote_spanned};
-use verus_syn::{TraitBound, parse_quote_spanned};
 use verus_syn::spanned::Spanned;
 use verus_syn::{
     Expr, FnMode, Ident, ImplItem, ImplItemFn, Item, ItemImpl, ItemTrait, Meta, Path, Stmt, Token,
     TraitItem, TraitItemFn, Type, TypeParamBound, Visibility,
 };
+use verus_syn::{TraitBound, parse_quote_spanned};
 
 fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
     ItemTrait {
@@ -169,18 +169,20 @@ fn expand_extension_trait<'tcx>(
         quote_spanned!(span => non_camel_case_types),
     ));
     let blanket_bound: TypeParamBound = {
-        tr.supertraits.iter().filter(|tpb| is_sizedness_bound(tpb)).cloned().next().unwrap_or_else(|| {
-            let span = tr.generics.span();
-            parse_quote_spanned!(span => core::marker::MetaSized)
-        })
+        tr.supertraits.iter().filter(|tpb| is_sizedness_bound(tpb)).cloned().next().unwrap_or_else(
+            || {
+                let span = tr.generics.span();
+                parse_quote_spanned!(span => core::marker::MetaSized)
+            },
+        )
     };
-    // we need 
+    // we need
     blanket_impl
         .generics
         .params
         // .push(parse_quote_spanned!(span => #self_x: #t + core::marker::PointeeSized));
         .push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
-        // .push(parse_quote_spanned!(span => #self_x: #t));
+    // .push(parse_quote_spanned!(span => #self_x: #t));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));
@@ -191,9 +193,10 @@ fn expand_extension_trait<'tcx>(
 fn is_sizedness_bound(tp: &TypeParamBound) -> bool {
     // Hacky test to see if this even works
     match tp {
-        TypeParamBound::Trait(TraitBound { path , .. }) =>
-            format!("{}", path.segments.last().unwrap().ident).contains("Sized"),
-        _ => false
+        TypeParamBound::Trait(TraitBound { path, .. }) => {
+            format!("{}", path.segments.last().unwrap().ident).contains("Sized")
+        }
+        _ => false,
     }
 }
 

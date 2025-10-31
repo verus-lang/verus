@@ -367,7 +367,8 @@ pub(crate) fn translate_impl<'tcx>(
     let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
         let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
         let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
-        Some(crate::automatic_derive::get_action(rust_item))
+        let action = crate::automatic_derive::get_action(rust_item);
+        Some(action)
     } else {
         None
     };

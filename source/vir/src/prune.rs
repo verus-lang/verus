@@ -373,14 +373,12 @@ fn traverse_generic_bounds(
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
             crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
-            crate::ast::GenericBoundX::Trait(TraitId::Sizedness(sizedness), _) => {
-                match sizedness {
-                    Sizedness::Sized => {
-                        continue;
-                    }
-                    Sizedness::MetaSized(path, _) | Sizedness::PointeeSized(path) => path
+            crate::ast::GenericBoundX::Trait(TraitId::Sizedness(sizedness), _) => match sizedness {
+                Sizedness::Sized => {
+                    continue;
                 }
-            }
+                Sizedness::MetaSized(path, _) | Sizedness::PointeeSized(path) => path,
+            },
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                 reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                 path

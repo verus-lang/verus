@@ -1,5 +1,8 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place, Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
+    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place, Sizedness,
+    SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility,
+    WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -770,9 +773,7 @@ pub(crate) fn trait_bound_to_air(
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sizedness(Sizedness::MetaSized(_, _) | Sizedness::PointeeSized(_)) => {
-            None
-        }
+        TraitId::Sizedness(Sizedness::MetaSized(_, _) | Sizedness::PointeeSized(_)) => None,
         TraitId::Sizedness(Sizedness::Sized) => {
             // sized bound only takes decorate param
             let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());

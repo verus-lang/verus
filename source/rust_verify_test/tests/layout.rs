@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
     #[test] test_set_to_32_on_64_bit_compile ["vstd", "--compile"] => verus_code! {
         global size_of usize == 4;
     } => Err(err) => {
-        assert_rust_error_msg(err.clone(), "evaluation of constant value failed");
+        assert_rust_error_msg(err.clone(), "evaluation panicked");
         assert!(err.errors[0].rendered.contains("does not have the expected size"));
     }
 }
