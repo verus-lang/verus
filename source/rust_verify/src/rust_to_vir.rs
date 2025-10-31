@@ -10,7 +10,7 @@ use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
-use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
+use crate::rust_to_vir_base::{check_fn_opaque_ty, def_id_to_vir_path_option, mk_visibility};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -178,6 +178,7 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
+            let _ = check_fn_opaque_ty(ctxt, vir, &item.owner_id.to_def_id())?;
             check_item_fn(
                 ctxt,
                 &mut vir.functions,
@@ -364,6 +365,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         functions: Vec::new(),
         reveal_groups: Vec::new(),
         datatypes: Vec::new(),
+        opaque_types: Vec::new(),
         traits: Vec::new(),
         trait_impls: Vec::new(),
         assoc_type_impls: Vec::new(),

@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
-    VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX, Ident, Idents,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX,
+    Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -43,7 +43,7 @@ use air::ast_util::{
 };
 use air::context::SmtSolver;
 use num_bigint::BigInt;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -193,6 +193,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
         TypX::MutRef(_) => str_typ(POLY),
+        TypX::Opaque { .. } => str_typ(POLY),
     }
 }
 
@@ -410,6 +411,21 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
         )),
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::Opaque { def_path, args } => {
+            if args.len() != 0 {
+                let mut e_args = Vec::new();
+                for arg in args.iter() {
+                    e_args.extend(typ_to_ids(ctx, arg));
+                }
+                let self_dcr = ident_apply(&crate::def::prefix_dcr_id(def_path), &e_args);
+                let self_type = ident_apply(&crate::def::prefix_type_id(def_path), &e_args);
+                vec![self_dcr, self_type]
+            } else {
+                let self_dcr = str_var(&crate::def::prefix_dcr_id(def_path));
+                let self_type = str_var(&crate::def::prefix_type_id(def_path));
+                vec![self_dcr, self_type]
+            }
+        }
     }
 }
 
@@ -563,6 +579,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             None
         }
         TypX::FnDef(..) => None,
+        TypX::Opaque { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::MutRef(_) => Some(expr_has_typ(ctx, expr, typ)),
     }
 }
@@ -619,6 +636,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
         TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -654,6 +672,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
+        TypX::Opaque { .. } => None,
         TypX::MutRef(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -1995,9 +2014,29 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 // Set `dest_id` variable to the returned expression.
 
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
-                    let ret_exp =
+                    let ret_exp: &Arc<SpannedTyped<ExpX>> =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
-                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
+
+                    let mut stmts =
+                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
+
+                    // if return value exists, check if we need to emit additional assumes for nested opaque types
+                    let ret_op = ctx
+                        .fun
+                        .as_ref()
+                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
+                        .map_or(None, |fun| Some(fun.x.ret.x.typ.clone()));
+                    if ret_op.is_some() {
+                        stmts.extend(opaque_ty_additional_stmts(
+                            ctx,
+                            state,
+                            &ret_exp.span,
+                            &ret_exp.typ,
+                            &ret_op.unwrap(),
+                        )?);
+                    }
+
+                    stmts
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that
@@ -3079,4 +3118,94 @@ pub(crate) fn body_stm_to_air(
         ));
     }
     Ok((state.commands, state.snap_map))
+}
+
+/// At function returns, we need to tell the SMT solver that the newly created opaque type is indeed the same type
+/// as the returned expression.
+fn opaque_ty_additional_stmts(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    ret_exp_typ: &Typ,
+    ret_typ: &Typ,
+) -> Result<Vec<Stmt>, VirErr> {
+    let mut stmts = vec![];
+    let mut emit_eq_stmts = || {
+        let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
+        let ret_value_typs = typ_to_ids(ctx, &ret_typ);
+        let decr = ExprX::Binary(
+            air::ast::BinaryOp::Eq,
+            ret_expr_typs[0].clone(),
+            ret_value_typs[0].clone(),
+        );
+        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
+        let typ = ExprX::Binary(
+            air::ast::BinaryOp::Eq,
+            ret_expr_typs[1].clone(),
+            ret_value_typs[1].clone(),
+        );
+        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
+        stmts.push(assume_decr);
+        stmts.push(assume_typ);
+    };
+    match (&**ret_typ, &**ret_exp_typ) {
+        (
+            TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths_ret_typ),
+            TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths_ret_exp_typ),
+        ) => {
+            if items_ret_typ.len() != items_ret_exp_typ.len() {
+                crate::messages::internal_error(
+                    span,
+                    "return exp and return value types has different length",
+                );
+            }
+            if dt_ret_exp_typ != dt_ret_typ {
+                crate::messages::internal_error(
+                    span,
+                    "return exp and return value types has different types",
+                );
+            }
+            for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
+                stmts.extend(opaque_ty_additional_stmts(ctx, state, span, ret_exp_typ, ret_typ)?);
+            }
+        }
+        (
+            TypX::Opaque { def_path: ret_exp_def_path, args: _ret_exp_args },
+            TypX::Opaque { def_path: ret_typ_def_path, args: _ret_typ_args },
+        ) => {
+            emit_eq_stmts();
+            let ret_exp_opaque_typ = &ctx.opaque_type_map[ret_exp_def_path];
+            let ret_typ_opaque_typ = &ctx.opaque_type_map[ret_typ_def_path];
+
+            let mut ret_exp_projection_map = HashMap::new();
+            let mut ret_typ_projection_map = HashMap::new();
+
+            for (ret_exp_bound, ret_typ_bound) in
+                ret_exp_opaque_typ.x.typ_bounds.iter().zip(ret_typ_opaque_typ.x.typ_bounds.iter())
+            {
+                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_exp_bound {
+                    ret_exp_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
+                }
+                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_typ_bound {
+                    ret_typ_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
+                }
+            }
+            for trait_path_id in ret_exp_projection_map.keys() {
+                if ret_typ_projection_map.contains_key(trait_path_id) {
+                    stmts.extend(opaque_ty_additional_stmts(
+                        ctx,
+                        state,
+                        span,
+                        ret_exp_projection_map[trait_path_id],
+                        ret_typ_projection_map[trait_path_id],
+                    )?);
+                }
+            }
+        }
+        (TypX::Opaque { .. }, _) => {
+            emit_eq_stmts();
+        }
+        _ => {}
+    }
+    Ok(stmts)
 }
