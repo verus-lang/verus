@@ -436,7 +436,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro",
+                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
                     ));
                 } else {
                     if let Some(module_path) = self.module_path.clone() {

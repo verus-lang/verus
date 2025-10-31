@@ -84,7 +84,7 @@ Generate additional items:
         fn sn(...) -> ...;
     }
     #[verus::internal(external_trait_blanket)]
-    impl<A: T + PointeeSized> TSpec for A {
+    impl<A: T + <size bound of T>> TSpec for A {
         // omitted for erase_all
         #[verifier::external_body]
         fn s1(...) -> ... { panic!() }
@@ -180,9 +180,7 @@ fn expand_extension_trait<'tcx>(
     blanket_impl
         .generics
         .params
-        // .push(parse_quote_spanned!(span => #self_x: #t + core::marker::PointeeSized));
         .push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
-    // .push(parse_quote_spanned!(span => #self_x: #t));
     blanket_impl.items = blanket_impl_items;
 
     new_items.push(Item::Trait(tspec));
@@ -190,11 +188,16 @@ fn expand_extension_trait<'tcx>(
     new_items.push(Item::Impl(blanket_impl));
 }
 
+/// Heuristically determines whether `tp` is a Size-related bound.  We cannot do
+/// this correctly in a macro since identifiers are not yet resolved and traits
+/// may be renamed when imported. However, this should be sufficiently rare in
+/// practice, so we ignore this issue here. Otherwise, the user would have to
+/// provide the external_trait_extension macro with an additional parameter.
 fn is_sizedness_bound(tp: &TypeParamBound) -> bool {
-    // Hacky test to see if this even works
     match tp {
         TypeParamBound::Trait(TraitBound { path, .. }) => {
-            format!("{}", path.segments.last().unwrap().ident).contains("Sized")
+            let last_segment = path.segments.last().unwrap().ident.to_string();
+            ["Sized", "MetaSized", "PointeeSized"].contains(&last_segment.as_str())
         }
         _ => false,
     }
