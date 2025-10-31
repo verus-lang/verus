@@ -4,7 +4,8 @@
     feature(proc_macro_tracked_env),
     feature(proc_macro_quote),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic)
+    feature(proc_macro_diagnostic),
+    feature(sized_hierarchy)
 )]
 
 use std::sync::OnceLock;
