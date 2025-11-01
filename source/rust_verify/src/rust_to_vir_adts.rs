@@ -9,7 +9,7 @@ use crate::util::err_span;
 use air::ast_util::str_ident;
 use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind, TypingEnv, TypingMode};
+use rustc_middle::ty::{AdtDef, GenericArgsRef, TyKind, TypingEnv, TypingMode};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -438,6 +438,7 @@ fn get_sized_constraint<'tcx>(
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
     use crate::rustc_trait_selection::traits::NormalizeExt;
+    use rustc_middle::ty::SizedTraitKind;
     let tcx = ctxt.tcx;
 
     let param_env = tcx.param_env(adt_def.did());
@@ -446,7 +447,7 @@ fn get_sized_constraint<'tcx>(
         return Ok(None);
     }
 
-    let sized_constraint_opt = adt_def.sized_constraint(tcx);
+    let sized_constraint_opt = adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
     let Some(sized_constraint) = sized_constraint_opt else {
         return Ok(None);
     };
@@ -472,7 +473,7 @@ fn get_sized_constraint<'tcx>(
         let norm = at.normalize(*ty);
         if norm.value != *ty {
             for arg in norm.value.walk().into_iter() {
-                if let GenericArgKind::Type(t) = arg.unpack() {
+                if let Some(t) = arg.as_type() {
                     assert!(!matches!(t.kind(), TyKind::Infer(..)));
                 }
             }
@@ -484,7 +485,7 @@ fn get_sized_constraint<'tcx>(
 
         let sc3 = match sc2.kind() {
             TyKind::Adt(other_adt_def, args) => {
-                let opt = other_adt_def.sized_constraint(tcx);
+                let opt = other_adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
                 let Some(sc3) = opt else {
                     return Ok(None);
                 };
@@ -579,7 +580,7 @@ pub(crate) fn check_item_external<'tcx>(
     // Check that the type args match.
 
     crate::rust_to_vir_base::check_item_external_generics(
-        None, generics, false, substs_ref, false, span,
+        ctxt.tcx, None, generics, false, substs_ref, false, span,
     )?;
 
     // Check that the trait bounds match.

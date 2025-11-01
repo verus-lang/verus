@@ -12,7 +12,7 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    GenericParamDefKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
     TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
-    Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -675,7 +675,7 @@ pub(crate) fn mid_ty_simplify<'tcx>(
                     || is_ghost_or_tracked)
                     && args.len() == 1;
             if is_box || is_smart_ptr {
-                if let rustc_middle::ty::GenericArgKind::Type(t) = args[0].unpack() {
+                if let Some(t) = args[0].as_type() {
                     mid_ty_simplify(tcx, verus_items, &t, false)
                 } else {
                     panic!("unexpected type argument")
@@ -758,7 +758,7 @@ pub(crate) fn mid_arg_filter_for_external_impls<'tcx>(
 ) -> bool {
     let mut all_types_supported = true;
     for arg in type_walker {
-        if let rustc_middle::ty::GenericArgKind::Type(t) = arg.unpack() {
+        if let Some(t) = arg.as_type() {
             let supported = mid_ty_filter_for_external_impls(ctxt, &t, external_info);
             all_types_supported = all_types_supported && supported;
         }
@@ -817,7 +817,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                 if Some(pred.projection_term.def_id) == tcx.lang_items().fn_once_output() {
                     continue;
                 }
-                let TermKind::Ty(_ty) = pred.term.unpack() else {
+                let Some(_ty) = pred.term.as_type() else {
                     return false;
                 };
                 let trait_def_id = pred.projection_term.trait_def_id(tcx);
@@ -947,7 +947,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
-                    match arg.unpack() {
+                    match arg.kind() {
                         rustc_middle::ty::GenericArgKind::Type(t) => {
                             typ_args.push(t_rec(&t)?);
                         }
@@ -1057,7 +1057,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let norm = at.normalize(*ty);
             if norm.value != *ty {
                 for arg in norm.value.walk().into_iter() {
-                    if let GenericArgKind::Type(t) = arg.unpack() {
+                    if let Some(t) = arg.as_type() {
                         assert!(!matches!(t.kind(), TyKind::Infer(..)));
                     }
                 }
@@ -1078,7 +1078,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let mut trait_typ_args = Vec::new();
 
                     for arg in t_args.iter() {
-                        match arg.unpack() {
+                        match arg.kind() {
                             rustc_middle::ty::GenericArgKind::Type(t) => {
                                 trait_typ_args.push(t_rec_flags(&t, false)?.0);
                             }
@@ -1115,7 +1115,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
-            let resolved = if tcx.trait_of_item(*def_id).is_none() {
+            let resolved = if tcx.trait_of_assoc(*def_id).is_none() {
                 None
             } else {
                 let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
@@ -1144,7 +1144,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             let mut typ_args: Vec<(Typ, bool)> = Vec::new();
             for arg in args.iter() {
-                match arg.unpack() {
+                match arg.kind() {
                     rustc_middle::ty::GenericArgKind::Type(t) => {
                         typ_args.push(mid_ty_to_vir_ghost(
                             tcx,
@@ -1336,7 +1336,7 @@ pub(crate) fn implements_structural<'tcx>(
         .expect("structural trait is not defined");
 
     let infcx = ctxt.tcx.infer_ctxt().build(TypingMode::PostAnalysis);
-    let ty = ctxt.tcx.erase_regions(ty);
+    let ty = ctxt.tcx.erase_and_anonymize_regions(ty);
     if ty.has_escaping_bound_vars() {
         return false;
     }
@@ -1426,26 +1426,24 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                 assert!(args.len() == 6);
                 let arg_mode_tuple = &args[2];
                 let ret_mode_typ = &args[3];
-                let ret_mode =
-                    if let rustc_middle::ty::GenericArgKind::Type(ty) = ret_mode_typ.unpack() {
-                        get_proof_fn_one_mode(ctxt, span, &ty)?
-                    } else {
-                        panic!("unexpected FnProof argument")
-                    };
-                let arg_modes =
-                    if let rustc_middle::ty::GenericArgKind::Type(ty) = arg_mode_tuple.unpack() {
-                        if let TyKind::Tuple(_) = ty.kind() {
-                            let mut modes: Vec<Mode> = Vec::new();
-                            for t in ty.tuple_fields().iter() {
-                                modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
-                            }
-                            modes
-                        } else {
-                            panic!("unexpected FnProof argument")
+                let ret_mode = if let Some(ty) = ret_mode_typ.as_type() {
+                    get_proof_fn_one_mode(ctxt, span, &ty)?
+                } else {
+                    panic!("unexpected FnProof argument")
+                };
+                let arg_modes = if let Some(ty) = arg_mode_tuple.as_type() {
+                    if let TyKind::Tuple(_) = ty.kind() {
+                        let mut modes: Vec<Mode> = Vec::new();
+                        for t in ty.tuple_fields().iter() {
+                            modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
                         }
+                        modes
                     } else {
                         panic!("unexpected FnProof argument")
-                    };
+                    }
+                } else {
+                    panic!("unexpected FnProof argument")
+                };
                 return Ok(Some((arg_modes, ret_mode)));
             }
             Ok(None)
@@ -1474,7 +1472,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     } else {
         let mut vir_args = vec![];
         for arg in args.iter() {
-            match arg.unpack() {
+            match arg.kind() {
                 GenericArgKind::Lifetime(_) => {}
                 GenericArgKind::Type(ty) => {
                     vir_args.push(mid_ty_to_vir(
@@ -1493,7 +1491,20 @@ pub(crate) fn check_generic_bound<'tcx>(
             }
         }
         let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
-            TraitId::Sized
+            TraitId::Sizedness(Sizedness::Sized)
+        } else if Some(trait_def_id) == tcx.lang_items().meta_sized_trait() {
+            let is_const = false; // TODO
+            TraitId::Sizedness(Sizedness::MetaSized(
+                def_id_to_vir_path(tcx, verus_items, trait_def_id, None),
+                is_const,
+            ))
+        } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
+            TraitId::Sizedness(Sizedness::PointeeSized(def_id_to_vir_path(
+                tcx,
+                verus_items,
+                trait_def_id,
+                None,
+            )))
         } else {
             TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
         };
@@ -1609,7 +1620,7 @@ where
                     // trait which Fn/FnMut/FnOnce all get automatically.)
                     continue;
                 }
-                let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                let typ = if let Some(ty) = pred.term.as_type() {
                     mid_ty_to_vir(tcx, verus_items, None, param_env_src, *span, &ty, false)?
                 } else {
                     return err_span(*span, "Verus does not yet support this type of bound");
@@ -1658,6 +1669,7 @@ where
 
 // REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    tcx: TyCtxt<'tcx>,
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
     skip_implicit_lifetimes: bool,
@@ -1688,7 +1700,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
     // the types from the external definition)
     let n_skip = if skip_self { 1 } else { 0 };
     let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
-    substs_ref.retain(|arg| match arg.unpack() {
+    substs_ref.retain(|arg| match arg.kind() {
         GenericArgKind::Const(cnst) => {
             if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
                 if let ValTreeKind::Leaf(ScalarInt::TRUE) = *valtree {
@@ -1736,13 +1748,13 @@ pub(crate) fn check_item_external_generics<'tcx>(
             }
         };
 
-        match (generic_arg.unpack(), &generic_param.kind) {
+        match (generic_arg.kind(), &generic_param.kind) {
             (
                 GenericArgKind::Lifetime(region),
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
             ) => {
                 // I guess this check doesn't really matter since we ignore lifetimes anyway
-                match region.get_name() {
+                match region.get_name(tcx) {
                     Some(name) if name.as_str() == param_name => { /* okay */ }
                     _ => {
                         return err();
@@ -1757,10 +1769,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (
-                GenericArgKind::Const(c),
-                GenericParamKind::Const { ty: _, default: _, synthetic: false },
-            ) => {
+            (GenericArgKind::Const(c), GenericParamKind::Const { ty: _, default: _ }) => {
                 match c.kind() {
                     ConstKind::Param(param) if param.name.as_str() == param_name => {
                         // okay

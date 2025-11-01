@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place,
+    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, Place, Sizedness,
     SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility,
     WellKnownItem,
 };
@@ -142,7 +142,7 @@ pub fn demote_external_traits(
         for bound in function.x.typ_bounds.iter() {
             let trait_path = match &**bound {
                 GenericBoundX::Trait(TraitId::Path(path), _) => path,
-                GenericBoundX::Trait(TraitId::Sized, _) => {
+                GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                     continue;
                 }
                 GenericBoundX::TypEquality(path, _, _, _) => path,
@@ -396,7 +396,7 @@ pub fn remove_self_is_itself_bound(
                     return false;
                 }
             }
-            GenericBoundX::Trait(TraitId::Sized, _tp) => {}
+            GenericBoundX::Trait(TraitId::Sizedness(_), _tp) => {}
             GenericBoundX::TypEquality(..) => {}
             GenericBoundX::ConstTyp(..) => {}
         }
@@ -727,7 +727,10 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
             GenericBoundX::Trait(trait_id, typ_args) => {
                 let skip = match trait_id {
                     TraitId::Path(path) => !ctx.trait_map.contains_key(path),
-                    TraitId::Sized => false,
+                    // TraitId::Sizedness(Sizedness::Sized | Sizedness::MetaSized(_)) => false,
+                    TraitId::Sizedness(Sizedness::Sized) => false,
+
+                    TraitId::Sizedness(_) => true,
                 };
                 if skip {
                     continue;
@@ -770,7 +773,8 @@ pub(crate) fn trait_bound_to_air(
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sized => {
+        TraitId::Sizedness(Sizedness::MetaSized(_, _) | Sizedness::PointeeSized(_)) => None,
+        TraitId::Sizedness(Sizedness::Sized) => {
             // sized bound only takes decorate param
             let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());
             Some(ident_apply(&crate::def::sized_bound(), &typ_exprs))

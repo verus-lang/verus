@@ -1066,9 +1066,17 @@ pub struct ParamX {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum Sizedness {
+    Sized,
+    // TODO(1.91.0): revisit if these paths are actually needed
+    MetaSized(Path, bool), // boolean indicates if const
+    PointeeSized(Path),
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum TraitId {
     Path(Path),
-    Sized,
+    Sizedness(Sizedness),
 }
 
 pub type GenericBound = Arc<GenericBoundX>;

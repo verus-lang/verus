@@ -1,5 +1,4 @@
 #![feature(proc_macro_span)]
-#![feature(path_file_prefix)]
 
 mod examples;
 mod rust_code;

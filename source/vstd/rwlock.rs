@@ -526,7 +526,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// is dropped. You must call [`WriteHandle::release_write`].
     /// Verus does not check that lock is released.
     #[verifier::exec_allows_no_decreases_clause]
-    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
+    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<'_, V, Pred>))
         ensures
             ({
                 let val = ret.0;
@@ -616,7 +616,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// is dropped. You must call [`ReadHandle::release_read`].
     /// Verus does not check that lock is released.
     #[verifier::exec_allows_no_decreases_clause]
-    pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
+    pub fn acquire_read(&self) -> (read_handle: ReadHandle<'_, V, Pred>)
         ensures
             read_handle.rwlock() == *self,
             self.inv(read_handle.view()),

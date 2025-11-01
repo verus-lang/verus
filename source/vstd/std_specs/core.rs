@@ -1,11 +1,12 @@
 use super::super::prelude::*;
+use core::marker::PointeeSized;
 
 use verus as verus_;
 
 verus_! {
 
 #[verifier::external_trait_specification]
-pub trait ExDeref {
+pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
     type Target: ?Sized;
@@ -41,17 +42,17 @@ pub trait ExAllocator {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFreeze {
+pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDebug {
+pub trait ExDebug: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDisplay {
+pub trait ExDisplay: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Display;
 }
 
@@ -75,12 +76,12 @@ pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
 ;
 
 #[verifier::external_trait_specification]
-pub trait ExHash {
+pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExPtrPointee {
+pub trait ExPtrPointee: PointeeSized {
     type ExternalTraitSpecificationFor: core::ptr::Pointee;
 
     type Metadata:
@@ -114,6 +115,11 @@ pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
 #[verifier::external_trait_specification]
 pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExMetaSized {
+    type ExternalTraitSpecificationFor: core::marker::MetaSized;
 }
 
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
@@ -157,7 +163,7 @@ pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
-pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
+pub struct ExPhantomData<V: PointeeSized>(core::marker::PhantomData<V>);
 
 pub assume_specification[ core::intrinsics::likely ](b: bool) -> (c: bool)
     ensures
@@ -240,4 +246,4 @@ impl_from_spec! {u64 => [u128]}
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct ExAssertParamIsClone<T: Clone + ?Sized>(core::clone::AssertParamIsClone<T>);
+pub struct ExAssertParamIsClone<T: Clone + PointeeSized>(core::clone::AssertParamIsClone<T>);

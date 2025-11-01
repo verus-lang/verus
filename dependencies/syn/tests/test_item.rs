@@ -61,18 +61,19 @@ fn test_negative_impl() {
     }
     "#);
 
-    #[cfg(any())]
-    #[rustfmt::skip]
-    impl !Trait {}
-    let tokens = quote! {
-        impl !Trait {}
-    };
-    snapshot!(tokens as Item, @r#"
-    Item::Impl {
-        generics: Generics,
-        self_ty: Type::Verbatim(`! Trait`),
-    }
-    "#);
+    // TODO(1.91.0): this is now disallowed
+    // #[cfg(any())]
+    // #[rustfmt::skip]
+    // impl !Trait {}
+    // let tokens = quote! {
+    //     impl !Trait {}
+    // };
+    // snapshot!(tokens as Item, @r#"
+    // Item::Impl {
+    //     generics: Generics,
+    //     self_ty: Type::Verbatim(`! Trait`),
+    // }
+    // "#);
 
     #[cfg(any())]
     impl !Trait for T {}
@@ -104,18 +105,19 @@ fn test_negative_impl() {
     }
     "#);
 
-    #[cfg(any())]
-    #[rustfmt::skip]
-    impl !! {}
-    let tokens = quote! {
-        impl !! {}
-    };
-    snapshot!(tokens as Item, @r#"
-    Item::Impl {
-        generics: Generics,
-        self_ty: Type::Verbatim(`! !`),
-    }
-    "#);
+    // TODO(1.91.0): this is now disallowed
+    // #[cfg(any())]
+    // #[rustfmt::skip]
+    // impl !! {}
+    // let tokens = quote! {
+    //     impl !! {}
+    // };
+    // snapshot!(tokens as Item, @r#"
+    // Item::Impl {
+    //     generics: Generics,
+    //     self_ty: Type::Verbatim(`! !`),
+    // }
+    // "#);
 }
 
 #[test]

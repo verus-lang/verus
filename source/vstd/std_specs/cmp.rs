@@ -3,12 +3,13 @@ use super::super::prelude::*;
 use verus as verus_;
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
+use core::marker::PointeeSized;
 
 verus_! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]
-pub trait ExPartialEq<Rhs: ?Sized = Self> {
+pub trait ExPartialEq<Rhs: PointeeSized = Self>: PointeeSized {
     type ExternalTraitSpecificationFor: PartialEq<Rhs>;
 
     spec fn obeys_eq_spec() -> bool;
@@ -27,13 +28,18 @@ pub trait ExPartialEq<Rhs: ?Sized = Self> {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExEq: PartialEq {
+pub trait ExEq: PartialEq + PointeeSized {
     type ExternalTraitSpecificationFor: Eq;
 }
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExAssertParamIsEq<T: Eq + PointeeSized>(core::cmp::AssertParamIsEq<T>);
+
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialOrdSpec via PartialOrdSpecImpl)]
-pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
+pub trait ExPartialOrd<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     type ExternalTraitSpecificationFor: PartialOrd<Rhs>;
 
     spec fn obeys_partial_cmp_spec() -> bool;
@@ -107,7 +113,7 @@ pub trait ExPartialOrd<Rhs: ?Sized = Self>: PartialEq<Rhs> {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(OrdSpec via OrdSpecImpl)]
-pub trait ExOrd: Eq + PartialOrd {
+pub trait ExOrd: Eq + PartialOrd + PointeeSized {
     type ExternalTraitSpecificationFor: Ord;
 
     spec fn obeys_cmp_spec() -> bool;
@@ -179,13 +185,13 @@ pub trait ExOrd: Eq + PartialOrd {
     ;
 }
 
-pub trait PartialEqIs<Rhs: ?Sized = Self>: PartialEq<Rhs> {
+pub trait PartialEqIs<Rhs: PointeeSized = Self>: PartialEq<Rhs> + PointeeSized {
     spec fn is_eq(&self, other: &Rhs) -> bool;
 
     spec fn is_ne(&self, other: &Rhs) -> bool;
 }
 
-pub trait PartialOrdIs<Rhs: ?Sized = Self>: PartialOrd<Rhs> {
+pub trait PartialOrdIs<Rhs: PointeeSized = Self>: PartialOrd<Rhs> + PointeeSized {
     spec fn is_lt(&self, other: &Rhs) -> bool;
 
     spec fn is_le(&self, other: &Rhs) -> bool;
@@ -195,7 +201,7 @@ pub trait PartialOrdIs<Rhs: ?Sized = Self>: PartialOrd<Rhs> {
     spec fn is_ge(&self, other: &Rhs) -> bool;
 }
 
-impl<A: ?Sized + PartialEq<Rhs>, Rhs: ?Sized> PartialEqIs<Rhs> for A {
+impl<A: PointeeSized + PartialEq<Rhs>, Rhs: PointeeSized> PartialEqIs<Rhs> for A {
     #[verifier::inline]
     open spec fn is_eq(&self, other: &Rhs) -> bool {
         self.eq_spec(other)
@@ -207,7 +213,7 @@ impl<A: ?Sized + PartialEq<Rhs>, Rhs: ?Sized> PartialEqIs<Rhs> for A {
     }
 }
 
-impl<A: ?Sized + PartialOrd<Rhs>, Rhs: ?Sized> PartialOrdIs<Rhs> for A {
+impl<A: PointeeSized + PartialOrd<Rhs>, Rhs: PointeeSized> PartialOrdIs<Rhs> for A {
     #[verifier::inline]
     open spec fn is_lt(&self, other: &Rhs) -> bool {
         self.partial_cmp_spec(other) == Some(Ordering::Less)

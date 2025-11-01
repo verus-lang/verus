@@ -116,7 +116,7 @@ impl<T, P> Punctuated<T, P> {
     }
 
     /// Returns an iterator over borrowed syntax tree nodes of type `&T`.
-    pub fn iter(&self) -> Iter<T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             inner: Box::new(NoDrop::new(PrivateIter {
                 inner: self.inner.iter(),
@@ -127,7 +127,7 @@ impl<T, P> Punctuated<T, P> {
 
     /// Returns an iterator over mutably borrowed syntax tree nodes of type
     /// `&mut T`.
-    pub fn iter_mut(&mut self) -> IterMut<T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             inner: Box::new(NoDrop::new(PrivateIterMut {
                 inner: self.inner.iter_mut(),
@@ -138,7 +138,7 @@ impl<T, P> Punctuated<T, P> {
 
     /// Returns an iterator over the contents of this sequence as borrowed
     /// punctuated pairs.
-    pub fn pairs(&self) -> Pairs<T, P> {
+    pub fn pairs(&self) -> Pairs<'_, T, P> {
         Pairs {
             inner: self.inner.iter(),
             last: self.last.as_ref().map(Box::as_ref).into_iter(),
@@ -147,7 +147,7 @@ impl<T, P> Punctuated<T, P> {
 
     /// Returns an iterator over the contents of this sequence as mutably
     /// borrowed punctuated pairs.
-    pub fn pairs_mut(&mut self) -> PairsMut<T, P> {
+    pub fn pairs_mut(&mut self) -> PairsMut<'_, T, P> {
         PairsMut {
             inner: self.inner.iter_mut(),
             last: self.last.as_mut().map(Box::as_mut).into_iter(),

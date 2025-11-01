@@ -102,8 +102,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 if let Block { expr: None, targeted_by_break: false, .. } = this.thir[block]
                     && expr_ty.is_never() => {}
             _ => {
-                this.cfg
-                    .push(block, Statement { source_info, kind: StatementKind::StorageLive(temp) });
+                this.cfg.push(block, Statement::new(source_info, StatementKind::StorageLive(temp)));
 
                 // In constants, `temp_lifetime` is `None` for temporaries that
                 // live for the `'static` lifetime. Thus we do not drop these
@@ -130,8 +129,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             this.schedule_drop(expr_span, temp_lifetime, temp, DropKind::Value);
         }
 
-        if let Some(backwards_incompatible) = temp_lifetime.backwards_incompatible {
-            this.schedule_backwards_incompatible_drop(expr_span, backwards_incompatible, temp);
+        if let Some((backwards_incompatible, reason)) = temp_lifetime.backwards_incompatible {
+            this.schedule_backwards_incompatible_drop(
+                expr_span,
+                backwards_incompatible,
+                temp,
+                reason,
+            );
         }
 
         block.and(temp)
