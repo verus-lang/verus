@@ -2448,7 +2448,13 @@ impl parse::Parse for WithSpecOnFn {
             if !input.peek(Token![,]) {
                 break;
             }
+            let fork = input.fork();
+            let _comma: Token![,] = fork.parse()?;
+            let has_next_input = fork.parse::<FnArg>().is_ok();
             let _comma: Token![,] = input.parse()?;
+            if !has_next_input {
+                break;
+            }
         }
         let outputs = if input.peek(Token![->]) {
             let token = input.parse()?;
@@ -2484,7 +2490,13 @@ impl parse::Parse for WithSpecOnExpr {
             if !input.peek(Token![,]) {
                 break;
             }
+            let fork = input.fork();
+            let _comma: Token![,] = fork.parse()?;
+            let has_next_input = fork.parse::<Expr>().is_ok();
             let _comma: Token![,] = input.parse()?;
+            if !has_next_input {
+                break;
+            }
         }
         let outputs = if input.peek(Token![=>]) {
             let token = input.parse()?;
