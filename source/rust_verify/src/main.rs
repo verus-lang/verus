@@ -1,6 +1,9 @@
 #![feature(rustc_private)]
-
+#![allow(unused_must_use)]
 use rust_verify::util::{VerusBuildProfile, verus_build_info};
+use std::fs::File;
+use std::io::Write;
+use rand::prelude::*;
 
 extern crate rustc_driver;
 extern crate rustc_log;
@@ -30,6 +33,14 @@ pub fn main() {
     // For now, verus_builtin, vstd, etc. must be rebuilt for each via_cargo crate:
     let via_cargo_rebuild_verus_libs = via_cargo;
 
+    let mut rng = rand::rng();
+    let id = rng.random::<u32>();
+    let mut f = File::create(format!("verus-main-rs-main-fn-{}.txt", id)).expect("Should be able to open log file");
+    writeln!(f, "Starting verus main").unwrap();
+    for arg in std::env::args() {
+        writeln!(f, "\targ: {}", arg).unwrap();
+    }
+
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
@@ -53,6 +64,7 @@ pub fn main() {
     } else {
         (false, false)
     };
+    writeln!(f, "has_rustc: {has_rustc}, via_cargo: {via_cargo}");
 
     let build_info = verus_build_info();
 
@@ -70,14 +82,22 @@ pub fn main() {
         let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
         std::process::exit(1);
     }
-
+    
     let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
     let program =
         if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
     let mut vstd = None;
+    writeln!(f, "build_test_mode: {}", build_test_mode);
+    writeln!(f, "via_cargo_rebuild_verus_libs: {}", via_cargo_rebuild_verus_libs);
     let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
         let verus_root = rust_verify::driver::find_verusroot();
+        writeln!(f, "Initial verus_root:");
+        match &verus_root {
+            Some(r) => { let _ = writeln!(f, "\tverus_root: {:?}", r.path); }
+            None => { let _ = writeln!(f, "\tverus_root: None"); }
+        }
+
         if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
             let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
             vstd = Some((format!("vstd"), vstd_path));
@@ -86,6 +106,11 @@ pub fn main() {
     } else {
         None
     };
+    writeln!(f, "verus_root after possible updates:");
+    match &verus_root {
+        Some(r) => { let _ = writeln!(f, "\tverus_root: {:?}", r.path); }
+        None => { let _ = writeln!(f, "\tverus_root: None"); }
+    }
 
     let mut args: Vec<String> = args.collect();
     let is_direct_rustc_call = via_cargo
@@ -93,17 +118,26 @@ pub fn main() {
             &mut args,
             &mut dep_tracker,
         );
-
+    writeln!(f, "is_direct_rustc_call: {}", is_direct_rustc_call);
+    writeln!(f, "final args: {:?}", args);
     if is_direct_rustc_call {
+        writeln!(f, "Direct rustc call detected, invoking rustc directly");
         args.insert(0, program.clone());
         rust_verify::driver::run_rustc_compiler_directly(&args);
         return;
     }
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
+    
+    match via_cargo {
+        Some(ref c) => { let _ = writeln!(f, "updated via_cargo.\n\tcompile_when_primary package {}, compile_when_not_primary_package {}, import_dep {:?}", c.compile_when_primary_package, c.compile_when_not_primary_package, c.import_dep_if_present); }
+        None => { let _ = writeln!(f, "via_cargo: None"); }
+    }
 
     let (our_args, rustc_args) =
         rust_verify::config::parse_args_with_imports(&program, args.into_iter(), vstd);
+    writeln!(f, "our_args: {:?}", our_args);
+    writeln!(f, "rustc_args: {:?}", rustc_args);
 
     if our_args.version {
         if our_args.output_json {
@@ -121,6 +155,7 @@ pub fn main() {
         .as_ref()
         .map(|args| rust_verify::cargo_verus::is_compile(args, &mut dep_tracker))
         .unwrap_or(false);
+    writeln!(f, "via_cargo_compile: {}", via_cargo_compile);
 
     if !build_test_mode {
         match build_info.profile {
@@ -144,6 +179,7 @@ pub fn main() {
         rustc_args,
         verus_root,
         build_test_mode || via_cargo_rebuild_verus_libs,
+        id,
     );
 
     let total_time_1 = std::time::Instant::now();

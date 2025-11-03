@@ -1,3 +1,7 @@
+#![allow(unused_must_use)]
+use std::fs::File;
+use std::io::Write;
+
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
@@ -201,11 +205,14 @@ pub fn run(
     mut rustc_args: Vec<String>,
     verus_root: Option<VerusRoot>,
     build_test_mode: bool,
+    id: u32,
 ) -> (Verifier, Stats, Result<(), ()>) {
     if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
     }
+    let mut f = File::create(format!("verus-drive-rs-run-fn-{}.txt", id)).expect("Should be able to open log file");
+    writeln!(f, "rustc_args at start of run: {:?}", rustc_args);
     // TODO simplify
     let verus_externs = if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
@@ -214,10 +221,13 @@ pub fn run(
                 has_vstd: verifier.args.vstd == Vstd::Imported,
                 has_builtin: !matches!(verifier.args.vstd, Vstd::IsCore | Vstd::ImportedViaCore),
             };
-            rustc_args.extend(externs.to_args());
+            let extern_args = externs.to_args().collect::<Vec<_>>();
+            writeln!(f, "verus extern args: {:?}", extern_args);
+            rustc_args.extend(extern_args);
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
             }
+            writeln!(f, "in_vargo: {}", in_vargo);
             if !in_vargo { Some(externs) } else { None }
         } else {
             None
@@ -225,6 +235,7 @@ pub fn run(
     } else {
         None
     };
+    writeln!(f, "verus_externs: {:?}", verus_externs);
 
     let time0 = Instant::now();
     let mut rustc_args_verify = rustc_args.clone();
