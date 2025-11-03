@@ -727,9 +727,9 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
             GenericBoundX::Trait(trait_id, typ_args) => {
                 let skip = match trait_id {
                     TraitId::Path(path) => !ctx.trait_map.contains_key(path),
-                    // TraitId::Sizedness(Sizedness::Sized | Sizedness::MetaSized(_)) => false,
                     TraitId::Sizedness(Sizedness::Sized) => false,
-
+                    // we currently MetaSized and PointeeSized as equivalent (both representing
+                    // size that's not known at compile time), so we don't emit a Sized bound
                     TraitId::Sizedness(_) => true,
                 };
                 if skip {
@@ -773,7 +773,11 @@ pub(crate) fn trait_bound_to_air(
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sizedness(Sizedness::MetaSized(_, _) | Sizedness::PointeeSized(_)) => None,
+        // We treat both MetaSized and PointeeSized as unsized in AIR for now.
+        // This may have to become more precise at some point in the future, but
+        // collapsing the two should be sound since they don't lead to different
+        // verification obligations.
+        TraitId::Sizedness(Sizedness::MetaSized | Sizedness::PointeeSized) => None,
         TraitId::Sizedness(Sizedness::Sized) => {
             // sized bound only takes decorate param
             let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());

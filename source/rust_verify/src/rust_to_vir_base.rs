@@ -1530,18 +1530,9 @@ pub(crate) fn check_generic_bound<'tcx>(
         let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
             TraitId::Sizedness(Sizedness::Sized)
         } else if Some(trait_def_id) == tcx.lang_items().meta_sized_trait() {
-            let is_const = false; // TODO
-            TraitId::Sizedness(Sizedness::MetaSized(
-                def_id_to_vir_path(tcx, verus_items, trait_def_id, None),
-                is_const,
-            ))
+            TraitId::Sizedness(Sizedness::MetaSized)
         } else if Some(trait_def_id) == tcx.lang_items().pointee_sized_trait() {
-            TraitId::Sizedness(Sizedness::PointeeSized(def_id_to_vir_path(
-                tcx,
-                verus_items,
-                trait_def_id,
-                None,
-            )))
+            TraitId::Sizedness(Sizedness::PointeeSized)
         } else {
             TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id, None))
         };

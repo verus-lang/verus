@@ -208,7 +208,8 @@ fn gen_generics(
                     let bound = Bound::Sized;
                     generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
                 }
-                // TODO(1.91.0): Do we need to do something for other size-related traits?
+                // Just like in the conversion to AIR, we treat both MetaSized and PointeeSized
+                // as "unsized" here in order to catch conflicting assumptions on traits.
             }
             GenericBoundX::TypEquality(path, typs, x, eq_typ) => {
                 let typ = gen_typ(state, &typs[0]);

@@ -1074,12 +1074,15 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+/// Represents different levels of sizedness introduced by
+/// https://github.com/rust-lang/rfcs/pull/3729.  For now we treat MetaSized and
+/// PointeeSized identically (like ?Sized previously), but we distinguish them
+/// here since we may need to make this handling more precise going forward.
+#[derive(Copy, Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum Sizedness {
     Sized,
-    // TODO(1.91.0): revisit if these paths are actually needed
-    MetaSized(Path, bool), // boolean indicates if const
-    PointeeSized(Path),
+    MetaSized,
+    PointeeSized,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
