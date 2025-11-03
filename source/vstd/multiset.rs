@@ -552,7 +552,7 @@ pub broadcast proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multis
 #[macro_export]
 macro_rules! assert_multisets_equal {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
     };
 }
 

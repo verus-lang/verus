@@ -28,6 +28,20 @@ impl ToTokens for Vstd {
     }
 }
 
+pub struct VstdPrelude(pub Span);
+
+impl ToTokens for VstdPrelude {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        if IS_CORE.load(Ordering::Relaxed) {
+            tokens.extend(quote_spanned! { self.0 => crate::vstd::prelude });
+        } else if IS_VSTD.load(Ordering::Relaxed) {
+            tokens.extend(quote_spanned! { self.0 => crate::prelude });
+        } else {
+            tokens.extend(quote_spanned! { self.0 => ::vstd::prelude });
+        }
+    }
+}
+
 macro_rules! quote_spanned_vstd {
     ($b:ident, $span:expr => $($tt:tt)*) => {
         {
@@ -43,6 +57,16 @@ macro_rules! quote_vstd {
         {
             let sp = ::proc_macro2::Span::call_site();
             let $b = crate::vstd_path::Vstd(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_vstd_prelude {
+    ($b:ident => $($tt:tt)*) => {
+        {
+            let sp = ::proc_macro2::Span::call_site();
+            let $b = crate::vstd_path::VstdPrelude(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
         }
     }

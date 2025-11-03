@@ -1019,8 +1019,8 @@ pub fn exchange_stream(
         TokenStream::new()
     };
 
-    return Ok(quote! {
-        ::verus_builtin_macros::verus_impl!{
+    return Ok(quote_vstd_prelude! { prelude =>
+        #prelude::verus_impl!{
             #[cfg(verus_keep_ghost_body)]
             #[verifier::external_body] /* vattr */
             pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
