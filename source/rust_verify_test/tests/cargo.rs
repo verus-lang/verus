@@ -114,7 +114,6 @@ fn adjust_version(mut project_path: PathBuf) {
     let Some(Value::Table(dependencies)) = toml_table.get_mut("dependencies") else {
         panic!("no dependencies");
     };
-    println!("toml table: {dependencies:#?}");
     let Some(version) = dependencies.get_mut("vstd") else {
         panic!("no vstd version");
     };
