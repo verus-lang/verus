@@ -57,6 +57,7 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_DCR_ID: &str = "DCR%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
@@ -227,6 +228,7 @@ pub const QID_TRAIT_IMPL: &str = "trait_impl";
 pub const QID_TRAIT_TYPE_BOUNDS: &str = "trait_type_bounds";
 pub const QID_ASSOC_TYPE_BOUND: &str = "assoc_type_bound";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
+pub const QID_OPAQUE_TYPE_BOUND: &str = "opaque_type_bound";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
@@ -242,6 +244,8 @@ pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
+
+pub const RUST_OPAQUE_TYPE: &str = "opaque";
 
 // used by axiom-usage-info to identify axioms from the prelude
 pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
@@ -428,6 +432,10 @@ pub fn ptr_type() -> Path {
 pub fn global_type() -> Path {
     let ident = Arc::new(GLOBAL_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_dcr_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_DCR_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_type_id(ident: &Path) -> Ident {

@@ -132,7 +132,7 @@ impl<'tcx> BodyCtxt<'tcx> {
         let param_env = self.ctxt.tcx.param_env(self.fun_id);
         let typing_env = rustc_middle::ty::TypingEnv {
             param_env,
-            typing_mode: rustc_middle::ty::TypingMode::PostAnalysis,
+            typing_mode: rustc_middle::ty::TypingMode::non_body_analysis(),
         };
         self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }

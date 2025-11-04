@@ -103,7 +103,8 @@ impl ResolvedTypeCollection {
             | TypX::TypeId
             | TypX::ConstInt(_)
             | TypX::ConstBool(_)
-            | TypX::Air(_) => {
+            | TypX::Air(_)
+            | TypX::Opaque { .. } => {
                 // trivial resolve
             }
         }
