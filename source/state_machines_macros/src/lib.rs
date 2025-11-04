@@ -65,7 +65,9 @@ fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream 
 pub fn state_machine(input: TokenStream) -> TokenStream {
     crate::vstd_path::set_is_vstd(false);
     crate::vstd_path::set_is_core(cfg_verify_core());
-    construct_state_machine(input, false)
+    let ts = construct_state_machine(input, false);
+    dbg!("state_machine output: {}", ts.to_string());
+    ts
 }
 
 #[proc_macro]
