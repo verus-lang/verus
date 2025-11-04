@@ -975,6 +975,42 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     }
 }
 
+/// If any function is applied to each element of a set to construct
+/// another set, the constructed set's length is at most the original's
+pub proof fn lemma_map_size_bound<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
+    requires
+        x.finite(),
+        x.map(f) == y,
+    ensures
+        y.finite(),
+        y.len() <= x.len(),
+    decreases x.len(),
+{
+    broadcast use group_set_properties;
+
+    if x.is_empty() {
+        if !y.is_empty() {
+            let e = y.choose();
+        }
+    } else {
+        let xx = x.choose();
+        let img = f(xx);
+        let pre = x.filter(|a: A| f(a) == f(xx));
+        x.lemma_len_filter(|a: A| f(a) == f(xx));
+        let wit = choose|a: A| x.contains(a) && f(a) == f(xx);
+        assert forall|b: B| (#[trigger] y.remove(f(xx)).contains(b)) implies exists|a: A|
+            x.difference(pre).contains(a) && f(a) == b by {
+            let pre_wit = choose|a: A| x.contains(a) && f(a) == b;
+            assert(x.difference(pre).contains(pre_wit));
+        }
+
+        assert(x == x.difference(pre).union(pre));
+        assert(y == y.remove(f(xx)).insert(f(xx)));
+        assert(x.difference(pre).map(f) == y.remove(f(xx)));
+        lemma_map_size_bound(x.difference(pre), y.remove(f(xx)), f);
+    }
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the union of sets `a` and `b` and then taking the union of the result with `b`
 /// is the same as taking the union of `a` and `b` once.
