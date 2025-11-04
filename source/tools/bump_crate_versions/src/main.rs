@@ -6,6 +6,8 @@ use petgraph::graph::DiGraph;
 use petgraph::algo::toposort;
 //use petgraph::dot::{Dot, Config}; // Used for debugging graphs
 
+const LINE_COUNT_DIR: &Path = Path::new("source/tools/line_count");
+
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
 /// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
@@ -294,8 +296,10 @@ fn update_crates(crates: Vec<Crate>) {
                 update_cargo_verus_template();
             }
         }
-    }
 
+        // Finally, update the line count tool's dependencies if needed
+        update_toml_dependencies(LINE_COUNT_DIR, &modified_crates);
+    }
 }
 
 fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) {
