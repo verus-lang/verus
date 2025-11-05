@@ -4,6 +4,7 @@ use regex::Regex;
 use clap::Parser as ClapParser;
 use petgraph::graph::DiGraph;
 use petgraph::algo::toposort;
+use crates_io_api::SyncClient;
 //use petgraph::dot::{Dot, Config}; // Used for debugging graphs
 
 const LINE_COUNT_DIR: &str = "source/tools/line_count";
@@ -164,6 +165,16 @@ fn src_modified(dir: &Path, commit: &str) -> bool {
     !status.success()   // A successful exit code of 0 means no changes
 }
 
+fn read_toml_version(dir: &Path) -> String {
+    let cargo_toml_path = dir.join("Cargo.toml");
+
+    // Read the Cargo.toml file
+    let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+    let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
+
+    doc["package"]["version"].to_string()
+}
+
 fn update_toml_version(dir: &Path) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
@@ -302,11 +313,24 @@ fn update_crates(crates: Vec<Crate>) {
     }
 }
 
-fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) {
+fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let crates_io_client = SyncClient::new(
+        "verus-version-bumper",
+        std::time::Duration::from_secs(1),
+    )?;
     let sorted_nodes = toposort(&crate_graph, None).expect("Dependency graph has cycles");
     //println!("{:?}", Dot::with_config(&crate_graph, &[Config::EdgeNoLabel]));
     for node_index in sorted_nodes {
         let krate = &crate_graph[node_index];
+        // Before publishing, check if this version already exists on crates.io
+        let crate_version = read_toml_version(&Path::new(&krate.path));
+        let metadata = crates_io_client.get_crate(&krate.name)?;
+        let version_exists = metadata.versions.iter().any(|v| v.num == crate_version && !v.yanked);
+        if version_exists {
+            println!("Crate {} version {} already exists on crates.io, skipping publish.", krate.name, crate_version);
+            continue;
+        }
+
         if dry_run {
             println!("Performing a dry-run publish of crate {}", krate.name);
         } else {
@@ -314,6 +338,7 @@ fn publish_crates(crate_graph: DiGraph<Crate, ()>, dry_run: bool) {
         }
         publish(&Path::new(&krate.path), dry_run);
     }
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -357,7 +382,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let dep_map = compute_immediate_deps(&crates);
             let graph = dep_map_to_graph(&dep_map);
             display_dep_map(&dep_map, 2);
-            publish_crates(graph, *dry_run)
+            publish_crates(graph, *dry_run)?
         }
     }
 
