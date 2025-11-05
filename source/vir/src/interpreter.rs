@@ -1945,7 +1945,14 @@ fn eval_expr_launch(
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
     // Calculate max recursion depth as a fraction of rlimit
     let max_depth = (rlimit as f64 * DEPTH_LIMIT_MULTIPLIER as f64) as usize;
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, max_depth, arch, global, report_long_running: global.report_long_running };
+    let ctx = Ctx {
+        fun_ssts: &fun_ssts,
+        max_iterations,
+        max_depth,
+        arch,
+        global,
+        report_long_running: global.report_long_running,
+    };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
