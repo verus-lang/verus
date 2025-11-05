@@ -16,6 +16,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        fetch-depth: 0
 
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
