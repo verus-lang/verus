@@ -1,27 +1,40 @@
 name: crate-updates
 
 on:
+# Commented out for testing:
 #  schedule:
-#    - cron: '0 0 * * 0'
+#    - cron: '0 0 * * 0'  # Runs on main by default
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  copy-release:
+  bump-crate-versions:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-     - name: Update crate versions, if needed
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Update crate versions, if needed
         run: |
           cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml update
+
+      - name: Commit and push version updates
+        run: |
           git config --global user.name 'Version Bumper Bot'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git diff-index --quiet HEAD || git commit -am "Update crate version numbers"
+          if ! git diff-index --quiet HEAD; then
+            git commit -am "Update crate version numbers"
+            # Commented out for testing
+            # git push
+          else
+            echo "No version updates needed"
+          fi
 
       - name: Publish updated crates to crates.io
         env:
