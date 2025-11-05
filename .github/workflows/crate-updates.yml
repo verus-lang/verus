@@ -30,8 +30,7 @@ jobs:
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if ! git diff-index --quiet HEAD; then
             git commit -am "Update crate version numbers"
-            # Commented out for testing
-            # git push
+            git push
           else
             echo "No version updates needed"
           fi
@@ -40,4 +39,4 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml publish --dry-run
+          cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml publish
