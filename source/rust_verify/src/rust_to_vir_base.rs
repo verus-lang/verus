@@ -12,7 +12,7 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
     TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
@@ -23,8 +23,9 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueTypeX, Path, PathX,
-    Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueTypeX, Path,
+    PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr,
+    VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -1118,7 +1119,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
             let mut args = Vec::new();
             for arg in al_ty.args {
-                match arg.unpack() {
+                match arg.kind() {
                     rustc_type_ir::GenericArgKind::Lifetime(_) => {}
                     rustc_type_ir::GenericArgKind::Type(ty) => {
                         args.push(mid_ty_to_vir(
@@ -2101,7 +2102,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             let mut trait_bounds = Vec::new();
             let mut args = Vec::new();
             for arg in al_ty.args {
-                match arg.unpack() {
+                match arg.kind() {
                     rustc_type_ir::GenericArgKind::Lifetime(_) => {}
                     rustc_type_ir::GenericArgKind::Type(ty) => {
                         args.push(mid_ty_to_vir(
@@ -2151,7 +2152,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         if Some(item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
                             continue;
                         }
-                        let typ = if let TermKind::Ty(ty) = pred.term.unpack() {
+                        let typ = if let TermKind::Ty(ty) = pred.term.kind() {
                             opaque_def_to_vir(ctxt, vir, fn_def_id, &ty)?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
