@@ -202,6 +202,9 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
         if doc.contains_key("dependencies") && doc["dependencies"].get(&krate.name).is_some() {
             doc["dependencies"][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
         }
+        if doc.contains_key("dev-dependencies") && doc["dev-dependencies"].get(&krate.name).is_some() {
+            doc["dev-dependencies"][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
+        }
     }
 
     // Write the updated content back to Cargo.toml
