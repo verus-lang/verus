@@ -1,9 +1,8 @@
 name: crate-updates
 
 on:
-# Commented out for testing:
-#  schedule:
-#    - cron: '0 0 * * 0'  # Runs on main by default
+  schedule:
+    - cron: '0 0 * * 0'  # Runs on main by default every Sunday
   workflow_dispatch:
 
 permissions:
