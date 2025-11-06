@@ -100,6 +100,12 @@ pub(crate) fn rewrite_verus_attribute(
     const DUAL_ATTR: &str = "dual_spec";
     const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
 
+    if let Item::Impl(_) = item {
+        // Add verus_macro attribute to impl block to help later processing.
+        let mut replacer = ExecReplacer::new(erase.clone());
+        replacer.visit_item_mut(&mut item);
+    }
+
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
         if IGNORE_VERIFY_ATTRS.contains(&path.to_string().as_str()) {
@@ -165,8 +171,47 @@ struct ExecReplacer {
     erase: EraseGhost,
 }
 
+impl ExecReplacer {
+    fn new(erase: EraseGhost) -> Self {
+        ExecReplacer { erase }
+    }
+}
+
 impl VisitMut for ExecReplacer {
     // Enable the hack only when needed
+    fn visit_impl_item_fn_mut(&mut self, i: &mut syn::ImplItemFn) {
+        syn::visit_mut::visit_impl_item_fn_mut(self, i);
+
+        // For non-verification, we do nothing here.
+        if !self.erase.keep() {
+            return;
+        }
+
+        // Help verus_spec be aware that it is in impl function.
+        let (verus_spec_attrs, remaining_attrs) = i.attrs.drain(..).partition(|attr| {
+            attr.path().segments.last().map_or(false, |last| last.ident == "verus_spec")
+        });
+        i.attrs = remaining_attrs;
+        for attr in verus_spec_attrs {
+            let spec_tokens = if let Ok(meta) = attr.meta.require_list() {
+                meta.tokens.clone()
+            } else {
+                TokenStream::new()
+            };
+            rewrite_verus_spec_on_fun_or_loop(
+                self.erase.clone(),
+                spec_tokens.into(),
+                AnyFnOrLoop::Fn(syn::ItemFn {
+                    attrs: vec![],
+                    vis: syn::Visibility::Inherited,
+                    sig: i.sig.clone(),
+                    block: Box::new(i.block.clone()),
+                }),
+                true,
+            );
+        }
+    }
+
     #[cfg(feature = "vpanic")]
     fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
         syn::visit_mut::visit_macro_mut(self, mac);
@@ -270,12 +315,12 @@ fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
 // attributes for expression so that unverfied `cargo build` does not need to
 // enable unstable feature for macro.
 pub(crate) fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
-    let mut replacer = ExecReplacer { erase };
+    let mut replacer = ExecReplacer::new(erase);
     replacer.visit_block_mut(fblock);
 }
 
 pub(crate) fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
-    let mut replacer = ExecReplacer { erase };
+    let mut replacer = ExecReplacer::new(erase);
     replacer.visit_expr_mut(expr);
 }
 
@@ -302,7 +347,7 @@ pub(crate) fn rewrite_verus_spec(
 
     match f {
         VerusSpecTarget::FnOrLoop(f) => {
-            rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
+            rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f, false)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
@@ -354,6 +399,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     f: AnyFnOrLoop,
+    is_impl_fn: bool,
 ) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
@@ -376,7 +422,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             }
 
             // Update function signature based on verus_spec.
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, false, false);
+            let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {
