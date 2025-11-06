@@ -184,22 +184,21 @@ impl VisitMut for ImplItemReplacer {
     fn visit_impl_item_fn_mut(&mut self, i: &mut syn::ImplItemFn) {
         syn::visit_mut::visit_impl_item_fn_mut(self, i);
         // Help verus_spec be aware that it is in impl function.
-        i.attrs.iter_mut().filter(|attr|  attr.path().segments.last().map_or(false, |last| last.ident == "verus_spec")).for_each(|attr| 
-        {
-            let path = match &mut attr.meta {
-                syn::Meta::List(l) => {
-                    &mut l.path
-                }
-                syn::Meta::Path(p) => {
-                    p
-                }
-                syn::Meta::NameValue(n) => {
-                    &mut n.path
-                }
-            };
-            let span = path.segments.last().unwrap().ident.span();
-            path.segments.last_mut().unwrap().ident = syn::Ident::new("verus_spec_in_impl", span);
-        });
+        i.attrs
+            .iter_mut()
+            .filter(|attr| {
+                attr.path().segments.last().map_or(false, |last| last.ident == "verus_spec")
+            })
+            .for_each(|attr| {
+                let path = match &mut attr.meta {
+                    syn::Meta::List(l) => &mut l.path,
+                    syn::Meta::Path(p) => p,
+                    syn::Meta::NameValue(n) => &mut n.path,
+                };
+                let span = path.segments.last().unwrap().ident.span();
+                path.segments.last_mut().unwrap().ident =
+                    syn::Ident::new("verus_spec_in_impl", span);
+            });
     }
 }
 
