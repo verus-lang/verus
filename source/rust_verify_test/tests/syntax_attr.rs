@@ -814,6 +814,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_impl_item_const_fn_eval_via_proxy code!{
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            #[verus_spec(ret =>
+                ensures ret == x
+            )]
+            pub const fn const_fn(x: u64) -> u64 {
+                proof!{
+                    assert(true);
+                }
+                {
+                    proof!{assert(true);}
+                }
+                x
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_const_fn_with_ghost code!{
         use vstd::prelude::*;
         #[verus_spec(ret =>
