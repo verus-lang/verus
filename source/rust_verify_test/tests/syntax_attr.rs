@@ -889,3 +889,16 @@ test_verify_one_file! {
         }
     } => Err(_) => {}
 }
+
+test_verify_one_file! {
+    #[test] test_unverified_in_impl code!{
+        use vstd::prelude::*;
+
+        pub struct X;
+
+        #[verus_verify]
+        impl X {
+            fn unverified() {}
+        }
+    } => Ok(())
+}

@@ -155,9 +155,15 @@ pub(crate) fn rewrite_verus_attribute(
     if let syn::Item::Impl(ref mut impl_block) = item {
         for impl_item in &mut impl_block.items {
             if let syn::ImplItem::Fn(ref mut method) = impl_item {
-                method.attrs.push(syn::parse_quote! {
-                    #[allow(unused, verus_impl_method_marker)]
+                let has_verus_spec = method.attrs.iter().any(|attr| {
+                    attr.path().get_ident().map_or(false, |ident| ident == "verus_spec")
                 });
+
+                if has_verus_spec {
+                    method.attrs.push(syn::parse_quote! {
+                        #[allow(unused, verus_impl_method_marker)]
+                    });
+                }
             }
         }
     }
@@ -375,35 +381,20 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
-            // Check if this function has the impl method marker attribute.
-            let is_impl_fn = fun.attrs.iter().any(|attr| {
-                if let Some(ident) = attr.path().get_ident() {
-                    if ident == "allow" {
-                        if let syn::Meta::List(meta_list) = &attr.meta {
-                            return meta_list
-                                .tokens
-                                .to_string()
-                                .contains("verus_impl_method_marker");
-                        }
-                    }
-                }
-                false
-            });
+            let is_hidden_impl_marker = |attr: &syn::Attribute| {
+                attr.path().get_ident().map_or(false, |ident| {
+                    ident == "allow"
+                        && matches!(&attr.meta, syn::Meta::List(meta_list)
+                        if meta_list.tokens.to_string().contains("verus_impl_method_marker"))
+                })
+            };
 
-            //Remove the marker attribute as it is only for internal use.
-            fun.attrs.retain(|attr| {
-                if let Some(ident) = attr.path().get_ident() {
-                    if ident == "allow" {
-                        if let syn::Meta::List(meta_list) = &attr.meta {
-                            return !meta_list
-                                .tokens
-                                .to_string()
-                                .contains("verus_impl_method_marker");
-                        }
-                    }
-                }
-                true
-            });
+            // Check if the function has the impl method marker
+            let is_impl_fn = fun.attrs.iter().any(&is_hidden_impl_marker);
+
+            // Remove the marker attribute (internal use only)
+            fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
+
             let mut new_stream = TokenStream::new();
 
             // Create a copy of unverified function.
