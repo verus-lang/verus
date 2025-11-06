@@ -151,6 +151,23 @@ pub(crate) fn rewrite_verus_attribute(
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
     }
 
+    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
+    if let syn::Item::Impl(ref mut impl_block) = item {
+        for impl_item in &mut impl_block.items {
+            if let syn::ImplItem::Fn(ref mut method) = impl_item {
+                let has_verus_spec = method.attrs.iter().any(|attr| {
+                    attr.path().get_ident().map_or(false, |ident| ident == "verus_spec")
+                });
+
+                if has_verus_spec {
+                    method.attrs.push(syn::parse_quote! {
+                        #[allow(unused, verus_impl_method_marker)]
+                    });
+                }
+            }
+        }
+    }
+
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
@@ -373,6 +390,20 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
+            let is_hidden_impl_marker = |attr: &syn::Attribute| {
+                attr.path().get_ident().map_or(false, |ident| {
+                    ident == "allow"
+                        && matches!(&attr.meta, syn::Meta::List(meta_list)
+                        if meta_list.tokens.to_string().contains("verus_impl_method_marker"))
+                })
+            };
+
+            // Check if the function has the impl method marker
+            let is_impl_fn = fun.attrs.iter().any(&is_hidden_impl_marker);
+
+            // Remove the marker attribute (internal use only)
+            fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
+
             let mut new_stream = TokenStream::new();
 
             // Create a copy of unverified function.
@@ -385,7 +416,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             }
 
             // Update function signature based on verus_spec.
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, false, false);
+            let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {
