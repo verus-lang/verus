@@ -40,8 +40,6 @@ impl AbstractByte {
     /// If some bytes are uninitialized, or if some bytes do not share the same provenance (including having no provenance),
     /// then `Provenance::null()` is returned.
     pub open spec fn shared_provenance(bytes: Seq<Self>) -> Provenance
-        recommends
-            bytes.len() > 1,
         decreases bytes.len(),
     {
         if bytes.len() == 0 {
@@ -268,12 +266,18 @@ impl AbstractEncoding for bool {
 /// Convert the given `EndianNat`` representation to `AbtractByte`s with the given provenance.
 pub open spec fn endian_to_bytes(endian: EndianNat<u8>, prov: Option<Provenance>) -> Seq<
     AbstractByte,
-> {
+>
+    recommends
+        endian.wf(),
+{
     endian.digits.map_values(|e| AbstractByte::Init(e as u8, prov))
 }
 
 /// Convert the given `AbstractByte` representation to its `EndianNat` representation (provenance is ignored).
-pub open spec fn bytes_to_endian(bytes: Seq<AbstractByte>) -> EndianNat<u8> {
+pub open spec fn bytes_to_endian(bytes: Seq<AbstractByte>) -> EndianNat<u8>
+    recommends
+        AbstractByte::all_init(bytes),
+{
     EndianNat::<u8>::new_default(bytes.map_values(|b: AbstractByte| b.byte() as int))
 }
 
@@ -300,9 +304,8 @@ pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<
 
     let endian = EndianNat::<u8>::from_nat_with_len(n, len);
     let bytes = endian_to_bytes(endian, prov);
-    assert(endian.wf());
-    assert(endian.len() == len);
-    assert(endian.len() == bytes.len());
+    assert(endian.wf());  // trigger
+    assert(endian.len() == bytes.len());  // trigger
 }
 
 /// Ensures that all bytes in the resulting `AbstractByte` representation indeed have the given provenance.
@@ -504,7 +507,12 @@ signed_int_encoding! {
 
 /// This trait defines an `AbstractByte` encoding over the given type `T`.
 /// This definition enables reuse of the same underlying encode/decode specifications to implement `AbstractEncoding` across several types.
+/// (See the `encoding_from_type_representation` macro.)
 /// For example, all zero-sized types can use the same (trivial) encode and decode specifications.
+///
+/// This trait can also be used to define an encoding on any `T: MyTrait` for some trait `MyTrait`.
+/// We cannot implement `AbstractEncoding` generically for all `T: MyTrait` because Rust cannot know that `AbstractEncoding` has not already been implemented for any given `T: MyTrait`.
+/// However, we can define a `TypeRepresentation` for such `T`, and then use it to implement the `AbstractEncoding` for each concrete `T`. See `PrimitiveTypeRepresentationEncoding` for an example.
 pub trait TypeRepresentation<T> {
     /// Is encoding allowed for this type?
     spec fn can_be_encoded() -> bool;
@@ -622,7 +630,7 @@ macro_rules! encoding_from_type_representation {
 
 pub(crate) use encoding_from_type_representation;
 
-/// This trait is intended to be implemented on types which are zero-sized and therefore have a trivial `AbstractByte` encoding (i.e., the empty sequence).
+/// This trait is implemented on types which are zero-sized and therefore have a trivial `AbstractByte` encoding (i.e., the empty sequence).
 /// It is used to define a corresponding `TypeRepresentation` for `Self` which is implemented on `ZeroSizedRepresentationEncoding<Self>`.
 /// `ZeroSizedRepresentationEncoding<Self>` can then be used to implement `AbstractEncoding` on `Self`.
 pub trait ZeroSizedRepresentation where Self: Sized {
@@ -932,9 +940,10 @@ raw_ptr_encoding_from_type_representation! {
     (const, const_ptr_sized_encode, const_ptr_unsized_encode);
 }
 
-/// This trait is intended to be implemented on fieldness enums with a primitive type representatio. defined with the `#[repr(<primitive>)]` annotation,
-/// and therefore share the same encoding as the `Primitive` type (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
-/// It used to define a `TypeRepresentation` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
+/// This trait is implemented on fieldness enums with a primitive type representation, defined with the `#[repr(<primitive>)]` annotation,
+/// and therefore share the same byte encoding as the `Primitive` type (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
+/// A primitive type representation means that the enum is encoded as the discriminant's integer value.
+/// This trait is used to define a `TypeRepresentation` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
 /// This representation uses `<Primitive as AbstractEncoding>::encode` and `<Primitive as AbstractEncoding>::decode` after invoking `Self::to_primitive`.
 /// `PrimitiveRepresentationEncoding<Primitive, Self>` can then be used to implement `AbstractEncoding` on `Self`.
 pub trait PrimitiveRepresentation<Primitive: AbstractEncoding + PrimitiveInt> where Self: Sized {
@@ -990,9 +999,10 @@ impl<
     }
 }
 
-/// This trait is intended to be implemented on structs or enums with a transparent type representation, defined with the `#[repr(transparent)]` annotation,
+/// This trait is implemented on structs or enums with a transparent type representation, defined with the `#[repr(transparent)]` annotation,
 /// and therefore share the same encoding as the `Inner` type (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
-/// It used to define a `TypeRepresentation` for `Self` which is implemented on `TransparentRepresentationEncoding<Inner, Self>`.
+/// A transparent type representation means that the struct/enum has at most one non-zero-sized field, and the type is thus encoded as that field's value.
+/// This trait is used to define a `TypeRepresentation` for `Self` which is implemented on `TransparentRepresentationEncoding<Inner, Self>`.
 /// This representation uses `<Inner as AbstractEncoding>::encode` and `<Inner as AbstractEncoding>::decode` after invoking `Self::to_inner`.
 /// `TransparentRepresentationEncoding<Inner, Self>` can then be used to implement `AbstractEncoding` on `Self`.
 pub trait TransparentRepresentation<Inner: AbstractEncoding> where Self: Sized {
