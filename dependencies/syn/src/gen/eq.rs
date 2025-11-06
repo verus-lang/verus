@@ -2266,8 +2266,8 @@ impl Eq for crate::PermClause {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::PermClause {
     fn eq(&self, other: &Self) -> bool {
-        self.old_perms == other.old_perms && self.new_perms == other.new_perms
-            && self.comma_token == other.comma_token
+        self.old_perms == other.old_perms && self.arrow_token == other.arrow_token
+            && self.new_perms == other.new_perms && self.comma_token == other.comma_token
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

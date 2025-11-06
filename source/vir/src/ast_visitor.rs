@@ -1282,6 +1282,7 @@ where
         typ_bounds: _,
         params,
         ret,
+        au_arrow,
         require,
         ensure,
         ens_has_return: _,
@@ -1313,6 +1314,18 @@ where
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
+
+    if let Some((input, output)) = au_arrow {
+        let _ = map.insert(
+            input.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(&input.x.typ, false, true),
+        );
+        let _ = map.insert(
+            output.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(&output.x.typ, false, true),
+        );
+    }
+
     for e in ensure.0.iter().chain(ensure.1.iter()) {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
@@ -1572,6 +1585,7 @@ where
         typ_bounds,
         params,
         ret,
+        au_arrow,
         ens_has_return,
         require,
         ensure: (ensure0, ensure1),
@@ -1629,6 +1643,14 @@ where
             .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
     }
     let ret = map_param_visitor(ret, env, ft)?;
+    let au_arrow = match au_arrow {
+        None => None,
+        Some((inp, out)) => {
+            let inp = map_param_visitor(inp, env, ft)?;
+            let out = map_param_visitor(out, env, ft)?;
+            Some((inp, out))
+        }
+    };
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
 
@@ -1713,6 +1735,7 @@ where
         typ_bounds,
         params,
         ret,
+        au_arrow,
         ens_has_return: *ens_has_return,
         require,
         ensure: (ensure0, ensure1),

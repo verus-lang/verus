@@ -568,7 +568,11 @@ pub enum HeaderExprX {
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     /// (regular ensures, default ensures)
-    Ensures(Option<(VarIdent, Option<Typ>)>, (Exprs, Exprs)),
+    Ensures(
+        Option<(VarIdent, Option<Typ>)>,
+        Option<(VarIdent, Typ, VarIdent, Typ)>,
+        (Exprs, Exprs),
+    ),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -1304,6 +1308,8 @@ pub struct FunctionX {
     pub params: Params,
     /// Return value
     pub ret: Param,
+    /// Atomic update input-output pair
+    pub au_arrow: Option<(Param, Param)>,
     /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
     pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)

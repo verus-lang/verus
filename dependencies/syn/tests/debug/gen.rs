@@ -5501,6 +5501,9 @@ impl Debug for Lite<syn::PermClause> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("PermClause");
         formatter.field("old_perms", Lite(&self.value.old_perms));
+        if self.value.arrow_token.is_some() {
+            formatter.field("arrow_token", &Present);
+        }
         formatter.field("new_perms", Lite(&self.value.new_perms));
         if self.value.comma_token.is_some() {
             formatter.field("comma_token", &Present);

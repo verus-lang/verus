@@ -614,6 +614,7 @@ ast_struct! {
 }
 
 ast_struct! {
+    #[derive(Default)]
     pub struct PermTuple {
         pub paren_token: token::Paren,
         pub fields: Punctuated<PermTupleField, Token![,]>,
@@ -623,7 +624,7 @@ ast_struct! {
 ast_struct! {
     pub struct PermClause {
         pub old_perms: PermTuple,
-        pub arrow_token: Token![->],
+        pub arrow_token: Option<Token![->]>,
         pub new_perms: PermTuple,
         pub comma_token: Option<Token![,]>,
     }
@@ -1739,11 +1740,21 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for PermClause {
         fn parse(input: ParseStream) -> Result<Self> {
+            let old_perms = input.parse()?;
+            let (arrow_token, new_perms) = if input.peek(Token![->]) {
+                let arrow_token = input.parse()?;
+                let new_perms = input.parse()?;
+                (Some(arrow_token), new_perms)
+            } else {
+                (None, Default::default())
+            };
+
+            let comma_token = input.parse()?;
             Ok(PermClause {
-                old_perms: input.parse()?,
-                arrow_token: input.parse()?,
-                new_perms: input.parse()?,
-                comma_token: input.parse()?,
+                old_perms,
+                arrow_token,
+                new_perms,
+                comma_token,
             })
         }
     }

@@ -5832,7 +5832,9 @@
           "syn": "PermTuple"
         },
         "arrow_token": {
-          "token": "RArrow"
+          "option": {
+            "token": "RArrow"
+          }
         },
         "new_perms": {
           "syn": "PermTuple"

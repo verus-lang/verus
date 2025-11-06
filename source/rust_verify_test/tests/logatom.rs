@@ -526,3 +526,51 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore = "&mut not support"]
+    #[test] atomic_spec_mut_ref
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function()
+            atomically (au) {
+                type FunctionPred,
+                (num: &mut u32) -> (_silly: ()),
+                requires *old(num) == 2,
+                ensures *num == 3,
+            },
+        {
+            open_atomic_update!(au, r => {
+                proof { *r += 1_u32; }
+            })
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore = "work in progress"]
+    #[test] atomic_spec_private_ensures
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires x == 2,
+                ensures y == 3,
+            },
+            ensures
+                out == x + y,
+        {
+            assume(au.resolves());
+
+            return 5;
+        }
+    } => Ok(())
+}

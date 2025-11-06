@@ -20,6 +20,7 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
+use crate::sst_to_air::assume_var;
 use crate::sst_util::{
     sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
     sst_unit_value,
@@ -86,11 +87,15 @@ pub(crate) struct State<'a> {
 
     pub mask: Option<MaskSet>,
 
+    // This is the atomic update bound in the atomic spec,
+    // we must assert `au.resolves()` at the end of the function.
     pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
 
     // This variable is bound by the `atomically |update| { ... }` block
     // and read by the corresponding `update` function.
     pub au_var_exp: Option<crate::sst::Exp>,
+
+    pub au_arrow: Option<(VarIdent, VarIdent)>,
 }
 
 #[derive(Clone, Debug)]
@@ -173,6 +178,7 @@ impl<'a> State<'a> {
             mask: None,
             au_var_exp_to_resolve: None,
             au_var_exp: None,
+            au_arrow: None,
         }
     }
 
@@ -960,7 +966,7 @@ fn assert_atomic_update_resolves(
 
     let au_span = &au_exp.span;
     let TypX::Datatype(_, typ_args, _) = au_exp.typ.as_ref() else {
-        panic!("atomic update should be a datatype")
+        panic!("atomic update type should be a datatype")
     };
 
     let call_resolves = ExpX::Call(
@@ -2506,8 +2512,6 @@ pub(crate) fn expr_to_stm_opt(
                     expr.span.clone(),
                     "malformed atomic update block; atomic update should be a datatype",
                 );
-
-                //panic!("atomic update should be a datatype");
             };
 
             let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_exp);
@@ -2575,7 +2579,7 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             let body_exp = unwrap_or_return_never!(body_exp, stms);
-            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
+            let y_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
 
             // generate assertion
 
@@ -2583,7 +2587,11 @@ pub(crate) fn expr_to_stm_opt(
                 let call_ens = ExpX::Call(
                     ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
                     typ_args.clone(),
-                    Arc::new(vec![au_temp_var_exp.clone(), x_temp_var_exp, y_var_exp]),
+                    Arc::new(vec![
+                        au_temp_var_exp.clone(),
+                        x_temp_var_exp.clone(),
+                        y_temp_var_exp.clone(),
+                    ]),
                 );
 
                 let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
@@ -2594,6 +2602,13 @@ pub(crate) fn expr_to_stm_opt(
                     expr.span.clone(),
                     StmX::Assert(state.next_assert_id(), Some(error), call_ens),
                 ));
+            }
+
+            // bind for private post condition
+
+            if let Some((ens_x_id, ens_y_id)) = state.au_arrow.clone() {
+                stms.push(assume_var(&expr.span, &ens_x_id, &x_temp_var_exp));
+                stms.push(assume_var(&expr.span, &ens_y_id, &y_temp_var_exp));
             }
 
             // mark as resolved

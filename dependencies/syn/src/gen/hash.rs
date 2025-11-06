@@ -2907,6 +2907,7 @@ impl Hash for crate::PermClause {
         H: Hasher,
     {
         self.old_perms.hash(state);
+        self.arrow_token.hash(state);
         self.new_perms.hash(state);
         self.comma_token.hash(state);
     }

@@ -774,6 +774,24 @@ pub fn func_def_to_sst(
         state.au_var_exp_to_resolve = Some(au_exp);
     }
 
+    if let Some((input, output)) = &function.x.au_arrow {
+        let input = state.declare_var_stm(
+            &input.x.name,
+            &input.x.typ,
+            LocalDeclKind::Param { mutable: false },
+            true,
+        );
+
+        let output = state.declare_var_stm(
+            &output.x.name,
+            &output.x.typ,
+            LocalDeclKind::Param { mutable: false },
+            true,
+        );
+
+        state.au_arrow = Some((input, output));
+    }
+
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast

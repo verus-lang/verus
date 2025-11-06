@@ -584,8 +584,8 @@ impl Visitor {
         sig: &mut Signature,
         vis: Option<&Visibility>,
         stmts: &mut Vec<Stmt>,
-    ) -> Vec<Stmt> {
-        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Vec::new() };
+    ) -> (Option<verus_syn::PermClause>, Vec<Stmt>) {
+        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Default::default() };
         let full_span = atomic_spec.span();
 
         fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
@@ -781,10 +781,10 @@ impl Visitor {
         ));
 
         let EraseGhost::Keep = self.erase_ghost else {
-            return Vec::new();
+            return (Some(perm_clause), Vec::new());
         };
 
-        let out_stmts = vec![Stmt::Expr(
+        let mut out_stmts = vec![Stmt::Expr(
             Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
                 #builtin::assume_(
                     #builtin::spec_eq(
@@ -805,7 +805,7 @@ impl Visitor {
                 stmt.to_tokens(&mut stmt_tokens);
             }
 
-            return vec![Stmt::Expr(
+            out_stmts = vec![Stmt::Expr(
                 Expr::Verbatim(quote_spanned!(full_span =>
                     #[verifier::proof_block]
                     { #stmt_tokens }
@@ -814,7 +814,7 @@ impl Visitor {
             )];
         }
 
-        out_stmts
+        (Some(perm_clause), out_stmts)
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -828,6 +828,7 @@ impl Visitor {
         ident: impl ToTokens, // function name.
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        atomic_perm_clause: Option<verus_syn::PermClause>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -883,11 +884,8 @@ impl Visitor {
                     self.visit_expr_mut(expr);
                 }
                 let cont = match self.extract_quant_triggers(attrs, token.span) {
-                    Ok(
-                        found @ (ExtractQuantTriggersFound::Auto
-                        | ExtractQuantTriggersFound::AllTriggers
-                        | ExtractQuantTriggersFound::Triggers(..)),
-                    ) => {
+                    Ok(ExtractQuantTriggersFound::None) => true,
+                    Ok(found) => {
                         if exprs.exprs.len() == 0 {
                             let err =
                                 "when using #![trigger f(x)], at least one ensures is required";
@@ -919,66 +917,73 @@ impl Visitor {
                             true
                         }
                     }
-                    Ok(ExtractQuantTriggersFound::None) => true,
                     Err(err_expr) => {
                         exprs.exprs[0] = err_expr;
                         false
                     }
                 };
                 if cont {
+                    let mut au_args = TokenStream::new();
+                    if let Some(perm_clause) = atomic_perm_clause {
+                        let colon: Token![:] = parse_quote_spanned!(perm_clause.span() => :);
+                        let comma: Token![,] = parse_quote_spanned!(perm_clause.span() => ,);
+
+                        perm_clause.old_perms.to_value_tokens(&mut au_args);
+                        colon.to_tokens(&mut au_args);
+                        perm_clause.old_perms.to_type_tokens(&mut au_args);
+                        comma.to_tokens(&mut au_args);
+
+                        perm_clause.new_perms.to_value_tokens(&mut au_args);
+                        colon.to_tokens(&mut au_args);
+                        perm_clause.new_perms.to_type_tokens(&mut au_args);
+                        comma.to_tokens(&mut au_args);
+                    }
+
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
-                                *expr = Expr::Verbatim(
-                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
-                                )
+                                *expr = Expr::Verbatim(quote_spanned!(token.span =>
+                                    { let #final_ret_pat = #p; #expr }
+                                ))
                             }
                         }
                         if is_closure {
                             // closures cannot return impl xxx so it's safe to
                             spec_stmts.push(Stmt::Expr(
-                                Expr::Verbatim(
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p: #ty| [#exprs])),
-                                ),
+                                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
+                                    #verus_builtin::ensures(|#p: #ty, #au_args| [#exprs])
+                                )),
                                 Some(Semi { spans: [token.span] }),
                             ));
                         } else {
-                            let constrain_type = {
-                                let generics_token = {
-                                    match generics {
-                                        Some(generics) => {
-                                            Some(quote_spanned!(token.span => ::#generics))
-                                        }
-                                        None => None,
-                                    }
-                                };
-                                let receiver_token = {
-                                    match (is_impl_fn, self_token_op) {
-                                        (true, None) => Some(quote_spanned!(token.span => Self::)),
-                                        (true, Some(self_token)) => {
-                                            Some(quote_spanned!(token.span => #self_token.))
-                                        }
-                                        (false, None) => None,
-                                        (false, Some(self_token)) => {
-                                            Some(quote_spanned!(token.span => #self_token.))
-                                        }
-                                    }
-                                };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                            let generics_token = match generics {
+                                Some(generics) => Some(quote_spanned!(token.span => ::#generics)),
+                                None => None,
                             };
-                            let contrain_typ_expr = Expr::Verbatim(constrain_type);
+                            let receiver_token = match (is_impl_fn, self_token_op) {
+                                (true, None) => Some(quote_spanned!(token.span => Self::)),
+                                (false, None) => None,
+                                (_, Some(self_token)) => {
+                                    Some(quote_spanned!(token.span => #self_token.))
+                                }
+                            };
+                            let contrain_typ_expr = Expr::Verbatim(
+                                quote_spanned_builtin!(verus_builtin, token.span =>
+                                    #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args))
+                                ),
+                            );
                             spec_stmts.push(Stmt::Expr(
-                                    Expr::Verbatim(
-                                        quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures(|#p| [#contrain_typ_expr, #exprs])),
-                                    ),
-                                    Some(Semi { spans: [token.span] }),
-                                ));
+                                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
+                                    #verus_builtin::ensures(|#p, #au_args| [#contrain_typ_expr, #exprs])
+                                )),
+                                Some(Semi { spans: [token.span] }),
+                            ));
                         }
                     } else {
                         spec_stmts.push(Stmt::Expr(
-                            Expr::Verbatim(
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])),
-                            ),
+                            Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
+                                #verus_builtin::ensures([#exprs])
+                            )),
                             Some(Semi { spans: [token.span] }),
                         ));
                     }
@@ -1112,7 +1117,7 @@ impl Visitor {
 
         // The statements generated here are appended later not to interfere
         // with requires, ensures, etc.
-        let atomic_spec_stmts = self.handle_atomic_spec(sig, vis, &mut stmts);
+        let (atomic_perm_clause, atomic_spec_stmts) = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -1331,6 +1336,7 @@ impl Visitor {
             sig.ident.clone(),
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
+            atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
@@ -5334,6 +5340,7 @@ pub(crate) fn sig_specs_attr(
         sig.ident.clone(),
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
+        None,
     ));
     spec_stmts
 }

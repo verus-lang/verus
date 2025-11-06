@@ -190,8 +190,9 @@ pub(crate) fn closure_param_typs<'tcx>(
             let sig = substs.as_closure().sig();
             let mut args: Vec<Typ> = Vec::new();
             // REVIEW: rustc docs refer to skip_binder as "dangerous"
-            for t in sig.inputs().skip_binder().iter() {
-                args.push(bctx.mid_ty_to_vir(expr.span, t, /* allow_mut_ref */ false)?);
+            for ty in sig.inputs().skip_binder().iter() {
+                let allow_mut_ref = false;
+                args.push(bctx.mid_ty_to_vir(expr.span, ty, allow_mut_ref)?);
             }
             assert!(args.len() == 1);
             match &*args[0] {
