@@ -344,7 +344,19 @@ pub fn verus_spec(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
+    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into(), false).into()
+}
+
+/// This is a helper macro to tell verus_spec is applied
+/// inside an impl item.
+/// User should not use this macro directly.
+#[doc(hidden)]
+#[proc_macro_attribute]
+pub fn verus_spec_in_impl(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into(), true).into()
 }
 
 /// proof_with add ghost input/output to the next function call.

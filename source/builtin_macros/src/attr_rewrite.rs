@@ -102,7 +102,7 @@ pub(crate) fn rewrite_verus_attribute(
 
     if let Item::Impl(_) = item {
         // Add verus_macro attribute to impl block to help later processing.
-        let mut replacer = ExecReplacer::new(erase.clone());
+        let mut replacer = ImplItemReplacer;
         replacer.visit_item_mut(&mut item);
     }
 
@@ -177,41 +177,33 @@ impl ExecReplacer {
     }
 }
 
-impl VisitMut for ExecReplacer {
+struct ImplItemReplacer;
+
+impl VisitMut for ImplItemReplacer {
     // Enable the hack only when needed
     fn visit_impl_item_fn_mut(&mut self, i: &mut syn::ImplItemFn) {
         syn::visit_mut::visit_impl_item_fn_mut(self, i);
-
-        // For non-verification, we do nothing here.
-        if !self.erase.keep() {
-            return;
-        }
-
         // Help verus_spec be aware that it is in impl function.
-        let (verus_spec_attrs, remaining_attrs) = i.attrs.drain(..).partition(|attr| {
-            attr.path().segments.last().map_or(false, |last| last.ident == "verus_spec")
-        });
-        i.attrs = remaining_attrs;
-        for attr in verus_spec_attrs {
-            let spec_tokens = if let Ok(meta) = attr.meta.require_list() {
-                meta.tokens.clone()
-            } else {
-                TokenStream::new()
+        i.attrs.iter_mut().filter(|attr|  attr.path().segments.last().map_or(false, |last| last.ident == "verus_spec")).for_each(|attr| 
+        {
+            let path = match &mut attr.meta {
+                syn::Meta::List(l) => {
+                    &mut l.path
+                }
+                syn::Meta::Path(p) => {
+                    p
+                }
+                syn::Meta::NameValue(n) => {
+                    &mut n.path
+                }
             };
-            rewrite_verus_spec_on_fun_or_loop(
-                self.erase.clone(),
-                spec_tokens.into(),
-                AnyFnOrLoop::Fn(syn::ItemFn {
-                    attrs: vec![],
-                    vis: syn::Visibility::Inherited,
-                    sig: i.sig.clone(),
-                    block: Box::new(i.block.clone()),
-                }),
-                true,
-            );
-        }
+            let span = path.segments.last().unwrap().ident.span();
+            path.segments.last_mut().unwrap().ident = syn::Ident::new("verus_spec_in_impl", span);
+        });
     }
+}
 
+impl VisitMut for ExecReplacer {
     #[cfg(feature = "vpanic")]
     fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
         syn::visit_mut::visit_macro_mut(self, mac);
@@ -328,6 +320,7 @@ pub(crate) fn rewrite_verus_spec(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
+    inside_impl: bool,
 ) -> proc_macro::TokenStream {
     if !erase.keep() {
         return input;
@@ -347,7 +340,7 @@ pub(crate) fn rewrite_verus_spec(
 
     match f {
         VerusSpecTarget::FnOrLoop(f) => {
-            rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f, false)
+            rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f, inside_impl)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
