@@ -301,6 +301,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-report-long-running" {
+            verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
@@ -481,7 +483,8 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // }
     let mut child = std::process::Command::new("cargo");
     child.current_dir(dir);
-
+    dbg!(dir);
+    dbg!(&args);
     let child = child
         .args(&args[..])
         .stdout(std::process::Stdio::piped())
@@ -493,6 +496,10 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
         let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
         eprintln!("Failed with output:\n{}", rust_output);
     }
+    let rust_output = std::str::from_utf8(&run.stdout[..]).unwrap().trim();
+    eprintln!("Cargo output:\n{}", rust_output);
+    let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+    eprintln!("Cargo stderr output:\n{}", rust_output);
     run
 }
 
