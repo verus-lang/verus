@@ -98,9 +98,8 @@ macro_rules! transmute_refl_unique_lemma {
     )+) => {$(
         verus! {
             /// When transmuting a `$typ` to a `$typ`, a value `x: $typ` can be transmuted to itself and only itself.
-            pub broadcast proof fn $lemma_name(tracked x: $typ, y: Tracked<$typ>)
+            pub proof fn $lemma_name(tracked x: $typ, y: Tracked<$typ>)
                 ensures
-                    #![trigger transmute_pre(x, y)]
                     x == y@ ==> transmute_pre(x, y),
                     transmute_pre(x, y) ==> x == y@
             {
@@ -137,12 +136,8 @@ transmute_refl_unique_lemma! {
 }
 
 /// When transmuting a `*mut T` to a `*mut T` for `T: Sized`, a value `x: *mut T` can be transmuted to itself and only itself.
-pub broadcast proof fn transmute_mut_ptr_sized_refl_unique<T: Sized>(
-    tracked x: *mut T,
-    y: Tracked<*mut T>,
-)
+pub proof fn transmute_mut_ptr_sized_refl_unique<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
     ensures
-        #![trigger transmute_pre(x, y)]
         x@ == y@@ ==> transmute_pre(x, y),
         transmute_pre(x, y) ==> x@ == y@@,
 {
@@ -162,12 +157,11 @@ pub broadcast proof fn transmute_mut_ptr_sized_refl_unique<T: Sized>(
 }
 
 /// When transmuting a `*const T` to a `*const T` for `T: Sized`, a value `x: *const T` can be transmuted to itself and only itself.
-pub broadcast proof fn transmute_const_ptr_sized_refl_unique<T: Sized>(
+pub proof fn transmute_const_ptr_sized_refl_unique<T: Sized>(
     tracked x: *const T,
     y: Tracked<*const T>,
 )
     ensures
-        #![trigger transmute_pre(x, y)]
         x@ == y@@ ==> transmute_pre(x, y),
         transmute_pre(x, y) ==> x@ == y@@,
 {
@@ -188,14 +182,11 @@ pub broadcast proof fn transmute_const_ptr_sized_refl_unique<T: Sized>(
 
 // we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
 /// When transmuting a `*mut T` to a `*mut T` for `T: ?Sized`, a value `x: *mut T` can be transmuted to itself.
-pub broadcast proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(
-    tracked x: *mut T,
-    y: Tracked<*mut T>,
-)
+pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tracked<*mut T>)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
     ensures
-        x == y@ ==> #[trigger] transmute_pre(x, y),
+        x == y@ ==> transmute_pre(x, y),
 {
     broadcast use group_transmute_axioms;
 
@@ -210,14 +201,11 @@ pub broadcast proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(
 }
 
 /// When transmuting a `*const T` to a `*const T` for `T: ?Sized`, a value `x: *const T` can be transmuted to itself.
-pub broadcast proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(
-    tracked x: *const T,
-    y: Tracked<*const T>,
-)
+pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y: Tracked<*const T>)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
     ensures
-        x == y@ ==> #[trigger] transmute_pre(x, y),
+        x == y@ ==> transmute_pre(x, y),
 {
     broadcast use group_transmute_axioms;
 

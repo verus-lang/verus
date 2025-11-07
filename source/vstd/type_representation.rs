@@ -437,7 +437,7 @@ pub open spec fn signed_to_unsigned(x: int, len: nat) -> nat {
 
 macro_rules! signed_int_encoding {
     ($(
-        ($int:ty, $lemma_name:ident);
+        ($int:ty, $lemma_name:ident, $signed_to_unsigned_lemma_name:ident);
     )+) => {$(
         verus! {
             /// The abstract encoding for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
@@ -499,11 +499,18 @@ macro_rules! signed_int_encoding {
                     AbstractByte::shared_provenance(bytes) == Provenance::null(),
                     bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
                     bytes_to_endian(bytes).wf(),
-                    (forall |w: $int| signed_to_unsigned(v as int, size_of::<$int>()) == signed_to_unsigned(w as int, size_of::<$int>()) ==> v == w)
             {
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
-                unsigned_int_max_bounds();
+                unsigned_int_max_bounds()
+            }
+
+            pub broadcast proof fn $signed_to_unsigned_lemma_name(v: $int, w: $int)
+                requires
+                    #[trigger] signed_to_unsigned(v as int, size_of::<$int>()) == #[trigger] signed_to_unsigned(w as int, size_of::<$int>())
+                ensures
+                    v == w
+            {
                 signed_int_min_max_bounds();
             }
         }
@@ -511,12 +518,12 @@ macro_rules! signed_int_encoding {
 }
 
 signed_int_encoding! {
-    (i8, i8_encode);
-    (i16, i16_encode);
-    (i32, i32_encode);
-    (i64, i64_encode);
-    (i128, i128_encode);
-    (isize, isize_encode);
+    (i8, i8_encode, i8_signed_to_unsigned_invertible);
+    (i16, i16_encode, i16_signed_to_unsigned_invertible);
+    (i32, i32_encode, i32_signed_to_unsigned_invertible);
+    (i64, i64_encode, i64_signed_to_unsigned_invertible);
+    (i128, i128_encode, i128_signed_to_unsigned_invertible);
+    (isize, isize_encode, isize_signed_to_unsigned_invertible);
 }
 
 /// This trait defines an `AbstractByte` encoding over the given type `T`.
@@ -1106,6 +1113,12 @@ pub broadcast group group_type_representation_axioms {
     i64_encode,
     i128_encode,
     isize_encode,
+    i8_signed_to_unsigned_invertible,
+    i16_signed_to_unsigned_invertible,
+    i32_signed_to_unsigned_invertible,
+    i64_signed_to_unsigned_invertible,
+    i128_signed_to_unsigned_invertible,
+    isize_signed_to_unsigned_invertible,
     mut_ptr_sized_encode,
     mut_ptr_unsized_encode,
     const_ptr_sized_encode,
