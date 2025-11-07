@@ -78,7 +78,6 @@ fn run_cargo_verus_for_dir(dir: &str) {
 
 fn run_vanilla_cargo_for_dir(dir: &str) {
     let test_dir = compute_test_dir(dir);
-    dbg!(&test_dir);
 
     // Check for additional Verus-related metadata
     let toml_path = test_dir.join("Cargo.toml");
@@ -90,9 +89,6 @@ fn run_vanilla_cargo_for_dir(dir: &str) {
         eprintln!("Ignoring cargo verus test in {}", dir);
         return;
     }
-
-    let args = vec!["version"];
-    let run = run_cargo(&args, &test_dir.as_path());
 
     // Don't reuse any artifacts from previous runs
     let args = vec!["clean"];
