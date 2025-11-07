@@ -217,16 +217,12 @@ impl AbstractEncoding for bool {
     }
 
     open spec fn encode(value: bool, bytes: Seq<AbstractByte>) -> bool {
-        bytes == seq![
-            AbstractByte::Init(
-                if value {
-                    1
-                } else {
-                    0
-                },
-                None,
-            ),
-        ]
+        &&& bytes.len() == 1
+        &&& match bytes.first() {
+            AbstractByte::Init(0, None) => !value,
+            AbstractByte::Init(1, None) => value,
+            _ => false,
+        }
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>, value: bool) -> bool {
@@ -441,7 +437,7 @@ pub open spec fn signed_to_unsigned(x: int, len: nat) -> nat {
 
 macro_rules! signed_int_encoding {
     ($(
-        ($int:ty);
+        ($int:ty, $lemma_name:ident);
     )+) => {$(
         verus! {
             /// The abstract encoding for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
@@ -492,17 +488,35 @@ macro_rules! signed_int_encoding {
 
                 axiom fn abs_can_be_encoded_impl();
             }
+
+            /// Useful properties about `$int::encode(v, bytes)`.
+            pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
+                requires
+                    #[trigger] $int::encode(v, bytes),
+                ensures
+                    bytes.len() == size_of::<$int>(),
+                    AbstractByte::all_init(bytes),
+                    AbstractByte::shared_provenance(bytes) == Provenance::null(),
+                    bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
+                    bytes_to_endian(bytes).wf(),
+                    (forall |w: $int| #[trigger] signed_to_unsigned(v as int, size_of::<$int>()) == #[trigger] signed_to_unsigned(w as int, size_of::<$int>()) ==> v == w)
+            {
+                broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
+
+                unsigned_int_max_bounds();
+                signed_int_min_max_bounds();
+            }
         }
     )+};
 }
 
 signed_int_encoding! {
-    (i8);
-    (i16);
-    (i32);
-    (i64);
-    (i128);
-    (isize);
+    (i8, i8_encode);
+    (i16, i16_encode);
+    (i32, i32_encode);
+    (i64, i64_encode);
+    (i128, i128_encode);
+    (isize, isize_encode);
 }
 
 /// This trait defines an `AbstractByte` encoding over the given type `T`.
@@ -1086,6 +1100,12 @@ pub broadcast group group_type_representation_axioms {
     u64_encode,
     u128_encode,
     usize_encode,
+    i8_encode,
+    i16_encode,
+    i32_encode,
+    i64_encode,
+    i128_encode,
+    isize_encode,
     mut_ptr_sized_encode,
     mut_ptr_unsized_encode,
     const_ptr_sized_encode,
