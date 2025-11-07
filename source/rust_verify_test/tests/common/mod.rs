@@ -484,6 +484,10 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     let mut child = std::process::Command::new("cargo");
     child.current_dir(dir);
 
+    // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
+    // verus_builtin and vstd to require unstable features not available on stable Rust
+    child.env_remove("RUSTFLAGS");
+
     let child = child
         .args(&args[..])
         .stdout(std::process::Stdio::piped())

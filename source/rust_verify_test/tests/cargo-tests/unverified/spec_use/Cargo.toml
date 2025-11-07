@@ -7,6 +7,5 @@ edition = "2021"
 spec_use = { path = "../../verified/spec_use" }
 
 [package.metadata.verus]
-test_ignore = true
 
 [workspace]
