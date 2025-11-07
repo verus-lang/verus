@@ -94,90 +94,111 @@ pub broadcast group group_transmute_axioms {
 
 macro_rules! transmute_refl_unique_lemma {
     ($(
-        ($typ:ty, $lemma_name:ident);
+        ($typ:ty, $refl_lemma_name:ident, $unique_lemma_name:ident);
     )+) => {$(
         verus! {
-            /// When transmuting a `$typ` to a `$typ`, a value `x: $typ` can be transmuted to itself and only itself.
-            pub proof fn $lemma_name(tracked x: $typ, y: Tracked<$typ>)
+            /// A value `x: $typ` can be transmuted to itself.
+            pub proof fn $refl_lemma_name(tracked x: $typ, y: Tracked<$typ>)
+                requires
+                    x == y@
                 ensures
-                    x == y@ ==> transmute_pre(x, y),
-                    transmute_pre(x, y) ==> x == y@
+                    transmute_pre(x, y),
             {
                 broadcast use group_transmute_axioms;
 
-                if (x == y@) {
-                    assert forall|bytes| abs_encode::<$typ>(&x, bytes) implies abs_decode::<$typ>(bytes, &(y@)) by {
-                        <$typ as AbstractEncoding>::encoding_invertible(x, bytes);
-                    }
+                assert forall|bytes| abs_encode::<$typ>(&x, bytes) implies abs_decode::<$typ>(bytes, &(y@)) by {
+                    <$typ as AbstractEncoding>::encoding_invertible(x, bytes);
                 }
-                if (transmute_pre(x, y)) {
-                    let bytes = <$typ as AbstractEncoding>::encoding_exists(x);
-                }
+            }
+
+            /// When a `$typ` is transmuted to a `$typ`, a value can only be transmuted to itself.
+            pub proof fn $unique_lemma_name(tracked x: $typ, y: Tracked<$typ>)
+                requires
+                    transmute_pre(x, y)
+                ensures
+                    x == y@
+            {
+                broadcast use group_transmute_axioms;
+
+                let bytes = <$typ as AbstractEncoding>::encoding_exists(x);
             }
         }
     )+};
 }
 
 transmute_refl_unique_lemma! {
-    ((), transmute_unit_refl_unique);
-    (bool, transmute_bool_refl_unique);
-    (u8, transmute_u8_refl_unique);
-    (u16, transmute_u16_refl_unique);
-    (u32, transmute_u32_refl_unique);
-    (u64, transmute_u64_refl_unique);
-    (u128, transmute_u128_refl_unique);
-    (usize, transmute_usize_refl_unique);
-    (i8, transmute_i8_refl_unique);
-    (i16, transmute_i16_refl_unique);
-    (i32, transmute_i32_refl_unique);
-    (i64, transmute_i64_refl_unique);
-    (i128, transmute_i128_refl_unique);
-    (isize, transmute_isize_refl_unique);
+    ((), transmute_unit_refl, transmute_unit_unique);
+    (bool, transmute_bool_refl, transmute_bool_unique);
+    (u8, transmute_u8_refl, transmute_u8_unique);
+    (u16, transmute_u16_refl, transmute_u16_unique);
+    (u32, transmute_u32_refl, transmute_u32_unique);
+    (u64, transmute_u64_refl, transmute_u64_unique);
+    (u128, transmute_u128_refl, transmute_u128_unique);
+    (usize, transmute_usize_refl, transmute_usize_unique);
+    (i8, transmute_i8_refl, transmute_i8_unique);
+    (i16, transmute_i16_refl, transmute_i16_unique);
+    (i32, transmute_i32_refl, transmute_i32_unique);
+    (i64, transmute_i64_refl, transmute_i64_unique);
+    (i128, transmute_i128_refl, transmute_i128_unique);
+    (isize, transmute_isize_refl, transmute_isize_unique);
 }
 
-/// When transmuting a `*mut T` to a `*mut T` for `T: Sized`, a value `x: *mut T` can be transmuted to itself and only itself.
-pub proof fn transmute_mut_ptr_sized_refl_unique<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+/// A value `x: *mut T` for `T: Sized` can be transmuted to itself.
+pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+    requires
+        x@ == y@@,
     ensures
-        x@ == y@@ ==> transmute_pre(x, y),
-        transmute_pre(x, y) ==> x@ == y@@,
+        transmute_pre(x, y),
 {
     broadcast use group_transmute_axioms;
 
-    if (x@ == y@@) {
-        assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
-            bytes,
-            &(y@),
-        ) by {
-            <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
-        }
-    }
-    if (transmute_pre(x, y)) {
-        let bytes = <*mut T as AbstractEncoding>::encoding_exists(x);
+    assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
+        bytes,
+        &(y@),
+    ) by {
+        <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
     }
 }
 
-/// When transmuting a `*const T` to a `*const T` for `T: Sized`, a value `x: *const T` can be transmuted to itself and only itself.
-pub proof fn transmute_const_ptr_sized_refl_unique<T: Sized>(
-    tracked x: *const T,
-    y: Tracked<*const T>,
-)
+/// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
+pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+    requires
+        transmute_pre(x, y),
     ensures
-        x@ == y@@ ==> transmute_pre(x, y),
-        transmute_pre(x, y) ==> x@ == y@@,
+        x@ == y@@,
 {
     broadcast use group_transmute_axioms;
 
-    if (x@ == y@@) {
-        assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
-            bytes,
-            &(y@),
-        ) by {
-            <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
-        }
+    let bytes = <*mut T as AbstractEncoding>::encoding_exists(x);
+}
+
+/// A value `x: *const T` for `T: Sized` can be transmuted to itself.
+pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: Tracked<*const T>)
+    requires
+        x@ == y@@,
+    ensures
+        transmute_pre(x, y),
+{
+    broadcast use group_transmute_axioms;
+
+    assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
+        bytes,
+        &(y@),
+    ) by {
+        <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
     }
-    if (transmute_pre(x, y)) {
-        let bytes = <*const T as AbstractEncoding>::encoding_exists(x);
-    }
+}
+
+/// When a `*const T` is transmuted to a `*const T` for `T: Sized`, a value can only be transmuted to itself.
+pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: Tracked<*const T>)
+    requires
+        transmute_pre(x, y),
+    ensures
+        x@ == y@@,
+{
+    broadcast use group_transmute_axioms;
+
+    let bytes = <*const T as AbstractEncoding>::encoding_exists(x);
 }
 
 // we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
@@ -185,18 +206,17 @@ pub proof fn transmute_const_ptr_sized_refl_unique<T: Sized>(
 pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tracked<*mut T>)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
+        x == y@,
     ensures
-        x == y@ ==> transmute_pre(x, y),
+        transmute_pre(x, y),
 {
     broadcast use group_transmute_axioms;
 
-    if (x == y@) {
-        assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
-            bytes,
-            &(y@),
-        ) by {
-            <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
-        }
+    assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
+        bytes,
+        &(y@),
+    ) by {
+        <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
     }
 }
 
@@ -204,18 +224,17 @@ pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tra
 pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y: Tracked<*const T>)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
+        x == y@,
     ensures
-        x == y@ ==> transmute_pre(x, y),
+        transmute_pre(x, y),
 {
     broadcast use group_transmute_axioms;
 
-    if (x == y@) {
-        assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
-            bytes,
-            &(y@),
-        ) by {
-            <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
-        }
+    assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
+        bytes,
+        &(y@),
+    ) by {
+        <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
     }
 }
 
