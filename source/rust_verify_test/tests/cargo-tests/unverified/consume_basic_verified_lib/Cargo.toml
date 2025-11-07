@@ -7,6 +7,5 @@ edition = "2021"
 basic_verified_lib = { path = "../../verified/basic_verified_lib" }
 
 [package.metadata.verus]
-test_ignore = true
 
 [workspace]
