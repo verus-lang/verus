@@ -100,7 +100,8 @@ macro_rules! transmute_refl_unique_lemma {
             /// When transmuting a `$typ` to a `$typ`, a value `x: $typ` can be transmuted to itself and only itself.
             pub broadcast proof fn $lemma_name(x: $typ, y: Tracked<$typ>)
                 ensures
-                    x == y@ <==> #[trigger] transmute_pre(x, y)
+                    #![trigger transmute_pre(x, y)]
+                    x == y@ <==> transmute_pre(x, y)
             {
                 broadcast use group_transmute_axioms;
 

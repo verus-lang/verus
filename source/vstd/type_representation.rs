@@ -499,7 +499,7 @@ macro_rules! signed_int_encoding {
                     AbstractByte::shared_provenance(bytes) == Provenance::null(),
                     bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
                     bytes_to_endian(bytes).wf(),
-                    (forall |w: $int| #[trigger] signed_to_unsigned(v as int, size_of::<$int>()) == #[trigger] signed_to_unsigned(w as int, size_of::<$int>()) ==> v == w)
+                    (forall |w: $int| signed_to_unsigned(v as int, size_of::<$int>()) == signed_to_unsigned(w as int, size_of::<$int>()) ==> v == w)
             {
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
