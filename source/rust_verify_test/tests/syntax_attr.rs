@@ -1089,8 +1089,37 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_any_vir_error_msg(e, "postcondition not satisfied")
 }
+
 test_verify_one_file! {
-    #[test] test_verus_spec_with_trailing_comma code!{
+    #[test] test_verus_spec_with_trailing_comma_simple code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+        )]
+        fn foo(x: u32) -> u32 {
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+            requires
+                x < 100,
+        )]
+        fn bar(x: u32) -> u32 {
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_complex code!{
         use vstd::prelude::*;
 
         #[verus_spec(ret =>
@@ -1119,7 +1148,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn bar(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
@@ -1135,7 +1164,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn baz(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
@@ -1151,7 +1180,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn qux(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
