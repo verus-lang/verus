@@ -904,7 +904,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_item_const code!{
+    #[test] test_item_const_dual code!{
         use vstd::prelude::*;
 
         #[verus_spec]
@@ -915,6 +915,7 @@ test_verify_one_file! {
             let v = CONST_ITEM;
             proof! {
                 assert(v == 42);
+                assert(CONST_ITEM == 42);
             }
         }
     } => Ok(())
