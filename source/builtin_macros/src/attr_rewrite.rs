@@ -36,7 +36,8 @@
 /// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
-use syn::{Expr, Item, parse2, spanned::Spanned};
+use syn::visit_mut::VisitMut;
+use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 
 use crate::{
     EraseGhost,
@@ -57,6 +58,7 @@ enum VerusIOTarget {
 enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
+    ItemConst(ItemConst),
 }
 
 impl syn::parse::Parse for VerusSpecTarget {
@@ -73,6 +75,11 @@ impl syn::parse::Parse for VerusSpecTarget {
                 input.advance_to(&fork);
                 return Ok(VerusSpecTarget::IOTarget(VerusIOTarget::Local(local)));
             }
+        }
+        let fork = input.fork();
+        if let Ok(item_const) = fork.parse::<ItemConst>() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::ItemConst(item_const));
         }
 
         let expr: Expr = input.parse()?;
@@ -175,8 +182,6 @@ pub(crate) fn rewrite_verus_attribute(
     spec_fun.map(|f| f.to_tokens(&mut new_stream));
     new_stream.into()
 }
-
-use syn::visit_mut::VisitMut;
 
 struct ExecReplacer {
     erase: EraseGhost,
@@ -330,6 +335,9 @@ pub(crate) fn rewrite_verus_spec(
         VerusSpecTarget::FnOrLoop(f) => {
             rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
         }
+        VerusSpecTarget::ItemConst(i) => {
+            rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
+        }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
         }
@@ -374,6 +382,39 @@ fn closure_to_fn_sig(closure: &syn::ExprClosure) -> syn::Signature {
         output: closure.output.clone(),
         paren_token: syn::token::Paren::default(),
     }
+}
+
+fn syn_to_verus_syn<V: verus_syn::parse::Parse>(input: impl ToTokens) -> V {
+    let tokens = input.to_token_stream();
+    verus_syn::parse2(tokens).unwrap()
+}
+
+pub(crate) fn rewrite_verus_spec_on_item_const(
+    erase_ghost: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    item_const: ItemConst,
+) -> proc_macro::TokenStream {
+    let spec_attr =
+        verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
+    let mut verus_item_const = syn_to_verus_syn::<verus_syn::ItemConst>(item_const);
+    let span = verus_item_const.span();
+    if spec_attr.spec.ensures.is_some() {
+        verus_item_const.ensures = spec_attr.spec.ensures;
+        verus_item_const.mode = verus_syn::FnMode::Exec(verus_syn::ModeExec {
+            exec_token: verus_syn::Token![exec](span),
+        });
+        verus_item_const.block = Some(Box::new(verus_syn::Block {
+            brace_token: verus_syn::token::Brace::default(),
+            stmts: vec![verus_syn::Stmt::Expr(
+                verus_syn::Expr::Verbatim(verus_item_const.expr.to_token_stream()),
+                None,
+            )],
+        }));
+        verus_item_const.eq_token = None;
+        verus_item_const.expr = None;
+        verus_item_const.semi_token = None;
+    }
+    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
 }
 
 pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
