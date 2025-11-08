@@ -902,3 +902,88 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_item_const_dual code!{
+        use vstd::prelude::*;
+
+        #[verus_spec]
+        const CONST_ITEM: u64 = 42;
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+                assert(CONST_ITEM == 42);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_error code!{
+        use vstd::prelude::*;
+
+        const CONST_ITEM: u64 = 42;
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot use function `test_crate::CONST_ITEM` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_ensures code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_item_fn() -> u64 {
+            42
+        }
+
+        #[verus_spec(
+            ensures CONST_ITEM == 42
+        )]
+        const CONST_ITEM: u64 = const_item_fn();
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_ensures_is_exec_mode code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_item_fn() -> u64 {
+            42
+        }
+
+        #[verus_spec(
+            ensures CONST_ITEM == 42
+        )]
+        const CONST_ITEM: u64 = const_item_fn();
+
+        #[verus_spec]
+        fn test() {
+            proof! {
+                assert(CONST_ITEM == 42);
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot read const with mode exec")
+}
