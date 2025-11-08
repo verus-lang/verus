@@ -1011,6 +1011,19 @@ test_verify_one_file! {
                 assert(X::C == 3);
             }
         }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_requires_erasure code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            const A: usize = 1;
+        }
 
         // This requires to use const_proxy in const.
         #[verus_verify]
