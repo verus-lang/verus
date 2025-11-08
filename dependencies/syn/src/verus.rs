@@ -2442,35 +2442,69 @@ impl parse::Parse for WithSpecOnFn {
     fn parse(input: ParseStream) -> Result<Self> {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
-        while !input.peek(Token![->]) {
+
+        // Helper function to check if we're at requires/ensures
+        let is_clause_keyword = |input: ParseStream| -> bool {
+            if input.peek(syn::Ident) {
+                let fork = input.fork();
+                if let Ok(ident) = fork.parse::<syn::Ident>() {
+                    let ident_str = ident.to_string();
+                    return ident_str == "requires" || ident_str == "ensures";
+                }
+            }
+            false
+        };
+
+        // Parse inputs
+        while !input.peek(Token![->]) && !input.is_empty() {
+            if is_clause_keyword(input) {
+                break;
+            }
+
             let expr = input.parse()?;
             inputs.push(expr);
+
             if !input.peek(Token![,]) {
                 break;
             }
-            let fork = input.fork();
-            let _comma: Token![,] = fork.parse()?;
-            let has_next_input = fork.parse::<FnArg>().is_ok();
+
             let _comma: Token![,] = input.parse()?;
-            if !has_next_input {
-                break;
+
+            // After consuming comma, check what's next
+            if input.is_empty() || input.peek(Token![->]) || is_clause_keyword(input) {
+                break; // Case: trailing comma at end of input
             }
         }
+
         let outputs = if input.peek(Token![->]) {
             let token = input.parse()?;
             let mut outs = Punctuated::new();
-            loop {
+
+            while !input.is_empty() {
+                // Check for requires/ensures clauses
+                if is_clause_keyword(input) {
+                    break;
+                }
+
                 let expr = input.parse()?;
                 outs.push(expr);
+
                 if !input.peek(Token![,]) {
                     break;
                 }
+
                 let _comma: Token![,] = input.parse()?;
+
+                // After consuming comma in outputs
+                if input.is_empty() || is_clause_keyword(input) {
+                    break; // Case: comma before requires/ensures
+                }
             }
             Some((token, outs))
         } else {
             None
         };
+
         Ok(WithSpecOnFn {
             with,
             inputs,
