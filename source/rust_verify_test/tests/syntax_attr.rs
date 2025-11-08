@@ -999,7 +999,7 @@ test_verify_one_file! {
             requires
                 x < 100,
             ensures
-            )]
+        )]
         fn foo(x: u32) -> u32 {
             (x + 1)
         }
@@ -1009,7 +1009,7 @@ test_verify_one_file! {
                 Tracked(y): Tracked<&mut u32>,
             requires
                 x < 100,
-            )]
+        )]
         fn bar(x: u32) -> u32 {
             (x + 1)
         }
@@ -1046,7 +1046,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn bar(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
@@ -1062,7 +1062,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn baz(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
@@ -1078,7 +1078,7 @@ test_verify_one_file! {
             ensures
                 ret == x + 1,
                 z@ == x,
-            )]
+        )]
         fn qux(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
