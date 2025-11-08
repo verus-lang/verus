@@ -907,14 +907,33 @@ test_verify_one_file! {
     #[test] test_item_const code!{
         use vstd::prelude::*;
 
+        #[verus_spec]
         const CONST_ITEM: u64 = 42;
 
+        #[verus_spec]
         fn test() {
+            let v = CONST_ITEM;
             proof! {
-                assert(CONST_ITEM == 42);
+                assert(v == 42);
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_error code!{
+        use vstd::prelude::*;
+
+        const CONST_ITEM: u64 = 42;
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot use function `test_crate::CONST_ITEM` which is ignored")
 }
 
 test_verify_one_file! {
