@@ -172,7 +172,7 @@ fn read_toml_version(dir: &Path) -> String {
     let content = fs::read_to_string(&cargo_toml_path).expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
     let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
-    doc["package"]["version"].to_string()
+    doc["package"]["version"].as_str().expect("Version must be a string").to_string()
 }
 
 fn update_toml_version(dir: &Path) {
