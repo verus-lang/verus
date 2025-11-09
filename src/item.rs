@@ -751,6 +751,7 @@ impl Printer {
             self.word("{}");
         } else if use_group.items.len() == 1
             && match &use_group.items[0] {
+                UseTree::Name(use_name) => use_name.ident != "self",
                 UseTree::Rename(use_rename) => use_rename.ident != "self",
                 _ => true,
             }

@@ -421,7 +421,7 @@ fn scan_right(
     }
     match expr {
         #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
-        Expr::Assign(e) => {
+        Expr::Assign(e) if e.attrs.is_empty() => {
             if match fixup.next_operator {
                 Precedence::Unambiguous => fail_offset >= 2,
                 _ => bailout_offset >= 1,
@@ -447,7 +447,7 @@ fn scan_right(
                 Scan::Bailout
             }
         }
-        Expr::Binary(e) => {
+        Expr::Binary(e) if e.attrs.is_empty() => {
             if match fixup.next_operator {
                 Precedence::Unambiguous => {
                     fail_offset >= 2
@@ -523,7 +523,7 @@ fn scan_right(
                 Scan::Bailout
             }
         }
-        Expr::Range(e) => match &e.end {
+        Expr::Range(e) if e.attrs.is_empty() => match &e.end {
             Some(end) => {
                 if fail_offset >= 2 {
                     return Scan::Consume;
@@ -628,8 +628,10 @@ fn scan_right(
         }
         Expr::Group(e) => scan_right(&e.expr, fixup, precedence, fail_offset, bailout_offset),
         Expr::Array(_)
+        | Expr::Assign(_)
         | Expr::Async(_)
         | Expr::Await(_)
+        | Expr::Binary(_)
         | Expr::Block(_)
         | Expr::Call(_)
         | Expr::Cast(_)
@@ -647,6 +649,7 @@ fn scan_right(
         | Expr::MethodCall(_)
         | Expr::Paren(_)
         | Expr::Path(_)
+        | Expr::Range(_)
         | Expr::Repeat(_)
         | Expr::Struct(_)
         | Expr::Try(_)

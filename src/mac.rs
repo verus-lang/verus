@@ -130,6 +130,7 @@ impl Printer {
         enum State {
             Start,
             Dollar,
+            DollarCrate,
             DollarIdent,
             DollarIdentColon,
             DollarParen,
@@ -152,7 +153,9 @@ impl Printer {
         for tt in stream {
             let token = Token::from(tt);
             let (needs_space, next_state) = match (&state, &token) {
-                (Dollar, Token::Ident(_)) => (false, if matcher { DollarIdent } else { Other }),
+                (Dollar, Token::Ident(_)) if matcher => (false, DollarIdent),
+                (Dollar, Token::Ident(ident)) if ident == "crate" => (false, DollarCrate),
+                (Dollar, Token::Ident(_)) => (false, Other),
                 (DollarIdent, Token::Punct(':', Spacing::Alone)) => (false, DollarIdentColon),
                 (DollarIdentColon, Token::Ident(_)) => (false, Other),
                 (DollarParen, Token::Punct('+' | '*' | '?', Spacing::Alone)) => (false, Other),
@@ -180,7 +183,9 @@ impl Printer {
                 (_, Token::Literal(_)) => (state != Dot, Ident),
                 (_, Token::Punct(',' | ';', _)) => (false, Other),
                 (_, Token::Punct('.', _)) if !matcher => (state != Ident && state != Delim, Dot),
-                (_, Token::Punct(':', Spacing::Joint)) => (state != Ident, Colon),
+                (_, Token::Punct(':', Spacing::Joint)) => {
+                    (state != Ident && state != DollarCrate, Colon)
+                }
                 (_, Token::Punct('$', _)) => (true, Dollar),
                 (_, Token::Punct('#', _)) => (true, Pound),
                 (_, _) => (true, Other),
@@ -229,12 +234,14 @@ fn is_keyword(ident: &Ident) -> bool {
 #[cfg(feature = "verbatim")]
 mod standard_library {
     use crate::algorithm::Printer;
+    use crate::expr;
     use crate::fixup::FixupContext;
     use crate::iter::IterDelimited;
     use crate::path::PathKind;
     use crate::INDENT;
     use syn::ext::IdentExt;
     use syn::parse::{Parse, ParseStream, Parser, Result};
+    use syn::punctuated::Punctuated;
     use syn::{
         parenthesized, token, Attribute, Expr, ExprAssign, ExprPath, Ident, Lit, Macro, Pat, Path,
         Token, Type, Visibility,
@@ -246,7 +253,7 @@ mod standard_library {
         Cfg(Cfg),
         Matches(Matches),
         ThreadLocal(Vec<ThreadLocal>),
-        VecArray(Vec<Expr>),
+        VecArray(Punctuated<Expr, Token![,]>),
         VecRepeat { elem: Expr, n: Expr },
     }
 
@@ -463,7 +470,7 @@ mod standard_library {
 
         fn parse_vec(input: ParseStream) -> Result<Self> {
             if input.is_empty() {
-                return Ok(KnownMacro::VecArray(Vec::new()));
+                return Ok(KnownMacro::VecArray(Punctuated::new()));
             }
             let first: Expr = input.parse()?;
             if input.parse::<Option<Token![;]>>()?.is_some() {
@@ -473,14 +480,16 @@ mod standard_library {
                     n: len,
                 })
             } else {
-                let mut vec = vec![first];
+                let mut vec = Punctuated::new();
+                vec.push_value(first);
                 while !input.is_empty() {
-                    input.parse::<Token![,]>()?;
+                    let comma: Token![,] = input.parse()?;
+                    vec.push_punct(comma);
                     if input.is_empty() {
                         break;
                     }
                     let next: Expr = input.parse()?;
-                    vec.push(next);
+                    vec.push_value(next);
                 }
                 Ok(KnownMacro::VecArray(vec))
             }
@@ -536,9 +545,8 @@ mod standard_library {
                 _ => return false,
             };
 
-            let known_macro = match parser.parse2(mac.tokens.clone()) {
-                Ok(known_macro) => known_macro,
-                Err(_) => return false,
+            let Ok(known_macro) = parser.parse2(mac.tokens.clone()) else {
+                return false;
             };
 
             self.path(&mac.path, PathKind::Simple);
@@ -615,16 +623,37 @@ mod standard_library {
                     semicolon = false;
                 }
                 KnownMacro::VecArray(vec) => {
-                    self.word("[");
-                    self.cbox(INDENT);
-                    self.zerobreak();
-                    for elem in vec.iter().delimited() {
-                        self.expr(&elem, FixupContext::NONE);
-                        self.trailing_comma(elem.is_last);
+                    if vec.is_empty() {
+                        self.word("[]");
+                    } else if expr::simple_array(vec) {
+                        self.cbox(INDENT);
+                        self.word("[");
+                        self.zerobreak();
+                        self.ibox(0);
+                        for elem in vec.iter().delimited() {
+                            self.expr(&elem, FixupContext::NONE);
+                            if !elem.is_last {
+                                self.word(",");
+                                self.space();
+                            }
+                        }
+                        self.end();
+                        self.trailing_comma(true);
+                        self.offset(-INDENT);
+                        self.word("]");
+                        self.end();
+                    } else {
+                        self.word("[");
+                        self.cbox(INDENT);
+                        self.zerobreak();
+                        for elem in vec.iter().delimited() {
+                            self.expr(&elem, FixupContext::NONE);
+                            self.trailing_comma(elem.is_last);
+                        }
+                        self.offset(-INDENT);
+                        self.end();
+                        self.word("]");
                     }
-                    self.offset(-INDENT);
-                    self.end();
-                    self.word("]");
                 }
                 KnownMacro::VecRepeat { elem, n } => {
                     self.word("[");
