@@ -987,3 +987,105 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_any_vir_error_msg(e, "cannot read const with mode exec")
 }
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_dual code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            const A: usize = 1;
+            const B: usize = Self::A + 1;
+            const C: usize = Self::B + 1;
+        }
+
+         #[verus_spec(ensures true)]
+        fn test() {
+            let v = X::C;
+            proof! {
+                assert(v == 3);
+                assert(X::A == 1);
+                assert(X::B == 2);
+                assert(X::C == 3);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_requires_erasure code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            const A: usize = 1;
+        }
+
+        // This requires to use const_proxy in const.
+        #[verus_verify]
+        enum Y {
+            A,
+            B = (1 << X::A) - 1,
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_use_unverified code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot use function `test_crate::const_fn` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_external code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external)]
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_ensures code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            #[verus_spec(ensures Self::CONST_ITEM != 42)]
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "postcondition not satisfied")
+}

@@ -51,6 +51,8 @@ pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
 
+const VERUS_SPEC: &str = "verus_spec";
+
 enum VerusIOTarget {
     Local(syn::Local),
     Expr(syn::Expr),
@@ -159,21 +161,8 @@ pub(crate) fn rewrite_verus_attribute(
     }
 
     // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
-    if let syn::Item::Impl(ref mut impl_block) = item {
-        for impl_item in &mut impl_block.items {
-            if let syn::ImplItem::Fn(ref mut method) = impl_item {
-                let has_verus_spec = method.attrs.iter().any(|attr| {
-                    attr.path().get_ident().map_or(false, |ident| ident == "verus_spec")
-                });
-
-                if has_verus_spec {
-                    method.attrs.push(syn::parse_quote! {
-                        #[allow(unused, verus_impl_method_marker)]
-                    });
-                }
-            }
-        }
-    }
+    let mut impl_item_replacer = ImplItemReplacer { verify_const: true };
+    impl_item_replacer.visit_item_mut(&mut item);
 
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
@@ -219,7 +208,7 @@ impl VisitMut for ExecReplacer {
             return;
         }
         if let Some(last) = node.path().segments.last() {
-            if last.ident == "verus_spec" {
+            if last.ident == VERUS_SPEC {
                 *node = syn::parse_quote! {
                     #[doc = r"verus_spec is applied only in verification mode"]
                 }
@@ -252,7 +241,7 @@ impl VisitMut for ExecReplacer {
                 {
                     attrs.push(crate::syntax::mk_rust_attr_syn(
                         with_args.span(),
-                        "verus_spec",
+                        VERUS_SPEC,
                         with_args,
                     ));
                     with_args = TokenStream::new();
@@ -270,6 +259,40 @@ impl VisitMut for ExecReplacer {
                     panic!("Expected a function call after proof_with! macro");
                 }
             };
+        }
+    }
+}
+
+struct ImplItemReplacer {
+    verify_const: bool,
+}
+
+fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
+    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+}
+
+impl VisitMut for ImplItemReplacer {
+    fn visit_impl_item_fn_mut(&mut self, method: &mut syn::ImplItemFn) {
+        syn::visit_mut::visit_impl_item_fn_mut(self, method);
+        // Help verus_spec be aware that it is in impl function.
+        if let Some(verus_spec) = get_verus_spec(&method.attrs) {
+            let span = verus_spec.span();
+            method.attrs.push(crate::syntax::mk_rust_attr_syn(
+                span,
+                "allow",
+                quote_spanned! { span => (unused, verus_impl_method_marker)},
+            ));
+        }
+    }
+
+    fn visit_impl_item_const_mut(&mut self, i: &mut syn::ImplItemConst) {
+        syn::visit_mut::visit_impl_item_const_mut(self, i);
+        if !self.verify_const {
+            return;
+        }
+        // Add verus_spec if not exists
+        if get_verus_spec(&i.attrs).is_none() {
+            i.attrs.push(crate::syntax::mk_rust_attr_syn(i.span(), VERUS_SPEC, TokenStream::new()));
         }
     }
 }
