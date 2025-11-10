@@ -12,7 +12,7 @@ keywords = ["rustfmt"]
 license = "MIT OR Apache-2.0"
 links = "prettyplease-verus02"
 repository = "https://github.com/dtolnay/prettyplease"
-rust-version = "1.62"
+rust-version = "1.68"
 
 [features]
 verbatim = ["verus_syn/parsing"]
@@ -27,12 +27,15 @@ proc-macro2 = { version = "1.0.80", default-features = false }
 quote = { version = "1.0.35", default-features = false }
 verus_syn = { version = "=0.0.0-2025-11-09-0048", path = "../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
 
-[lib]
-doc-scrape-examples = false
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
-rustdoc-args = ["--generate-link-to-definition"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--generate-macro-expansion",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+]
 
 [package.metadata.playground]
 features = ["verbatim"]
