@@ -111,7 +111,7 @@ macro_rules! transmute_refl_unique_lemma {
                 }
             }
 
-            /// When a `$typ` is transmuted to a `$typ`, a value can only be transmuted to itself.
+            /// When a `$typ` is transmuted to a `$typ`, the value can only be transmuted to itself.
             pub proof fn $unique_lemma_name(tracked x: $typ, y: Tracked<$typ>)
                 requires
                     transmute_pre(x, y)
