@@ -15,7 +15,6 @@ categories = ["development-tools"]
 
 [dependencies]
 verus_syn = { version="=0.0.0-2025-08-12-1837", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_builtin_macros = { version="=0.0.0-2025-08-12-1837", path="../builtin_macros" }
 quote = "1.0"
 proc-macro2 = "1.0"
 indexmap = { version = "1" }
