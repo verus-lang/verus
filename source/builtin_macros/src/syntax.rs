@@ -205,6 +205,18 @@ macro_rules! quote_spanned_builtin_builtin_macros {
     }
 }
 
+macro_rules! quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            let $v = crate::syntax::Vstd(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
 macro_rules! quote_vstd {
     ($b:ident => $($tt:tt)*) => {
         {
@@ -1550,7 +1562,7 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
+                                quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1558,7 +1570,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
-                                $crate::verus! {
+                                #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
