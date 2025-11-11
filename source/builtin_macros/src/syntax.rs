@@ -5331,7 +5331,7 @@ impl ToTokens for BuiltinMacros {
             VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
             VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
-            VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin_macros },
+            VstdKind::IsCore => quote_spanned! { self.0 => ::verus_builtin_macros },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
