@@ -2683,11 +2683,16 @@ test_verify_one_file! {
 }
 
 // This test should fail due to conflicting trait implementations, but currently
-// fails due to extern types being an experimental feature. Once extern type
-// types are stable and supported by verus, the expected error should be updated
-// here.
-test_verify_one_file! {
-    #[test] test_conflicting_sizedness_constraints verus_code! {
+// fails due to extern types not being supported by verus. Once extern type are
+// supported, the expected error should be updated here.
+test_verify_one_file_with_options! {
+    #[test] test_conflicting_sizedness_constraints ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(extern_types))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+
+        use vstd::prelude::*;
+
+        verus! {
         extern "C" {
             type E;
         }
@@ -2709,8 +2714,8 @@ test_verify_one_file! {
             assert(<E as T>::f() == 4);
             assert(false);
         }
-
-    } => Err(err) => assert_rust_error_msgs(err, &["extern types are experimental", "type annotations needed", "type annotations needed"])
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
 }
 
 test_verify_one_file! {
