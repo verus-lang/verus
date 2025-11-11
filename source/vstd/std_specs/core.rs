@@ -57,25 +57,6 @@ pub trait ExDisplay: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFrom<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::From<T>;
-
-    fn from(v: T) -> (ret: Self);
-}
-
-#[verifier::external_trait_specification]
-pub trait ExInto<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::Into<T>;
-
-    fn into(self) -> (ret: T);
-}
-
-pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
-    ensures
-        call_ensures(U::from, (a,), ret),
-;
-
-#[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
@@ -225,23 +206,6 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
 }
 
 } // verus!
-macro_rules! impl_from_spec {
-    ($from: ty => [$($to: ty)*]) => {
-        verus!{
-        $(
-        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to)
-            ensures
-                ret == a as $to,
-        ;
-        )*
-        }
-    };
-}
-
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
