@@ -183,17 +183,6 @@ macro_rules! parse_quote_spanned_builtin {
     }
 }
 
-macro_rules! quote_spanned_builtin_vstd {
-    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
-        {
-            let sp = $span;
-            let $b = crate::syntax::Builtin(sp);
-            let $v = crate::syntax::Vstd(sp);
-            ::quote::quote_spanned!{ sp => $($tt)* }
-        }
-    }
-}
-
 macro_rules! quote_spanned_builtin_builtin_macros {
     ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
