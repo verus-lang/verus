@@ -1,13 +1,30 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
-use core::ops::Range;
+use core::ops::{Range, RangeInclusive};
 
 verus! {
 
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types_in_ground_variants(Idx)]
 pub struct ExRange<Idx>(Range<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(Idx)]
+pub struct ExRangeInclusive<Idx>(RangeInclusive<Idx>);
+
+pub struct RangeInclusiveView<Idx> {
+    pub start: Idx,
+    pub end: Idx,
+    pub exhausted: bool,
+}
+
+impl<Idx> View for RangeInclusive<Idx> {
+    type V = RangeInclusiveView<Idx>;
+
+    uninterp spec fn view(&self) -> Self::V;
+}
 
 pub trait StepSpec where Self: Sized {
     // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
@@ -45,6 +62,23 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ Range::<Idx>::contains ](
     ensures
         (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec())
             ==> ret == (r.start.is_le(i) && i.is_lt(&r.end)),
+;
+
+pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contains ](
+    r: &RangeInclusive<Idx>,
+    i: &U,
+) -> (ret: bool) where Idx: PartialOrd<U>, U: ?Sized + PartialOrd<Idx>
+    ensures
+        (U::obeys_partial_cmp_spec() && <Idx as PartialOrdSpec<U>>::obeys_partial_cmp_spec())
+            ==> ret == (r@.start.is_le(i) && i.is_le(&r@.end)),
+;
+
+pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
+    core::ops::RangeInclusive<Idx>)
+    ensures
+        ret@.start == start,
+        ret@.end == end,
+        ret@.exhausted == false,
 ;
 
 pub struct RangeGhostIterator<A> {
