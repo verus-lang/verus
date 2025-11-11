@@ -205,11 +205,11 @@ impl<'a> Speculative for ParseBuffer<'a> {
 pub trait AnyDelimiter {
     /// Returns the delimiter, the span of the delimiter token, and the nested
     /// contents for further parsing.
-    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer<'_>)>;
+    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer)>;
 }
 
 impl<'a> AnyDelimiter for ParseBuffer<'a> {
-    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer<'_>)> {
+    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer)> {
         self.step(|cursor| {
             if let Some((content, delimiter, span, rest)) = cursor.any_group() {
                 let scope = span.close();
