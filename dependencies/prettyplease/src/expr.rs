@@ -15,7 +15,7 @@ use verus_syn::{
     ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprInfer, ExprLet, ExprLit, ExprLoop,
     ExprMacro, ExprMatch, ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprRawAddr,
     ExprReference, ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprUnary,
-    ExprUnsafe, ExprWhile, ExprYield, FieldValue, Index, Label, Member, PointerMutability,
+    ExprUnsafe, ExprWhile, ExprYield, FieldValue, Index, Label, Lit, Member, PointerMutability,
     RangeLimits, ReturnType, Stmt, Token, UnOp,
 };
 
@@ -263,16 +263,37 @@ impl Printer {
 
     fn expr_array(&mut self, expr: &ExprArray) {
         self.outer_attrs(&expr.attrs);
-        self.word("[");
-        self.cbox(INDENT);
-        self.zerobreak();
-        for element in expr.elems.iter().delimited() {
-            self.expr(&element, FixupContext::NONE);
-            self.trailing_comma(element.is_last);
+        if expr.elems.is_empty() {
+            self.word("[]");
+        } else if simple_array(&expr.elems) {
+            self.cbox(INDENT);
+            self.word("[");
+            self.zerobreak();
+            self.ibox(0);
+            for elem in expr.elems.iter().delimited() {
+                self.expr(&elem, FixupContext::NONE);
+                if !elem.is_last {
+                    self.word(",");
+                    self.space();
+                }
+            }
+            self.end();
+            self.trailing_comma(true);
+            self.offset(-INDENT);
+            self.word("]");
+            self.end();
+        } else {
+            self.word("[");
+            self.cbox(INDENT);
+            self.zerobreak();
+            for elem in expr.elems.iter().delimited() {
+                self.expr(&elem, FixupContext::NONE);
+                self.trailing_comma(elem.is_last);
+            }
+            self.offset(-INDENT);
+            self.end();
+            self.word("]");
         }
-        self.offset(-INDENT);
-        self.end();
-        self.word("]");
     }
 
     fn expr_assign(&mut self, expr: &ExprAssign, fixup: FixupContext) {
@@ -286,10 +307,16 @@ impl Printer {
 
         self.outer_attrs(&expr.attrs);
         self.ibox(0);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.left, left_prec <= Precedence::Range, left_fixup);
         self.word(" = ");
         self.neverbreak();
         self.expr(&expr.right, right_fixup);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -368,12 +395,18 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.ibox(INDENT);
         self.ibox(-INDENT);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.left, left_needs_group, left_fixup);
         self.end();
         self.space();
         self.binary_operator(&expr.op);
         self.nbsp();
         self.subexpr(&expr.right, right_needs_group, right_fixup);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -451,11 +484,17 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.ibox(INDENT);
         self.ibox(-INDENT);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         self.subexpr(&expr.expr, left_prec < Precedence::Cast, left_fixup);
         self.end();
         self.space();
         self.word("as ");
         self.ty(&expr.ty);
+        if !expr.attrs.is_empty() {
+            self.word(")");
+        }
         self.end();
     }
 
@@ -853,6 +892,9 @@ impl Printer {
 
     pub fn expr_range(&mut self, expr: &ExprRange, fixup: FixupContext) {
         self.outer_attrs(&expr.attrs);
+        if !expr.attrs.is_empty() {
+            self.word("(");
+        }
         if let Some(start) = &expr.start {
             let (left_prec, left_fixup) =
                 fixup.leftmost_subexpression_with_operator(start, true, false, Precedence::Range);
@@ -868,6 +910,9 @@ impl Printer {
             let right_fixup = fixup.rightmost_subexpression_fixup(false, true, Precedence::Range);
             let right_prec = right_fixup.rightmost_subexpression_precedence(end);
             self.subexpr(end, right_prec <= Precedence::Range, right_fixup);
+        }
+        if !expr.attrs.is_empty() {
+            self.word(")");
         }
     }
 
@@ -1486,6 +1531,26 @@ pub fn simple_block(expr: &Expr) -> Option<&ExprBlock> {
         }
     }
     None
+}
+
+pub fn simple_array(elements: &Punctuated<Expr, Token![,]>) -> bool {
+    for expr in elements {
+        if let Expr::Lit(expr) = expr {
+            match expr.lit {
+                #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
+                Lit::Byte(_) | Lit::Char(_) | Lit::Int(_) | Lit::Bool(_) => {}
+
+                Lit::Str(_) | Lit::ByteStr(_) | Lit::CStr(_) | Lit::Float(_) | Lit::Verbatim(_) => {
+                    return false;
+                }
+
+                _ => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+    true
 }
 
 // Expressions for which `$expr` and `{ $expr }` mean the same thing.

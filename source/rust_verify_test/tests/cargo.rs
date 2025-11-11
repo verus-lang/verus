@@ -131,5 +131,5 @@ fn cargo_new_builds() {
 // Tests that run `cargo verus {verify, build}` on each crate in the cargo-tests/verified directory
 cargo_examples!(true);
 
-// Tests that run `cargo {check, build}` on each crate in the cargo-tests/verified directory
+// Tests that run `cargo {check, build}` on each crate in the cargo-tests/unverified directory
 cargo_examples!(false);

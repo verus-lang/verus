@@ -333,11 +333,14 @@ impl<K, V> GhostSubmap<K, V> {
 
     pub proof fn take(tracked &mut self) -> (tracked result: GhostSubmap<K, V>)
         ensures
+            old(self).id() == self.id(),
+            self@.is_empty(),
             result == *old(self),
+            result.id() == self.id(),
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Self::dummy();
+        let tracked mut r = Self::empty(self.id());
         tracked_swap(self, &mut r);
         r
     }

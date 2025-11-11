@@ -199,7 +199,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+        let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
         let res = resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
         match res {
             ResolutionResult::Resolved {
@@ -289,7 +289,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
     // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
     // reference for calling `deref`. We strip it for trait resolution.
     //

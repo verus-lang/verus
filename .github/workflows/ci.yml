@@ -157,7 +157,7 @@ jobs:
           path: source/doc
 
   smoke-test-and-release-macos-x86:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: checkout
         uses: actions/checkout@v4

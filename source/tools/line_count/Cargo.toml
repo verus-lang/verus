@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-verus_syn = { version = "=0.0.0-2025-08-12-1837", path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_prettyplease = { version = "=0.0.0-2025-08-12-1837", path = "../../../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2025-11-09-0048", path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2025-11-09-0048", path = "../../../dependencies/prettyplease" }
 getopts = "*"
 toml = "0.8"
 serde = { version = "1.0", features = ["std", "derive", "rc"] }
