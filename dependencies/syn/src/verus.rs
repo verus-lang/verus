@@ -2443,24 +2443,24 @@ impl parse::Parse for WithSpecOnFn {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
 
-        // Helper function to check if we're at requires/ensures
-        let is_clause_keyword = |input: ParseStream| -> bool {
-            if input.peek(syn::Ident) {
-                let fork = input.fork();
-                if let Ok(ident) = fork.parse::<syn::Ident>() {
-                    let ident_str = ident.to_string();
-                    return ident_str == "requires" || ident_str == "ensures";
-                }
-            }
-            false
+        // Helper function to check if we're at next spec keyword
+        let is_next_spec_keyword = |input: ParseStream| -> bool {
+            input.peek(Token![requires])
+                || input.peek(Token![invariant_except_break])
+                || input.peek(Token![invariant])
+                || input.peek(Token![invariant_ensures])
+                || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
+                || input.peek(Token![returns])
+                || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
+                || input.peek(Token![opens_invariants])
         };
 
         // Parse inputs
-        while !input.peek(Token![->]) && !input.is_empty() {
-            if is_clause_keyword(input) {
-                break;
-            }
-
+        while !input.peek(Token![->]) && !input.is_empty() && !is_next_spec_keyword(input) {
             let expr = input.parse()?;
             inputs.push(expr);
 
@@ -2469,23 +2469,13 @@ impl parse::Parse for WithSpecOnFn {
             }
 
             let _comma: Token![,] = input.parse()?;
-
-            // After consuming comma, check what's next
-            if input.is_empty() || input.peek(Token![->]) || is_clause_keyword(input) {
-                break; // Case: trailing comma at end of input
-            }
         }
 
         let outputs = if input.peek(Token![->]) {
             let token = input.parse()?;
             let mut outs = Punctuated::new();
 
-            while !input.is_empty() {
-                // Check for requires/ensures clauses
-                if is_clause_keyword(input) {
-                    break;
-                }
-
+            while !input.is_empty() && !is_next_spec_keyword(input) {
                 let expr = input.parse()?;
                 outs.push(expr);
 
@@ -2494,11 +2484,6 @@ impl parse::Parse for WithSpecOnFn {
                 }
 
                 let _comma: Token![,] = input.parse()?;
-
-                // After consuming comma in outputs
-                if input.is_empty() || is_clause_keyword(input) {
-                    break; // Case: comma before requires/ensures
-                }
             }
             Some((token, outs))
         } else {
