@@ -950,13 +950,11 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 
 /// If an injective function is applied to each element of a set to construct
 /// another set, the two sets have the same size.
-// the dafny original lemma reasons with partial function f
 pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        injective(f),
-        forall|a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),
-        forall|b: B| (#[trigger] y.contains(b)) ==> exists|a: A| x.contains(a) && f(a) == b,
         x.finite(),
+        injective_on(f, x),
+        x.map(f) == y,
     ensures
         y.finite(),
         x.len() == y.len(),
@@ -970,6 +968,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
         }
     } else {
         let a = x.choose();
+        assert(x.remove(a).map(f) == y.remove(f(a)));
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
         assert(y == y.remove(f(a)).insert(f(a)));
     }
