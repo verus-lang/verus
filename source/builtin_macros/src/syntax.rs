@@ -194,6 +194,17 @@ macro_rules! quote_spanned_builtin_vstd {
     }
 }
 
+macro_rules! quote_spanned_builtin_buildin_macros {
+    ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
 macro_rules! quote_vstd {
     ($b:ident => $($tt:tt)*) => {
         {
@@ -5295,6 +5306,21 @@ impl ToTokens for Builtin {
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
+        };
+        tokens.extend(toks);
+    }
+}
+
+pub(crate) struct BuiltinMacros(pub Span);
+
+impl ToTokens for BuiltinMacros {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin_macros },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
     }
