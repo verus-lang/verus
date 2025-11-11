@@ -194,7 +194,7 @@ macro_rules! quote_spanned_builtin_vstd {
     }
 }
 
-macro_rules! quote_spanned_builtin_buildin_macros {
+macro_rules! quote_spanned_builtin_builtin_macros {
     ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;

@@ -123,7 +123,7 @@ fn attribute_is_variant_internal(
                 &syn::Fields::Unit => quote! {},
             };
 
-            quote_spanned_builtin_buildin_macros! { verus_builtin, verus_builtin_macros, variant_ident.span() =>
+            quote_spanned_builtin_builtin_macros! { verus_builtin, verus_builtin_macros, variant_ident.span() =>
                 #verus_builtin_macros::verus! {
                     #[cfg(verus_keep_ghost)]
                     #[allow(non_snake_case)]
