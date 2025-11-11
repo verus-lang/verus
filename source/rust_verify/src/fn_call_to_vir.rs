@@ -165,17 +165,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     // Normal function call
 
-    // TODO(1.91.0): is this still needed? (impl_trait_id no longer returns Option)
-    // unsupported_err_unless!(
-    //     bctx.ctxt
-    //         .tcx
-    //         .impl_of_assoc(f)
-    //         .and_then(|method_def_id| bctx.ctxt.tcx.impl_trait_id(method_def_id))
-    //         .is_none(),
-    //     expr.span,
-    //     "call of trait impl"
-    // );
-
     let path = bctx.ctxt.def_id_to_vir_path(f);
     let name = Arc::new(FunX { path: path.clone() });
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };

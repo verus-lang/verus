@@ -2682,6 +2682,37 @@ test_verify_one_file! {
     // TODO: } => Err(err) => assert_one_fails(err)
 }
 
+// This test should fail due to conflicting trait implementations, but currently
+// fails due to extern types being an experimental feature. Once extern type
+// types are stable and supported by verus, the expected error should be updated
+// here.
+test_verify_one_file! {
+    #[test] test_conflicting_sizedness_constraints verus_code! {
+        extern "C" {
+            type E;
+        }
+
+        trait T: core::marker::PointeeSized {
+            spec fn f() -> int;
+        }
+
+        impl<A: core::marker::MetaSized> T for A {
+            spec fn f() -> int { 3 }
+        }
+
+        impl T for E {
+            spec fn f() -> int { 4 }
+        }
+
+        proof fn f() {
+            assert(<E as T>::f() == 3);
+            assert(<E as T>::f() == 4);
+            assert(false);
+        }
+
+    } => Err(err) => assert_rust_error_msgs(err, &["extern types are experimental", "type annotations needed", "type annotations needed"])
+}
+
 test_verify_one_file! {
     #[test] test_specialize_dispatch_copy_clone_ok verus_code! {
         // https://github.com/verus-lang/verus/issues/1267
