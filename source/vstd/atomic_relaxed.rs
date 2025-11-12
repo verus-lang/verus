@@ -17,6 +17,8 @@ use std::marker::PhantomData;
 
 verus! {
 
+broadcast use crate::group_vstd_default;
+
 pub struct Release<T> {
     val: T,
 }
@@ -211,9 +213,13 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred>
             assert(Pred::atomic_inv(self.atomic_inv@.constant().0, pair.0.view().value, pair.1));
 
             proof { 
-                assert(Pred::atomic_inv(self.constant(), prev, g));
-                let tracked (new_g, temp) = f(prev, next, ret, self.constant(), g, resource_in.get()); 
-                assume(false);
+                let input = (prev, next, ret, self.constant(), g, resource_in.get());
+                assert(Pred::atomic_inv(input.3, input.0, input.4));
+                assert(f.requires(input));
+                let tracked output = f(input.0, input.1, input.2, input.3, input.4, input.5);
+                assert(f.ensures(input, output)); 
+                assert(Pred::atomic_inv(input.3, input.1, output.0));
+                let tracked (new_g, temp) = output;
                 pair = (perm, new_g);
                 resource_out_inner = temp;
             }
