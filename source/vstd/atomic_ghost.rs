@@ -15,6 +15,7 @@ pub trait AtomicInvariantPredicate<K, V, G> {
 
 } // verus!
 macro_rules! declare_atomic_type {
+    // atomic type (AtomicU32), patomic type (PAtomicU32), permission type (PermissionU32), underlying type (u32), atomic predicate type (AtomicPredU32)
     ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty, $atomic_pred_ty: ident) => {
         verus!{
 

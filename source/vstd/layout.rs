@@ -255,6 +255,20 @@ pub broadcast axiom fn layout_of_primitives()
         size_of::<usize>() * 8 == usize::BITS,
 ;
 
+// Adding this to the alignment broadcast group causes proofs to time out, so import as-needed
+pub broadcast proof fn alignment_of_u8()
+    ensures 
+        #![trigger size_of::<u8>()]
+        align_of::<u8>() == 1,
+{
+    broadcast use {
+        layout_of_primitives,
+        align_properties,
+        align_nonzero,
+        crate::vstd::arithmetic::div_mod::lemma_mod_is_zero,
+    };
+}
+
 // The size is a multiple of alignment and alignment is always a power of 2 by
 // https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
 pub broadcast axiom fn align_properties<T>()
@@ -271,7 +285,6 @@ pub broadcast proof fn align_nonzero<T>()
         align_of::<T>() > 0,
 {
     broadcast use crate::vstd::arithmetic::power::lemma_pow_positive, align_properties;
-
 }
 
 pub proof fn usize_size_pow2()
