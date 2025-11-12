@@ -516,7 +516,6 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     typ_bounds: trait_impl.x.typ_bounds.clone(),
                     params,
                     ret,
-                    au_arrow: None,
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),

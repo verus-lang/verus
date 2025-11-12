@@ -152,7 +152,6 @@ fn handle_autospec<'tcx>(
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
                 ret: spec_ret_param,
-                au_arrow: functionx.au_arrow.clone(),
                 ens_has_return: true,
                 require: functionx.require.clone(), // requires becomes recommends
                 ensure: (Arc::new(vec![]), Arc::new(vec![])),
@@ -1419,30 +1418,6 @@ pub(crate) fn check_item_fn<'tcx>(
             unwrapped_info: None,
         },
     );
-    let au_arrow = header.ensure_au_arrow.map(|(in_name, in_typ, out_name, out_typ)| {
-        let au_span = sig.decl.inputs.last().expect("last argument must be AU construction").span;
-        let input = ctxt.spanned_new(
-            au_span,
-            ParamX {
-                name: in_name,
-                typ: in_typ,
-                mode: Mode::Proof,
-                is_mut: false,
-                unwrapped_info: None,
-            },
-        );
-        let output = ctxt.spanned_new(
-            au_span,
-            ParamX {
-                name: out_name,
-                typ: out_typ,
-                mode: Mode::Proof,
-                is_mut: false,
-                unwrapped_info: None,
-            },
-        );
-        (input, output)
-    });
     let (typ_params, typ_bounds) = {
         let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
         let mut typ_bounds: Vec<vir::ast::GenericBound> = Vec::new();
@@ -1625,7 +1600,6 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
-        au_arrow,
         ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns,
@@ -1710,7 +1684,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             mut typ_bounds,
             mut params,
             mut ret,
-            mut au_arrow,
             ens_has_return,
             require,
             ensure,
@@ -1777,11 +1750,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         ret = ret.new_x(ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
-        if let Some((inp, out)) = &mut au_arrow {
-            *inp = inp.new_x(ParamX { typ: subst_typ(&typ_substs, &inp.x.typ), ..inp.x.clone() });
-            *out = out.new_x(ParamX { typ: subst_typ(&typ_substs, &out.x.typ), ..out.x.clone() });
-        }
-
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
         unsupported_err_unless!(returns.is_some(), span, "returns clauses");
@@ -1806,7 +1774,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             typ_bounds,
             params,
             ret,
-            au_arrow,
             ens_has_return,
             require,
             ensure,
@@ -2350,7 +2317,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
-        au_arrow: None,
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: (ensure, Arc::new(vec![])),
@@ -2466,7 +2432,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
-        au_arrow: None,
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: (Arc::new(vec![]), Arc::new(vec![])),

@@ -398,7 +398,22 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         ]),
     });
 
-    for method in ["req", "ens", "pred", "resolves", "input", "output", "outer_mask", "inner_mask"] {
+    static AU_METHOD_NAMES: &[&str] = &[
+        // pre and post condition
+        "req",
+        "ens",
+        // predicate projection
+        "pred",
+        // prophesy variables
+        "resolves",
+        "input",
+        "output",
+        // invariant masks
+        "inner_mask",
+        "outer_mask",
+    ];
+
+    for &method in AU_METHOD_NAMES {
         let ident = Arc::new(method.to_owned());
         let path = base_path.push_segment(ident);
         let fun = Arc::new(FunX { path });

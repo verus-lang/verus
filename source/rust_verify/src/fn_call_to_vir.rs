@@ -1892,51 +1892,30 @@ fn extract_ensures<'tcx>(
                 BodyErasure { erase_body: true, ret_spec: true },
             );
 
-            let mut typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
             let body = tcx.hir_body(closure.body);
             let mut xs: Vec<VarIdent> = Vec::new();
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
 
-            // This closure may take up to three arguments, which correspond to:
-            // - the return value, if the user decides to gives it a name, and
-            // - the input and output of the atomic update, if an atomic spec is present.
-            //
-            // Since the latter always come in pairs, we can determine which arguments
-            // must be present from the number of arguments alone:
-            //   1 arg   ==>  ret-val
-            //   2 args  ==>           au-input, au-output
-            //   3 args  ==>  ret-val, au-input, au-output
-
             let expr = &body.value;
             let args = get_args(expr)?;
-            let au_arrow = if xs.len() > 1 {
-                assert!(typs.len() > 1);
-                let out_id = xs.pop().unwrap();
-                let inp_id = xs.pop().unwrap();
-                let out_ty = typs.pop().unwrap();
-                let inp_ty = typs.pop().unwrap();
-                Some((inp_id, inp_ty, out_id, out_ty))
-            } else {
-                None
-            };
-
             if typs.len() == 0 && xs.len() == 1 {
                 let id_typ = Some((xs[0].clone(), None));
-                Ok(Arc::new(HeaderExprX::Ensures(id_typ, au_arrow, args)))
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ, args)))
             } else if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((xs[0].clone(), Some(typs[0].clone())));
-                Ok(Arc::new(HeaderExprX::Ensures(id_typ, au_arrow, args)))
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ, args)))
             } else if xs.len() == 0 {
-                Ok(Arc::new(HeaderExprX::Ensures(None, au_arrow, args)))
+                Ok(Arc::new(HeaderExprX::Ensures(None, args)))
             } else {
                 err_span(expr.span, "expected at most 1 parameter in closure")
             }
         }
         _ => {
             let args = get_args(expr)?;
-            Ok(Arc::new(HeaderExprX::Ensures(None, None, args)))
+            Ok(Arc::new(HeaderExprX::Ensures(None, args)))
         }
     }
 }

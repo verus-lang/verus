@@ -2001,10 +2001,6 @@ fn check_function(
     if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
-    if let Some((input, output)) = &function.x.au_arrow {
-        ens_typing.insert(&input.x.name, Mode::Proof);
-        ens_typing.insert(&output.x.name, Mode::Proof);
-    }
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
         let mut ens_typing = ens_typing.push_allow_prophecy_dependence(true);

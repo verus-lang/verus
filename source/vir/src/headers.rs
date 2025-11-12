@@ -67,7 +67,6 @@ pub struct Header {
     pub require: Exprs,
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Option<Typ>)>,
-    pub ensure_au_arrow: Option<(VarIdent, Typ, VarIdent, Typ)>,
     pub ensure: (Exprs, Exprs),
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
@@ -139,7 +138,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         }
                         recommend = Some(es.clone());
                     }
-                    HeaderExprX::Ensures(id_typ, au_arrow, es) => {
+                    HeaderExprX::Ensures(id_typ, es) => {
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
@@ -151,7 +150,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         } else if !allows.all() {
                             return Err(error(&stmt.span, "default_ensures not allowed here"));
                         }
-                        ensure = Some((id_typ.clone(), au_arrow.clone(), es.clone()));
+                        ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
@@ -299,7 +298,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
-    let (ensure_id_typ, ensure_au_arrow, ensure) = ensure.unwrap_or_default();
+    let (ensure_id_typ, ensure) = ensure.unwrap_or_default();
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
@@ -310,7 +309,6 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         require,
         recommend,
         ensure_id_typ,
-        ensure_au_arrow,
         ensure,
         returns,
         invariant_except_break,
@@ -477,7 +475,6 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         mut typ_bounds,
         params,
         ret,
-        au_arrow: _,
         ens_has_return: _,
         require,
         ensure,

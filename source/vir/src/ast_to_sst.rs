@@ -93,8 +93,6 @@ pub(crate) struct State<'a> {
     // This variable is bound by the `atomically |update| { ... }` block
     // and read by the corresponding `update` function.
     pub au_var_exp: Option<crate::sst::Exp>,
-
-    pub au_arrow: Option<(VarIdent, VarIdent)>,
 }
 
 #[derive(Clone, Debug)]
@@ -177,7 +175,6 @@ impl<'a> State<'a> {
             mask: None,
             au_var_exp_to_resolve: None,
             au_var_exp: None,
-            au_arrow: None,
         }
     }
 
