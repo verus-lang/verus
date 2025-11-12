@@ -462,7 +462,7 @@ test_verify_one_file! {
         fn test1(v: Maybe<u64>) {
             assert(v.get_Some_1() == 3);
         }
-    } => Err(err) => assert_rust_error_msg(err, "no method named `get_Some_1` found for enum `Maybe` in the current scope")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get_Some_1` found for enum `Maybe<T>` in the current scope")
 }
 
 test_verify_one_file! {

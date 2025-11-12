@@ -6,7 +6,7 @@ use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
-use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
+use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -67,12 +67,12 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
 
 pub(crate) fn external_trait_specification_of<'tcx>(
     tcx: TyCtxt<'tcx>,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
 ) -> Result<Option<TraitRef<'tcx>>, VirErr> {
     let mut ex_trait_ref_for: Option<TraitRef> = None;
-    for trait_item_ref in trait_items {
-        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
+    for trait_item_id in trait_items {
+        let trait_item = tcx.hir_trait_item(*trait_item_id);
         let TraitItem { ident, kind, span, .. } = trait_item;
         match kind {
             TraitItemKind::Type(_generic_bounds, None) => {
@@ -122,7 +122,7 @@ pub(crate) fn translate_trait<'tcx>(
     visibility: Visibility,
     module_path: &vir::ast::Path,
     trait_generics: &'tcx Generics,
-    trait_items: &'tcx [TraitItemRef],
+    trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
@@ -161,6 +161,7 @@ pub(crate) fn translate_trait<'tcx>(
     };
     if let Some(ex_trait_ref_for) = ex_trait_ref_for {
         crate::rust_to_vir_base::check_item_external_generics(
+            ctxt.tcx,
             None,
             trait_generics,
             false,
@@ -220,10 +221,17 @@ pub(crate) fn translate_trait<'tcx>(
         }
     }
 
-    for trait_item_ref in trait_items {
-        let trait_item = tcx.hir_trait_item(trait_item_ref.id);
-        let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
-            trait_item;
+    for trait_item_id in trait_items {
+        let trait_item = tcx.hir_trait_item(*trait_item_id);
+        let TraitItem {
+            ident,
+            owner_id,
+            generics: item_generics,
+            kind,
+            span,
+            defaultness: _,
+            has_delayed_lints: _,
+        } = trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
             &ctxt.verus_items,
@@ -235,7 +243,7 @@ pub(crate) fn translate_trait<'tcx>(
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?;
 
-        if crate_items.is_trait_item_external(trait_item_ref.id) {
+        if crate_items.is_trait_item_external(*trait_item_id) {
             return err_span(
                 *span,
                 "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",

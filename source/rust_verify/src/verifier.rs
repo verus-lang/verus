@@ -2922,8 +2922,8 @@ impl Verifier {
 
         // These can invoke mir_borrowck when opaque types are involved.
         // Thus, we can only run these after initializing erasure_hints
-        tcx.ensure_ok().check_private_in_public(());
         tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_private_in_public(module);
             tcx.ensure_ok().check_mod_privacy(module);
         });
 

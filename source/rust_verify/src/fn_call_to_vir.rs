@@ -110,12 +110,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
             // operation in the SMT encoding.)
-            let arg_typ = match node_substs[0].unpack() {
-                GenericArgKind::Type(ty) => ty,
-                _ => {
-                    panic!("clone expected type argument");
-                }
-            };
+            let arg_typ = node_substs[0].expect_ty();
 
             if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
@@ -156,7 +151,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     }
 
-    let f_attrs = bctx.ctxt.tcx.get_attrs_unchecked(f);
+    let f_attrs = bctx.ctxt.tcx.get_all_attrs(f);
     if crate::attributes::is_get_field_many_variants(
         f_attrs,
         Some(&mut *bctx.ctxt.diagnostics.borrow_mut()),
@@ -169,16 +164,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     // Normal function call
-
-    unsupported_err_unless!(
-        bctx.ctxt
-            .tcx
-            .impl_of_method(f)
-            .and_then(|method_def_id| bctx.ctxt.tcx.trait_id_of_impl(method_def_id))
-            .is_none(),
-        expr.span,
-        "call of trait impl"
-    );
 
     let path = bctx.ctxt.def_id_to_vir_path(f);
     let name = Arc::new(FunX { path: path.clone() });
@@ -196,7 +181,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
 
     let mut record_name = name.clone();
-    let target_kind = if tcx.trait_of_item(f).is_none() {
+    let target_kind = if tcx.trait_of_assoc(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
         let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
@@ -234,7 +219,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
 
                 let mut self_trait_impl_path = None;
-                let trait_id = tcx.trait_of_item(did).unwrap();
+                let trait_id = tcx.trait_of_assoc(did).unwrap();
                 let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
                 let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
 
@@ -1468,8 +1453,8 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             if matches!(equ_item, EqualityItem::ExtEqual | EqualityItem::ExtEqualDeep) {
                 assert!(node_substs.len() == 1);
-                let t = match node_substs[0].unpack() {
-                    GenericArgKind::Type(ty) => bctx.mid_ty_to_vir(expr.span, &ty, false)?,
+                let t = match node_substs[0].as_type() {
+                    Some(ty) => bctx.mid_ty_to_vir(expr.span, &ty, false)?,
                     _ => panic!("unexpected ext_equal type argument"),
                 };
                 let vop = vir::ast::BinaryOpr::ExtEq(equ_item == &EqualityItem::ExtEqualDeep, t);
@@ -2110,7 +2095,7 @@ fn mk_typ_args<'tcx>(
     let tcx = bctx.ctxt.tcx;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
-        match typ_arg.unpack() {
+        match typ_arg.kind() {
             GenericArgKind::Type(ty) => {
                 typ_args.push(bctx.mid_ty_to_vir(span, &ty, false)?);
             }

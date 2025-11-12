@@ -481,7 +481,7 @@ pub(crate) fn expand_call_graph(
         }
         let tr = match &**bound {
             GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
-            GenericBoundX::Trait(TraitId::Sized, _) => {
+            GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                 continue;
             }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,

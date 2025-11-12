@@ -654,7 +654,7 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // T's own members).
     let (bound_path, args) = match &**bound {
         GenericBoundX::Trait(TraitId::Path(bound_path), args) => (bound_path, args),
-        GenericBoundX::Trait(TraitId::Sized, _) => {
+        GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
             return false;
         }
         GenericBoundX::TypEquality(..) => {
@@ -689,7 +689,7 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trai
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let u_path = match &**bound {
             GenericBoundX::Trait(TraitId::Path(u_path), _) => u_path,
-            GenericBoundX::Trait(TraitId::Sized, _) => {
+            GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                 continue;
             }
             GenericBoundX::TypEquality(u_path, _, _, _) => u_path,
