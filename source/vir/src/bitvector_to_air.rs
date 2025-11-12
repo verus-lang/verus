@@ -198,7 +198,7 @@ fn bitwidth_exact(state: &mut State, w: IntegerTypeBitwidth) -> u32 {
 // However, some SMT BitVec _operations_ have a notion
 // of signedness (e.g., the right shift).
 //
-// Verus's mathematical model is the opposite: a mathematical
+// Verus's mathematical model is the opposite: a mathematical int
 // is just an element of Z, so it has no notion of bit-width
 // at all (but of course it has a sign).
 //
@@ -579,7 +579,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let expr = air::ast_util::mk_let(&bs, &body.expr);
                 Ok(BvExpr { expr, bv_typ: body.bv_typ })
             }
-            BndX::Quant(quant, binders, trigs, _) => {
+            BndX::Quant(quant, binders, _trigs, _) => {
                 state.scope_map.push_scope(true);
                 for b in binders.iter() {
                     let bv_typ = bv_typ_for_vir_typ(state, &exp.span, &b.a)?;
@@ -604,12 +604,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                         bs.push(Arc::new(BinderX { name, a: typ.clone() }));
                     }
                 }
-                let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result::<_, _, VirErr, _>(trig, |x| {
-                        Ok(bv_exp_to_expr(ctx, state, x)?.expr)
-                    })
-                    .map(|v| Arc::new(v))
-                })?;
+
+                // Assume there are no functions to trigger on, since we should have already inlined them
+                let triggers = vec![];
 
                 state.scope_map.pop_scope();
 

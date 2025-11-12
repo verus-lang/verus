@@ -28,4 +28,10 @@ path = "fuzz_targets/parse_file.rs"
 test = false
 doc = false
 
+[[bin]]
+name = "parse_literal"
+path = "fuzz_targets/parse_literal.rs"
+test = false
+doc = false
+
 [workspace]

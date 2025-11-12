@@ -245,6 +245,15 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    /// When an opaque type is defined (e.g., by a function return), Rustc creates
+    /// an unique opaque type constructor for it.
+    /// This opaque type is just an instantiation of the opaque type constructor with args
+    Opaque {
+        // path of the opaque type constructor.
+        def_path: Path,
+        // args of the instantiation. e.g., let x = foo<args>(); if foo returns an opaque type.
+        args: Typs,
+    },
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -1084,15 +1093,26 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+/// Represents different levels of sizedness introduced by
+/// https://github.com/rust-lang/rfcs/pull/3729.  For now we treat MetaSized and
+/// PointeeSized identically (like ?Sized previously), but we distinguish them
+/// here since we may need to make this handling more precise going forward.
+#[derive(Copy, Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum Sizedness {
+    Sized,
+    MetaSized,
+    PointeeSized,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum TraitId {
     Path(Path),
-    Sized,
+    Sizedness(Sizedness),
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
@@ -1433,6 +1453,18 @@ pub struct DatatypeX {
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
 
+/// Opaque type constructors
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct OpaqueTypeX {
+    pub def_fun: Fun,
+    pub name: Path,
+    pub typ_params: Typs,
+    pub typ_bounds: GenericBounds,
+}
+
+pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
+pub type OpaqueTypes = Vec<OpaqueType>;
+
 pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
@@ -1537,4 +1569,6 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
+    /// All opaque type constructors
+    pub opaque_types: OpaqueTypes,
 }

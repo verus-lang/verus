@@ -837,6 +837,14 @@ fn check_function<Emit: EmitError>(
                 "decreases_by/recommends_by function must have mode proof",
             ));
         }
+
+        if function.x.mode != Mode::Exec && matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+            return Err(error(
+                &function.x.ret.span,
+                format!("Opaque type is not supported in {} mode", function.x.mode),
+            ));
+        }
+
         if function.x.decrease.len() != 0 {
             return Err(error(
                 &function.span,
@@ -1150,6 +1158,17 @@ fn check_function<Emit: EmitError>(
         check_expr(ctxt, function, ens, disallow_private_access, Area::PostState, emit)?;
     }
     if let Some(r) = &function.x.returns {
+        if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+            return Err(error(
+                &r.span,
+                "`returns` clause is not allowed for function that returns opaque type",
+            )
+            .secondary_label(
+                &function.span,
+                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+            ));
+        }
+
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
             return Err(error(
                 &r.span,

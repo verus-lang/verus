@@ -1,6 +1,7 @@
 use crate::ast::{
     ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
-    IntRange, Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    IntRange, Krate, Mode, Module, OpaqueType, Path, Primitive, Trait, TypPositives, TypX,
+    Variants, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -59,6 +60,8 @@ pub struct GlobalCtx {
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
     pub new_mut_ref: bool,
+    pub no_bv_simplify: bool,
+    pub report_long_running: bool,
 }
 
 // Context for verifying one function
@@ -94,6 +97,7 @@ pub struct Ctx {
     pub func_map: HashMap<Fun, Function>,
     pub func_sst_map: HashMap<Fun, crate::sst::FunctionSst>,
     pub fun_ident_map: HashMap<Ident, Fun>,
+    pub opaque_type_map: HashMap<Path, OpaqueType>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -201,6 +205,7 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
+                        TypX::Opaque { .. } => {}
                         TypX::Bool => {}
                         TypX::Float(_) => {}
                         TypX::AnonymousClosure(..) => {}
@@ -275,6 +280,8 @@ impl GlobalCtx {
         check_api_safety: bool,
         axiom_usage_info: bool,
         new_mut_ref: bool,
+        no_bv_simplify: bool,
+        report_long_running: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -662,6 +669,8 @@ impl GlobalCtx {
             check_api_safety,
             axiom_usage_info,
             new_mut_ref,
+            no_bv_simplify,
+            report_long_running,
         })
     }
 
@@ -692,6 +701,8 @@ impl GlobalCtx {
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
             new_mut_ref: self.new_mut_ref,
+            no_bv_simplify: self.no_bv_simplify,
+            report_long_running: self.report_long_running,
         }
     }
 
@@ -759,6 +770,10 @@ impl Ctx {
         for fndef_type in fndef_types.iter() {
             fndef_type_set.insert(fndef_type.clone());
         }
+        let mut opaque_type_map: HashMap<Path, OpaqueType> = HashMap::new();
+        for opaque_type in krate.opaque_types.iter() {
+            opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
+        }
 
         Ok(Ctx {
             module,
@@ -785,6 +800,7 @@ impl Ctx {
             string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
+            opaque_type_map,
         })
     }
 

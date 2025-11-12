@@ -343,7 +343,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
-            Ok(PatternX::Expr(lit_to_vir(bctx, span, &lit, negated, pat_typ, None)?))
+            Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
@@ -391,7 +391,7 @@ pub(crate) fn get_fn_path<'tcx>(
         ExprKind::Path(qpath) => {
             let id = bctx.types.qpath_res(qpath, expr.hir_id).def_id();
             if let Some(_) =
-                bctx.ctxt.tcx.impl_of_method(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
+                bctx.ctxt.tcx.impl_of_assoc(id).and_then(|ii| bctx.ctxt.tcx.trait_impl_of_assoc(ii))
             {
                 unsupported_err!(expr.span, format!("Fn {:?}", id))
             } else {
@@ -2160,7 +2160,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Lit(lit) => Ok(ExprOrPlace::Expr(lit_to_vir(
             bctx,
             expr.span,
-            lit,
+            *lit,
             false,
             &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
             Some(bctx.types.node_type(expr.hir_id)),
@@ -2276,7 +2276,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     return Ok(ExprOrPlace::Expr(lit_to_vir(
                         bctx,
                         expr.span,
-                        lit,
+                        *lit,
                         true,
                         &typ_of_node(bctx, expr.span, &arg.hir_id, false)?,
                         Some(bctx.types.node_type(arg.hir_id)),
@@ -2831,13 +2831,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             unsupported_err!(expr.span, format!("unsafe binder cast"))
         }
         ExprKind::Use(..) => unsupported_err!(expr.span, "use expressions"),
+        ExprKind::AddrOf(rustc_ast::BorrowKind::Pin, _, _) => unsupported_err!(expr.span, "pin"),
     }
 }
 
 fn lit_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
-    lit: &'tcx Lit,
+    lit: Lit,
     negated: bool,
     typ: &Typ,
     ty: Option<rustc_middle::ty::Ty<'tcx>>,
@@ -2868,7 +2869,7 @@ fn lit_to_vir<'tcx>(
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::mir::interpret::LitToConstInput;
-                let lit_const = LitToConstInput { lit: &lit.node, ty, neg: negated };
+                let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
                 let c = bctx.ctxt.tcx.lit_to_const(lit_const);
                 if let rustc_middle::ty::ConstKind::Value(v) = c.kind() {
                     if let Some(i) = v.valtree.try_to_scalar_int() {
@@ -3564,12 +3565,8 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
                 && verus_items::get_rust_item(tcx, adt_def_data2.did)
                     == Some(verus_items::RustItem::Box) =>
         {
-            let rustc_middle::ty::GenericArgKind::Type(t1) = args1[0].unpack() else {
-                panic!("unexpected type argument")
-            };
-            let rustc_middle::ty::GenericArgKind::Type(t2) = args2[0].unpack() else {
-                panic!("unexpected type argument")
-            };
+            let Some(t1) = args1[0].as_type() else { panic!("unexpected type argument") };
+            let Some(t2) = args2[0].as_type() else { panic!("unexpected type argument") };
             remove_decoration_typs_for_unsizing(tcx, t1, t2)
         }
         _ => (ty1, ty2),

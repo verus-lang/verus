@@ -1,6 +1,6 @@
 [package]
 name = "verus_syn"
-version = "0.0.0-2025-08-12-1837" # don't forget to update html_root_url and syn.json
+version = "0.0.0-2025-11-10-1957"
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 categories = ["development-tools::procedural-macro-helpers", "parser-implementations"]
 description = "Parser for Rust source code extended to support Verus"
@@ -18,7 +18,7 @@ include = [
 keywords = ["macros", "syn"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/dtolnay/syn"
-rust-version = "1.61"
+rust-version = "1.68"
 
 [features]
 default = ["full", "derive", "parsing", "printing", "clone-impls", "proc-macro"]
@@ -56,7 +56,6 @@ tar = "0.4.16"
 walkdir = "2.3.2"
 
 [lib]
-doc-scrape-examples = false
 doctest = false
 
 [[bench]]
@@ -71,7 +70,15 @@ required-features = ["full", "parsing"]
 [package.metadata.docs.rs]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
-rustdoc-args = ["--generate-link-to-definition", "--extend-css=src/gen/token.css"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--generate-macro-expansion",
+    "--extend-css=src/gen/token.css",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+    "--extern-html-root-url=proc_macro=https://doc.rust-lang.org",
+]
 
 [package.metadata.playground]
 features = ["full", "visit", "visit-mut", "fold", "extra-traits"]
@@ -113,10 +120,6 @@ name = "test_item"
 test = false
 
 [[test]]
-name = "test_iterators"
-test = false
-
-[[test]]
 name = "test_lit"
 test = false
 
@@ -149,6 +152,10 @@ name = "test_precedence"
 test = false
 
 [[test]]
+name = "test_punctuated"
+test = false
+
+[[test]]
 name = "test_receiver"
 test = false
 
@@ -177,11 +184,11 @@ name = "test_ty"
 test = false
 
 [[test]]
-name = "test_visibility"
+name = "test_unparenthesize"
 test = false
 
 [[test]]
-name = "test_unparenthesize"
+name = "test_visibility"
 test = false
 
 [[test]]

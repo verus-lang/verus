@@ -395,6 +395,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
 
     let KrateX {
         datatypes,
+        opaque_types: _,
         functions,
         reveal_groups,
         traits,
@@ -473,6 +474,7 @@ pub fn write_krate_sst(
     let crate::sst::KrateSstX {
         functions,
         datatypes,
+        opaque_types: _,
         traits,
         trait_impls,
         assoc_type_impls,
