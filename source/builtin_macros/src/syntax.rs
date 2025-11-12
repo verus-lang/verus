@@ -584,7 +584,7 @@ impl Visitor {
         sig: &mut Signature,
         vis: Option<&Visibility>,
         stmts: &mut Vec<Stmt>,
-    ) -> (Option<verus_syn::PermClause>, Vec<Stmt>) {
+    ) -> (Option<(verus_syn::Ident, verus_syn::PermClause)>, Vec<Stmt>) {
         let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return Default::default() };
         let full_span = atomic_spec.span();
 
@@ -781,7 +781,7 @@ impl Visitor {
         ));
 
         let EraseGhost::Keep = self.erase_ghost else {
-            return (Some(perm_clause), Vec::new());
+            return (Some((atomic_update, perm_clause)), Vec::new());
         };
 
         let mut out_stmts = vec![Stmt::Expr(
@@ -814,7 +814,7 @@ impl Visitor {
             )];
         }
 
-        (Some(perm_clause), out_stmts)
+        (Some((atomic_update, perm_clause)), out_stmts)
     }
 
     fn take_sig_specs<TType: ToTokens>(
@@ -828,7 +828,7 @@ impl Visitor {
         ident: impl ToTokens, // function name.
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
-        atomic_perm_clause: Option<verus_syn::PermClause>,
+        atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -923,22 +923,26 @@ impl Visitor {
                     }
                 };
                 if cont {
-                    let mut au_args = TokenStream::new();
-                    if let Some(perm_clause) = atomic_perm_clause {
+                    if let Some((au_ident, perm_clause)) = atomic_perm_clause {
                         let colon: Token![:] = parse_quote_spanned!(perm_clause.span() => :);
-                        let comma: Token![,] = parse_quote_spanned!(perm_clause.span() => ,);
 
-                        perm_clause.old_perms.to_value_tokens(&mut au_args);
-                        colon.to_tokens(&mut au_args);
-                        perm_clause.old_perms.to_type_tokens(&mut au_args);
-                        comma.to_tokens(&mut au_args);
+                        let mut old_pat = TokenStream::new();
+                        let mut new_pat = TokenStream::new();
+                        perm_clause.old_perms.to_value_tokens(&mut old_pat);
+                        perm_clause.new_perms.to_value_tokens(&mut new_pat);
+                        colon.to_tokens(&mut old_pat);
+                        colon.to_tokens(&mut new_pat);
+                        perm_clause.old_perms.to_type_tokens(&mut old_pat);
+                        perm_clause.new_perms.to_type_tokens(&mut new_pat);
 
-                        perm_clause.new_perms.to_value_tokens(&mut au_args);
-                        colon.to_tokens(&mut au_args);
-                        perm_clause.new_perms.to_type_tokens(&mut au_args);
-                        comma.to_tokens(&mut au_args);
+                        for expr in exprs.exprs.iter_mut() {
+                            *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, token.span => {
+                                let #old_pat = #vstd::atomic::AtomicUpdate::input(#au_ident);
+                                let #new_pat = #vstd::atomic::AtomicUpdate::output(#au_ident);
+                                #expr
+                            }))
+                        }
                     }
-
                     if let Some((p, ty)) = ret_pat {
                         if let Some(final_ret_pat) = final_ret_pat {
                             for expr in exprs.exprs.iter_mut() {
@@ -951,7 +955,7 @@ impl Visitor {
                             // closures cannot return impl xxx so it's safe to
                             spec_stmts.push(Stmt::Expr(
                                 Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
-                                    #verus_builtin::ensures(|#p: #ty, #au_args| [#exprs])
+                                    #verus_builtin::ensures(|#p: #ty| [#exprs])
                                 )),
                                 Some(Semi { spans: [token.span] }),
                             ));
@@ -974,7 +978,7 @@ impl Visitor {
                             );
                             spec_stmts.push(Stmt::Expr(
                                 Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
-                                    #verus_builtin::ensures(|#p, #au_args| [#contrain_typ_expr, #exprs])
+                                    #verus_builtin::ensures(|#p| [#contrain_typ_expr, #exprs])
                                 )),
                                 Some(Semi { spans: [token.span] }),
                             ));
@@ -3529,7 +3533,7 @@ impl Visitor {
 
         let extra_arg = match self.erase_ghost {
             EraseGhost::Keep => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(move |#update_binder| #body)
+                #vstd::atomic::atomically(|#update_binder| #body)
             ),
 
             _ => quote_spanned_vstd!(vstd, span =>

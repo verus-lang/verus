@@ -551,8 +551,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore = "work in progress"]
-    #[test] atomic_spec_private_ensures
+    #[test] atomic_spec_private_ensures_callee
     verus_code! {
         use vstd::*;
         use vstd::prelude::*;
@@ -568,9 +567,47 @@ test_verify_one_file! {
             ensures
                 out == x + y,
         {
-            assume(au.resolves());
+            open_atomic_update!(au, value => {
+                value + 1_u32
+            });
+
+            assert(au.input() == 2);
+            assert(au.output() == 3);
 
             return 5;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_private_ensures_caller
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: u32),
+                requires true,
+                ensures x < y,
+            },
+            ensures
+                out == y,
+        {
+            assume(false);
+            unreached()
+        }
+
+        pub exec fn other_function() {
+            let tracked mut value: u32 = 5;
+
+            let out = atomic_function() atomically |update| {
+                value = update(value);
+            };
+
+            assert(out > 5);
         }
     } => Ok(())
 }

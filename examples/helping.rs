@@ -121,12 +121,16 @@ impl Flag {
         (this, Tracked(token))
     }
 
-    pub fn read(&self, tracked token: &FlagToken) -> (out: bool)
-        requires
-            self.wf(),
-            token.id() == self.token_id(),
-        ensures
-            out == token.value@,
+    pub fn read(&self) -> (out: bool)
+        atomically (atomic_update) {
+            (old_token: FlagToken) -> (new_token: FlagToken),
+            requires old_token.id() == self.token_id(),
+            ensures new_token == old_token,
+            outer_mask any,
+            inner_mask none,
+        },
+        requires self.wf(),
+        ensures out == old_token.value@,
     {
         let out;
         open_atomic_invariant!(self.inv.borrow() => v => {
@@ -134,8 +138,12 @@ impl Flag {
             out = self.value.load(Tracked(&value_perm));
 
             proof {
-                auth.agree(&token.value);
-                assert(value_perm.value() == token.value@);
+                open_atomic_update!(atomic_update, token => {
+                    auth.agree(&token.value);
+                    assert(value_perm.value() == token.value@);
+                    token
+                });
+
                 v = (value_perm, pend_perm, auth, gv, proto);
             }
         });
@@ -407,13 +415,20 @@ fn main() {
     assert(token.value@ == false);
 
     let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(token.id(), token, 5);
-    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
 
+    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
     flag.flip() atomically |update| {
         open_atomic_invariant!(credit => &inv => token => {
             let prev = token.value@;
             token = update(token);
             assert(token.value@ != prev);
+        });
+    };
+
+    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+    let out = flag.read() atomically |update| {
+        open_atomic_invariant!(credit => &inv => token => {
+            token = update(token);
         });
     };
 }

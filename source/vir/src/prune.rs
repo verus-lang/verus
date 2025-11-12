@@ -398,7 +398,7 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         ]),
     });
 
-    for method in ["req", "ens", "pred", "resolves", "outer_mask", "inner_mask"] {
+    for method in ["req", "ens", "pred", "resolves", "input", "output", "outer_mask", "inner_mask"] {
         let ident = Arc::new(method.to_owned());
         let path = base_path.push_segment(ident);
         let fun = Arc::new(FunX { path });

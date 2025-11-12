@@ -684,6 +684,12 @@ impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
 
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
     pub uninterp spec fn resolves(self) -> bool;
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::input"]
+    pub uninterp spec fn input(self) -> X;
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::output"]
+    pub uninterp spec fn output(self) -> Y;
 }
 
 impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {

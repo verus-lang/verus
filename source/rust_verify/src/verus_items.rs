@@ -300,6 +300,8 @@ pub(crate) enum AtomicUpdateItem {
     AtomicUpdateEns,
     AtomicUpdatePred,
     AtomicUpdateResolves,
+    AtomicUpdateInput,
+    AtomicUpdateOutput,
     AtomicUpdateOuterMask,
     AtomicUpdateInnerMask,
 }
@@ -595,6 +597,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::resolves",   VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateResolves),  Some(Arc::new("atomic::AtomicUpdate::resolves".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::input",      VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInput),     Some(Arc::new("atomic::AtomicUpdate::input".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::output",     VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
 
