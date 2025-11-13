@@ -3061,6 +3061,11 @@ impl Visitor {
                     #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
                 ));
             }
+            let span = clos.span();
+            let output = match &clos.output {
+                ReturnType::Default => Type::Verbatim(quote_spanned!(span => _)),
+                ReturnType::Type(_, _, _, t) => (**t).clone(),
+            };
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3073,10 +3078,10 @@ impl Visitor {
                 let paren_token = Paren { span: into_spans(clos.span()) };
                 let args = Expr::Tuple(ExprTuple { attrs: vec![], paren_token, elems });
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
+                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::req(#args)])
                 ));
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
+                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::ens(#args, ret)])
                 ));
             }
             if let Some(Requires { token, mut exprs }) = requires {
@@ -3118,7 +3123,6 @@ impl Visitor {
                     })
                 }
             }
-            let span = clos.span();
             let inputs = clos.inputs.clone();
             clos.proof_fn = None;
             clos.options = None;
@@ -3132,11 +3136,11 @@ impl Visitor {
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let ret_mode = proof_fn_track_to_type(span, ret_tracked);
                 new_expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
-                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
+                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, #output, _>(#new_expr)
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, _>(#new_expr)
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, #output>(#new_expr)
                     ));
                 }
             }
