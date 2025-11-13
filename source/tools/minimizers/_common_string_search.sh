@@ -51,11 +51,19 @@ fi
 
 # Run the test
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-VERIFY="${DIR}/../rust-verify.sh"
+# Prefer release build, fall back to debug
+if [ -x "${DIR}/../../target-verus/release/verus" ]; then
+  VERIFY="${DIR}/../../target-verus/release/verus"
+elif [ -x "${DIR}/../../target-verus/debug/verus" ]; then
+  VERIFY="${DIR}/../../target-verus/debug/verus"
+else
+  echo >&2 "Error: Could not find verus binary in target-verus/release or target-verus/debug"
+  exit 1
+fi
 
 for i in $(seq 1 "$MAX_RUNS"); do
-  timeout "$TIMEOUT" "$VERIFY" "$FILE" 2>stderr >/dev/null || true
-  if grep "$SEARCH" stderr >/dev/null; then
+  timeout "$TIMEOUT" "$VERIFY" "$FILE" >output 2>&1 || true
+  if grep "$SEARCH" output >/dev/null; then
     exit 0
   fi
 done

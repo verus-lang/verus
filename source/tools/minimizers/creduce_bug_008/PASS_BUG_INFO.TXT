@@ -1,0 +1,21 @@
+creduce 2.11.0
+unknown
+Linux
+cy-server
+6.8.0-65-generic
+#68~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Jul 15 18:06:34 UTC 2
+x86_64
+
+***************************************************
+
+pass_clang::param-to-global has encountered a bug:
+crashed: "/usr/libexec/clang_delta" --transformation=param-to-global --counter=1 /tmp/creduce-jAYc1q/foo.rs
+
+Please consider tarring up /home/chuyue/verus/source/tools/minimizers/creduce_bug_008
+and mailing it to creduce-bugs@flux.utah.edu and we will try to fix
+the bug.
+
+This bug is not fatal, C-Reduce will continue to execute.
+
+***************************************************
+

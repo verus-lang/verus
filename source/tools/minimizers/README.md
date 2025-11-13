@@ -24,6 +24,74 @@ certain kinds of test cases.
 
 7. If the minimized file is hard to read, running [verusfmt](https://github.com/verus-lang/verusfmt) on it is often helpful to make the minimized file readable again.
 
+## Configuration
+
+All scripts support these environment variables for customization:
+
+- **`TIMEOUT=30`** - Set a different timeout in seconds (default varies by script)
+- **`TRACE=1`** - Enable bash tracing for debugging the scripts
+
+Example:
+```bash
+TIMEOUT=60 TRACE=1 ./verified_minimal.sh
+```
+
+## Available Minimizers
+
+### Error Minimizers
+
+These scripts help minimize test cases that produce specific errors:
+
+- **`panicked_in.sh`** - Minimizes code that causes panics (searches for `"panicked at"`)
+- **`rlimit_exceeded.sh`** - Minimizes code that hits resource limits
+- **`time_exceeded.sh`** - Minimizes code that takes too long to verify
+
+### Extracting Verified Examples
+
+Beyond minimizing failing test cases, you can also use these tools to extract small verified examples from large codebases:
+
+#### `verified_minimal.sh`
+Reduces code to a minimal verified example. Useful for extracting clean examples from complex projects.
+
+**Example:**
+```bash
+creduce --n 8 ./verified_minimal.sh ./foo.rs
+```
+
+#### `verified_with_invariant.sh`
+Extracts minimal examples that use type invariants. Great for creating focused examples of this feature.
+
+**Example:**
+```bash
+creduce ./verified_with_invariant.sh ./foo.rs
+```
+
+#### `verified_with_spec.sh`
+Extracts minimal examples that contain spec functions. Useful for demonstrating spec/exec separation.
+
+**Example:**
+```bash
+creduce ./verified_with_spec.sh ./foo.rs
+```
+
+#### `verified_with_feature.sh`
+General-purpose script for extracting examples with specific Verus features.
+
+**Required environment variable:**
+- `FEATURE="pattern"` - Regular expression pattern to search for
+
+**Examples:**
+```bash
+# Extract minimal example with proof functions
+FEATURE="proof fn" creduce ./verified_with_feature.sh ./foo.rs
+
+# Extract minimal example with loop invariants
+FEATURE="loop_invariant" creduce ./verified_with_feature.sh ./foo.rs
+
+# Extract minimal example with spec functions returning bool
+FEATURE="spec fn.*->.*bool" creduce ./verified_with_feature.sh ./foo.rs
+```
+
 ## If none of the current minimizers help...
 
 If none of the current minimizers help for your use case, feel free to take inspiration from them, and then contribute your new minimizer back, so as to make future minimization efforts for similar kinds of bugs easier.

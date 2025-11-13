@@ -1,0 +1,38 @@
+# This toml file is not part of the standard Verus workspace,
+# and is not required to build and use Verus.
+# Instead, it may optionally be used for compiling an erased vstd library
+# for linking with non-Verus Rust code.
+
+[package]
+name = "vstd"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vstd"
+path = "vstd.rs"
+
+[dependencies]
+builtin_macros = { path = "../builtin_macros" }
+builtin = { path = "../builtin" }
+state_machines_macros = { path = "../state_machines_macros" }
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []
+allocator = []
+strict_provenance_atomic_ptr = []
+allow_panic = [] # code is allowed to panic.
+
+
+[package.metadata.verus]
+verify = true
+is-vstd = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_keep_ghost)',
+  'cfg(verus_verify_core)',
+  'cfg(verus_keep_ghost_body)',
+] }
