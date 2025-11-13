@@ -205,6 +205,10 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                                             )
                                         })
                                         .collect(),
+                                    delayed_lints: rustc_hir::lints::DelayedLints {
+                                        lints: Box::new([]),
+                                        opt_hash: None,
+                                    },
                                 });
                                 *owner = rustc_hir::MaybeOwner::Owner(owner_info);
                             }

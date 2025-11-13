@@ -72,7 +72,7 @@ fn check_item<'tcx>(
         }
         if vattrs.item_broadcast_use {
             let err = || crate::util::err_span(item.span, "invalid module-level broadcast use");
-            let ItemKind::Const(_ident, _ty, generics, body_id) = item.kind else {
+            let ItemKind::Const(_ident, generics, _ty, body_id) = item.kind else {
                 return err();
             };
             unsupported_err_unless!(
@@ -202,7 +202,7 @@ fn check_item<'tcx>(
         ItemKind::ExternCrate { .. } => {}
         ItemKind::Mod { .. } => {}
         ItemKind::ForeignMod { .. } => {}
-        ItemKind::Struct(_ident, variant_data, generics) => {
+        ItemKind::Struct(_ident, generics, variant_data) => {
             // TODO use rustc_middle info here? if sufficient, it may allow for a single code path
             // for definitions of the local crate and imported crates
             // let adt_def = tcx.adt_def(item.def_id);
@@ -229,7 +229,7 @@ fn check_item<'tcx>(
                 external_info,
             )?;
         }
-        ItemKind::Enum(_ident, enum_def, generics) => {
+        ItemKind::Enum(_ident, generics, enum_def) => {
             let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id()).skip_binder();
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
@@ -247,7 +247,7 @@ fn check_item<'tcx>(
                 adt_def,
             )?;
         }
-        ItemKind::Union(_ident, variant_data, generics) => {
+        ItemKind::Union(_ident, generics, variant_data) => {
             let tyof = ctxt.tcx.type_of(item.owner_id.to_def_id()).skip_binder();
             let adt_def = tyof.ty_adt_def().expect("adt_def");
 
@@ -276,7 +276,7 @@ fn check_item<'tcx>(
                 attrs,
             )?;
         }
-        ItemKind::Const(_ident, _ty, generics, body_id) => {
+        ItemKind::Const(_ident, generics, _ty, body_id) => {
             unsupported_err_unless!(
                 generics.params.len() == 0 && generics.predicates.len() == 0,
                 item.span,
@@ -284,14 +284,22 @@ fn check_item<'tcx>(
             );
             handle_const_or_static(body_id)?;
         }
-        ItemKind::Static(_ident, _ty, Mutability::Not, body_id) => {
+        ItemKind::Static(Mutability::Not, _ident, _ty, body_id) => {
             handle_const_or_static(body_id)?;
         }
-        ItemKind::Static(_ident, _ty, Mutability::Mut, _body_id) => {
+        ItemKind::Static(Mutability::Mut, _ident, _ty, _body_id) => {
             unsupported_err!(item.span, "static mut");
         }
         ItemKind::Macro(_, _, _) => {}
-        ItemKind::Trait(IsAuto::No, safety, _ident, trait_generics, _bounds, trait_items) => {
+        ItemKind::Trait(
+            _constness,
+            IsAuto::No,
+            safety,
+            _ident,
+            trait_generics,
+            _bounds,
+            trait_items,
+        ) => {
             let trait_def_id = item.owner_id.to_def_id();
             crate::rust_to_vir_trait::translate_trait(
                 ctxt,

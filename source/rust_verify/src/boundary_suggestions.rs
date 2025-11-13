@@ -156,17 +156,17 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
 
     let where_clauses = build_where_clauses(ctxt, inst_predicates, type_params)?;
 
-    let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_item(external_def_id) {
+    let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_assoc(external_def_id) {
         return Err(crate::util::error(
             "Cannot build specification for unresolved trait item.  Consider an external_trait_specification declaration.",
         ));
-    } else if let Some(impl_def_id) = ctxt.tcx.impl_of_method(external_def_id) {
+    } else if let Some(impl_def_id) = ctxt.tcx.impl_of_assoc(external_def_id) {
         if let Some(impl_trait) = ctxt.tcx.impl_trait_header(impl_def_id) {
             let trait_ref = impl_trait.trait_ref.skip_binder();
             let self_ty = trait_ref.self_ty().fold_with(&mut region_renamer);
             format!(
                 "<{} as {}>::{}",
-                prepend_crate_if_local_for_type(&self_ty, self_ty.to_string()),
+                prepend_crate_if_local_for_type(ctxt, &self_ty, self_ty.to_string()),
                 prepend_crate_if_local(
                     trait_ref.def_id,
                     ctxt.tcx.def_path_str_with_args(trait_ref.def_id, trait_ref.args),
@@ -208,7 +208,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
                 "_".to_owned()
                     + i.to_string().as_str()
                     + ": "
-                    + &prepend_crate_if_local_for_type(val, val.to_string())
+                    + &prepend_crate_if_local_for_type(ctxt, val, val.to_string())
             })
             .fold("".to_string(), |acc, s| acc + &s + ", ")
             .trim_end_matches(", "), //params,
@@ -216,7 +216,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
         if ret_ty.is_unit() {
             "".to_owned()
         } else {
-            prepend_crate_if_local_for_type(&ret_ty, ret_ty.to_string())
+            prepend_crate_if_local_for_type(ctxt, &ret_ty, ret_ty.to_string())
         },
         if where_clauses.is_empty() {
             "".to_owned()
@@ -227,19 +227,20 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     Ok(suggestion_text)
 }
 
-fn prepend_crate_if_local_for_type<'tcx>(ty: &Ty<'tcx>, s: String) -> String {
+fn prepend_crate_if_local_for_type<'tcx>(ctxt: &Context<'tcx>, ty: &Ty<'tcx>, s: String) -> String {
     match ty.kind() {
         rustc_type_ir::TyKind::Adt(adt_def, _) => prepend_crate_if_local(adt_def.did(), s),
         rustc_type_ir::TyKind::FnDef(did, _) => prepend_crate_if_local(*did, s),
-        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => match region.get_name() {
+        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => match region.get_name(ctxt.tcx) {
             Some(sym) => {
                 "&".to_owned()
                     + sym.as_str()
                     + " "
-                    + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string())
+                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
             }
             None => {
-                "&".to_owned() + &prepend_crate_if_local_for_type(inner_ty, inner_ty.to_string())
+                "&".to_owned()
+                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
             }
         },
         _ => s,
@@ -332,6 +333,7 @@ fn build_where_clauses<'tcx>(
                             .def_path_str_with_args(trait_predicate.trait_ref.def_id, trait_args);
                         Some((
                             prepend_crate_if_local_for_type(
+                                ctxt,
                                 &trait_predicate.self_ty(),
                                 trait_predicate.self_ty().to_string(),
                             ),
@@ -388,6 +390,7 @@ fn build_where_clauses<'tcx>(
             rustc_type_ir::ClauseKind::WellFormed(_) => None,
             rustc_type_ir::ClauseKind::ConstEvaluatable(_) => None,
             rustc_type_ir::ClauseKind::HostEffect(_) => None,
+            rustc_type_ir::ClauseKind::UnstableFeature(_) => None,
         }
     });
     // Group the clauses by ident.
@@ -429,7 +432,7 @@ fn build_generics_declarations<'tcx>(
     ctxt: &Arc<crate::context::ContextX<'tcx>>,
     generics: &'tcx rustc_middle::ty::Generics,
     predicates: &InstantiatedPredicates,
-    region_renamer: &RegionRenamer<'_>,
+    region_renamer: &RegionRenamer<'tcx>,
 ) -> Result<
     (Vec<(&'tcx rustc_middle::ty::GenericParamDef, String)>, BTreeSet<rustc_span::Symbol>),
     VirErr,
@@ -454,7 +457,7 @@ fn build_generics_declarations<'tcx>(
             match param.kind {
                 rustc_middle::ty::GenericParamDefKind::Lifetime => {
                     match region_renamer.renamed_region_map.get(&param.def_id) {
-                        Some(renamed_r) => renamed_r.get_name_or_anon(),
+                        Some(renamed_r) => renamed_r.get_name_or_anon(ctxt.tcx),
                         None => param.name,
                     }
                     .to_ident_string()
@@ -571,13 +574,13 @@ impl<'tcx> RegionRenamer<'tcx> {
         &mut self,
         r: rustc_middle::ty::Region<'tcx>,
     ) -> rustc_middle::ty::Region<'tcx> {
-        match r.get_name() {
+        match r.get_name(self.tcx) {
             Some(_) => r,
             None => self.rename_region_if_early(r),
         }
     }
     fn log_name(&mut self, r: rustc_middle::ty::Region<'tcx>) {
-        if let Some(s) = r.get_name() {
+        if let Some(s) = r.get_name(self.tcx) {
             self.used_names.insert(s.to_ident_string());
         }
     }

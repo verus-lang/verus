@@ -2682,6 +2682,42 @@ test_verify_one_file! {
     // TODO: } => Err(err) => assert_one_fails(err)
 }
 
+// This test should fail due to conflicting trait implementations, but currently
+// fails due to extern types not being supported by verus. Once extern type are
+// supported, the expected error should be updated here.
+test_verify_one_file_with_options! {
+    #[test] test_conflicting_sizedness_constraints ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(extern_types))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        extern "C" {
+            type E;
+        }
+
+        trait T: core::marker::PointeeSized {
+            spec fn f() -> int;
+        }
+
+        impl<A: core::marker::MetaSized> T for A {
+            spec fn f() -> int { 3 }
+        }
+
+        impl T for E {
+            spec fn f() -> int { 4 }
+        }
+
+        proof fn f() {
+            assert(<E as T>::f() == 3);
+            assert(<E as T>::f() == 4);
+            assert(false);
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
+}
+
 test_verify_one_file! {
     #[test] test_specialize_dispatch_copy_clone_ok verus_code! {
         // https://github.com/verus-lang/verus/issues/1267

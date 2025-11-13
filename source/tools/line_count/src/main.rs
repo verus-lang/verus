@@ -472,6 +472,25 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         self.visit_block(&i.body);
     }
 
+    fn visit_expr_for_loop(&mut self, i: &'ast verus_syn::ExprForLoop) {
+        if let Some(decreases) = &i.decreases {
+            self.mark(
+                decreases,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(invariant) = &i.invariant {
+            self.mark(
+                &invariant,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        self.visit_expr(&i.expr);
+        self.visit_block(&i.body);
+    }
+
     fn visit_impl_item_fn(&mut self, i: &'ast verus_syn::ImplItemFn) {
         let content_code_kind = i.sig.mode.to_code_kind();
         let exit = self.item_attr_enter(&i.attrs);

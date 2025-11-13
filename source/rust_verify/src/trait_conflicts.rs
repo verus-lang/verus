@@ -28,8 +28,9 @@
 use crate::lifetime_ast::*;
 use crate::lifetime_generate::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TraitId,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, Sizedness, TraitId,
     TypDecoration, TypDecorationArg,
 };
 
@@ -180,6 +181,9 @@ fn gen_generics(
     state: &mut State,
     typ_params: &Vec<Ident>,
     typ_bounds: &GenericBounds,
+    // `is_impl` is only required to suppress a hack in the `Clone` implementation for `Option`
+    // see documentation of `is_option_clone_destruct_bound`.
+    is_impl: Option<&vir::ast::TraitImpl>,
 ) -> (Vec<GenericParam>, Vec<GenericBound>) {
     let mut generic_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -188,6 +192,9 @@ fn gen_generics(
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
+                if is_option_clone_destruct_bound(is_impl, path) {
+                    continue;
+                }
                 let bound = {
                     let args = gen_typ_slice(state, &typs[1..]);
                     let trait_path = state.trait_name(&path);
@@ -195,10 +202,14 @@ fn gen_generics(
                 };
                 generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
             }
-            GenericBoundX::Trait(TraitId::Sized, typs) => {
+            GenericBoundX::Trait(TraitId::Sizedness(sizedness), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                let bound = Bound::Sized;
-                generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+                if matches!(sizedness, Sizedness::Sized) {
+                    let bound = Bound::Sized;
+                    generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+                }
+                // Just like in the conversion to AIR, we treat both MetaSized and PointeeSized
+                // as "unsized" here in order to catch conflicting assumptions on traits.
             }
             GenericBoundX::TypEquality(path, typs, x, eq_typ) => {
                 let typ = gen_typ(state, &typs[0]);
@@ -228,6 +239,61 @@ fn gen_generics(
     (generic_params, generic_bounds)
 }
 
+// Used as a temporary workaround to suppress a Destruct bound on the `Clone`
+// implementation for `Option`. Since we don't properly support `const trait`s
+// yet, handling this properly here would be more complex. For now, we simply
+// ignore the Destruct bound.  `Option` that uses an extra `Destruct bound; see
+// https://github.com/rust-lang/rust/issues/144207 and
+// https://doc.rust-lang.org/1.91.0/src/core/option.rs.html#2187-2191
+fn is_option_clone_destruct_bound(
+    is_impl: Option<&vir::ast::TraitImpl>,
+    bound_path: &Path,
+) -> bool {
+    if let Some(trait_impl) = is_impl {
+        let args = &*trait_impl.x.trait_typ_args;
+        if args.len() == 1 {
+            // We shouldn't be hardcoding these here but since this
+            // is a temporary workaround, it's not worth
+            // complicating surrounding code by passing TyCtx
+            // to here.
+            let option_path = vir::ast::PathX {
+                krate: Some(Arc::new("core".to_string())),
+                segments: Arc::new(vec![
+                    Arc::new("option".to_string()),
+                    Arc::new("Option".to_string()),
+                ]),
+            };
+            let clone_path = vir::ast::PathX {
+                krate: Some(Arc::new("core".to_string())),
+                segments: Arc::new(vec![
+                    Arc::new("clone".to_string()),
+                    Arc::new("Clone".to_string()),
+                ]),
+            };
+            let destruct_path = vir::ast::PathX {
+                krate: Some(Arc::new("core".to_string())),
+                segments: Arc::new(vec![
+                    Arc::new("marker".to_string()),
+                    Arc::new("Destruct".to_string()),
+                ]),
+            };
+            // The first type parameter passed to the trait is the implementing
+            // type:
+            match &*args[0] {
+                vir::ast::TypX::Datatype(vir::ast::Dt::Path(dt_path), _, _)
+                    if **dt_path == option_path
+                        && *trait_impl.x.trait_path == clone_path
+                        && **bound_path == destruct_path =>
+                {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn gen_check_trait_impl_conflicts(
     spans: &crate::spans::SpanContext,
     vir_crate: &vir::ast::Krate,
@@ -242,6 +308,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             state,
             &d.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &d.x.typ_bounds,
+            None,
         );
         let mut fields: Vec<Typ> = Vec::new();
         for p in generic_params.iter() {
@@ -269,8 +336,10 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             state,
             &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
             &t.x.typ_bounds,
+            None,
         );
-        let (a_params, mut a_bounds) = gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds);
+        let (a_params, mut a_bounds) =
+            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds, None);
         used_traits.insert(t.x.name.clone());
         for a in t.x.assoc_typs.iter() {
             used_assoc_typs.insert((t.x.name.clone(), a.clone()));
@@ -309,7 +378,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         }
         let span = spans.from_air_span(&i.span, None);
         let (generic_params, generic_bounds) =
-            gen_generics(state, &*i.x.typ_params, &i.x.typ_bounds);
+            gen_generics(state, &*i.x.typ_params, &i.x.typ_bounds, Some(i));
         let self_typ = gen_typ(state, &i.x.trait_typ_args[0]);
         let trait_as_datatype = Box::new(TypX::Datatype(
             state.trait_name(&i.x.trait_path),
