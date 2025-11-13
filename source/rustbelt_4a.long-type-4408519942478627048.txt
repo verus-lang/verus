@@ -1,0 +1,1 @@
+vstd::prelude::FnProof<'_, vstd::prelude::FOpts<3, (), 0, 0, 0>, ((), (), (), (), vstd::prelude::Trk, vstd::prelude::Trk, ()), vstd::prelude::Trk, (u32, u32, u32, YInvKey, YInvGhost, std::option::Option<()>, std::option::Option<vstd::simple_pptr::PointsTo<u32>>), (YInvGhost, std::option::Option<vstd::simple_pptr::PointsTo<u32>>)>

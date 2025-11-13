@@ -58,6 +58,15 @@ pub trait OptionAdditionalFns<T>: Sized {
             t == old(self)->0,
             !self.tracked_is_some(),
     ;
+
+    // proof fn tracked_map<U, F>(tracked self, tracked f: proof_fn<F>(tracked y : T) -> tracked U) -> (tracked out: Option<U>)
+    //     where F : ProofFnOnce
+    //     requires
+    //         self.tracked_is_some() ==> f.requires((self->0,)),
+    //     ensures
+    //         out.tracked_is_some() == (self.tracked_is_some()),
+    //         out.tracked_is_some() ==> f.ensures((self->0,), out->0),
+    // ;
 }
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
@@ -117,6 +126,16 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
         super::super::modes::tracked_swap(self, &mut x);
         x.tracked_unwrap()
     }
+
+    // /// Similar to `Option::map`
+    // proof fn tracked_map<U, F>(tracked self, tracked f: proof_fn<F>(tracked y : T) -> tracked U) -> (tracked out: Option<U>) 
+    //     where F : ProofFnOnce
+    // {
+    //     match self {
+    //         None => None,
+    //         Some(t) => Some(f(t))
+    //     }
+    // }
 }
 
 ////// Specs for std methods

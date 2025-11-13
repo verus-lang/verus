@@ -1,0 +1,1 @@
+vstd::prelude::FOpts<3, (), 0, 0, 0>: vstd::prelude::ProofFnReqEns<vstd::atomic_relaxed::S<YInv>>
