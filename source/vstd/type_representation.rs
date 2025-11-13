@@ -113,7 +113,7 @@ pub trait AbstractEncoding where Self: Sized {
             Self::decode(b, v) ==> b.len() == size_of::<Self>(),
     ;
 
-    /// Every value should have at least one encoding. The value is `tracked` in order to enforce any type invariants on this type.
+    /// Every value should have at least one encoding.
     proof fn encoding_exists(v: Self) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
@@ -173,7 +173,7 @@ pub trait AbstractEncodingUnsized<T: ?Sized> {
             Self::decode(b, v) ==> b.len() == spec_size_of_val::<T>(v),
     ;
 
-    /// Every value should have at least one encoding. The value is `tracked` in order to enforce any type invariants on this type.
+    /// Every value should have at least one encoding.
     proof fn encoding_exists(v: &T) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
