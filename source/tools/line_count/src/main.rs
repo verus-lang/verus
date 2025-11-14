@@ -1178,6 +1178,7 @@ struct ItemAttrExit {
     entered_verify: bool,
     entered_external: bool,
     entered_consider: bool,
+    entered_verus_spec: bool,
 }
 
 impl ItemAttrExit {
@@ -1195,6 +1196,9 @@ impl ItemAttrExit {
             visitor.inside_line_count_ignore_or_external -= 1;
         }
         if self.entered_consider {
+            visitor.inside_verus_macro_or_verify_or_consider -= 1;
+        }
+        if self.entered_verus_spec {
             visitor.inside_verus_macro_or_verify_or_consider -= 1;
         }
     }
@@ -1216,6 +1220,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), Some(third))
@@ -1230,6 +1235,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), Some(third))
@@ -1244,6 +1250,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: true,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), None)
@@ -1256,6 +1263,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: true,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), None)
@@ -1268,10 +1276,26 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: true,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     _ => {}
                 }
+            }
+
+            // Treat #[verus_spec(...)] as entering a Verus region so that
+            // the enclosed code is considered by the visitor like verus! code.
+            if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
+                self.inside_verus_macro_or_verify_or_consider += 1;
+                self.mark(&attr, CodeKind::Spec, LineContent::FunctionSpec);
+                return ItemAttrExit {
+                    entered_trusted: false,
+                    entered_ignore: false,
+                    entered_verify: false,
+                    entered_external: false,
+                    entered_consider: false,
+                    entered_verus_spec: true,
+                };
             }
 
             if attr.path().segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
@@ -1289,6 +1313,7 @@ impl<'f> Visitor<'f> {
             entered_verify: false,
             entered_external: false,
             entered_consider: false,
+            entered_verus_spec: false,
         }
     }
 
