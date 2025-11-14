@@ -73,6 +73,8 @@ verus! {
 #[verifier::external_body]
 pub ghost struct Provenance {}
 
+pub type AllocId = int;
+
 impl Provenance {
     /// The provenance of the null ptr (or really, "no provenance")
     pub uninterp spec fn null() -> Self;
@@ -87,7 +89,7 @@ impl Provenance {
     // If we add this, I think we can get rid of the Dealloc permission
     pub uninterp spec fn alignment(&self) -> usize;
 
-    pub uninterp spec fn alloc_id(&self) -> int;
+    pub uninterp spec fn alloc_id(&self) -> AllocId;
 }
 
 pub broadcast axiom fn alloc_bound(p: Provenance)
