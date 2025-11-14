@@ -206,7 +206,6 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
             constant: K,
             tracked g: G,
             tracked resource: Option<T>,
-            dummy : Option<U>
         ) -> tracked (G, Option<U>),
     ) -> (out: (u32, Tracked<Option<Acquire<U>>>)) where F: ProofFn + ProofFnReqEns<S<Pred>>
         requires
@@ -230,9 +229,9 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
                         Some(x) => Some(x.tracked_get()),
                         None => None
                     };
-                assert(f.requires((prev, next, ret, self.constant(), g, resource_in_get, None)));
-                let tracked output = f(prev, next, ret, self.constant(), g, resource_in_get, None);
-                assert(f.ensures((prev, next, ret, self.constant(), g, resource_in_get, None), output));
+                assert(f.requires((prev, next, ret, self.constant(), g, resource_in_get)));
+                let tracked output = f(prev, next, ret, self.constant(), g, resource_in_get);
+                assert(f.ensures((prev, next, ret, self.constant(), g, resource_in_get), output));
                 let tracked (new_g, temp) = output;
                 pair = (perm, new_g);
                 resource_out_inner =
@@ -266,13 +265,13 @@ pub struct S<Pred> {
 }
 
 impl<T, U, K, G, Pred: AtomicInvariantPredicate<K, u32, G>> ProofFnReqEnsDef<
-    (u32, u32, u32, K, G, Option<T>, Option<U>), // this takes an option U to get type checking to work, but will always be None (todo: remove Option<U> once type inference is fixed)
+    (u32, u32, u32, K, G, Option<T>),
     (G, Option<U>),
 > for S<Pred>
 // where
 //     Pred: AtomicInvariantPredicate<K, u32, G>
  {
-    open spec fn req(input: (u32, u32, u32, K, G, Option<T>, Option<U>)) -> bool {
+    open spec fn req(input: (u32, u32, u32, K, G, Option<T>)) -> bool {
         let prev = input.0;
         // let next = input.1;
         // let ret = input.2;
@@ -282,7 +281,7 @@ impl<T, U, K, G, Pred: AtomicInvariantPredicate<K, u32, G>> ProofFnReqEnsDef<
         Pred::atomic_inv(constant, prev, ghost_in)
     }
 
-    open spec fn ens(input: (u32, u32, u32, K, G, Option<T>, Option<U>), output: (G, Option<U>)) -> bool {
+    open spec fn ens(input: (u32, u32, u32, K, G, Option<T>), output: (G, Option<U>)) -> bool {
         // let prev = input.0;
         let next = input.1;
         // let ret = input.2;
