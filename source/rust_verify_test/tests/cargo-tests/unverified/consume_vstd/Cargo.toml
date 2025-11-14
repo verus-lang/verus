@@ -7,6 +7,5 @@ edition = "2021"
 vstd_macro_usage = { path = "../../verified/vstd_macro_usage" }
 
 [package.metadata.verus]
-test_ignore = true
 
 [workspace]

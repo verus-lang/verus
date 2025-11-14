@@ -843,3 +843,347 @@ test_verify_one_file! {
         pub const X: u64 = const_fn(1);
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_impl_method code!{
+        use vstd::prelude::*;
+
+        pub struct Foo;
+
+        #[verus_verify]
+        impl Foo {
+            #[verus_spec(ret =>
+                with
+                    Tracked(c): Tracked<&mut ()>
+                requires
+                    true,
+                ensures
+                    ret == 1,
+            )]
+            fn test(a: u64, b: u64) -> u64 {
+                1
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_no_verus_verify_attribute_on_impl_block_fails code!{
+        use vstd::prelude::*;
+
+        pub struct Foo;
+
+        impl Foo {
+            #[verus_verify]
+            #[verus_spec(ret =>
+                with
+                    Tracked(c): Tracked<&mut ()>
+                requires
+                    true,
+                ensures
+                    ret == 1,
+            )]
+            fn test(a: u64, b: u64) -> u64 {
+                1
+            }
+        }
+    } => Err(_) => {}
+}
+
+test_verify_one_file! {
+    #[test] test_unverified_in_impl code!{
+        use vstd::prelude::*;
+
+        pub struct X;
+
+        #[verus_verify]
+        impl X {
+            fn unverified() {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_dual code!{
+        use vstd::prelude::*;
+
+        #[verus_spec]
+        const CONST_ITEM: u64 = 42;
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+                assert(CONST_ITEM == 42);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_error code!{
+        use vstd::prelude::*;
+
+        const CONST_ITEM: u64 = 42;
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot use function `test_crate::CONST_ITEM` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_ensures code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_item_fn() -> u64 {
+            42
+        }
+
+        #[verus_spec(
+            ensures CONST_ITEM == 42
+        )]
+        const CONST_ITEM: u64 = const_item_fn();
+
+        #[verus_spec]
+        fn test() {
+            let v = CONST_ITEM;
+            proof! {
+                assert(v == 42);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_item_const_ensures_is_exec_mode code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_item_fn() -> u64 {
+            42
+        }
+
+        #[verus_spec(
+            ensures CONST_ITEM == 42
+        )]
+        const CONST_ITEM: u64 = const_item_fn();
+
+        #[verus_spec]
+        fn test() {
+            proof! {
+                assert(CONST_ITEM == 42);
+            }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot read const with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_dual code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            const A: usize = 1;
+            const B: usize = Self::A + 1;
+            const C: usize = Self::B + 1;
+        }
+
+         #[verus_spec(ensures true)]
+        fn test() {
+            let v = X::C;
+            proof! {
+                assert(v == 3);
+                assert(X::A == 1);
+                assert(X::B == 2);
+                assert(X::C == 3);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_requires_erasure code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_verify]
+        impl X {
+            const A: usize = 1;
+        }
+
+        // This requires to use const_proxy in const.
+        #[verus_verify]
+        enum Y {
+            A,
+            B = (1 << X::A) - 1,
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_use_unverified code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "cannot use function `test_crate::const_fn` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_external code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            #[verus_verify(external)]
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_item_const_ensures code!{
+        use vstd::prelude::*;
+
+        struct X;
+
+        #[verus_spec(ret=>
+            ensures ret == 42
+        )]
+        const fn const_fn() -> u64 {
+            42
+        }
+
+        #[verus_verify]
+        impl X {
+            #[verus_spec(ensures Self::CONST_ITEM != 42)]
+            const CONST_ITEM: u64 = const_fn();
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_simple code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+        )]
+        fn foo(x: u32) -> u32 {
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+            requires
+                x < 100,
+        )]
+        fn bar(x: u32) -> u32 {
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_complex code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+            )]
+        fn foo(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn bar(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn baz(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn qux(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+    } => Ok(())
+}

@@ -6,7 +6,7 @@ prettyplease::unparse
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-prettyplease-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/prettyplease)
 [<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/prettyplease/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/prettyplease/actions?query=branch%3Amaster)
 
-A minimal `syn` syntax tree pretty-printer.
+A minimal `syn` syntax tree pretty-printer.  Modified for Verus purposes.
 
 <br>
 

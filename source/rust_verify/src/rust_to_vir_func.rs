@@ -8,7 +8,6 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::rustc_type_ir::inherent::IntoKind;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -314,7 +313,7 @@ fn compare_external_ty_or_true<'tcx>(
             return false;
         }
         for (arg1, arg2) in args1.iter().zip(args2.iter()) {
-            let ok = match (&arg1.unpack(), &arg2.unpack()) {
+            let ok = match (&arg1.kind(), &arg2.kind()) {
                 (GenericArgKind::Type(t1), GenericArgKind::Type(t2)) => check_t(t1, t2),
                 _ => arg1 == arg2,
             };
@@ -384,7 +383,50 @@ fn compare_external_ty_or_true<'tcx>(
         _ => false,
     }
 }
-
+fn compare_clasue_kind<'tcx>(
+    ck1: &rustc_middle::ty::ClauseKind<'tcx>,
+    ck2: &rustc_middle::ty::ClauseKind<'tcx>,
+) -> bool {
+    match (ck1, ck2) {
+        (
+            rustc_middle::ty::ClauseKind::Trait(pred1),
+            rustc_middle::ty::ClauseKind::Trait(pred2),
+        ) => pred1.trait_ref.def_id == pred2.trait_ref.def_id && pred1.polarity == pred2.polarity,
+        (
+            rustc_middle::ty::ClauseKind::Projection(pred1),
+            rustc_middle::ty::ClauseKind::Projection(pred2),
+        ) => {
+            pred1.projection_term.def_id == pred2.projection_term.def_id && pred1.term == pred2.term
+        }
+        (
+            rustc_middle::ty::ClauseKind::RegionOutlives(..),
+            rustc_middle::ty::ClauseKind::RegionOutlives(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::TypeOutlives(..),
+            rustc_middle::ty::ClauseKind::TypeOutlives(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::ConstArgHasType(..),
+            rustc_middle::ty::ClauseKind::ConstArgHasType(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::WellFormed(..),
+            rustc_middle::ty::ClauseKind::WellFormed(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::ConstEvaluatable(..),
+            rustc_middle::ty::ClauseKind::ConstEvaluatable(..),
+        ) => true,
+        (
+            rustc_middle::ty::ClauseKind::HostEffect(..),
+            rustc_middle::ty::ClauseKind::HostEffect(..),
+        ) => true,
+        // Uncomment the following line when upgrading to Rust 1.90.
+        // (rustc_middle::ty::ClauseKind::UnstableFeature(..), rustc_middle::ty::ClauseKind::UnstableFeature(..)) => true,
+        _ => false,
+    }
+}
 fn compare_external_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -392,8 +434,27 @@ fn compare_external_ty<'tcx>(
     ty2: &rustc_middle::ty::Ty<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
+    // println!("ty1 {:#?} \n ty2 {:#?}", ty1, ty2);
+    // println!("external_trait_from_to {:#?}", external_trait_from_to);
     if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
+    } else if let (
+        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
+        rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
+    ) = (ty1.kind(), ty2.kind())
+    {
+        // two opaque types. We compare their trait bounds
+        let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
+        let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+        if ty1_bounds.len() != ty2_bounds.len() {
+            return false;
+        }
+        for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
+            if !compare_clasue_kind(&bound1.kind().skip_binder(), &bound2.kind().skip_binder()) {
+                return false;
+            }
+        }
+        return true;
     } else {
         ty1 == ty2
     }
@@ -671,18 +732,17 @@ fn equalize_substs<'tcx>(
         return None;
     }
 
-    let mut reg =
-        substs1_early.iter().filter(|g| matches!(g.unpack(), GenericArgKind::Lifetime(_)));
+    let mut reg = substs1_early.iter().filter(|g| matches!(g.kind(), GenericArgKind::Lifetime(_)));
     let mut other =
-        substs1_early.iter().filter(|g| !matches!(g.unpack(), GenericArgKind::Lifetime(_)));
+        substs1_early.iter().filter(|g| !matches!(g.kind(), GenericArgKind::Lifetime(_)));
 
     for i in 0..substs2_early.len() {
-        match substs2_early[i].unpack() {
+        match substs2_early[i].kind() {
             GenericArgKind::Type(_) => {
                 let Some(arg) = other.next() else {
                     return None;
                 };
-                if !matches!(arg.unpack(), GenericArgKind::Type(_)) {
+                if !matches!(arg.kind(), GenericArgKind::Type(_)) {
                     return None;
                 }
                 s2.push(arg);
@@ -691,7 +751,7 @@ fn equalize_substs<'tcx>(
                 let Some(arg) = other.next() else {
                     return None;
                 };
-                if !matches!(arg.unpack(), GenericArgKind::Const(_)) {
+                if !matches!(arg.kind(), GenericArgKind::Const(_)) {
                     return None;
                 }
                 s2.push(arg);
@@ -713,7 +773,7 @@ fn equalize_substs<'tcx>(
     }
 
     for arg in reg {
-        let GenericArgKind::Lifetime(r) = arg.unpack() else {
+        let GenericArgKind::Lifetime(r) = arg.kind() else {
             unreachable!();
         };
         l2.push(r);
@@ -792,7 +852,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
     let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
     use rustc_middle::ty::FnSig;
 
-    let binder_str = binders_to_string(&poly_sig.bound_vars());
+    let binder_str = binders_to_string(ctxt.tcx, &poly_sig.bound_vars());
 
     let mut args: Vec<String> = vec![];
     let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
@@ -835,7 +895,10 @@ fn substs_to_string<'tcx>(substs: &GenericArgsRef<'tcx>) -> String {
     format!("{:}{:}{:}", "for<", v.join(", "), "> ")
 }
 
-fn binders_to_string(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
+fn binders_to_string<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>,
+) -> String {
     use rustc_middle::ty::BoundTyKind;
     use rustc_middle::ty::BoundVariableKind;
     if l.len() == 0 {
@@ -843,11 +906,19 @@ fn binders_to_string(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableK
     }
     let mut v = vec![];
     for k in l.iter() {
+        let sym;
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
-            BoundVariableKind::Ty(BoundTyKind::Param(_, sym)) => sym.as_str(),
+            BoundVariableKind::Ty(BoundTyKind::Param(def_id)) => {
+                sym = tcx.item_name(def_id);
+                sym.as_str()
+            }
             BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
-            BoundVariableKind::Region(BoundRegionKind::Named(_, sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::Named(def_id)) => {
+                sym = tcx.item_name(def_id);
+                sym.as_str()
+            }
+            BoundVariableKind::Region(BoundRegionKind::NamedAnon(sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
@@ -1811,7 +1882,7 @@ fn check_generics_for_invariant_fn<'tcx>(
     if inputs.len() != 1 {
         return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
     }
-    if tcx.trait_of_item(id).is_some() {
+    if tcx.trait_of_assoc(id).is_some() {
         return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
     }
 
@@ -1828,6 +1899,7 @@ fn check_generics_for_invariant_fn<'tcx>(
             }
             assert!(adt_def.is_struct() || adt_def.is_enum());
             crate::rust_to_vir_base::check_item_external_generics(
+                tcx,
                 self_generics,
                 generics,
                 true,
@@ -1897,7 +1969,7 @@ fn is_mut_ty<'tcx>(
             )) = verus_item
             {
                 assert_eq!(args.len(), 1);
-                if let GenericArgKind::Type(t) = args[0].unpack() {
+                if let Some(t) = args[0].as_type() {
                     if let Some((inner, None)) = is_mut_ty(ctxt, t) {
                         let mode_and_decoration = match bt {
                             BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
@@ -1928,7 +2000,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
             if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
             {
-                if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
+                if let Some(ty) = tp.trait_ref.args[0].as_type() {
                     match ty.kind() {
                         // ignore Self: T bound for trait T
                         ty::TyKind::Param(param)
@@ -2134,7 +2206,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         }
     };
 
-    if let Some(trait_def_id) = tcx.trait_of_item(external_id) {
+    if let Some(trait_def_id) = tcx.trait_of_assoc(external_id) {
         // If this is a trait function, then the DefId we have right now points to
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.

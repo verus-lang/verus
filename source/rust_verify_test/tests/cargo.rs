@@ -5,8 +5,9 @@ use std::fs;
 
 use common::*;
 use rust_verify_test_macros::cargo_examples;
+use std::path::PathBuf;
 use tempfile::tempdir;
-use toml::Table;
+use toml::{Table, Value};
 
 fn compute_test_dir(dir: &str) -> std::path::PathBuf {
     let current_exe = std::env::current_exe().unwrap();
@@ -104,15 +105,46 @@ fn run_vanilla_cargo_for_dir(dir: &str) {
     assert!(run.status.success());
 }
 
+// If vstd is modified as part of a change, the tests should use the local
+// version rather than what's on crates.io. This is not a great solution to
+// handle this though..
+fn adjust_version(mut project_path: PathBuf) {
+    project_path.push("Cargo.toml");
+    let mut toml_table = parse_toml_file(&project_path);
+    let Some(Value::Table(dependencies)) = toml_table.get_mut("dependencies") else {
+        panic!("no dependencies");
+    };
+    let Some(version) = dependencies.get_mut("vstd") else {
+        panic!("no vstd version");
+    };
+    let mut cur_file = std::env::current_dir().expect("current dir");
+    cur_file.pop();
+    cur_file.push("vstd");
+
+    let mut new_vstd_entry = Table::new();
+    new_vstd_entry.insert(
+        "path".to_string(),
+        Value::String(cur_file.to_str().expect("valid unicode path").to_owned()),
+    );
+    *version = Value::Table(new_vstd_entry);
+    std::fs::write(project_path, toml_table.to_string()).expect("write toml");
+}
+
 #[test]
 fn cargo_new_verifies() {
     // Run cargo verus new in temp_dir
     let temp_dir = tempdir().expect("Failed to create temporary directory");
     let args = vec!["new", "--bin", "test_project"];
-    let run = run_cargo_verus(&args, temp_dir.path());
+    let temp_dir_path = temp_dir.path().to_owned();
+    // replace above line by this to debug this test:
+    // let temp_dir_path = temp_dir.keep();
+    let run = run_cargo_verus(&args, &temp_dir_path);
+    let mut project_path = temp_dir_path.clone();
+    project_path.push("test_project");
+    adjust_version(project_path);
     assert!(run.status.success());
     let args = vec!["verify"];
-    let run = run_cargo_verus(&args, temp_dir.path().join("test_project").as_path());
+    let run = run_cargo_verus(&args, temp_dir_path.join("test_project").as_path());
     assert!(run.status.success());
 }
 
@@ -122,6 +154,7 @@ fn cargo_new_builds() {
     let temp_dir = tempdir().expect("Failed to create temporary directory");
     let args = vec!["new", "--bin", "test_project"];
     let run = run_cargo_verus(&args, temp_dir.path());
+    adjust_version(temp_dir.path().join("test_project"));
     assert!(run.status.success());
     let args = vec!["build"];
     let run = run_cargo_verus(&args, temp_dir.path().join("test_project").as_path());
@@ -131,5 +164,5 @@ fn cargo_new_builds() {
 // Tests that run `cargo verus {verify, build}` on each crate in the cargo-tests/verified directory
 cargo_examples!(true);
 
-// Tests that run `cargo {check, build}` on each crate in the cargo-tests/verified directory
+// Tests that run `cargo {check, build}` on each crate in the cargo-tests/unverified directory
 cargo_examples!(false);

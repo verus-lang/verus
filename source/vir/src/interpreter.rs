@@ -153,8 +153,11 @@ impl State {
     }
 
     /// Check time-based warnings and emit warning if enough time has passed.  Do so only in debug mode.
-    fn check_time_warning(&mut self) {
+    fn check_time_warning(&mut self, ctx: &Ctx) {
         if !cfg!(debug_assertions) {
+            return;
+        }
+        if !ctx.report_long_running {
             return;
         }
         let now = Instant::now();
@@ -198,6 +201,7 @@ struct Ctx<'a> {
     max_depth: usize,
     arch: ArchWordBits,
     global: &'a GlobalCtx,
+    report_long_running: bool,
 }
 
 /// Interpreter-internal expressions
@@ -1093,7 +1097,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.depth > ctx.max_depth {
         return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
     }
-    state.check_time_warning();
+    state.check_time_warning(ctx);
 
     state.log(format!(
         "{}Evaluating {:}",
@@ -1941,7 +1945,14 @@ fn eval_expr_launch(
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
     // Calculate max recursion depth as a fraction of rlimit
     let max_depth = (rlimit as f64 * DEPTH_LIMIT_MULTIPLIER as f64) as usize;
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, max_depth, arch, global };
+    let ctx = Ctx {
+        fun_ssts: &fun_ssts,
+        max_iterations,
+        max_depth,
+        arch,
+        global,
+        report_long_running: global.report_long_running,
+    };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {

@@ -1405,6 +1405,17 @@ impl Verifier {
             &("Associated-Type-Impls".to_string()),
         );
 
+        // Declare opaque type defs
+        let opaque_type_impl_commands =
+            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &opaque_type_impl_commands,
+            &("Opaque-Type-Constructors".to_string()),
+        );
+
         let mut function_decl_commands = vec![];
 
         // Declare the function symbols
@@ -2062,6 +2073,7 @@ impl Verifier {
             self.args.axiom_usage_info,
             self.args.new_mut_ref,
             self.args.no_bv_simplify,
+            self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2712,6 +2724,9 @@ impl Verifier {
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+
+        check_no_opaque_types_in_trait(&ctxt, &crate_items).map_err(map_err_diagnostics)?;
+
         if !self.args.no_lifetime {
             crate::erase::setup_verus_aware_ids(&crate_items);
         }
@@ -2907,8 +2922,8 @@ impl Verifier {
 
         // These can invoke mir_borrowck when opaque types are involved.
         // Thus, we can only run these after initializing erasure_hints
-        tcx.ensure_ok().check_private_in_public(());
         tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_private_in_public(module);
             tcx.ensure_ok().check_mod_privacy(module);
         });
 
@@ -2952,6 +2967,39 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             return Err(error(format!("{} exists and is not a directory", dir.display())));
         }
     })
+}
+
+/// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.  
+/// We disallow opaque types in trait for now.
+fn check_no_opaque_types_in_trait<'tcx>(
+    ctxt: &Arc<ContextX<'tcx>>,
+    crate_items: &crate::external::CrateItems,
+) -> Result<(), VirErr> {
+    for item in crate_items.items.iter() {
+        if matches!(item.verif, VerifOrExternal::External { .. }) {
+            continue;
+        }
+        match item.id {
+            crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
+                match ctxt.tcx.hir_trait_item(trait_item_id).kind {
+                    rustc_hir::TraitItemKind::Fn(sig, _) => {
+                        if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
+                            if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
+                                crate::unsupported_err!(
+                                    ty.span,
+                                    "Verus does not yet support Opaque types in trait def"
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 // TODO: move the callbacks into a different file, like driver.rs

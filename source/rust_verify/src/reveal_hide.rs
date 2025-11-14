@@ -51,7 +51,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                     // `ty_res` has the def_id of the type, or is a primitive type
                     // we need to find the impl that contains the non-blanket
                     // implementation of the function for the type
-                    let trait_ = tcx.trait_of_item(res.def_id()).expect("trait of function");
+                    let trait_ = tcx.trait_of_assoc(res.def_id()).expect("trait of function");
                     let ty_ = match ty_res {
                         Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
                         Res::PrimTy(prim_ty) => crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty),

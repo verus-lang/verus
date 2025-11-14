@@ -301,6 +301,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-report-long-running" {
+            verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
@@ -481,6 +483,10 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // }
     let mut child = std::process::Command::new("cargo");
     child.current_dir(dir);
+
+    // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
+    // verus_builtin and vstd to require unstable features not available on stable Rust
+    child.env_remove("RUSTFLAGS");
 
     let child = child
         .args(&args[..])

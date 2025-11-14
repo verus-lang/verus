@@ -129,6 +129,9 @@ fn check_well_founded_typ(
         TypX::MutRef(t) => {
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
     }
 }
 
@@ -179,6 +182,9 @@ fn check_positive_uses(
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
         TypX::Float(..) => Ok(()),
+        TypX::Opaque { .. } => {
+            panic!("Opaque type is not expected in struct definitions");
+        }
         TypX::SpecFn(ts, tr) => {
             /* REVIEW: we could track both positive and negative polarity,
                but strict positivity is more conservative
@@ -648,7 +654,7 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // T's own members).
     let (bound_path, args) = match &**bound {
         GenericBoundX::Trait(TraitId::Path(bound_path), args) => (bound_path, args),
-        GenericBoundX::Trait(TraitId::Sized, _) => {
+        GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
             return false;
         }
         GenericBoundX::TypEquality(..) => {
@@ -683,7 +689,7 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut GraphBuilder<Node>, trt: &Trai
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let u_path = match &**bound {
             GenericBoundX::Trait(TraitId::Path(u_path), _) => u_path,
-            GenericBoundX::Trait(TraitId::Sized, _) => {
+            GenericBoundX::Trait(TraitId::Sizedness(_), _) => {
                 continue;
             }
             GenericBoundX::TypEquality(u_path, _, _, _) => u_path,

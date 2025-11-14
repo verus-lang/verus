@@ -784,7 +784,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 fn is_field<'a>(p: &&Projection<'a>) -> bool {
                     match p.kind {
                         ProjectionKind::Field(_, _) => true,
-                        ProjectionKind::Deref | ProjectionKind::OpaqueCast => false,
+                        ProjectionKind::Deref
+                        | ProjectionKind::OpaqueCast
+                        | ProjectionKind::UnwrapUnsafeBinder => false,
                         p @ (ProjectionKind::Subslice | ProjectionKind::Index) => {
                             bug!("ProjectionKind {:?} was unexpected", p)
                         }
@@ -1275,7 +1277,8 @@ fn restrict_capture_precision(
             }
             ProjectionKind::Deref => {}
             ProjectionKind::OpaqueCast => {}
-            ProjectionKind::Field(..) => {} // ignore
+            ProjectionKind::Field(..) => {}
+            ProjectionKind::UnwrapUnsafeBinder => {}
         }
     }
 
@@ -1346,6 +1349,7 @@ fn construct_place_string<'tcx>(tcx: TyCtxt<'_>, place: &Place<'tcx>) -> String 
             ProjectionKind::Index => String::from("Index"),
             ProjectionKind::Subslice => String::from("Subslice"),
             ProjectionKind::OpaqueCast => String::from("OpaqueCast"),
+            ProjectionKind::UnwrapUnsafeBinder => String::from("UnwrapUnsafeBinder"),
         };
         if i != 0 {
             projections_str.push(',');
@@ -1418,13 +1422,11 @@ fn var_name(tcx: TyCtxt<'_>, var_hir_id: HirId) -> Symbol {
 /// let mut p = Point { x: 10, y: 10 };
 ///
 /// let c = || {
-///     p.x     += 10;
-/// // ^ E1 ^
+///     p.x += 10; // E1
 ///     // ...
 ///     // More code
 ///     // ...
 ///     p.x += 10; // E2
-/// // ^ E2 ^
 /// };
 /// ```
 /// `CaptureKind` associated with both `E1` and `E2` will be ByRef(MutBorrow),
