@@ -816,6 +816,11 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     LineContent::StateMachine(StateMachineCode::StructWithInvariantBody),
                 );
             }
+        } else if outer_last_segment == Some("proof".into())
+            || outer_last_segment == Some("proof_decl".into())
+            || outer_last_segment == Some("proof_with".into())
+        {
+            self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofBlock);
         } else if outer_last_segment == Some("atomic_with_ghost".into())
             || outer_last_segment == Some("my_atomic_with_ghost".into())
         // for mem allocator
