@@ -203,6 +203,7 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
             prev: u32,
             next: u32,
             ret: u32,
+            operand: u32,
             constant: K,
             tracked g: G,
             tracked resource: Option<T>,
@@ -229,9 +230,9 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
                         Some(x) => Some(x.tracked_get()),
                         None => None
                     };
-                assert(f.requires((prev, next, ret, self.constant(), g, resource_in_get)));
-                let tracked output = f(prev, next, ret, self.constant(), g, resource_in_get);
-                assert(f.ensures((prev, next, ret, self.constant(), g, resource_in_get), output));
+                assert(f.requires((prev, next, ret, n, self.constant(), g, resource_in_get)));
+                let tracked output = f(prev, next, ret, n, self.constant(), g, resource_in_get);
+                assert(f.ensures((prev, next, ret, n, self.constant(), g, resource_in_get), output));
                 let tracked (new_g, temp) = output;
                 pair = (perm, new_g);
                 resource_out_inner =
@@ -260,34 +261,41 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
     }
 }
 
+pub open spec fn faa_u32_spec(prev: u32, next: u32, ret: u32, operand: u32) -> bool {
+    next as int == wrapping_add_u32(prev as int, operand as int) && ret == prev
+}
+
 pub struct S<Pred> {
     phantom: PhantomData<Pred>,
 }
 
 impl<T, U, K, G, Pred: AtomicInvariantPredicate<K, u32, G>> ProofFnReqEnsDef<
-    (u32, u32, u32, K, G, Option<T>),
+    (u32, u32, u32, u32, K, G, Option<T>),
     (G, Option<U>),
 > for S<Pred>
 // where
 //     Pred: AtomicInvariantPredicate<K, u32, G>
  {
-    open spec fn req(input: (u32, u32, u32, K, G, Option<T>)) -> bool {
+    open spec fn req(input: (u32, u32, u32, u32, K, G, Option<T>)) -> bool {
         let prev = input.0;
-        // let next = input.1;
-        // let ret = input.2;
-        let constant = input.3;
-        let ghost_in = input.4;
+        let next = input.1;
+        let ret = input.2;
+        let operand = input.3;
+        let constant = input.4;
+        let ghost_in = input.5;
         // let pred = input.5;
-        Pred::atomic_inv(constant, prev, ghost_in)
+        &&& Pred::atomic_inv(constant, prev, ghost_in)
+        &&& faa_u32_spec(prev, next, ret, operand)
     }
 
-    open spec fn ens(input: (u32, u32, u32, K, G, Option<T>), output: (G, Option<U>)) -> bool {
+    open spec fn ens(input: (u32, u32, u32, u32, K, G, Option<T>), output: (G, Option<U>)) -> bool {
         // let prev = input.0;
         let next = input.1;
         // let ret = input.2;
-        let constant = input.3;
-        // let ghost_in = input.4;
-        // let pred = input.5;
+        //let operand = input.3;
+        let constant = input.4;
+        // let ghost_in = input.5;
+        // let pred = input.6;
         let ghost_out = output.0;
         Pred::atomic_inv(constant, next, ghost_out)
     }
