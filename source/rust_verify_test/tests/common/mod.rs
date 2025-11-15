@@ -493,8 +493,19 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
 
+    // Reset build and target directory in case they have been set upstream
+    //
+    // The test setup we're using assumes that every crate has its own target
+    // directory, and that running `cargo clean` on one crate does not affect
+    // any other tests running concurrently, which may not be the case if the
+    // system has one unified target directory, so we must reset it manually.
+    let target = dir.join("target");
+    child.env("CARGO_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_TARGET_DIR", &target);
+    child.env("CARGO_BUILD_BUILD_DIR", &target);
+
     let child = child
-        .args(&args[..])
+        .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
