@@ -226,7 +226,13 @@ pub(crate) fn apply_adjustment_post<'tcx>(
     spec: bool,
 ) -> rustc_middle::thir::ExprKind<'tcx> {
     match adjustment.kind {
-        Adjust::Deref(None) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
+        Adjust::Deref(None | Some(_)) | Adjust::Borrow(AutoBorrow::Ref(_)) => {
+            // Adjust::Deref(None) -> implicit *
+            // Adjust::Borrow(AutoBorrow::Ref(_)) -> implicit &
+            // Adjust::Deref(Some(_)) -> This case means inserting a Deref::deref function.
+            //   In spec code that would usually be an error, except for some cases
+            //   like Arc or Rc where we ignore the deref in spec code.
+            //   In all those cases we also want to erase.
             maybe_erase_node(cx, expr, adjustment.target, kind, spec)
         }
         _ => kind,
