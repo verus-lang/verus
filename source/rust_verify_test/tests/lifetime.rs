@@ -1564,3 +1564,80 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] derefs_issue1971 verus_code! {
+        use std::sync::Arc;
+        use std::rc::Rc;
+        use vstd::*;
+
+        pub struct Obj{
+            a : usize,
+        }
+        impl Obj{
+            spec fn g(&self) -> usize {
+                self.a
+            }
+        }
+
+        fn test(x: Arc<Obj>){
+            let ghost z = x.g();
+        }
+
+        fn test2(x: Rc<Obj>){
+            let ghost z = x.g();
+        }
+
+        fn test3(x: Box<Obj>){
+            let ghost z = x.g();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] derefs_lifetime verus_code! {
+        use std::sync::Arc;
+        use std::rc::Rc;
+        use vstd::*;
+
+        pub struct Obj{
+            a : usize,
+        }
+
+        fn consume<T>(t: T) { }
+
+        fn test(x: Arc<Obj>) {
+            let y: &Obj = &x;
+
+            consume(x);
+
+            proof {
+                let tracked z = y;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] derefs_lifetime2 verus_code! {
+        use std::sync::Arc;
+        use std::rc::Rc;
+        use vstd::*;
+
+        pub struct Obj{
+            a : usize,
+        }
+
+        fn consume<T>(t: T) { }
+
+        fn test(x: Arc<Obj>) {
+            let tracked y: &Obj = &x;
+
+            consume(x);
+
+            proof {
+                let tracked z = y;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `x` because it is borrowed")
+}
