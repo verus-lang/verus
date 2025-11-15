@@ -199,15 +199,17 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
         &self,
         n: u32,
         Tracked(resource_in): Tracked<Option<Release<T>>>,
-        tracked f: proof_fn<F>(
-            prev: u32,
-            next: u32,
-            ret: u32,
-            operand: u32,
-            constant: K,
-            tracked g: G,
-            tracked resource: Option<T>,
-        ) -> tracked (G, Option<U>),
+        Tracked(f): Tracked<
+            proof_fn<F>(
+                prev: u32,
+                next: u32,
+                ret: u32,
+                operand: u32,
+                constant: K,
+                tracked g: G,
+                tracked resource: Option<T>,
+            ) -> tracked (G, Option<U>),
+        >,
     ) -> (out: (u32, Tracked<Option<Acquire<U>>>)) where F: ProofFn + ProofFnReqEns<S<Pred>>
         requires
             self.well_formed(),
@@ -269,13 +271,10 @@ pub struct S<Pred> {
     phantom: PhantomData<Pred>,
 }
 
-impl<T, U, K, G, Pred: AtomicInvariantPredicate<K, u32, G>> ProofFnReqEnsDef<
+impl<T, U, K, G, Pred> ProofFnReqEnsDef<
     (u32, u32, u32, u32, K, G, Option<T>),
     (G, Option<U>),
-> for S<Pred>
-// where
-//     Pred: AtomicInvariantPredicate<K, u32, G>
- {
+> for S<Pred> where Pred: AtomicInvariantPredicate<K, u32, G> {
     open spec fn req(input: (u32, u32, u32, u32, K, G, Option<T>)) -> bool {
         let prev = input.0;
         let next = input.1;
