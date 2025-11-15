@@ -344,6 +344,12 @@ impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoI
     }
 }
 
+// This is used by `vec![x; n]`
+pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -> (v: Vec<T>)
+    ensures
+        v.len() == n,
+        forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
+
 impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
     T,
     A,
