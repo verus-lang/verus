@@ -4,6 +4,7 @@ use crate::attributes::{
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
@@ -17,7 +18,7 @@ use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenInvariantBlockItem,
     SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
 };
-use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
+use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
@@ -348,13 +349,9 @@ pub(crate) fn patexpr_to_vir<'tcx>(
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const, id) => {
-                    let path = bctx.ctxt.def_id_to_vir_path(id);
-                    let fun = FunX { path };
-                    let autospec_usage =
-                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-                    let x = ExprX::ConstVar(Arc::new(fun), autospec_usage);
-
-                    let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x);
+                    let node_substs = bctx.types.node_args(pat_expr.hir_id);
+                    let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
+                    let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
@@ -1358,6 +1355,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     typ_args,
                     Arc::new(vec![]),
                     autospec_usage,
+                    false,
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
@@ -1897,6 +1895,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 typ_args,
                                 impl_paths,
                                 AutospecUsage::Final,
+                                false,
                             ),
                             vec![vir_fun, tup],
                             rcall,
@@ -1959,6 +1958,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     typ_args,
                     Arc::new(vec![]),
                     autospec_usage,
+                    false,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
                 mk_expr(ExprX::Call(call_target, args, None))
@@ -2177,22 +2177,29 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
-                        let path = bctx.ctxt.def_id_to_vir_path(id);
-                        let fun = FunX { path };
-                        let autospec_usage = if bctx.in_ghost {
-                            AutospecUsage::IfMarked
-                        } else {
-                            AutospecUsage::Final
-                        };
-                        mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
+                        let node_substs = bctx.types.node_args(expr.hir_id);
+                        let e = const_var_to_vir(
+                            bctx,
+                            Some(expr),
+                            id,
+                            node_substs,
+                            &expr.hir_id,
+                            expr.span,
+                        )?;
+                        Ok(ExprOrPlace::Expr(e))
                     }
                 }
                 (Res::Def(DefKind::Const, id), _) => {
-                    let path = bctx.ctxt.def_id_to_vir_path(id);
-                    let fun = FunX { path };
-                    let autospec_usage =
-                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-                    mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
+                    let node_substs = bctx.types.node_args(expr.hir_id);
+                    let e = const_var_to_vir(
+                        bctx,
+                        Some(expr),
+                        id,
+                        node_substs,
+                        &expr.hir_id,
+                        expr.span,
+                    )?;
+                    Ok(ExprOrPlace::Expr(e))
                 }
                 (
                     Res::Def(
@@ -2607,6 +2614,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // REVIEW: why is this needed?
                 Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
                 AutospecUsage::Final,
+                false,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
             mk_expr(ExprX::Call(call_target, args, None))
@@ -2934,6 +2942,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
             typ_args.unwrap(),
             Arc::new(vec![]),
             AutospecUsage::Final,
+            false,
         );
         if let Some(op) = op {
             // Evaluate tgt and idx twice may have side effects.
@@ -3444,6 +3453,7 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
                 typ_args,
                 Arc::new(vec![]),
                 autospec_usage,
+                false,
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args, None);

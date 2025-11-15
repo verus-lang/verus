@@ -34,6 +34,50 @@ use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
+enum FnOrConstSigEnum<'tcx> {
+    Fn(&'tcx FnSig<'tcx>),
+    ConstVar(Typ),
+}
+
+pub(crate) struct FnOrConstSig<'tcx> {
+    span: Span,
+    sig: FnOrConstSigEnum<'tcx>,
+}
+
+impl<'tcx> FnOrConstSig<'tcx> {
+    pub(crate) fn sig(sig: &'tcx FnSig<'tcx>) -> Self {
+        FnOrConstSig { span: sig.span, sig: FnOrConstSigEnum::Fn(sig) }
+    }
+
+    pub(crate) fn const_var(span: Span, typ: Typ) -> Self {
+        FnOrConstSig { span, sig: FnOrConstSigEnum::ConstVar(typ) }
+    }
+
+    fn output_span(&self) -> Span {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(sig) => sig.decl.output.span(),
+            FnOrConstSigEnum::ConstVar(_) => self.span,
+        }
+    }
+
+    fn safety(&self) -> Safety {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(sig) => match sig.header.safety {
+                HeaderSafety::Normal(s) => s,
+                _ => Safety::Unsafe,
+            },
+            FnOrConstSigEnum::ConstVar(_) => Safety::Safe,
+        }
+    }
+
+    fn item_kind(&self) -> ItemKind {
+        match &self.sig {
+            FnOrConstSigEnum::Fn(..) => ItemKind::Function,
+            FnOrConstSigEnum::ConstVar(..) => ItemKind::Const,
+        }
+    }
+}
+
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
     let mut pathx = (**path).clone();
@@ -483,12 +527,12 @@ fn compare_external_sig<'tcx>(
     Ok(c1 == c2)
 }
 
-pub(crate) fn handle_external_fn<'tcx>(
+fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
     id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
-    sig: &'tcx FnSig<'tcx>,
+    sig: &FnOrConstSig<'tcx>,
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, DefId)>,
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
@@ -1060,7 +1104,7 @@ pub(crate) fn check_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     module_path: &vir::ast::Path,
     attrs: &[Attribute],
-    sig: &'tcx FnSig<'tcx>,
+    sig: FnOrConstSig<'tcx>,
     // (impl generics, impl def_id)
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
@@ -1076,7 +1120,10 @@ pub(crate) fn check_item_fn<'tcx>(
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
-    let mode = get_mode(Mode::Exec, attrs);
+    let mode = match &sig.sig {
+        FnOrConstSigEnum::Fn(..) => get_mode(Mode::Exec, attrs),
+        FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
+    };
 
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
@@ -1144,7 +1191,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 id,
                 kind,
                 visibility,
-                sig,
+                &sig,
                 self_generics,
                 &body_id,
                 mode,
@@ -1160,10 +1207,7 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        let safety = match sig.header.safety {
-            HeaderSafety::Normal(s) => s,
-            _ => Safety::Unsafe,
-        };
+        let safety = sig.safety();
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false)
     };
 
@@ -1182,24 +1226,32 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let fn_sig = ctxt.tcx.fn_sig(id);
-    // REVIEW: rustc docs refer to skip_binder as "dangerous"
-    let fn_sig = fn_sig.skip_binder();
-    let inputs = fn_sig.inputs().skip_binder();
-
-    let ret_typ_mode = match sig {
-        FnSig {
+    let (ret_typ_mode, inputs) = match &sig.sig {
+        FnOrConstSigEnum::Fn(FnSig {
             header: FnHeader { safety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
-        } => {
+        }) => {
+            let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
+            let inputs = fn_sig.inputs().skip_binder();
             if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
                 );
             }
-            check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
+            let output = fn_sig.output().skip_binder();
+            let ret_typ_mode = check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, output)?;
+            (ret_typ_mode, inputs.to_vec())
+        }
+        FnOrConstSigEnum::ConstVar(typ) => {
+            // TODO: generalize beyond default const mode (spec + exec):
+            let mode_opt = crate::attributes::get_mode_opt(attrs);
+            let ret_mode = get_ret_mode(Mode::Exec, attrs);
+            if mode_opt.is_some() || ret_mode != Mode::Exec {
+                unsupported_err!(sig.span, "non-default mode on associated const")
+            }
+            (Some((typ.clone(), Mode::Exec)), vec![])
         }
     };
 
@@ -1475,7 +1527,7 @@ pub(crate) fn check_item_fn<'tcx>(
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
-    let ret_span = sig.decl.output.span();
+    let ret_span = sig.output_span();
     let ret = ctxt.spanned_new(
         ret_span,
         ParamX {
@@ -1628,14 +1680,9 @@ pub(crate) fn check_item_fn<'tcx>(
                 assert!(mode == Mode::Exec);
                 (vattrs.publish.clone(), mode, (ensure0, ensure1), None, ItemKind::Const, body)
             }
-            (_, returns) => (
-                vattrs.publish.clone(),
-                mode,
-                (ensure0, ensure1),
-                returns,
-                ItemKind::Function,
-                body,
-            ),
+            (_, returns) => {
+                (vattrs.publish.clone(), mode, (ensure0, ensure1), returns, sig.item_kind(), body)
+            }
         };
 
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
@@ -2125,12 +2172,12 @@ fn all_predicates<'tcx>(
     clauses
 }
 
-pub(crate) fn get_external_def_id<'tcx>(
+fn get_external_def_id<'tcx>(
     ctxt: &Context<'tcx>,
     proxy_fun_id: DefId,
     body_id: &BodyId,
     body: &Body<'tcx>,
-    sig: &'tcx FnSig<'tcx>,
+    sig: &FnOrConstSig<'tcx>,
 ) -> Result<(rustc_span::def_id::DefId, FunctionKind, bool), VirErr> {
     let tcx = ctxt.tcx;
 

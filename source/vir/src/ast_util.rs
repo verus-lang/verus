@@ -724,7 +724,7 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _) => match kind {
+        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic

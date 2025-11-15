@@ -391,6 +391,7 @@ fn simplify_one_expr(
                     Arc::new(vec![]),
                     Arc::new(vec![]),
                     *autospec,
+                    true,
                 ),
                 Arc::new(vec![]),
                 None,
@@ -398,7 +399,7 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage),
+            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
             args,
             post_args,
         ) => {
@@ -429,6 +430,7 @@ fn simplify_one_expr(
                     typs.clone(),
                     impl_paths.clone(),
                     *autospec_usage,
+                    *const_var,
                 ),
                 args,
                 post_args.clone(),

@@ -94,9 +94,30 @@ impl crate::syntax::Visitor {
         }
     }
 
-    fn impl_item_needs_unerased_proxy(&self, impl_item: &ImplItem) -> bool {
+    fn impl_item_needs_unerased_proxy(&self, impl_item: &ImplItem, for_trait: bool) -> bool {
         match impl_item {
-            ImplItem::Const(impl_item_const) => !is_external(&impl_item_const.attrs),
+            ImplItem::Const(impl_item_const) => {
+                if for_trait {
+                    // For the moment, allow associated const impls only if they are external_body,
+                    // or are simple literals,
+                    // and don't generate unerased_proxy.
+                    // TODO: generate unerased_proxy for associated const impls
+                    let has_external_code =
+                        crate::syntax::has_external_code(&impl_item_const.attrs);
+                    let is_literal = match impl_item {
+                        ImplItem::Const(ImplItemConst {
+                            block: None, expr: Some(expr), ..
+                        }) => match &**expr {
+                            Expr::Lit(..) => true,
+                            _ => false,
+                        },
+                        _ => false,
+                    };
+                    !(has_external_code || is_literal)
+                } else {
+                    !is_external(&impl_item_const.attrs)
+                }
+            }
             ImplItem::Fn(impl_item_fn) => {
                 impl_item_fn.sig.constness.is_some() && !is_external(&impl_item_fn.attrs)
             }
@@ -477,10 +498,11 @@ impl crate::syntax::Visitor {
         let mut new_impl_items = vec![];
 
         for item in std::mem::take(impl_items).into_iter() {
-            if self.impl_item_needs_unerased_proxy(&item) {
+            if self.impl_item_needs_unerased_proxy(&item, for_trait) {
                 if for_trait {
+                    let msg = "Verus does not support const items in traits, except for simple literals and external_body consts";
                     *impl_items = vec![ImplItem::Verbatim(
-                        quote_spanned!(item.span() => compile_error!("Verus does not support const items in traits");),
+                        quote_spanned!(item.span() => compile_error!(#msg);),
                     )];
                     return;
                 }

@@ -520,7 +520,7 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec), _, _) => {
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec, _), _, _) => {
                 assert!(*autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
