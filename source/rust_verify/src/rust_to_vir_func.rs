@@ -76,6 +76,25 @@ impl<'tcx> FnOrConstSig<'tcx> {
             FnOrConstSigEnum::ConstVar(..) => ItemKind::Const,
         }
     }
+
+    fn override_body_visibility(
+        &self,
+        publish: Option<AttrPublish>,
+        visibility: Visibility,
+        body_visibility: BodyVisibility,
+    ) -> BodyVisibility {
+        match (&self.sig, publish) {
+            // REVIEW: syntax.rs currently implements much of the Publish logic by comparing
+            // the "open"/"closed" keywords to the "pub" syntax.
+            // However, "pub" isn't visible to trait implementations in the syntax,
+            // so it would make more sense to move the logic out of syntax.rs and into this file.
+            // For now, just implement here the common case where trait consts are open by default
+            // (as normal consts are).
+            // TODO: handle more Publish variations for trait consts
+            (FnOrConstSigEnum::ConstVar(..), None) => BodyVisibility::Visibility(visibility),
+            _ => body_visibility,
+        }
+    }
 }
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
@@ -1577,6 +1596,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 && visibility.restricted_to.as_ref() != Some(module_path)
                 && body.is_some()
                 && !open_closed_present
+                && !matches!(sig.sig, FnOrConstSigEnum::ConstVar(..))
             {
                 return err_span(
                     sig.span,
@@ -1696,6 +1716,8 @@ pub(crate) fn check_item_fn<'tcx>(
         module_path,
         body.is_some(),
     )?;
+    let body_visibility =
+        sig.override_body_visibility(publish, visibility.clone(), body_visibility);
 
     ctxt.push_body_erasure(
         id.expect_local(),
