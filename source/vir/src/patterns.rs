@@ -4,6 +4,7 @@ use crate::ast_util::{conjoin, mk_eq, mk_ineq};
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -198,29 +199,37 @@ fn pattern_to_exprs_rec(
     }
 }
 
-pub(crate) fn pattern_has_move(pattern: &Pattern) -> bool {
+pub(crate) fn pattern_has_move(pattern: &Pattern, modes: &HashMap<VarIdent, Mode>) -> bool {
     match &pattern.x {
         PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => !binding.copy && matches!(binding.by_ref, ByRef::No),
+        PatternX::Var(binding) => binding_is_move(binding, modes),
         PatternX::Binding { binding, sub_pat } => {
-            (!binding.copy && matches!(binding.by_ref, ByRef::No)) || pattern_has_move(sub_pat)
+            binding_is_move(binding, modes) || pattern_has_move(sub_pat, modes)
         }
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {
-                if pattern_has_move(&binder.a) {
+                if pattern_has_move(&binder.a, modes) {
                     return true;
                 }
             }
             false
         }
-        PatternX::Or(pat1, pat2) => pattern_has_move(pat1) || pattern_has_move(pat2),
+        PatternX::Or(pat1, pat2) => pattern_has_move(pat1, modes) || pattern_has_move(pat2, modes),
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p),
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p, modes),
     }
 }
 
+fn binding_is_move(binding: &PatternBinding, modes: &HashMap<VarIdent, Mode>) -> bool {
+    !binding.copy
+        && matches!(binding.by_ref, ByRef::No)
+        && !matches!(modes[&binding.name], Mode::Spec)
+}
+
 pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
+    // We don't need to account for modes here (unlike pattern_has_move)
+    // because mode-checking will rule out taking mutable references to spec-mode locations.
     match &pattern.x {
         PatternX::Wildcard(_) => false,
         PatternX::Var(binding) => matches!(binding.by_ref, ByRef::MutRef),

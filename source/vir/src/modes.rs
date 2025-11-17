@@ -1,8 +1,8 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path,
-    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr,
-    UnwindSpec, VarIdent, VirErr,
+    AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX,
+    FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion,
+    MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX,
+    UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -481,15 +481,16 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ }) => {
-            // TODO(new_mut_ref): disallow ByRef::Mut in spec code
+        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ }) => {
+            check_binding(&pattern.span, by_ref, mode)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Binding {
-            binding: PatternBinding { name: x, mutable: _, by_ref: _, typ: _, copy: _ },
+            binding: PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ },
             sub_pat,
         } => {
+            check_binding(&pattern.span, by_ref, mode)?;
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
@@ -579,9 +580,20 @@ fn add_pattern_rec(
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
         PatternX::MutRef(sub_pat) => {
-            // TODO(new_mut_ref): disallow MutRef in spec code
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
+    }
+}
+
+fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
+    match (by_ref, mode) {
+        (ByRef::MutRef, Mode::Spec | Mode::Proof) => {
+            // Supporting this for Mode::Proof would be nice but requires thought for how
+            // to implement.
+            Err(error(span, "a 'mut ref' binding in a pattern is only allowed for exec mode"))
+        }
+        (ByRef::No | ByRef::ImmutRef, _) => Ok(()),
+        (_, Mode::Exec) => Ok(()),
     }
 }
 
