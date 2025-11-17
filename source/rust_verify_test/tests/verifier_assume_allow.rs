@@ -14,9 +14,18 @@ test_verify_one_file! {
         #[verifier::external]
         fn f2(u: &mut u8) -> u8 { 3 }
 
+        #[verifier::external]
+        fn f3(u: u8) {}
+
+        assume_specification[ f3 ](u: u8)
+            requires
+                u > 10,
+        ;
+
         #[verifier::assume(externals_available_without_declaration)]
         fn g0() {
             f0();
+            f3(5); // FAILS
         }
 
         #[verifier::assume(externals_available_without_declaration)]
@@ -53,7 +62,7 @@ test_verify_one_file! {
                 break;
             }
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
