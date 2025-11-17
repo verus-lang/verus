@@ -240,7 +240,7 @@ test_verify_one_file! {
         fn set_exec() {
             let a: Set<u64> = Set { dummy: 3 }; // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -253,7 +253,7 @@ test_verify_one_file! {
         fn set_exec() {
             let e: E = E::A; // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file_with_options! {

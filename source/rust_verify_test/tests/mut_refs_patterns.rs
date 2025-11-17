@@ -2390,16 +2390,17 @@ test_verify_one_file_with_options! {
             let Tracked(r) = t;
         }
         // TODO(new_mut_ref): needs better error msg
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode proof, expected mode exec")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of a mutable reference")
 }
 
 test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
+            assert(r == (*t));
         }
-        // TODO(new_mut_ref): needs better error msg
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+        // TODO(new_mut_ref): is this the desired behavior?
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -2418,6 +2419,38 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden_ghost_type ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+        struct X { a: u64 }
+
+        fn test() {
+            let x = Ghost(Opt::Some(X { a: 5 }));
+            match x.borrow_mut() {
+                Opt::Some(X { a: a }) => {
+                }
+                Opt::None => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden_trk_type ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+        struct X { a: u64 }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let x = Tracked(Opt::Some(x));
+            match x.borrow_mut() {
+                Opt::Some(X { a: a }) => {
+                }
+                Opt::None => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
 
 test_verify_one_file_with_options! {

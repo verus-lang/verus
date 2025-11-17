@@ -3551,6 +3551,7 @@ fn add_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Exp
     inner_expr
 }
 
+/// This is only for use outside new-mut-ref and will eventually be deleted
 pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::VarLoc(var_ident.clone()),
@@ -3560,6 +3561,16 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Field(opr, p) => {
             let e = place_to_loc(p)?;
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::ModeUnwrap(p, m) => {
+            let e = place_to_loc(p)?;
+            let op = UnaryOp::CoerceMode {
+                op_mode: Mode::Proof,
+                from_mode: Mode::Proof,
+                to_mode: m.to_mode(),
+                kind: vir::ast::ModeCoercion::BorrowMut,
+            };
+            ExprX::Unary(op, e)
         }
         PlaceX::Temporary(expr) => {
             return expr_to_loc_coerce_modes(expr);
@@ -3601,7 +3612,7 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
     Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }
 
-fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
+pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
@@ -3623,7 +3634,34 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
 }
 
-fn borrow_mut_vir(
+/// Like the above, but also cancels with two-phase borrows
+/// It's _probably_ okay to always call this, but it's good to be caution about two-phase
+pub(crate) fn deref_mut_allow_cancelling_two_phase(
+    bctx: &BodyCtxt,
+    span: Span,
+    place: &Place,
+) -> Place {
+    match &place.x {
+        PlaceX::Temporary(e) => match &e.x {
+            ExprX::BorrowMut(place) => {
+                return place.clone();
+            }
+            ExprX::TwoPhaseBorrowMut(place) => {
+                return place.clone();
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    let t = match &*place.typ {
+        TypX::MutRef(t) => t.clone(),
+        _ => panic!("expected mut ref"),
+    };
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+}
+
+pub(crate) fn borrow_mut_vir(
     bctx: &BodyCtxt,
     span: Span,
     place: &Place,
