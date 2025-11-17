@@ -195,7 +195,7 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
         AtomicRelaxedU32 { patomic, atomic_inv: Tracked(atomic_inv) }
     }
 
-    pub fn fetch_add_wrapping<T, U, F>(
+    pub fn fetch_add_wrapping<T, U, F, C>(
         &self,
         n: u32,
         Tracked(resource_in): Tracked<Option<Release<T>>>,
@@ -210,9 +210,27 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
                 tracked resource: Option<T>,
             ) -> tracked (G, Option<U>),
         >,
-    ) -> (out: (u32, Tracked<Option<Acquire<U>>>)) where F: ProofFn + ProofFnReqEns<S<Pred>>
+    ) -> (out: (u32, Tracked<Option<Acquire<U>>>)) where
+        F: ProofFn + ProofFnReqEns<S<Pred, C>>,
+        C: ClientReqEns<T, U, K>,
+
         requires
+            ({
+                let resource_in_get = match resource_in {
+                    Some(res) => Some(res.get()),
+                    None => None,
+                };
+                C::req(n, resource_in_get, self.constant())
+            }),
             self.well_formed(),
+        ensures
+            ({
+                let resource_out_get = match out.1@ {
+                    Some(res) => Some(res.get()),
+                    None => None,
+                };
+                C::ens(out.0, resource_out_get, self.constant())
+            }),
     {
         let result;
         let resource_out;
@@ -267,14 +285,21 @@ pub open spec fn faa_u32_spec(prev: u32, next: u32, ret: u32, operand: u32) -> b
     next as int == wrapping_add_u32(prev as int, operand as int) && ret == prev
 }
 
-pub struct S<Pred> {
-    phantom: PhantomData<Pred>,
+pub struct S<Pred, C> {
+    phantom_p: PhantomData<Pred>,
+    phantom_c: PhantomData<C>,
 }
 
-impl<T, U, K, G, Pred> ProofFnReqEnsDef<
+pub trait ClientReqEns<T, U, K> {
+    spec fn req(operand: u32, resource_in: Option<T>, constant: K) -> bool;
+
+    spec fn ens(result: u32, resource_out: Option<U>, constant: K) -> bool;
+}
+
+impl<T, U, K, G, Pred, C> ProofFnReqEnsDef<
     (u32, u32, u32, u32, K, G, Option<T>),
     (G, Option<U>),
-> for S<Pred> where Pred: AtomicInvariantPredicate<K, u32, G> {
+> for S<Pred, C> where Pred: AtomicInvariantPredicate<K, u32, G>, C: ClientReqEns<T, U, K> {
     open spec fn req(input: (u32, u32, u32, u32, K, G, Option<T>)) -> bool {
         let prev = input.0;
         let next = input.1;
@@ -282,21 +307,24 @@ impl<T, U, K, G, Pred> ProofFnReqEnsDef<
         let operand = input.3;
         let constant = input.4;
         let ghost_in = input.5;
-        // let pred = input.5;
+        let resource_in = input.6;
         &&& Pred::atomic_inv(constant, prev, ghost_in)
         &&& faa_u32_spec(prev, next, ret, operand)
+        &&& C::req(operand, resource_in, constant)
     }
 
     open spec fn ens(input: (u32, u32, u32, u32, K, G, Option<T>), output: (G, Option<U>)) -> bool {
         // let prev = input.0;
         let next = input.1;
-        // let ret = input.2;
+        let ret = input.2;
         //let operand = input.3;
         let constant = input.4;
         // let ghost_in = input.5;
-        // let pred = input.6;
+        let pred = input.6;
         let ghost_out = output.0;
-        Pred::atomic_inv(constant, next, ghost_out)
+        let resource_out = output.1;
+        &&& Pred::atomic_inv(constant, next, ghost_out)
+        &&& C::ens(ret, resource_out, constant)
     }
 }
 
