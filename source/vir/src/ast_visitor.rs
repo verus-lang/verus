@@ -191,7 +191,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_call_target(&mut self, call_target: &CallTarget) -> Result<R::Ret<CallTarget>, Err> {
         match call_target {
-            CallTarget::Fun(kind, fun, typs, impl_paths, au) => {
+            CallTarget::Fun(kind, fun, typs, impl_paths, attrs) => {
                 let kind = self.visit_call_target_kind(kind)?;
                 let typs = self.visit_typs(typs)?;
                 R::ret(|| {
@@ -200,7 +200,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         fun.clone(),
                         R::get_vec_a(typs),
                         impl_paths.clone(),
-                        au.clone(),
+                        attrs.clone(),
                     )
                 })
             }
@@ -214,6 +214,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     CallTarget::BuiltinSpecFun(bsf.clone(), R::get_vec_a(typs), impl_paths.clone())
                 })
             }
+            CallTarget::AssumeExternal => R::ret(|| call_target.clone()),
         }
     }
 

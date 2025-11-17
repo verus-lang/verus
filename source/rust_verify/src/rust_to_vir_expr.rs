@@ -1352,12 +1352,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             if let Some((fun, typ_args)) = f {
                 let autospec_usage =
                     if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target_attrs = vir::ast::CallTargetAttrs {
+                    autospec: autospec_usage,
+                    assume_external_allowed: false,
+                };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
                     fun,
                     typ_args,
                     Arc::new(vec![]),
-                    autospec_usage,
+                    call_target_attrs,
                 );
                 let arg = arg.consume(bctx, get_inner_ty());
                 let args = Arc::new(vec![arg.clone()]);
@@ -1890,13 +1894,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         );
 
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
+                        let call_target_attrs = vir::ast::CallTargetAttrs {
+                            autospec: AutospecUsage::Final,
+                            assume_external_allowed: false,
+                        };
                         (
                             CallTarget::Fun(
                                 kind,
                                 helper_fun,
                                 typ_args,
                                 impl_paths,
-                                AutospecUsage::Final,
+                                call_target_attrs,
                             ),
                             vec![vir_fun, tup],
                             rcall,
@@ -1953,12 +1961,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 let autospec_usage =
                     if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                let call_target_attrs = vir::ast::CallTargetAttrs {
+                    autospec: autospec_usage,
+                    assume_external_allowed: false,
+                };
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
                     fun,
                     typ_args,
                     Arc::new(vec![]),
-                    autospec_usage,
+                    call_target_attrs,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
                 mk_expr(ExprX::Call(call_target, args, None))
@@ -2599,6 +2611,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ));
             }
 
+            let call_target_attrs = vir::ast::CallTargetAttrs {
+                autospec: AutospecUsage::Final,
+                assume_external_allowed: false,
+            };
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,
                 fun,
@@ -2606,7 +2622,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // arbitrary impl_path
                 // REVIEW: why is this needed?
                 Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
-                AutospecUsage::Final,
+                call_target_attrs,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
             mk_expr(ExprX::Call(call_target, args, None))
@@ -2928,12 +2944,16 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let tgt_vir = place_to_loc(&tgt_vir)?;
         let tgt_vir =
             bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
+        let call_target_attrs = vir::ast::CallTargetAttrs {
+            autospec: AutospecUsage::Final,
+            assume_external_allowed: false,
+        };
         let call_target = CallTarget::Fun(
             vir::ast::CallTargetKind::Static,
             fun,
             typ_args.unwrap(),
             Arc::new(vec![]),
-            AutospecUsage::Final,
+            call_target_attrs,
         );
         if let Some(op) = op {
             // Evaluate tgt and idx twice may have side effects.
@@ -3438,12 +3458,16 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
         Some(PtrCastKind::Complex(fun, typ_args, clip)) => {
             let autospec_usage =
                 if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+            let call_target_attrs = vir::ast::CallTargetAttrs {
+                autospec: autospec_usage,
+                assume_external_allowed: false,
+            };
             let call_target = CallTarget::Fun(
                 vir::ast::CallTargetKind::Static,
                 fun,
                 typ_args,
                 Arc::new(vec![]),
-                autospec_usage,
+                call_target_attrs,
             );
             let args = Arc::new(vec![src_vir.clone()]);
             let x = ExprX::Call(call_target, args, None);

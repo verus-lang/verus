@@ -796,13 +796,24 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
         } => {
-            let function = &ctx.func_sst_map[fun].x;
-            let is_spec = function.mode == Mode::Spec;
-            let is_trait = !matches!(function.kind, FunctionKind::Static);
+            let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
+                let function = &ctx.func_sst_map[fun].x;
+                let is_spec = function.mode == Mode::Spec;
+                let is_trait = !matches!(function.kind, FunctionKind::Static);
+                let is_polys: Vec<bool> = function
+                    .pars
+                    .iter()
+                    .map(|par| is_spec || is_trait || typ_is_poly(ctx, &par.x.typ))
+                    .collect();
+                (is_polys, Some(function))
+            } else {
+                let is_polys: Vec<bool> = args.iter().map(|_| false).collect();
+                (is_polys, None)
+            };
             let mut new_args: Vec<Exp> = Vec::new();
-            assert!(function.pars.len() == args.len());
-            for (par, arg) in function.pars.iter().zip(args.iter()) {
-                let arg = if is_spec || is_trait || typ_is_poly(ctx, &par.x.typ) {
+            assert!(is_polys.len() == args.len());
+            for (is_poly, arg) in is_polys.iter().zip(args.iter()) {
+                let arg = if *is_poly {
                     visit_exp_poly(ctx, state, arg)
                 } else {
                     visit_exp_native(ctx, state, arg)
@@ -811,7 +822,12 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             }
             let dest = if let Some(dest) = dest {
                 if let Some(x) = take_temp(state, dest) {
-                    let typ = return_typ(ctx, function, is_trait, &dest.dest.typ);
+                    let typ = if let Some(function) = function {
+                        let is_trait = !matches!(function.kind, FunctionKind::Static);
+                        return_typ(ctx, function, is_trait, &dest.dest.typ)
+                    } else {
+                        dest.dest.typ.clone()
+                    };
                     assert!(!state.temp_types.contains_key(&x));
                     assert!(!state.types.contains_key(&x));
                     let _ = state.temp_types.insert(x.clone(), typ.clone());
