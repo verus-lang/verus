@@ -319,7 +319,6 @@ pub(crate) fn async_body_to_vir<'tcx>(
     }
 }
 
-
 fn check_fn_decl<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
@@ -2116,7 +2115,6 @@ fn handle_async_func<'tcx>(
     }
     params = Arc::new(rewitten_params);
     if let Some(body_expr) = &body {
-
         async_body_return_typ = Some(body_expr.typ.clone());
     }
 

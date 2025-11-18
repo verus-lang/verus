@@ -3141,7 +3141,7 @@ pub(crate) fn body_stm_to_air(
 }
 
 /// At function returns, we need to tell the SMT solver that the  
-/// future (impl Future<Output = T>) created by the async function will return the return value of 
+/// future (impl Future<Output = T>) created by the async function will return the return value of
 /// the function body if await() is called on it.
 fn async_fn_return_to_stmts(
     ctx: &Ctx,
@@ -3180,9 +3180,7 @@ fn async_fn_return_to_stmts(
     );
 
     *ret_op = Some(async_body_return_type.clone());
-    Ok(vec![
-        Arc::new(StmtX::Assume(eq.into())),
-    ])
+    Ok(vec![Arc::new(StmtX::Assume(eq.into()))])
 }
 
 fn try_reveal_opaque_ty_ctor(exp: &Exp) -> Typ {
