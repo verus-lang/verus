@@ -820,11 +820,14 @@ fn rewrite_unverified_func(
     );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
-        block.stmts.clear();
+        // We keep the function body so that cargo verus build
+        // can call correct function in erase mode.
+        // But we need to remove all proof-related statements.
+        let mut replace = ExecReplacer { erase: EraseGhost::EraseAll };
+        replace.visit_block_mut(block);
         if erase.keep() {
-            block.stmts.push(precondition_false);
+            block.stmts.insert(0, precondition_false);
         }
-        block.stmts.push(unimplemented.clone());
     }
     // change name to verified_{fname}
     let x = &fun.sig.ident;
@@ -832,7 +835,8 @@ fn rewrite_unverified_func(
     fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
 
     // In erase mode, we just keep the verified function with unimplemented!()
-    // since we do not need to verifying the function body.
+    // since we do not need to verifying the function body and only unverified
+    // function is called in erase mode.
     if erase.erase() {
         fun.block.stmts.clear();
         fun.block.stmts.push(unimplemented);
