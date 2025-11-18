@@ -1073,13 +1073,13 @@ fn moves_and_muts_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name: _, mutable: _, by_ref, typ: _, copy })
+            PatternX::Var(PatternBinding { name, mutable: _, by_ref, typ: _, copy })
             | PatternX::Binding {
-                binding: PatternBinding { name: _, mutable: _, by_ref, typ: _, copy },
+                binding: PatternBinding { name, mutable: _, by_ref, typ: _, copy },
                 sub_pat: _,
             } => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
-                if *by_ref != ByRef::ImmutRef && !*copy {
+                if *by_ref != ByRef::ImmutRef && !*copy && !matches!(modes[name], Mode::Spec) {
                     out.push((projs.clone(), *by_ref));
                 }
             }
@@ -1114,7 +1114,7 @@ fn moves_and_muts_for_pattern(
                     // TODO(new_mut_ref) this is not quite right, need to check if anything
                     // is actually bound in here, irrefutability issues, Copy,
                     // what if there's a mixture of muts and moves
-                    if crate::patterns::pattern_has_move(pattern) {
+                    if crate::patterns::pattern_has_move(pattern, modes) {
                         out.push((projs.clone(), ByRef::No));
                     } else if crate::patterns::pattern_has_mut(pattern) {
                         out.push((projs.clone(), ByRef::MutRef));

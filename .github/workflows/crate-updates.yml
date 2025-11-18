@@ -41,3 +41,19 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           cargo run --manifest-path source/tools/bump_crate_versions/Cargo.toml publish
+      
+      - name: Update Cargo.lock, if needed
+        run: |
+          cargo update vstd verus_builtin_macros verus_prettyplease verus_state_machines_macros verus_syn
+
+      - name: Commit and push updated lock file 
+        run: |
+          git config --global user.name 'Version Bumper Bot'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git diff-index --quiet HEAD; then
+            git commit -am "Update Cargo.lock"
+            git push
+          else
+            echo "No Cargo.lock update needed"
+          fi
+
