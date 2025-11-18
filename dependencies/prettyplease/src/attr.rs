@@ -292,5 +292,5 @@ fn can_be_block_comment(value: &str) -> bool {
         }
     }
 
-    depth == 0
+    depth == 0 && !value.ends_with('/')
 }

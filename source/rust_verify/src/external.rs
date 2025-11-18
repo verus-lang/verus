@@ -67,6 +67,12 @@ pub struct CrateItem {
     pub verif: VerifOrExternal,
 }
 
+#[derive(Debug)]
+pub struct OpaqueDef {
+    pub id: rustc_hir::def_id::LocalDefId,
+    pub verif: VerifOrExternal,
+}
+
 #[derive(Debug, Clone)]
 pub enum VerifOrExternal {
     /// Path is the *module path* containing this item

@@ -163,6 +163,12 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
         vec@ == old(vec)@.insert(i as int, element),
 ;
 
+pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
+    v: &Vec<T, A>,
+) -> (res: bool)
+    ensures res <==> v@.len() == 0,
+;
+
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
     vec: &mut Vec<T, A>,
     i: usize,

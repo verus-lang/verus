@@ -1,0 +1,11 @@
+[package]
+name = "consume_vstd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd_macro_usage = { path = "../../verified/vstd_macro_usage" }
+
+[package.metadata.verus]
+
+[workspace]
