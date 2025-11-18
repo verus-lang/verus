@@ -57,6 +57,16 @@ enum VerusIOTarget {
     Local(syn::Local),
     Expr(syn::Expr),
 }
+
+impl quote::ToTokens for VerusIOTarget {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            VerusIOTarget::Local(local) => local.to_tokens(tokens),
+            VerusIOTarget::Expr(expr) => expr.to_tokens(tokens),
+        }
+    }
+}
+
 enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
@@ -329,10 +339,9 @@ pub(crate) fn rewrite_verus_spec(
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    if !erase.keep() {
+    if erase.erase_all() {
         return input;
     }
-
     // Remove the last `,` if `input` has one.
     let mut tokens: Vec<_> = proc_macro2::TokenStream::from(input).into_iter().collect();
     if matches!(tokens.last(), Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',') {
@@ -417,6 +426,9 @@ pub(crate) fn rewrite_verus_spec_on_item_const(
     outer_attr_tokens: proc_macro::TokenStream,
     item_const: ItemConst,
 ) -> proc_macro::TokenStream {
+    if erase_ghost.erase() {
+        return item_const.to_token_stream().into();
+    }
     let spec_attr =
         verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
     let mut verus_item_const = syn_to_verus_syn::<verus_syn::ItemConst>(item_const);
@@ -483,6 +495,12 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let spec_stmts =
                 syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
+            if erase.erase() {
+                // In erase mode, just return the stub functions.
+                // No need to add proof statements.
+                fun.to_tokens(&mut new_stream);
+                return proc_macro::TokenStream::from(new_stream);
+            }
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {
                 let proxy = rewrite_const_ret_proxy(&mut fun);
@@ -499,6 +517,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
+        // erase non-function cases if in erase mode
+        _ if erase.erase() => return f.to_token_stream().into(),
         AnyFnOrLoop::Closure(mut closure) => {
             replace_expr(erase, &mut closure.body);
             let mut spec_attr =
@@ -642,6 +662,9 @@ fn rewrite_verus_spec_on_expr_local(
     attr_input: proc_macro::TokenStream,
     io_target: VerusIOTarget,
 ) -> proc_macro::TokenStream {
+    if erase.erase() {
+        return io_target.to_token_stream().into();
+    }
     let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
@@ -801,6 +824,7 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Ve
     // change name to verified_{fname}
     let x = &fun.sig.ident;
     fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+    fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
     ret.push(unverified_fun);
     ret
 }
