@@ -966,6 +966,7 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ: function.x.async_body_return_typ.clone(),
     };
     Ok(function.new_x(functionx))
 }

@@ -23,9 +23,9 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
-    AssignOpKind, BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr,
-    LetStmt, Lit, LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind,
-    StructTailExpr, UnOp,
+    AssignOpKind, BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind,
+    LangItem, LetExpr, LetStmt, Lit, LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath,
+    Stmt, StmtKind, StructTailExpr, UnOp,
 };
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_middle::ty::adjustment::{
@@ -41,10 +41,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
-    FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
-    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
-    UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, CallTargetKind, Constant, Dt,
+    ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode,
+    PathX, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypDecoration,
+    TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck,
+    VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -52,6 +53,7 @@ use vir::ast_util::{
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
+#[derive(Debug)]
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
     Place(Place),
@@ -2351,6 +2353,66 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs))
                 }
             }
+        }
+        // This a desugered `await` expression
+        ExprKind::Match(
+            Expr {
+                hir_id: _,
+                kind:
+                    ExprKind::Call(
+                        Expr {
+                            hir_id: _,
+                            kind: ExprKind::Path(QPath::LangItem(LangItem::IntoFutureIntoFuture, _)),
+                            span: _,
+                        },
+                        call_args,
+                    ),
+                span: _,
+            },
+            _arms,
+            _match_source,
+        ) => {
+            let vir_expr = expr_to_vir_consume(bctx, &call_args[0], modifier)?;
+            let expr_typ = &expr_typ()?;
+            let call_expr =
+            // SpannedTyped::new(&expr.span, &expr.typ,
+                ExprX::Call(CallTarget::Fun(
+                            CallTargetKind::DynamicResolved{
+                                resolved: Arc::new(FunX{path: Arc::new(PathX{
+                                    krate:Some(Arc::new("vstd".to_string())), 
+                                    segments: Arc::new(vec![
+                                        Arc::new("future".to_string()),
+                                        Arc::new("impl&%0".to_string()),
+                                        Arc::new("exec_await".to_string()),
+                                    ])})}),
+                                typs: Arc::new(vec![expr_typ.clone(), vir_expr.typ.clone()]),
+                                impl_paths: Arc::new(vec![]),
+                                is_trait_default: false,
+                            },
+                            Arc::new(FunX { path: Arc::new(PathX{
+                                    krate:Some(Arc::new("vstd".to_string())), 
+                                    segments: Arc::new(vec![
+                                        Arc::new("future".to_string()),
+                                        Arc::new("FutureAdditionalSpecFns".to_string()),
+                                        Arc::new("exec_await".to_string()),
+                                    ])}) }),
+                            Arc::new(vec![vir_expr.typ.clone(), expr_typ.clone(),]),
+                            Arc::new(vec![ImplPath::TraitImplPath(
+                                Arc::new(PathX{
+                                    krate:Some(Arc::new("vstd".to_string())), 
+                                    segments: Arc::new(vec![
+                                        Arc::new("future".to_string()),
+                                        Arc::new("impl&%0".to_string()),
+                                    ])})
+                            )]),
+                            AutospecUsage::Final
+                        ),
+                    Arc::new(vec![vir_expr.clone()]),
+                    None
+                // )
+            );
+            mk_expr(call_expr)
+            // mk_expr(ExprX::Await(vir_expr))
         }
         ExprKind::Match(expr, arms, _match_source) => {
             let vir_place = expr_to_vir(bctx, expr, modifier)?.to_place();

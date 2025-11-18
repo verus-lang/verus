@@ -1838,7 +1838,7 @@ pub(crate) fn expr_to_stm_opt(
 
             if skip {
                 state.diagnostics.report(&warning(
-                    &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
+                                &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
             }
 
             let stms = if skip {
@@ -2265,7 +2265,7 @@ pub(crate) fn expr_to_stm_opt(
                     .unwrap_or(false)
             {
                 return Err(error(&expr.span, "loop must have a decreases clause")
-                    .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+                                .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
             }
 
             let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
@@ -2584,6 +2584,82 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
+        // ExprX::Await(e) => {
+        //     let call_expr = SpannedTyped::new(&expr.span, &expr.typ,
+        //         ExprX::Call(CallTarget::Fun(
+        //                     crate::ast::CallTargetKind::DynamicResolved{
+        //                         resolved: Arc::new(FunX{path: Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("impl&%0".to_string()),
+        //                                 Arc::new("exec_await".to_string()),
+        //                             ])})}),
+        //                         typs: Arc::new(vec![expr.typ.clone(), e.typ.clone()]),
+        //                         impl_paths: Arc::new(vec![]),
+        //                         is_trait_default: false,
+        //                     },
+        //                     Arc::new(FunX { path: Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("FutureAdditionalSpecFns".to_string()),
+        //                                 Arc::new("exec_await".to_string()),
+        //                             ])}) }),
+        //                     Arc::new(vec![e.typ.clone(), expr.typ.clone(),]),
+        //                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+        //                         Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("impl&%0".to_string()),
+        //                             ])})
+        //                     )]),
+        //                     AutospecUsage::Final
+        //                 ),
+        //             Arc::new(vec![e.clone()]),
+        //             None
+        //         )
+        //     );
+        //     println!("fake_call {:#?}", call_expr);
+        //     let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
+        //     Ok(rewritten)
+
+        //     // panic!("Await should have been removed in async rewrite")
+        //     // let (stms, e) = expr_to_stm_or_error(ctx, state, expr)?;
+        //     // let assume_stm = expr_to_stm_or_error(ctx, state,
+        //     //     &SpannedTyped::new(&expr.span,&Arc::new(TypX::Bool), ExprX::AssertAssume { is_assume: true, expr:
+        //     //         SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), ExprX::Call(
+        //     //             CallTarget::Fun(crate::ast::CallTargetKind::DynamicResolved{
+        //     //                 resolved: Arc::new(FunX{path: Arc::new(
+        //     //                     crate::ast::PathX{
+        //     //                 krate:Some(Arc::new("vstd".to_string())),
+        //     //                 segments: Arc::new(
+        //     //                     vec![
+        //     //                         Arc::new("future".to_string()),
+        //     //                         Arc::new("impl&%0".to_string()),
+        //     //                         Arc::new("awaited".to_string()),
+        //     //                     ])})}),
+        //     //                 typs:Arc::new(vec![expr.typ.clone()]),
+        //     //                 impl_paths: Arc::new(vec![]),
+        //     //                 is_trait_default: false,
+        //     //             },
+        //     //                 Arc::new(FunX{path: Arc::new(
+        //     //                     crate::ast::PathX{
+        //     //                 krate:Some(Arc::new("vstd".to_string())),
+        //     //                 segments: Arc::new(
+        //     //                     vec![
+        //     //                         Arc::new("future".to_string()),
+        //     //                         Arc::new("FutureAdditionalSpecFns".to_string()),
+        //     //                         Arc::new("view".to_string()),
+        //     //                     ])})}),
+        //     //                     Arc::new(vec![e.typ.clone()]), Arc::new(vec![]),AutospecUsage::Final)
+        //     //             , Arc::new(vec![expr.clone()]),
+        //     //             None
+        //     //         ))}));
+        //     //     println!("assume stm: {:#?}", assume_stm);
+        //     // Ok((stms, ReturnValue::Some(mk_exp(ExpX::Await(e)))))
+        // }
         ExprX::BorrowMut(_place) => {
             let bor_sst = borrow_mut_to_sst(ctx, state, expr)?;
             let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;

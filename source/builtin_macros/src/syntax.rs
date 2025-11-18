@@ -856,6 +856,14 @@ impl Visitor {
             }
         };
 
+        if let Some(stmt) = check_async_fn_ret_ensures(&sig, &ret_pat) {
+            stmts.push(stmt);
+        }
+
+        if let Some(stmt) = check_async_fn_open_invariants(sig) {
+            stmts.push(stmt);
+        }
+
         match (vis, &sig.publish, &sig.mode, &semi_token, self.erase_ghost.erase()) {
             (Some(Visibility::Inherited), _, _, _, _) => {}
             (
@@ -5382,5 +5390,82 @@ fn check_verus_return_ident(
             }
         }
     }
+    None
+}
+
+///
+fn check_async_fn_open_invariants(sig: &mut Signature) -> Option<Stmt> {
+    if sig.asyncness.is_none() {
+        return None;
+    }
+    match &sig.spec.invariants {
+        Some(invs) => {
+            if matches!(
+                invs.set,
+                InvariantNameSet::Any(..) | InvariantNameSet::Set(..) | InvariantNameSet::List(..)
+            ) {
+                return Some(stmt_with_semi!(
+                    invs.span() =>
+                    compile_error!("async functions cannot open any invariants")
+                ));
+            } else {
+                return None;
+            }
+        }
+        None => {
+            sig.spec.invariants = Some(SignatureInvariants {
+                token: Token![opens_invariants](sig.asyncness.span()),
+                set: InvariantNameSet::None(verus_syn::InvariantNameSetNone {
+                    token: Token![none](sig.asyncness.span()),
+                }),
+            });
+            return None;
+        }
+    }
+}
+
+///
+fn check_async_fn_ret_ensures(
+    sig: &Signature,
+    ret_pat: &Option<(Pat, Box<Type>, Option<Pat>)>,
+) -> Option<Stmt> {
+    if sig.asyncness.is_none() {
+        return None;
+    } else if sig.asyncness.is_some() && ret_pat.is_none() {
+        return Some(stmt_with_semi!(
+            sig.asyncness.unwrap().span() =>
+            compile_error!("async functions must name their return values")
+        ));
+    }
+
+    let ret_pat = &ret_pat.as_ref().unwrap().0;
+    let async_ensures_error = |span| {
+        Some(stmt_with_semi!(
+            span =>
+            compile_error!("async functions ensures clause must have form return_value.awaited() ==> { xxx }")
+        ))
+    };
+
+    if let Some(ensures) = &sig.spec.ensures {
+        for ensure in &ensures.exprs.exprs {
+            if let Expr::Binary(b) = &ensure {
+                if let Expr::MethodCall(call) = b.left.as_ref() {
+                    if *call.receiver.to_token_stream().to_string()
+                        != ret_pat.to_token_stream().to_string()
+                        || *call.method.to_string() != "awaited".to_string()
+                        || call.turbofish.is_some()
+                        || call.args.len() != 0
+                    {
+                        return async_ensures_error(ensure.span());
+                    }
+                } else {
+                    return async_ensures_error(ensure.span());
+                }
+            } else {
+                return async_ensures_error(ensure.span());
+            }
+        }
+    }
+
     None
 }

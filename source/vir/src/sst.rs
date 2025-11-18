@@ -340,6 +340,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
+    pub async_body_return_typ: Option<Typ>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

@@ -1176,6 +1176,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1284,6 +1285,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ: async_body_return_typ.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }
