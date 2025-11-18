@@ -487,7 +487,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             // we add `requires false` and thus prevent verified function to use it.
             // Allow unverified code to use the function without changing in/output.
             if let Some(with) = &spec_attr.spec.with {
-                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span());
+                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
                 extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
             }
 
@@ -795,7 +795,11 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
 // function body, to enable seamless use of unverified call to the function in
 // verification.
 // If the function is const, it will be rewritten to a proxy function and a verified function.
-fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Vec<syn::ItemFn> {
+fn rewrite_unverified_func(
+    fun: &mut syn::ItemFn,
+    span: proc_macro2::Span,
+    erase: EraseGhost,
+) -> Vec<syn::ItemFn> {
     let mut ret = vec![];
     let mut unverified_fun = fun.clone();
     if fun.sig.constness.is_some() {
@@ -804,27 +808,35 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Ve
         ret.push(unverified_fun);
         unverified_fun = proxy;
     }
-    let stmts = vec![
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(
-                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
-            ),
-            Some(syn::token::Semi { spans: [span] }),
+    let unimplemented = syn::Stmt::Expr(
+        syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
+        Some(syn::token::Semi { spans: [span] }),
+    );
+    let precondition_false = syn::Stmt::Expr(
+        syn::Expr::Verbatim(
+            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
         ),
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
-            Some(syn::token::Semi { spans: [span] }),
-        ),
-    ];
+        Some(syn::token::Semi { spans: [span] }),
+    );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
         block.stmts.clear();
-        block.stmts.extend(stmts);
+        if erase.keep() {
+            block.stmts.push(precondition_false);
+        }
+        block.stmts.push(unimplemented.clone());
     }
     // change name to verified_{fname}
     let x = &fun.sig.ident;
     fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
     fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
+
+    // In erase mode, we just keep the verified function with unimplemented!()
+    // since we do not need to verifying the function body.
+    if erase.erase() {
+        fun.block.stmts.clear();
+        fun.block.stmts.push(unimplemented);
+    }
     ret.push(unverified_fun);
     ret
 }
