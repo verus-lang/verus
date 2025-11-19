@@ -346,7 +346,6 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                 );
             }
         }
-        self.expr_attr_mark(i);
         let entered_proof_directive = match i {
             verus_syn::Expr::Unary(verus_syn::ExprUnary {
                 op: verus_syn::UnOp::Proof(..),
@@ -403,6 +402,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_loop(&mut self, i: &'ast verus_syn::ExprLoop) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -438,6 +440,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_while(&mut self, i: &'ast verus_syn::ExprWhile) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -474,6 +479,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_for_loop(&mut self, i: &'ast verus_syn::ExprForLoop) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -874,6 +882,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         }
     }
 
+    fn visit_attribute(&mut self, i: &'ast verus_syn::Attribute) {
+        if i.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
+            self.mark(i, CodeKind::Proof, LineContent::ProofDirective);
+        }
+        verus_syn::visit::visit_attribute(self, i);
+    }
+
     fn visit_macro_delimiter(&mut self, i: &'ast verus_syn::MacroDelimiter) {
         verus_syn::visit::visit_macro_delimiter(self, i);
     }
@@ -1048,7 +1063,6 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_stmt(&mut self, i: &'ast verus_syn::Stmt) {
-        self.stmt_attr_mark(i);
         match i {
             verus_syn::Stmt::Local(verus_syn::Local {
                 attrs: _,
@@ -1212,92 +1226,6 @@ impl ItemAttrExit {
 }
 
 impl<'f> Visitor<'f> {
-    fn expr_attr_mark(&mut self, expr: &verus_syn::Expr) {
-        if let Some(attrs) = Self::expr_attrs(expr) {
-            for attr in attrs.iter() {
-                if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
-                    self.mark(attr, CodeKind::Proof, LineContent::ProofDirective);
-                }
-            }
-        }
-    }
-
-    fn expr_attrs(expr: &verus_syn::Expr) -> Option<&Vec<Attribute>> {
-        match expr {
-            verus_syn::Expr::Array(verus_syn::ExprArray { attrs, .. })
-            | verus_syn::Expr::Assign(verus_syn::ExprAssign { attrs, .. })
-            | verus_syn::Expr::Async(verus_syn::ExprAsync { attrs, .. })
-            | verus_syn::Expr::Await(verus_syn::ExprAwait { attrs, .. })
-            | verus_syn::Expr::Binary(verus_syn::ExprBinary { attrs, .. })
-            | verus_syn::Expr::Block(verus_syn::ExprBlock { attrs, .. })
-            | verus_syn::Expr::Break(verus_syn::ExprBreak { attrs, .. })
-            | verus_syn::Expr::Call(verus_syn::ExprCall { attrs, .. })
-            | verus_syn::Expr::Cast(verus_syn::ExprCast { attrs, .. })
-            | verus_syn::Expr::Closure(verus_syn::ExprClosure { attrs, .. })
-            | verus_syn::Expr::Const(verus_syn::ExprConst { attrs, .. })
-            | verus_syn::Expr::Continue(verus_syn::ExprContinue { attrs, .. })
-            | verus_syn::Expr::Field(verus_syn::ExprField { attrs, .. })
-            | verus_syn::Expr::ForLoop(verus_syn::ExprForLoop { attrs, .. })
-            | verus_syn::Expr::Group(verus_syn::ExprGroup { attrs, .. })
-            | verus_syn::Expr::If(verus_syn::ExprIf { attrs, .. })
-            | verus_syn::Expr::Index(verus_syn::ExprIndex { attrs, .. })
-            | verus_syn::Expr::Infer(verus_syn::ExprInfer { attrs, .. })
-            | verus_syn::Expr::Let(verus_syn::ExprLet { attrs, .. })
-            | verus_syn::Expr::Lit(verus_syn::ExprLit { attrs, .. })
-            | verus_syn::Expr::Loop(verus_syn::ExprLoop { attrs, .. })
-            | verus_syn::Expr::Macro(verus_syn::ExprMacro { attrs, .. })
-            | verus_syn::Expr::Match(verus_syn::ExprMatch { attrs, .. })
-            | verus_syn::Expr::MethodCall(verus_syn::ExprMethodCall { attrs, .. })
-            | verus_syn::Expr::Paren(verus_syn::ExprParen { attrs, .. })
-            | verus_syn::Expr::Path(verus_syn::ExprPath { attrs, .. })
-            | verus_syn::Expr::Range(verus_syn::ExprRange { attrs, .. })
-            | verus_syn::Expr::RawAddr(verus_syn::ExprRawAddr { attrs, .. })
-            | verus_syn::Expr::Reference(verus_syn::ExprReference { attrs, .. })
-            | verus_syn::Expr::Repeat(verus_syn::ExprRepeat { attrs, .. })
-            | verus_syn::Expr::Return(verus_syn::ExprReturn { attrs, .. })
-            | verus_syn::Expr::Struct(verus_syn::ExprStruct { attrs, .. })
-            | verus_syn::Expr::Try(verus_syn::ExprTry { attrs, .. })
-            | verus_syn::Expr::TryBlock(verus_syn::ExprTryBlock { attrs, .. })
-            | verus_syn::Expr::Tuple(verus_syn::ExprTuple { attrs, .. })
-            | verus_syn::Expr::Unary(verus_syn::ExprUnary { attrs, .. })
-            | verus_syn::Expr::Unsafe(verus_syn::ExprUnsafe { attrs, .. })
-            | verus_syn::Expr::While(verus_syn::ExprWhile { attrs, .. })
-            | verus_syn::Expr::Yield(verus_syn::ExprYield { attrs, .. })
-            | verus_syn::Expr::Assume(verus_syn::Assume { attrs, .. })
-            | verus_syn::Expr::Assert(verus_syn::Assert { attrs, .. })
-            | verus_syn::Expr::AssertForall(verus_syn::AssertForall { attrs, .. })
-            | verus_syn::Expr::RevealHide(verus_syn::RevealHide { attrs, .. })
-            | verus_syn::Expr::View(verus_syn::View { attrs, .. })
-            | verus_syn::Expr::Is(verus_syn::ExprIs { attrs, .. })
-            | verus_syn::Expr::IsNot(verus_syn::ExprIsNot { attrs, .. })
-            | verus_syn::Expr::Has(verus_syn::ExprHas { attrs, .. })
-            | verus_syn::Expr::HasNot(verus_syn::ExprHasNot { attrs, .. })
-            | verus_syn::Expr::GetField(verus_syn::ExprGetField { attrs, .. })
-            | verus_syn::Expr::Matches(verus_syn::ExprMatches { attrs, .. }) => Some(attrs),
-            verus_syn::Expr::Verbatim(_)
-            | verus_syn::Expr::BigAnd(_)
-            | verus_syn::Expr::BigOr(_) => None,
-        }
-    }
-
-    fn stmt_attr_mark(&mut self, stmt: &verus_syn::Stmt) {
-        if let Some(attrs) = Self::stmt_attrs(stmt) {
-            for attr in attrs.iter() {
-                if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
-                    self.mark(attr, CodeKind::Proof, LineContent::FunctionSpec);
-                }
-            }
-        }
-    }
-
-    fn stmt_attrs(stmt: &verus_syn::Stmt) -> Option<&Vec<Attribute>> {
-        match stmt {
-            verus_syn::Stmt::Local(verus_syn::Local { attrs, .. }) => Some(attrs),
-            verus_syn::Stmt::Macro(verus_syn::StmtMacro { attrs, .. }) => Some(attrs),
-            _ => None,
-        }
-    }
-
     fn item_attr_enter(&mut self, attrs: &Vec<Attribute>) -> ItemAttrExit {
         for attr in attrs.iter() {
             if let Meta::Path(path) = &attr.meta {
