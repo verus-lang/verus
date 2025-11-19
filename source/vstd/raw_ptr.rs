@@ -479,8 +479,12 @@ impl<T> PointsTo<[T]> {
 
     pub axiom fn into_map(tracked self) -> (tracked m: Map<usize, PointsTo<T>>)
         ensures 
+            m.dom() == Set::new(|i: usize| i < self.mem_contents_seq().len()),
             forall |i| 
-                0 <= i < self.mem_contents_seq().len() ==> #[trigger] self.mem_contents_seq()[i as int] == m[i].opt_value(),
+                #![trigger m.dom().contains(i)]
+                #![trigger self.mem_contents_seq()[i as int]]
+                #![trigger m[i].opt_value()]
+                m.dom().contains(i) ==> m[i].opt_value() == self.mem_contents_seq()[i as int],
             m.ptr() == self.ptr(),
             m.phy() == self.phy(),
     ;
@@ -540,6 +544,7 @@ impl<T> Map<usize, PointsTo<T>> {
     pub uninterp spec fn ptr(&self) -> *mut [T];
 
     // TODO: figure out if I should track the "original" number of keys, or something
+    // Instead of phy()@.len(), maybe ptr()@.metadata?
     // /// The actual number of per
     // pub uninterp spec fn actual_len(&self) -> usize;
 
@@ -594,6 +599,25 @@ impl<T> Map<usize, PointsTo<T>> {
         // Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
     }
 
+    pub open spec fn to_seq(&self) -> Seq<T>
+        recommends
+            self.is_init(), 
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
+    {
+        Seq::new(self.ptr()@.metadata as nat, |i: int| self[i as usize].value())
+    }
+
+    pub axiom fn submap(tracked &mut self, begin: usize, size: usize) -> (tracked out_map: Self)
+        requires 
+            Set::new(|i: usize| begin <= i < begin + size).subset_of(old(self).dom()),
+        ensures
+            self == old(self).remove_keys(Set::new(|i: usize| begin <= i < begin + size)),
+            out_map == old(self).restrict(Set::new(|i: usize| begin <= i < begin + size)),
+            out_map.ptr() == ptr_mut_from_data(PtrData::<[T]> { addr: (old(self).ptr()@.addr + begin) as usize, provenance: old(self).ptr()@.provenance, metadata: size}),
+            self.ptr() == old(self).ptr(),
+            // todo: what about phy()
+    ;
+
     // pub axiom fn len_equiv_metadata(&self) 
     //     ensures 
     //         self.ptr()@.metadata == self.mem_contents_seq().len(),
@@ -626,11 +650,11 @@ impl<T> Map<usize, PointsTo<T>> {
     )
     // TODO: do I need this requires?
         requires
-            size_of::<T>() * self.phy()@.len() != 0,
+            size_of::<T>() * self.ptr()@.metadata != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             // I think we want something bigger than self.len() here - something to do with the max of the keys?
-            self.ptr()@.addr + self.phy()@.len() * size_of::<T>()
+            self.ptr()@.addr + self.ptr()@.metadata * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
 
@@ -683,16 +707,17 @@ impl<T> Map<usize, PointsTo<T>> {
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &Map<usize, PointsTo<S>>)
         ensures
             *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.phy()@.len() <= other.ptr() as int || other.ptr() as int
+            self.ptr() as int + size_of::<T>() * self.ptr()@.metadata <= other.ptr() as int || other.ptr() as int
                 + size_of::<S>() * other.len() <= self.ptr() as int,
     ;
 
     pub axiom fn into_slice(tracked self) -> (tracked pt: PointsTo<[T]>)
         requires 
-            self.dom() == Set::new(|i: usize| i < self.phy()@.len()),
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
         ensures 
+            pt.mem_contents_seq().len() == self.ptr()@.metadata,
             forall |i| 
-                self.dom().contains(i) ==> #[trigger] pt.mem_contents_seq().index(i as int) == self[i].opt_value(),
+                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int] == self[i].opt_value(),
             pt.ptr() == self.ptr(), 
             pt.phy() == self.phy(),
             // What about pt.phy()?
@@ -1160,6 +1185,7 @@ impl PointsToRaw {
             points_to.is_uninit(),
             // Q: Is it better to have this explicit postcondition or make it a type invariant? Always true so can make broadcast axiom, accessible to clients.
             points_to.mem_contents_seq().len() == length, 
+            // TODO: how to initialize points_to.phy()?
     ;
 
     /// Creates a `PointsTo<[V]>` permission from a `PointsToRaw` permission
@@ -1230,11 +1256,11 @@ impl<V> Map<usize, PointsTo<V>> {
     /// and a range corresponding to the address of the `PointsTo<V>`,  size of `V`, and length.
     pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
-            self.dom() == Set::new(|i: usize| i < self.phy()@.len())
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata)
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.phy()@.len(),
+                (size_of::<V>() as int) * self.ptr()@.metadata,
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -1243,11 +1269,11 @@ impl<V> Map<usize, PointsTo<V>> {
     /// and a range corresponding to the address of the `PointsTo<V>`, size of `V`, and length.
     pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         requires
-            self.dom() == Set::new(|i: usize| i < self.phy()@.len())
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata)
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.phy()@.len(),
+                (size_of::<V>() as int) * self.ptr()@.metadata,
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
