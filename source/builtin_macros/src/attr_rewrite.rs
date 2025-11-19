@@ -820,8 +820,13 @@ fn rewrite_unverified_func(
     );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
-        // If not erase mode, we erase the function body to avoid using
-        // proof code, since verus_spec may not be properly erased proofs.
+        // For an unverified function, if it is in keep mode,
+        // we erase the function body to avoid using
+        // proof code, since we do not need to verify anything in unverified
+        // function and we never pass ghost/tracked to unverified function
+        // and so it may cause errors due to undefined vars.
+        // Since the body is erased only in keep mode, we still
+        // see correct body in generated executable in erase mode.
         if erase.keep() {
             block.stmts.clear();
             block.stmts.push(precondition_false);
