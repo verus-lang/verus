@@ -379,14 +379,6 @@ impl crate::syntax::Visitor {
                     &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
                     item_fn.sig.span(),
                 );
-                // Remove rustc_diagnostic_item attribute to avoid duplicate diagnostic item errors
-                item_fn.attrs.retain(|attr| {
-                    if let Some(last_seg) = attr.path().segments.last() {
-                        last_seg.ident != "rustc_diagnostic_item"
-                    } else {
-                        true
-                    }
-                });
                 item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
             }
             Item::Verbatim(_) => {
@@ -406,19 +398,18 @@ impl crate::syntax::Visitor {
                     &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
                     item_fn.sig.span(),
                 );
-                // Remove rustc_diagnostic_item attribute to avoid duplicate diagnostic item errors
-                item_fn.attrs.retain(|attr| {
-                    if let Some(last_seg) = attr.path().segments.last() {
-                        last_seg.ident != "rustc_diagnostic_item"
-                    } else {
-                        true
-                    }
-                });
                 item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
             }
             _ => unreachable!(),
         }
         impl_item
+    }
+
+    fn is_rustc_diagnostic_item_attribute(attr: &verus_syn::Attribute) -> bool {
+        match attr.path().get_ident() {
+            Some(id) => id == "rustc_diagnostic_item",
+            None => false,
+        }
     }
 
     fn item_make_external_and_erased(&mut self, item: Item) -> Item {
@@ -435,6 +426,7 @@ impl crate::syntax::Visitor {
             Item::Static(item_static) => &mut item_static.attrs,
             _ => unreachable!(),
         };
+        attributes.retain(|attr| !Self::is_rustc_diagnostic_item_attribute(attr));
         attributes.push(mk_verifier_attr(span, quote! { external }));
         attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
 
@@ -454,6 +446,7 @@ impl crate::syntax::Visitor {
             ImplItem::Const(item_const) => &mut item_const.attrs,
             _ => unreachable!(),
         };
+        attributes.retain(|attr| !Self::is_rustc_diagnostic_item_attribute(attr));
         attributes.push(mk_verifier_attr(span, quote! { external }));
         attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
 
