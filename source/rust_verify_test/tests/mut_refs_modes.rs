@@ -758,3 +758,85 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] modify_ghost_fields_through_mut_refs ["new-mut-ref"] => verus_code! {
+        fn test1() {
+            let mut t: Ghost<(int, int)> = Ghost((4, 6));
+            let mut_ref = &mut t;
+            proof { *mut_ref.borrow_mut() = (5, 10); }
+            assert(t@ === (5, 10));
+        }
+
+        fn test1_fails() {
+            let mut t: Ghost<(int, int)> = Ghost((4, 6));
+            let mut_ref = &mut t;
+            proof { *mut_ref.borrow_mut() = (5, 10); }
+            assert(t@ === (5, 10));
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut t: Ghost<(int, int)> = Ghost((4, 6));
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().0 = 5; }
+            assert(t@ === (5, 6));
+        }
+
+        fn test2_fails() {
+            let mut t: Ghost<(int, int)> = Ghost((4, 6));
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().0 = 5; }
+            assert(t@ === (5, 6));
+            assert(false); // FAILS
+        }
+
+        tracked struct Tr {
+            ghost ints: (int, int),
+        }
+
+        fn test3() {
+            let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().ints = (5, 10); }
+            assert(t@.ints === (5, 10));
+        }
+
+        fn test3_fails() {
+            let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().ints = (5, 10); }
+            assert(t@.ints === (5, 10));
+            assert(false); // FAILS
+        }
+
+        fn test4() {
+            let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().ints.0 = 5; }
+            assert(t@.ints === (5, 6));
+        }
+
+        fn test4_fails() {
+            let mut t: Tracked<Tr> = Tracked(Tr { ints: (4, 6) });
+            let mut_ref = &mut t;
+            proof { mut_ref.borrow_mut().ints.0 = 5; }
+            assert(t@.ints === (5, 6));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_ghost_fields_doesnt_reinitialize ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<X>(x: X) {
+            let y = (x, Ghost(0int));
+            consume(y.0);
+            proof { *y.1.borrow_mut() = 5int; }
+
+            assert(has_resolved(y.0)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
