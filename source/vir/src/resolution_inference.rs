@@ -789,16 +789,27 @@ impl<'a> Builder<'a> {
             ExprX::AssignToPlace { place, rhs, op } => {
                 let (p, bb) = self.build_place_and_intern(place, bb)?;
                 let bb = self.build(rhs, bb)?;
-                if let Some(p) = p.get_place_for_mutation() {
-                    self.push_instruction(
-                        bb,
-                        AstPosition::After(span_id),
-                        if op.is_some() {
-                            InstructionKind::Mutate(p)
-                        } else {
-                            InstructionKind::Overwrite(p)
-                        },
-                    );
+                match p {
+                    ComputedPlace::OfTemp => {}
+                    ComputedPlace::OfLocal(p) => {
+                        self.push_instruction(
+                            bb,
+                            AstPosition::After(span_id),
+                            if op.is_some() {
+                                InstructionKind::Mutate(p)
+                            } else {
+                                InstructionKind::Overwrite(p)
+                            },
+                        );
+                    }
+                    ComputedPlace::OfGhost(Some(p)) => {
+                        self.push_instruction(
+                            bb,
+                            AstPosition::After(span_id),
+                            InstructionKind::Mutate(p),
+                        );
+                    }
+                    ComputedPlace::OfGhost(None) => {}
                 }
                 Ok(bb)
             }
@@ -909,8 +920,6 @@ impl<'a> Builder<'a> {
     }
 
     /// Returns Err(()) if the place expression never returns (can happen if it's a temporary)
-    /// Ok(None) means it's a temporary
-    /// Ok(Some(_)) means it's a place based on a local
     fn build_place_typed(
         &mut self,
         place: &Place,
@@ -919,9 +928,16 @@ impl<'a> Builder<'a> {
         match &place.x {
             PlaceX::Field(field_opr, p) => match self.build_place_typed(p, bb) {
                 Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
-                    fpt.projections
-                        .push(ProjectionTyped::StructField(field_opr.clone(), place.typ.clone()));
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
+                    if mode == Mode::Spec {
+                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
+                    } else {
+                        fpt.projections.push(ProjectionTyped::StructField(
+                            field_opr.clone(),
+                            place.typ.clone(),
+                        ));
+                        Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    }
                 }
                 Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
                     Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
@@ -1505,6 +1521,18 @@ fn field_opr_to_index(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>)
             assert!(datatype.x.variants.len() == 1);
             let variant = &datatype.x.variants[0];
             variant.fields.iter().position(|f| f.name == field_opr.field).unwrap()
+        }
+    }
+}
+
+fn field_opr_to_mode(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> Mode {
+    match &field_opr.datatype {
+        Dt::Tuple(_) => Mode::Exec,
+        Dt::Path(path) => {
+            let datatype = &datatypes[path];
+            let variant = crate::ast_util::get_variant(&datatype.x.variants, &field_opr.variant);
+            let field = crate::ast_util::get_field(&variant.fields, &field_opr.field);
+            field.a.1
         }
     }
 }
