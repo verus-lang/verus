@@ -876,7 +876,6 @@ impl <I: Iterator> VerusForLoopIterator<I> {
     }
 }
 
-#[verifier::exec_allows_no_decreases_clause]    // TODO: Remove this once we sort out decreases
 fn for_loop_test_vec() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
@@ -902,6 +901,8 @@ fn for_loop_test_vec() {
     let VERUS_loop_result = match iter {
         mut y => {
             loop
+                invariant_except_break
+                    y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
                     0 <= y.index@ <= y.snapshot@.seq().len() &&
@@ -924,17 +925,28 @@ fn for_loop_test_vec() {
                     //         It appears that may be the case, although the error messages are confusing.
                     y.snapshot@.completes(),        // AUTO
                     y.index == y.snapshot@.seq().len(), // AUTO
-                // decreases
-                //     y.decrease().unwrap_or(arbitrary()),
+                decreases
+                    //y.iter.decrease().unwrap_or(arbitrary()),
+                    y.iter.decrease(),
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
+                let ghost old_iter = y.iter;
+                assert(y.iter.obeys_iter_laws());
                 match y.iter.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
                     }
                 }
+                // assert(old_iter.seq().len() > 0);
+                // assert(old_iter.decrease() is Some);
+                // assert(y.iter.decrease() is Some);
+                // assert(does_decrease(old_iter.decrease(), y.iter.decrease()));
+                // assert(old_iter.decrease().unwrap_or(arbitrary()) == old_iter.decrease().unwrap());
+                // assert(y.iter.decrease().unwrap_or(arbitrary()) == y.iter.decrease().unwrap());
+                // assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
+
                 proof {
                     y.index@ = y.index@ + 1;
                 }
@@ -1081,7 +1093,6 @@ fn for_loop_test_vec() {
 }
 */
 
-#[verifier::exec_allows_no_decreases_clause]    // TODO: Remove this once we sort out decreases
 fn for_loop_test_map() {
     let f = |i: &u8| -> (out: u8)
         requires i < 255,
@@ -1156,8 +1167,8 @@ fn for_loop_test_map() {
                     //y.seq().len() == 0 && y.completes(),
                     y.snapshot@.completes(),        // AUTO
                     y.index == y.snapshot@.seq().len(), // AUTO
-                // decreases
-                //     y.decrease().unwrap_or(arbitrary()),
+                decreases
+                    y.iter.decrease(),
             {
                 // let ghost old_y = y;
                 // let ghost old_w = w;
