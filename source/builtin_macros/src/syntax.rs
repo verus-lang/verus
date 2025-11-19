@@ -183,11 +183,23 @@ macro_rules! parse_quote_spanned_builtin {
     }
 }
 
-macro_rules! quote_spanned_builtin_vstd {
-    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+macro_rules! quote_spanned_builtin_builtin_macros {
+    ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
             let $v = crate::syntax::Vstd(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
         }
@@ -1539,7 +1551,7 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
+                                quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1547,7 +1559,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
-                                ::verus_builtin_macros::verus! {
+                                #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -5299,6 +5311,21 @@ impl ToTokens for Builtin {
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
+        };
+        tokens.extend(toks);
+    }
+}
+
+pub(crate) struct BuiltinMacros(pub Span);
+
+impl ToTokens for BuiltinMacros {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
     }
