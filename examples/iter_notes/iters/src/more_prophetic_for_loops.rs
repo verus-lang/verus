@@ -876,7 +876,6 @@ impl <I: Iterator> VerusForLoopIterator<I> {
     }
 }
 
-/*
 #[verifier::exec_allows_no_decreases_clause]    // TODO: Remove this once we sort out decreases
 fn for_loop_test_vec() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -889,7 +888,7 @@ fn for_loop_test_vec() {
     //
     // for x in y: v 
     //     invariant
-    //         w@ + y.seq().map_values(|r:&u8| *r) == v@ &&
+    //         w@ == y.seq().take(y.index@).map_values(|r:&u8| *r) &&
     //         count == w.len() <= u64::MAX
     // {
     //     w.push(x);
@@ -897,49 +896,47 @@ fn for_loop_test_vec() {
     // }
     //
     // Into:
+    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
-    let VERUS_loop_result = match vec_iter(&v) {
+    let VERUS_loop_result = match iter {
         mut y => {
-            let ghost VERUS_snapshot = y;
-            let ghost mut VERUS_index = 0;
             loop
                 invariant
-                    // Internal invariants: AUTO
-                    0 <= VERUS_index <= VERUS_snapshot.seq().len() &&
+                    // Internal invariants that assist the user
+                    0 <= y.index@ <= y.snapshot@.seq().len() &&
 
-                    // Internal invariants: INTERNAL
-                    y.seq() == VERUS_snapshot.seq().skip(VERUS_index) &&
-                    y.completes() ==> VERUS_snapshot.completes() &&
+                    // Internal invariants that help maintain the other internal invariants
+                    y.snapshot == VERUS_old_snap &&
+                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
+                    (y.iter.completes() ==> y.snapshot@.completes()) &&
 
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.seq().len() > 0 { y.seq().first() } else { arbitrary() };
+                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      w@ + y.seq().map_values(|r:&u8| *r) == v@ &&
+                      w@ == y.seq().take(y.index@).map_values(|r:&u8| *r) &&
                       count == w.len() <= u64::MAX
                     }),
                 ensures
                     // REVIEW: This works, but only if we don't allow `break`s inside a for loop.
                     //         It appears that may be the case, although the error messages are confusing.
-                    y.seq().len() == 0 && y.completes(),
-                decreases
-                    y.decrease().unwrap_or(arbitrary()),
+                    y.snapshot@.completes(),        // AUTO
+                    y.index == y.snapshot@.seq().len(), // AUTO
+                // decreases
+                //     y.decrease().unwrap_or(arbitrary()),
             {
-                proof {
-                    use_type_invariant(&y);
-                }
-                let ghost old_y = y;
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                match y.next() {
+                match y.iter.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
                     }
                 }
                 proof {
-                    VERUS_index = VERUS_index + 1;
+                    y.index@ = y.index@ + 1;
                 }
                 let x = VERUS_loop_next;
                 let () = {
@@ -950,27 +947,27 @@ fn for_loop_test_vec() {
                     //     break;
                     // }
                 };
-                proof {
-                    use_type_invariant(&y);
-                }
-                assert(old_y.decrease() is Some);
-                assert(y.decrease() is Some);
+                // proof {
+                //     use_type_invariant(&y);
+                // }
+                // assert(old_y.decrease() is Some);
+                // assert(y.decrease() is Some);
 
-                assert(old_y.decrease().unwrap_or(arbitrary()) == old_y.decrease().unwrap());
-                assert(y.decrease().unwrap_or(arbitrary()) == y.decrease().unwrap());
+                // assert(old_y.decrease().unwrap_or(arbitrary()) == old_y.decrease().unwrap());
+                // assert(y.decrease().unwrap_or(arbitrary()) == y.decrease().unwrap());
 
-                assert(y.decrease().unwrap() == y.back() - y.front()) by {
-                    assert(y.vec_iterator_type_inv());
-                    assert(y.front() <= y.back());
-                    assert(y.back() - y.front() >= 0);
-                    assert(y.back() - y.front() <= usize::MAX);
-                }
+                // assert(y.decrease().unwrap() == y.back() - y.front()) by {
+                //     assert(y.vec_iterator_type_inv());
+                //     assert(y.front() <= y.back());
+                //     assert(y.back() - y.front() >= 0);
+                //     assert(y.back() - y.front() <= usize::MAX);
+                // }
                 
-                assert(y.decrease().unwrap() < old_y.decrease().unwrap());
+                // assert(y.decrease().unwrap() < old_y.decrease().unwrap());
 
-                assert(does_decrease(old_y.decrease(), y.decrease()));
-                assert(does_decrease(old_y.decrease().unwrap(), y.decrease().unwrap()));
-                assert(does_decrease(old_y.decrease().unwrap_or(arbitrary()), y.decrease().unwrap_or(arbitrary())));
+                // assert(does_decrease(old_y.decrease(), y.decrease()));
+                // assert(does_decrease(old_y.decrease().unwrap(), y.decrease().unwrap()));
+                // assert(does_decrease(old_y.decrease().unwrap_or(arbitrary()), y.decrease().unwrap_or(arbitrary())));
             }
         }
     };
@@ -982,7 +979,6 @@ fn for_loop_test_vec() {
 }
 
 
-*/
 /*
 fn for_loop_test_vec() {
 
