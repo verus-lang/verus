@@ -201,7 +201,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
     type Decrease = usize;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         Some((self.back() - self.front()) as usize)
     }
 }
@@ -457,7 +457,7 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
 
     type Decrease = Iter::Decrease;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         self.inner().decrease()
     }
 
