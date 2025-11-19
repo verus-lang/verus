@@ -820,13 +820,12 @@ fn rewrite_unverified_func(
     );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
-        // We keep the function body so that cargo verus build
-        // can call correct function in erase mode.
-        // But we need to remove all proof-related statements.
-        let mut replace = ExecReplacer { erase: EraseGhost::EraseAll };
-        replace.visit_block_mut(block);
+        // If not erase mode, we erase the function body to avoid using
+        // proof code, since verus_spec may not be properly erased proofs.
         if erase.keep() {
-            block.stmts.insert(0, precondition_false);
+            block.stmts.clear();
+            block.stmts.push(precondition_false);
+            block.stmts.push(unimplemented.clone());
         }
     }
     // change name to verified_{fname}
