@@ -1797,8 +1797,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
             InterpExp::Array(_) => ok,
         },
+        WithTriggers(triggers, body) => {
+            let body = eval_expr_internal(ctx, state, body)?;
+            exp_new(WithTriggers(triggers.clone(), body))
+        }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
         ExecFnByName(_) => ok,
         FuelConst(_) => ok,
     };
