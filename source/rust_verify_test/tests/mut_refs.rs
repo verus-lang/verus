@@ -2841,3 +2841,88 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] assign_op_to_mut_ref ["new-mut-ref"] => verus_code! {
+        fn test_add_assign(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+
+            assert(x == 20 + i);
+        }
+
+        fn test_add_assign_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+
+            assert(x == 20 + i);
+            assert(false); // FAILS
+        }
+
+        fn test_add_assign_fields(i: u64)
+            requires i < 1000
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i;
+
+            assert(x.0 == 20 + i);
+            assert(x.1 == 30);
+        }
+
+        fn test_add_assign_fields_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i;
+
+            assert(x.0 == 20 + i);
+            assert(x.1 == 30);
+            assert(false); // FAILS
+        }
+
+        fn test_add_assign_overflow(i: u64)
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i; // FAILS
+        }
+
+        fn test_add_assign_twice(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+            *x_ref += i;
+
+            assert(x == 20 + 2*i);
+        }
+
+        fn test_add_assign_twice_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+            *x_ref += i;
+
+            assert(x == 20 + 2*i);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}

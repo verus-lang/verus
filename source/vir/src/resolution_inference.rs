@@ -724,20 +724,21 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op: None } => {
+            ExprX::AssignToPlace { place, rhs, op } => {
                 let (p, bb) = self.build_place(place, bb)?;
                 let bb = self.build(rhs, bb)?;
                 if let Some(p) = p {
                     self.push_instruction(
                         bb,
                         AstPosition::After(span_id),
-                        InstructionKind::Overwrite(p),
+                        if op.is_some() {
+                            InstructionKind::Mutate(p)
+                        } else {
+                            InstructionKind::Overwrite(p)
+                        },
                     );
                 }
                 Ok(bb)
-            }
-            ExprX::AssignToPlace { place: _, rhs: _, op: Some(_) } => {
-                todo!()
             }
             ExprX::TwoPhaseBorrowMut(_p) => {
                 // These must be handled contextually, so the recursion should skip over
