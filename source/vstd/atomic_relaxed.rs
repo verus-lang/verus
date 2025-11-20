@@ -51,6 +51,24 @@ impl<T> Acquire<T> {
     }
 }
 
+#[verifier::external_body]
+pub fn fence_release<P>(Tracked(resource): Tracked<P>) -> (out: Tracked<Release<P>>)
+    ensures
+        resource == out@.get(),
+{
+    core::sync::atomic::fence(Ordering::Release);
+    Tracked(Release { val: resource })
+}
+
+#[verifier::external_body]
+pub fn fence_acquire<P>(Tracked(resource): Tracked<Acquire<P>>) -> (out: Tracked<P>)
+    ensures
+        resource.get() == out@,
+{
+    core::sync::atomic::fence(Ordering::Acquire);
+    Tracked(resource.get())
+}
+
 pub trait AtomicInvariantPredicate<K, V, G> {
     spec fn atomic_inv(k: K, v: V, g: G) -> bool;
 }
@@ -154,13 +172,7 @@ impl<K, G, Pred> InvariantPredicate<(K, int), (PermissionRelaxedU32, G)> for Ato
     }
 }
 
-pub struct AtomicRelaxedU32<
-    K,
-    G,
-    Pred,
->
-//where Pred: AtomicInvariantPredicate<K, u32, G>
- {
+pub struct AtomicRelaxedU32<K, G, Pred> {
     #[doc(hidden)]
     patomic: PAtomicRelaxedU32,
     #[doc(hidden)]
@@ -186,12 +198,8 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
             t.well_formed() && t.constant() == k,
     {
         let (patomic, Tracked(perm)) = PAtomicRelaxedU32::new(u);
-
         let tracked pair = (perm, g);
-        assert(Pred::atomic_inv(k, u, g));
-        assert(perm.view().patomic == patomic.id());
         let tracked atomic_inv = AtomicInvariant::new((k, patomic.id()), pair, 0);
-
         AtomicRelaxedU32 { patomic, atomic_inv: Tracked(atomic_inv) }
     }
 
@@ -206,65 +214,61 @@ impl<K, G, Pred> AtomicRelaxedU32<K, G, Pred> where Pred: AtomicInvariantPredica
                 ret: u32,
                 operand: u32,
                 constant: K,
-                tracked g: G,
-                tracked resource: Option<T>,
+                tracked ghost_in: G,
+                tracked resource_in: Option<T>,
             ) -> tracked (G, Option<U>),
         >,
     ) -> (out: (u32, Tracked<Option<Acquire<U>>>)) where
-        F: ProofFn + ProofFnReqEns<S<Pred, C>>,
+        F: ProofFn + ProofFnReqEns<RelaxedAtomicProofUpdate<Pred, C>>,
         C: ClientReqEns<T, U, K>,
 
         requires
             ({
-                let resource_in_get = match resource_in {
+                let resource_in_inner = match resource_in {
                     Some(res) => Some(res.get()),
                     None => None,
                 };
-                C::req(n, resource_in_get, self.constant())
+                C::req(n, resource_in_inner, self.constant())
             }),
             self.well_formed(),
         ensures
             ({
-                let resource_out_get = match out.1@ {
+                let resource_out_inner = match out.1@ {
                     Some(res) => Some(res.get()),
                     None => None,
                 };
-                C::ens(out.0, resource_out_get, self.constant())
+                C::ens(out.0, resource_out_inner, self.constant())
             }),
     {
-        let result;
-        let resource_out;
+        let ret;
+        let tracked resource_out;
         crate::vstd::invariant::open_atomic_invariant!(self.atomic_inv.borrow() => pair => {
-
-            #[allow(unused_mut)]
             let tracked (mut perm, mut g) = pair;
             let ghost prev = perm.view().value;
-            result = self.patomic.fetch_add_wrapping(Tracked(&mut perm), n);
-            let ghost ret = result;
+            ret = self.patomic.fetch_add_wrapping(Tracked(&mut perm), n);
             let ghost next = perm.view().value;
-            let tracked resource_out_inner;
 
             proof {
-                let tracked resource_in_get =
+                let tracked resource_in_inner =
                     match resource_in {
                         Some(x) => Some(x.tracked_get()),
                         None => None
                     };
-                assert(f.requires((prev, next, ret, n, self.constant(), g, resource_in_get)));
-                let tracked output = f(prev, next, ret, n, self.constant(), g, resource_in_get);
-                assert(f.ensures((prev, next, ret, n, self.constant(), g, resource_in_get), output));
-                let tracked (new_g, temp) = output;
+                // these asserts are needed for triggers
+                assert(f.requires((prev, next, ret, n, self.constant(), g, resource_in_inner)));
+                let tracked output = f(prev, next, ret, n, self.constant(), g, resource_in_inner);
+                assert(f.ensures((prev, next, ret, n, self.constant(), g, resource_in_inner), output));
+                let tracked (new_g, resource_out_inner) = output;
                 pair = (perm, new_g);
-                resource_out_inner =
-                    match temp {
+                resource_out =
+                    match resource_out_inner {
                         Some(t) => Some(Acquire{ val: t }),
                         None => None
                     };
             }
 
-            resource_out = Tracked( resource_out_inner );
         });
-        (result, resource_out)
+        (ret, Tracked(resource_out))
     }
 
     #[inline(always)]
@@ -285,21 +289,24 @@ pub open spec fn faa_u32_spec(prev: u32, next: u32, ret: u32, operand: u32) -> b
     next as int == wrapping_add_u32(prev as int, operand as int) && ret == prev
 }
 
-pub struct S<Pred, C> {
-    phantom_p: PhantomData<Pred>,
-    phantom_c: PhantomData<C>,
-}
-
 pub trait ClientReqEns<T, U, K> {
     spec fn req(operand: u32, resource_in: Option<T>, constant: K) -> bool;
 
-    spec fn ens(result: u32, resource_out: Option<U>, constant: K) -> bool;
+    spec fn ens(ret: u32, resource_out: Option<U>, constant: K) -> bool;
+}
+
+pub struct RelaxedAtomicProofUpdate<Pred, C> {
+    phantom_p: PhantomData<Pred>,
+    phantom_c: PhantomData<C>,
 }
 
 impl<T, U, K, G, Pred, C> ProofFnReqEnsDef<
     (u32, u32, u32, u32, K, G, Option<T>),
     (G, Option<U>),
-> for S<Pred, C> where Pred: AtomicInvariantPredicate<K, u32, G>, C: ClientReqEns<T, U, K> {
+> for RelaxedAtomicProofUpdate<Pred, C> where
+    Pred: AtomicInvariantPredicate<K, u32, G>,
+    C: ClientReqEns<T, U, K>,
+ {
     open spec fn req(input: (u32, u32, u32, u32, K, G, Option<T>)) -> bool {
         let prev = input.0;
         let next = input.1;
@@ -314,36 +321,15 @@ impl<T, U, K, G, Pred, C> ProofFnReqEnsDef<
     }
 
     open spec fn ens(input: (u32, u32, u32, u32, K, G, Option<T>), output: (G, Option<U>)) -> bool {
-        // let prev = input.0;
         let next = input.1;
         let ret = input.2;
-        //let operand = input.3;
         let constant = input.4;
-        // let ghost_in = input.5;
         let pred = input.6;
         let ghost_out = output.0;
         let resource_out = output.1;
         &&& Pred::atomic_inv(constant, next, ghost_out)
         &&& C::ens(ret, resource_out, constant)
     }
-}
-
-#[verifier::external_body]
-pub fn fence_release<P>(Tracked(resource): Tracked<P>) -> (out: Tracked<Release<P>>)
-    ensures
-        resource == out@.get(),
-{
-    core::sync::atomic::fence(Ordering::Release);
-    Tracked(Release { val: resource })
-}
-
-#[verifier::external_body]
-pub fn fence_acquire<P>(Tracked(resource): Tracked<Acquire<P>>) -> (out: Tracked<P>)
-    ensures
-        resource.get() == out@,
-{
-    core::sync::atomic::fence(Ordering::Acquire);
-    Tracked(resource.get())
 }
 
 } // verus!
