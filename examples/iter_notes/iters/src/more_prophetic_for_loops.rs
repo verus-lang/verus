@@ -930,30 +930,12 @@ fn for_loop_test_vec() {
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                let ghost old_iter = y.iter;
                 match y.iter.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
                     }
                 }
-                assert(old_iter.seq().len() > 0);
-                assert(y.iter.decrease() is Some);
-                let ghost old = old_iter.decrease().unwrap();
-                let ghost new = y.iter.decrease().unwrap();
-                assert(does_decrease(old_iter.decrease(), y.iter.decrease()));
-                assert(does_decrease(old_iter.decrease().unwrap(), y.iter.decrease().unwrap()));
-                assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
-                assert(does_decrease(old, new));
-                assert(does_decrease(old, new));
-                proof {
-                    does_decrease_decreases(old, new);
-                    does_decrease_decreases(old_iter.decrease().unwrap(), y.iter.decrease().unwrap());
-                    does_decrease_decreases(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary()));
-                }
-                // assert(decreases_to!(old => new));
-                // assert(decreases_to!(old_iter.decrease().unwrap() => y.iter.decrease().unwrap()));
-                // assert(decreases_to!(old_iter.decrease().unwrap_or(arbitrary()) => y.iter.decrease().unwrap_or(arbitrary())));
                 proof {
                     y.index@ = y.index@ + 1;
                 }
@@ -973,7 +955,6 @@ fn for_loop_test_vec() {
     assert(count == v.len());
 }
 
-/*
 fn for_loop_test_map() {
     let f = |i: &u8| -> (out: u8)
         requires i < 255,
@@ -1361,7 +1342,6 @@ fn for_loop_test_double_rev() {
     // Make sure our invariant was useful
     assert(w@ == v@);
 }
-*/
 
 } // mod examples
 
