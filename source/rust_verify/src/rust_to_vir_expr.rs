@@ -2614,6 +2614,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            if bctx.types.is_method_call(expr) {
+                unsupported_err!(expr.span, "overloaded op-assignment operator");
+            }
+
             if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
                 let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
                 if matches!(range, IntRange::I(_) | IntRange::ISize) {
