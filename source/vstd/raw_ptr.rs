@@ -618,6 +618,15 @@ impl<T> Map<usize, PointsTo<T>> {
             // todo: what about phy()
     ;
 
+    pub axiom fn disjoint_union(tracked &mut self, other: Self)
+        requires
+            old(self).ptr()@.provenance == other.ptr()@.provenance,
+            old(self).dom().disjoint(other.dom()),
+        ensures 
+            *self == old(self).union_prefer_right(other), 
+            self.ptr() == old(self).ptr(),
+    ;
+
     // pub axiom fn len_equiv_metadata(&self) 
     //     ensures 
     //         self.ptr()@.metadata == self.mem_contents_seq().len(),
