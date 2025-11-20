@@ -405,11 +405,10 @@ impl crate::syntax::Visitor {
         impl_item
     }
 
-    fn is_rustc_diagnostic_item_attribute(attr: &verus_syn::Attribute) -> bool {
-        match attr.path().get_ident() {
-            Some(id) => id == "rustc_diagnostic_item",
-            None => false,
-        }
+    fn attribute_cannot_be_on_two_different_functions(attr: &verus_syn::Attribute) -> bool {
+        // An attribute like `#[rustc_diagnostic_item = "Foo"]` isn't allowed to be on two
+        // different functions.
+        attr.path().is_ident("rustc_diagnostic_item")
     }
 
     fn item_make_external_and_erased(&mut self, item: Item) -> Item {
@@ -426,7 +425,11 @@ impl crate::syntax::Visitor {
             Item::Static(item_static) => &mut item_static.attrs,
             _ => unreachable!(),
         };
-        attributes.retain(|attr| !Self::is_rustc_diagnostic_item_attribute(attr));
+        // Remove any attributes that can't be on two different
+        // functions, like `rustc_diagnostic_item`. Otherwise, there
+        // would be a problem because these attributes are also put on
+        // the non-erased, proxy version of this function.
+        attributes.retain(|attr| !Self::attribute_cannot_be_on_two_different_functions(attr));
         attributes.push(mk_verifier_attr(span, quote! { external }));
         attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
 
@@ -446,7 +449,11 @@ impl crate::syntax::Visitor {
             ImplItem::Const(item_const) => &mut item_const.attrs,
             _ => unreachable!(),
         };
-        attributes.retain(|attr| !Self::is_rustc_diagnostic_item_attribute(attr));
+        // Remove any attributes that can't be on two different
+        // functions, like `rustc_diagnostic_item`. Otherwise, there
+        // would be a problem because these attributes are also put on
+        // the non-erased, proxy version of this function.
+        attributes.retain(|attr| !Self::attribute_cannot_be_on_two_different_functions(attr));
         attributes.push(mk_verifier_attr(span, quote! { external }));
         attributes.push(mk_verus_attr(span, quote! { uses_unerased_proxy }));
 
