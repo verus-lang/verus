@@ -2168,5 +2168,56 @@ test_verify_one_file! {
                 test(s.drop_last())
             }
         }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // From: https://github.com/verus-lang/verus/issues/1372
+    #[test] lemma_decreases_generic_fail verus_code! {
+        use vstd::prelude::*;
+
+        spec fn foo<A>(s: Set<A>) -> int
+            decreases s when s.finite()
+        {
+            if s.is_empty() {
+                0
+            } else {
+                foo(s.remove(s.choose()))
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "could not prove termination")
+}
+
+test_verify_one_file! {
+    // From: https://github.com/verus-lang/verus/issues/1996
+    #[test] lemma_decreases_option verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            s: Option<Box<S>>,
+        }
+
+        // Test recursion
+        proof fn test1(o: Option<Box<S>>)
+            decreases o
+        {
+            if let Some(b) = o {
+                test1(b.s)
+            }
+        }
+
+        // Test loops
+        fn test2(mut o: Option<Box<S>>) {
+            loop
+                decreases o
+            {
+                if let Some(b) = o {
+                    o = b.s;
+                } else {
+                    break;
+                }
+            }
+        }
     } => Ok(())
 }
