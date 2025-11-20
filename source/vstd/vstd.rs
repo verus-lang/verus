@@ -74,6 +74,7 @@ pub mod string;
 pub mod thread;
 pub mod tokens;
 pub mod transmute;
+pub mod type_representation;
 pub mod view;
 
 #[cfg(verus_keep_ghost)]
