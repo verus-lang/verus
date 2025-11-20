@@ -293,8 +293,30 @@ jobs:
             name: verus-x86-linux
             path: verus-x86-linux.zip
 
+  docs:
+    runs-on: macos-14
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: setup rust
+        run: |
+          brew unlink rustup
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup rust toolchain
+        run: |
+          . "$HOME/.cargo/env"
+          which rustup
+          rustup --version
+          rustup toolchain install
+      - name: check rustdoc
+        working-directory: ./source
+        run: |
+          . "$HOME/.cargo/env"
+          . ../tools/activate
+          ./tools/docs.sh --check
+
   release:
-    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos, smoke-test-and-release-macos-x86]
+    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos, smoke-test-and-release-macos-x86, docs]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

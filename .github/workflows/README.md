@@ -32,13 +32,13 @@ and publishing for the Verus project.
    - Uploads `verus-arm64-macos.zip` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-3. **`smoke-test-and-release-...`** 
+3. **`smoke-test-and-release-...`**
     - Jobs of each of macOS x86, Windows x64, and Linux x64
    - Runs basic smoke tests only
    - Builds a release binary for the target
    - Uploads the `verus-....zip` artifact
 
-6. **`release`** (Ubuntu)
+4. **`release`** (Ubuntu)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
@@ -48,6 +48,9 @@ and publishing for the Verus project.
    - Uploads all platform binaries to the rolling release
    - Deletes old rolling release tags and assets
    - Publishes the updated rolling release
+
+5. **`docs`** (macOS ARM64)
+   - Validates documentation by running `rustdoc` and `verusdoc` disallowing warnings
 
 **Output:**
 - Continuous binary distribution via the Rolling Release
