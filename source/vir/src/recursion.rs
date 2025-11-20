@@ -133,7 +133,6 @@ pub(crate) fn check_decrease(
             SpannedTyped::new(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
 
-
         let (args, call_fun) = if height_is_int(&exp.typ) {
             let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
             (args, CallFun::InternalFun(InternalFun::CheckDecreaseInt))
