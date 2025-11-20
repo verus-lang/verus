@@ -739,6 +739,7 @@ mod examples {
 use vstd::prelude::*;
 use super::decreases_fix::*;
 use super::iterator_traits::*;
+broadcast use group_decrease_axioms;
 
 
 fn test() {
@@ -938,9 +939,21 @@ fn for_loop_test_vec() {
                 }
                 assert(old_iter.seq().len() > 0);
                 assert(y.iter.decrease() is Some);
+                let ghost old = old_iter.decrease().unwrap();
+                let ghost new = y.iter.decrease().unwrap();
                 assert(does_decrease(old_iter.decrease(), y.iter.decrease()));
                 assert(does_decrease(old_iter.decrease().unwrap(), y.iter.decrease().unwrap()));
                 assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
+                assert(does_decrease(old, new));
+                assert(does_decrease(old, new));
+                proof {
+                    does_decrease_decreases(old, new);
+                    does_decrease_decreases(old_iter.decrease().unwrap(), y.iter.decrease().unwrap());
+                    does_decrease_decreases(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary()));
+                }
+                // assert(decreases_to!(old => new));
+                // assert(decreases_to!(old_iter.decrease().unwrap() => y.iter.decrease().unwrap()));
+                // assert(decreases_to!(old_iter.decrease().unwrap_or(arbitrary()) => y.iter.decrease().unwrap_or(arbitrary())));
                 proof {
                     y.index@ = y.index@ + 1;
                 }
@@ -950,13 +963,6 @@ fn for_loop_test_vec() {
                     w.push(*x);
                     count += 1;
                 };
-                assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
-                proof {
-                    does_decrease_decreases(old_iter.decrease().unwrap(), y.iter.decrease().unwrap());
-                    does_decrease_decreases(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary()));
-                }
-                assert(decreases_to!(old_iter.decrease().unwrap() => y.iter.decrease().unwrap()));
-                assert(decreases_to!(old_iter.decrease().unwrap_or(arbitrary()) => y.iter.decrease().unwrap_or(arbitrary())));
             }
         }
     };
