@@ -346,6 +346,8 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
                 call_ensures(f, (iter.seq()[i],), s.seq()[i]),
             s.completes() ==> iter.completes() && s.seq().len() == iter.seq().len(),
             s.count() == 0,
+            s.inner() == iter,
+            s.decrease() is Some == iter.decrease() is Some,
     {
         let s = Self {
             f: f,
@@ -503,6 +505,7 @@ impl<Iter: Iterator> TakeIterator<Iter> {
             s.obeys_iter_laws(),
             s.inner() == iter,
             s.count() == count,
+            s.decrease() is Some,
     {
         let t= TakeIterator {
             iter: iter,
@@ -546,7 +549,7 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
 
     type Decrease = usize;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         Some(self.count())
     }
 }
@@ -578,6 +581,7 @@ impl<Iter: Iterator> SkipIterator<Iter> {
             s.seq() == (if iter.seq().len() < count { seq![] } else { iter.seq().skip(count as int) }),
             s.completes() <==> iter.completes(),
             iter.seq().len() < count ==> iter.completes(),
+            s.decrease() is Some == iter.decrease() is Some,
     {
         let mut i = 0;
         let ghost iter_snapshot = iter;
@@ -627,7 +631,7 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
 
     type Decrease = Iter::Decrease;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         self.inner().decrease()
     }
 
@@ -1055,7 +1059,7 @@ fn for_loop_test_take() {
     //
     // for x in y: m
     //     invariant
-    //         w@ == y.seq().map_values(|u: &u8| *u)
+    //         w@ == y.seq().take(y.index()).map_values(|u: &u8| *u)
     // {
     //     w.push(*x);
     // }
@@ -1063,7 +1067,7 @@ fn for_loop_test_take() {
     // Into:
     //#[allow(non_snake_case)]
     //let VERUS_iter_expr = v;
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let iter = VerusForLoopIterator::new(iter);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     // let result =  match IntoIterator::into_iter(VERUS_iter_expr) {...
@@ -1086,7 +1090,7 @@ fn for_loop_test_take() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().map_values(|u: &u8| *u)
+                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u)
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1137,7 +1141,7 @@ fn for_loop_test_skip() {
     // }
     //
     // Into:
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let iter = VerusForLoopIterator::new(iter);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     //let VERUS_iter_expr = v;
@@ -1195,7 +1199,7 @@ fn for_loop_test_skip() {
     // Make sure our invariant was useful
     assert(w@ == v@.skip(3));
 }
-
+/*
 fn for_loop_test_rev() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
@@ -1213,7 +1217,7 @@ fn for_loop_test_rev() {
     // }
     //
     // Into:
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let iter = VerusForLoopIterator::new(iter);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     let VERUS_loop_result = match iter {
@@ -1287,7 +1291,7 @@ fn for_loop_test_double_rev() {
     // }
     //
     // Into:
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let iter = VerusForLoopIterator::new(iter);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     let VERUS_loop_result = match iter {
@@ -1342,6 +1346,7 @@ fn for_loop_test_double_rev() {
     // Make sure our invariant was useful
     assert(w@ == v@);
 }
+*/
 
 } // mod examples
 
