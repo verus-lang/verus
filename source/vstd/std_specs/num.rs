@@ -314,6 +314,16 @@ macro_rules! num_specs {
                 );
 
             #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::saturating_sub](x: $uN, y: $uN) -> $uN
+                returns (
+                    if x - y < <$uN>::MIN {
+                        <$uN>::MIN
+                    } else {
+                        (x - y) as $uN
+                    }
+                );
+
+            #[verifier::allow_in_spec]
             pub assume_specification[<$iN>::checked_sub](x: $iN, y: $iN) -> Option<$iN>
                 returns (
                     if x - y > <$iN>::MAX || x - y < <$iN>::MIN {
