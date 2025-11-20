@@ -1,8 +1,8 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion,
-    MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX,
-    UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    MultiOp, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
+    Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -601,7 +601,11 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::ConstVar(_, _) => Ok(()),
         ExprX::Const(_) => Ok(()),
-        ExprX::Binary(BinaryOp::Arith(crate::ast::ArithOp::Sub, _), expr1, expr2) => {
+        ExprX::Binary(
+            BinaryOp::Arith(crate::ast::ArithOp::Sub(OverflowBehavior::Allow)),
+            expr1,
+            expr2,
+        ) => {
             check_expr_in_pattern(expr1)?;
             check_expr_in_pattern(expr2)
         }

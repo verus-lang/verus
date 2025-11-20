@@ -1308,9 +1308,9 @@ test_verify_one_file! {
             decreases *old(s)
         {
             *s = *s - 1; // FAILS
-            e(s) // FAILS
+            e(s)
         }
-    } => Err(e) => assert_fails(e, 2)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {

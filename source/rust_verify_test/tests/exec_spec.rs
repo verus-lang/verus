@@ -526,14 +526,13 @@ test_verify_one_file! {
         exec_spec! {
             struct MyPair(Seq<u32>, Seq<u32>);
 
-            // Two failures: failed post-condition and overflow
-            spec fn pred(p: MyPair) -> bool // FAILS
-                recommends p.0.len() != 0 // FAILS
+            spec fn pred(p: MyPair) -> bool
+                recommends p.0.len() != 0
             {
                 p.0[0] + 10 > 100 // FAILS
             }
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
