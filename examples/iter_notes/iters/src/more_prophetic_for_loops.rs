@@ -88,6 +88,7 @@ pub trait Iterator {
         ensures
             self.obeys_iter_laws() == old(self).obeys_iter_laws(),
             self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
             self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
@@ -97,11 +98,9 @@ pub trait Iterator {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
             }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 ==> 
+            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
                 does_decrease(old(self).decrease(), self.decrease())
-                // REVIEW: This seems unpleasant
-                && old(self).decrease() is Some 
-                && self.decrease() is Some
+                // REVIEW: This is working around https://github.com/verus-lang/verus/issues/1996
                 && does_decrease(old(self).decrease().unwrap(), self.decrease().unwrap()), 
     ;
 
@@ -122,6 +121,7 @@ pub trait DoubleEndedIterator : Iterator {
         ensures
             self.obeys_iter_laws() == old(self).obeys_iter_laws(),
             self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
             self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
@@ -131,11 +131,9 @@ pub trait DoubleEndedIterator : Iterator {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
             }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 ==> 
+            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
                 does_decrease(old(self).decrease(), self.decrease())
-                // REVIEW: This seems unpleasant
-                && old(self).decrease() is Some 
-                && self.decrease() is Some
+                // REVIEW: Same workaround as above
                 && does_decrease(old(self).decrease().unwrap(), self.decrease().unwrap()), 
     ;
 
@@ -176,6 +174,7 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
         iter.front() == 0,
         iter.back() == v.len(),
         iter.elts() == v@,
+        iter.decrease() is Some,
 {
     VecIterator { v: v, i: 0, j: v.len() }
 }
@@ -209,7 +208,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
 
     type Decrease = usize;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         Some((self.back() - self.front()) as usize)
     }
 }
@@ -672,7 +671,7 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
     type Item = Iter::Item;
 
     open spec fn obeys_iter_laws(&self) -> bool {
-        true
+        self.inner().obeys_iter_laws()
     }
 
     #[verifier::prophetic]
@@ -930,12 +929,18 @@ fn for_loop_test_vec() {
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
+                let ghost old_iter = y.iter;
                 match y.iter.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
                     }
                 }
+                assert(old_iter.seq().len() > 0);
+                assert(y.iter.decrease() is Some);
+                assert(does_decrease(old_iter.decrease(), y.iter.decrease()));
+                assert(does_decrease(old_iter.decrease().unwrap(), y.iter.decrease().unwrap()));
+                assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
                 proof {
                     y.index@ = y.index@ + 1;
                 }
@@ -945,6 +950,13 @@ fn for_loop_test_vec() {
                     w.push(*x);
                     count += 1;
                 };
+                assert(does_decrease(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary())));
+                proof {
+                    does_decrease_decreases(old_iter.decrease().unwrap(), y.iter.decrease().unwrap());
+                    does_decrease_decreases(old_iter.decrease().unwrap_or(arbitrary()), y.iter.decrease().unwrap_or(arbitrary()));
+                }
+                assert(decreases_to!(old_iter.decrease().unwrap() => y.iter.decrease().unwrap()));
+                assert(decreases_to!(old_iter.decrease().unwrap_or(arbitrary()) => y.iter.decrease().unwrap_or(arbitrary())));
             }
         }
     };
