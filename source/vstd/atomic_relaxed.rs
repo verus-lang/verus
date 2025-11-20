@@ -28,9 +28,6 @@ pub struct Acquire<T> {
 }
 
 impl<T> Release<T> {
-    // unnecessary since there is no way to create a Release type
-    // #[verifier::type_invariant]
-    // uninterp spec fn inv(self) -> bool;
     pub closed spec fn get(self) -> T {
         self.val
     }
@@ -41,11 +38,17 @@ impl<T> Release<T> {
     {
         self.val
     }
+
+    pub proof fn to_tup<U>(tracked self, tracked u: Release<U>) -> (tracked out: Release<(T, U)>)
+        ensures
+            out.get().0 == self.get(),
+            out.get().1 == u.get(),
+    {
+        Release { val: (self.val, u.val) }
+    }
 }
 
 impl<T> Acquire<T> {
-    // #[verifier::type_invariant]
-    // uninterp spec fn inv(self) -> bool;
     pub closed spec fn get(self) -> T {
         self.val
     }
@@ -68,6 +71,30 @@ pub fn fence_acquire<P>(Tracked(resource): Tracked<Acquire<P>>) -> (out: Tracked
     core::sync::atomic::fence(Ordering::Acquire);
     Tracked(resource.get())
 }
+
+pub unsafe trait UnsyncRelaxed {
+
+}
+
+pub axiom fn ghost_release_wrap<T: UnsyncRelaxed>(tracked r: T) -> (tracked out: Release<T>)
+    ensures
+        out.get() == r,
+;
+
+pub axiom fn ghost_release_unwrap<T: UnsyncRelaxed>(tracked r: Release<T>) -> (tracked out: T)
+    ensures
+        out == r.get(),
+;
+
+pub axiom fn ghost_acquire_wrap<T: UnsyncRelaxed>(tracked r: T) -> (tracked out: Acquire<T>)
+    ensures
+        out.get() == r,
+;
+
+pub axiom fn ghost_acquire_unwrap<T: UnsyncRelaxed>(tracked r: Acquire<T>) -> (tracked out: T)
+    ensures
+        out == r.get(),
+;
 
 pub trait AtomicInvariantPredicate<K, V, G> {
     spec fn atomic_inv(k: K, v: V, g: G) -> bool;
@@ -163,7 +190,6 @@ pub struct AtomicPredRelaxedU32<Pred> {
 impl<K, G, Pred> InvariantPredicate<(K, int), (PermissionRelaxedU32, G)> for AtomicPredRelaxedU32<
     Pred,
 > where Pred: AtomicInvariantPredicate<K, u32, G> {
-    // may need to make open again
     closed spec fn inv(k_loc: (K, int), perm_g: (PermissionRelaxedU32, G)) -> bool {
         let (k, loc) = k_loc;
         let (perm, g) = perm_g;
