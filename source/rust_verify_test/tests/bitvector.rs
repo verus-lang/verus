@@ -1480,3 +1480,19 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+// Check the handling of WithTriggers expressions (created by the #![trigger ...] syntax).
+//   https://github.com/verus-lang/verus/issues/1995
+// This only works with simplification enabled,
+test_verify_one_file! {
+    #[test] test_const_in_with_triggers verus_code! {
+        const ONE: u64 = 1;
+
+        proof fn test_const_inlined_in_with_triggers() {
+            // This works because the trigger is on the expression itself
+            assert(forall|a: u64| #[trigger] (a & ONE) == a & ONE) by (bit_vector);
+            // This requires the interpreter to inline ONE inside the WithTriggers body
+            assert(forall|a: u64| #![trigger (a & 1)] a & ONE == a & ONE) by (bit_vector);
+        }
+    } => Ok(())
+}
