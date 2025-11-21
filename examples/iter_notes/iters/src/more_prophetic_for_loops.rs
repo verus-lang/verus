@@ -190,7 +190,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
     }
 
-    open spec fn completes(&self) -> bool {
+    closed spec fn completes(&self) -> bool {
         true
     }
 
@@ -590,6 +590,7 @@ impl<Iter: Iterator> SkipIterator<Iter> {
             invariant
                 i <= count,
                 iter0.obeys_iter_laws(),
+                iter0.decrease() is Some == iter_snapshot.decrease() is Some,
                 iter0.seq() == (if iter.seq().len() < i { seq![] } else { iter.seq().skip(i as int) }),
                 iter0.completes() <==> iter.completes(),
                 iter.seq().len() < i ==> iter.completes(),
@@ -662,6 +663,7 @@ impl<Iter: Iterator + DoubleEndedIterator> ReverseIterator<Iter> {
         ensures
             s.seq() == iter.seq().reverse(),
             s.completes() <==> iter.completes(),
+            s.decrease() is Some == iter.decrease() is Some
     {
         let r = ReverseIterator {
             iter: iter,
@@ -695,7 +697,7 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
 
     type Decrease = Iter::Decrease;
 
-    open spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<Self::Decrease> {
         self.inner().decrease()
     }
 }
@@ -828,7 +830,7 @@ fn test_loop() {
 
 fn all_true<'a, I: Iterator<Item=&'a bool>>(iter: &mut I) -> (r: bool)
     requires
-        old(iter).completes(),
+        old(iter).decrease() is Some,
     ensures
         r == forall |i| 0 <= i < old(iter).seq().len() ==> *#[trigger]old(iter).seq()[i]
 {
@@ -1165,7 +1167,7 @@ fn for_loop_test_skip() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().map_values(|u: &u8| *u)
+                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u)
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1199,7 +1201,7 @@ fn for_loop_test_skip() {
     // Make sure our invariant was useful
     assert(w@ == v@.skip(3));
 }
-/*
+
 fn for_loop_test_rev() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
     let mut w: Vec<u8> = vec![];
@@ -1240,7 +1242,7 @@ fn for_loop_test_rev() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().map_values(|u: &u8| *u) 
+                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u) 
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1313,7 +1315,7 @@ fn for_loop_test_double_rev() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().map_values(|u: &u8| *u)
+                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u) 
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1346,7 +1348,7 @@ fn for_loop_test_double_rev() {
     // Make sure our invariant was useful
     assert(w@ == v@);
 }
-*/
+
 
 } // mod examples
 
