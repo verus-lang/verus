@@ -133,13 +133,22 @@ pub struct LoopInv {
 
 pub type AssertId = air::ast::AssertId;
 
+// A subset of ast::CallTarget
+#[derive(Clone, Debug, ToDebugSNode)]
+pub enum CallTarget {
+    Fun(Fun),
+    /// For now, a Vec of bools contains is_mut for each parameter,
+    /// although this may become unnecessary with full &mut support.
+    AssumeExternal(Vec<bool>),
+}
+
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug, ToDebugSNode)]
 pub enum StmX {
     // call to exec/proof function (or spec function for checking_spec_preconditions)
     Call {
-        fun: Fun,
+        fun: CallTarget,
         resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
         // Some(is_trait_default) for calls to DynamicResolved functions for which a default exists

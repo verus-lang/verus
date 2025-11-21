@@ -1703,16 +1703,106 @@ fn assume_other_fields_unchanged_inner(
     }
 }
 
-// fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
-//     let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
-//     let result = match &stm.x {
+fn call_args_to_air(
+    ctx: &Ctx,
+    state: &mut State,
+    expr_ctxt: &ExprCtxt,
+    is_muts: &Vec<bool>,
+    args: &Vec<Exp>,
+    dest: &Option<Dest>,
+    stm: &Stm,
+    ens_args_wo_typ: &mut Vec<Expr>,
+    stmts: &mut Vec<Stmt>,
+) -> Result<(), VirErr> {
+    if is_muts.iter().any(|is_mut| *is_mut) && ctx.debug {
+        unimplemented!("&mut args are unsupported in debugger mode");
+    }
+    let mut call_snapshot = false;
+    let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
+    assert!(is_muts.len() == args.len());
+    for (is_mut, arg) in is_muts.iter().zip(args.iter()) {
+        let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
+            let var = get_loc_var(dest);
+            crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                ExpX::Var(x) if *x == var => {
+                    call_snapshot = true;
+                    SpannedTyped::new(
+                        &e.span,
+                        &e.typ,
+                        ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
+                    )
+                }
+                _ => e.clone(),
+            })
+        } else {
+            arg.clone()
+        };
+        if *is_mut {
+            call_snapshot = true;
+            let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
+                loc_to_field_update_data(arg);
+            mutated_fields
+                .entry(base_var)
+                .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
+                .a
+                .push(fields.iter().map(|o| o.opr.expect_field().clone()).collect());
+            let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
+            ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+            ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
+        } else {
+            ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+        };
+    }
+    let havoc_stmts =
+        mutated_fields.keys().map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
+
+    let unchaged_stmts = mutated_fields
+        .iter()
+        .map(|(base, mutated_fields)| {
+            let LocFieldInfo { base_typ, base_span: _, a: _ } = mutated_fields;
+            match assume_other_fields_unchanged(
+                ctx,
+                SNAPSHOT_CALL,
+                &stm.span,
+                base,
+                mutated_fields,
+                expr_ctxt,
+            ) {
+                Ok(stmt) => {
+                    let typ_inv_stmts =
+                        typ_invariant(ctx, base_typ, &string_var(&suffix_local_unique_id(base)))
+                            .into_iter()
+                            .map(|e| Arc::new(StmtX::Assume(e)));
+                    let unchanged_and_typ_inv: Vec<Stmt> =
+                        stmt.into_iter().chain(typ_inv_stmts).collect();
+                    Ok(unchanged_and_typ_inv)
+                }
+                Err(vir_err) => Err(vir_err.clone()),
+            }
+        })
+        .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
+        .into_iter()
+        .flatten();
+    let mut_stmts: Vec<_> = havoc_stmts.chain(unchaged_stmts).collect::<Vec<_>>();
+
+    if call_snapshot {
+        stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+        stmts.extend(mut_stmts.into_iter());
+    } else {
+        assert_eq!(mut_stmts.len(), 0);
+        if ctx.debug {
+            state.map_span(&stm, SpanKind::Full);
+        }
+    }
+    Ok(())
+}
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
         StmX::Call {
-            fun,
+            fun: crate::sst::CallTarget::Fun(fun),
             resolved_method,
             is_trait_default,
             mode,
@@ -1830,92 +1920,21 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
-            let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
-                unimplemented!("&mut args are unsupported in debugger mode");
-            }
-            let mut call_snapshot = false;
+            let is_muts = func.x.params.iter().map(|p| p.x.is_mut).collect();
             let mut ens_args_wo_typ = Vec::new();
-            let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
-            for (param, arg) in func.x.params.iter().zip(args.iter()) {
-                let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-                    let var = get_loc_var(dest);
-                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                        ExpX::Var(x) if *x == var => {
-                            call_snapshot = true;
-                            SpannedTyped::new(
-                                &e.span,
-                                &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
-                            )
-                        }
-                        _ => e.clone(),
-                    })
-                } else {
-                    arg.clone()
-                };
-                if param.x.is_mut {
-                    call_snapshot = true;
-                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_update_data(arg);
-                    mutated_fields
-                        .entry(base_var)
-                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                        .a
-                        .push(fields.iter().map(|o| o.opr.expect_field().clone()).collect());
-                    let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
-                } else {
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
-                };
-            }
-            let havoc_stmts = mutated_fields
-                .keys()
-                .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                &is_muts,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
 
-            let unchaged_stmts = mutated_fields
-                .iter()
-                .map(|(base, mutated_fields)| {
-                    let LocFieldInfo { base_typ, base_span: _, a: _ } = mutated_fields;
-                    match assume_other_fields_unchanged(
-                        ctx,
-                        SNAPSHOT_CALL,
-                        &stm.span,
-                        base,
-                        mutated_fields,
-                        expr_ctxt,
-                    ) {
-                        Ok(stmt) => {
-                            let typ_inv_stmts = typ_invariant(
-                                ctx,
-                                base_typ,
-                                &string_var(&suffix_local_unique_id(base)),
-                            )
-                            .into_iter()
-                            .map(|e| Arc::new(StmtX::Assume(e)));
-                            let unchanged_and_typ_inv: Vec<Stmt> =
-                                stmt.into_iter().chain(typ_inv_stmts).collect();
-                            Ok(unchanged_and_typ_inv)
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    }
-                })
-                .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
-                .into_iter()
-                .flatten();
-            let mut_stmts: Vec<_> = havoc_stmts.chain(unchaged_stmts).collect::<Vec<_>>();
-
-            if call_snapshot {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-                stmts.extend(mut_stmts.into_iter());
-            } else {
-                assert_eq!(mut_stmts.len(), 0);
-                if ctx.debug {
-                    state.map_span(&stm, SpanKind::Full);
-                }
-            }
-
+            let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
@@ -1980,6 +1999,30 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 );
                 let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
                 stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
+            }
+            vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
+        }
+        StmX::Call { fun: crate::sst::CallTarget::AssumeExternal(is_muts), args, dest, .. } => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let mut ens_args_wo_typ = Vec::new();
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                is_muts,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
+            if let Some(Dest { dest, is_init }) = dest {
+                let var = suffix_local_unique_id(&get_loc_var(dest));
+                assert!(*is_init); // for simplicity, ast_to_sst always generates is_init = true
+                let typ_inv = typ_invariant(ctx, &dest.typ, &ident_var(&var));
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
