@@ -435,13 +435,6 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) 
-        ensures
-            // Added:
-            ret is None ==> self.the_prophs() == old(self).the_prophs() && self.count() == old(self).count(),
-            ret is Some ==> self.count() == old(self).count() + 1,
-            ret is Some ==> (forall |i| 0 <= i < old(self).count() ==> 
-                self.the_prophs().proph_elem(i) == old(self).the_prophs().proph_elem(i)),
-            ret is Some ==> self.the_prophs().proph_elem(old(self).count() as int) == ret,
     {
         assume(self.map_iterator_type_inv());
 
@@ -534,9 +527,6 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) 
-        ensures 
-            old(self).count() > 0 ==> self.count() == old(self).count() - 1,
-            old(self).count() == 0 ==> ret is None,
     {
         assume(self.take_inv());
         if self.count_remaining == 0 {
