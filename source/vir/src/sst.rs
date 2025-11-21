@@ -175,10 +175,7 @@ pub enum StmX {
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
     /// Bitvector-specific assertion using a dedicated decision procedure
-    AssertBitVector {
-        requires: Exps,
-        ensures: Exps,
-    },
+    AssertBitVector { requires: Exps, ensures: Exps },
     /// Isolated verification query (e.g., `assert ... by(...)`) with its own SMT context
     AssertQuery {
         mode: AssertQueryMode,
@@ -193,10 +190,7 @@ pub enum StmX {
     /// Add assumption to verification context (trusted, not checked)
     Assume(Exp),
     /// Assignment to a mutable variable or location
-    Assign {
-        lhs: Dest,
-        rhs: Exp,
-    },
+    Assign { lhs: Dest, rhs: Exp },
     /// Set fuel level for a recursive function (controls unrolling depth)
     Fuel(Fun, u32),
     /// Make a string literal available for use in specifications (hidden by default for perf reasons)
@@ -212,10 +206,7 @@ pub enum StmX {
         inside_body: bool,
     },
     /// Loop control flow to a labeled or innermost loop
-    BreakOrContinue {
-        label: Option<String>,
-        is_break: bool,
-    },
+    BreakOrContinue { label: Option<String>, is_break: bool },
     /// Conditional statement (condition, then-branch, optional else-branch)
     If(Exp, Stm, Option<Stm>),
     /// Loop with invariants and termination measure.
@@ -246,10 +237,7 @@ pub enum StmX {
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
     /// Body of an exec closure, with associated type invariants
-    ClosureInner {
-        body: Stm,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
-    },
+    ClosureInner { body: Stm, typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>> },
     /// Raw AIR code injection (for internal use only)
     Air(Arc<String>),
     /// Sequential composition of statements
