@@ -148,10 +148,41 @@ variables.
   `requires`, `ensures`, `decreases`), so that the Rust compiler will
   automatically create correctly typed internal representations.  These are
   handled in a custom manner inside of Verus.
-- **builtin_macros**: Core Verus macros, including the top-level `verus!`
+- **builtin_macros**: Core Verus macros that parse and transform Verus syntax.
+  The top-level `verus! { }` macro parses Verus-extended Rust syntax (using a
+  forked `syn` crate) and rewrites it into standard Rust with appropriate
+  attributes. Key files include:
+  - `syntax.rs`: Main `verus!` macro implementation and syntax parsing
+  - `fndecl.rs`: Function declaration parsing and rewriting
+  - `struct_decl_inv.rs`: Struct invariant handling
+  - `attr_rewrite.rs`: Attribute-based code transformations
+- **vstd**: The Verus standard library providing verified implementations and
+  specifications. Organized into:
+  - Core types: `seq.rs`, `set.rs`, `map.rs`, `multiset.rs`
+  - Arithmetic: `arithmetic/` directory with modular arithmetic, logarithms, powers
+  - Concurrency: `atomic.rs`, `atomic_ghost.rs`, `cell.rs`, `rwlock.rs`
+  - Memory: `raw_ptr.rs`, `simple_pptr.rs`, `layout.rs`
+  - Utilities: `bytes.rs`, `string.rs`, `slice.rs`, `hash_map.rs`, `hash_set.rs`
+  - Specifications for Rust's standard library: `std_specs/` directory
 - **state_machines_macros**: Macros for [concurrency-related verification](https://verus-lang.github.io/verus/state_machines/)
 - **rust_verify_test_macros**: Test utilities
 - **cargo-verus**: Cargo integration
+
+### Vendored dependencies
+
+The `dependencies/` directory contains forked versions of external crates:
+
+- **syn**: Verus extends Rust syntax with verification constructs (e.g., `spec`,
+  `proof`, `requires`, `ensures`, `Ghost<T>`). The forked `syn` crate adds
+  parsing support for these extensions so that `builtin_macros` can parse Verus
+  code inside `verus! { }` blocks.
+- **prettyplease**: A Rust code formatter used for generating readable output.
+  The fork includes modifications to handle Verus-specific syntax when
+  pretty-printing transformed code.
+
+These forks are necessary because Verus syntax is not valid standard Rust, so
+the standard `syn` parser would reject it. By extending `syn`, Verus can parse
+its custom syntax, transform it appropriately, and emit valid Rust for `rustc`.
 
 ## Detailed Pipeline Stages
 
