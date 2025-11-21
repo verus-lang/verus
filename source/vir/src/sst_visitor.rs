@@ -698,6 +698,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
+        let async_body_return_typ =
+            R::map_opt(&f.x.async_body_return_typ, &mut |c| self.visit_typ(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -721,6 +723,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
+                    async_body_return_typ: R::get_opt(async_body_return_typ).map(|c| c),
                 },
             )
         })

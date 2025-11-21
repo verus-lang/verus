@@ -1268,6 +1268,8 @@ where
         attrs: _,
         body,
         extra_dependencies: _,
+        async_params_mode_binding: _,
+        async_body_return_typ: _,
     } = &function.x;
 
     map.push_scope(true);
@@ -1554,6 +1556,8 @@ where
         attrs,
         body,
         extra_dependencies,
+        async_params_mode_binding,
+        async_body_return_typ,
     } = &function.x;
     let name = name.clone();
     let proxy = proxy.clone();
@@ -1690,6 +1694,8 @@ where
         attrs,
         body,
         extra_dependencies,
+        async_params_mode_binding: async_params_mode_binding.clone(),
+        async_body_return_typ: async_body_return_typ.clone(),
     };
     Ok(Spanned::new(function.span.clone(), functionx))
 }
