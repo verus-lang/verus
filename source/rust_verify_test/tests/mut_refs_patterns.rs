@@ -2457,3 +2457,75 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_from_enum_with_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::*;
+
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        // Verus's analysis doesn't account for this, so we need to make sure Rust disallows it
+        fn test(xyz: Option<(Box<u64>, Box<u64>)>) {
+            let mut xyz = xyz;
+            let fst_ref = match xyz {
+                Some((ref mut a, _)) => a,
+                None => { loop { } }
+            };
+
+            let snd = match xyz {
+                Some((_, b)) => b,
+                None => { loop { } }
+            };
+
+            *fst_ref = Box::new(20);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `xyz` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_from_pair_with_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let mut xyz: (Box<u64>, Box<u64>) = (Box::new(0), Box::new(1));
+
+            let fst_ref = match xyz {
+                (ref mut a, _) => a,
+            };
+
+            let snd = match xyz {
+                (_, b) => b,
+            };
+
+            assert(mut_ref_current(fst_ref) == 0);
+            *fst_ref = Box::new(20);
+
+            assert(snd == 1);
+            assert(xyz.0 == 20);
+            assert(xyz.1 == 1);
+        }
+
+        fn test_fails() {
+            let mut xyz: (Box<u64>, Box<u64>) = (Box::new(0), Box::new(1));
+
+            let fst_ref = match xyz {
+                (ref mut a, _) => a,
+            };
+
+            let snd = match xyz {
+                (_, b) => b,
+            };
+
+            assert(mut_ref_current(fst_ref) == 0);
+            *fst_ref = Box::new(20);
+
+            assert(snd == 1);
+            assert(xyz.0 == 20);
+            assert(xyz.1 == 1);
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}
