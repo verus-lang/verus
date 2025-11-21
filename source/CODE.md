@@ -64,7 +64,8 @@ constructs.
 - `context.rs`: `Context<'tcx>` carrying `rustc` state
 - `config.rs`: Command-line argument definitions (`Args` struct)
 - `attributes.rs`: Verus attribute parsing (`#[verifier(...)]`)
-- `lifetime.rs`: Lifetime and borrow checking integration
+- `lifetime_generate.rs`: Lifetime checking for ghost code.
+- `lifetime.rs`: Trait conflict checking (previously also handled lifetime checking) 
 - `rust_to_vir.rs`: Main HIR-to-VIR conversion orchestrator
 - `rust_to_vir_func.rs`: Function body conversion
 - `rust_to_vir_expr.rs`: Expression conversion
@@ -221,11 +222,12 @@ The conversion iterates through HIR items and dispatches to specialized handlers
 
 After VIR construction, several passes run:
 
-1. `ast_simplify::simplify_krate()`: Optimizations and normalizations
-2. `modes::check_crate()`: Validate Spec/Proof/Exec mode usage
+1. `prune::prune_krate_for_module_or_krate()`: Remove unused definitions
+2. `traits::merge_external_traits()`: Resolve trait implementations
 3. `well_formed::check_crate()`: Structural validation
-4. `prune::prune_krate_for_module_or_krate()`: Remove unused definitions
-5. `traits::merge_external_traits()`: Resolve trait implementations
+4. `modes::check_crate()`: Validate Spec/Proof/Exec mode usage
+5. `ast_simplify::simplify_krate()`: Optimizations and normalizations
+
 
 ### Stage 4: VIR-AST to VIR-SST
 
@@ -289,10 +291,6 @@ Ghost code includes:
 - Assertions and assumptions
 
 ### Erasure Mechanism
-
-The `ErasureInfo` structure tracks what needs to be erased:
-- `ErasureModes`: Classifies each expression/statement by mode
-- `ResolvedCalls`: Records how function calls should be handled
 
 During the compilation pass:
 - `EraseMacro` callback processes the code with erasure hints
@@ -364,6 +362,7 @@ Conventions from `vir/src/def.rs`:
 
 1. Find the assertion in `sst_to_air.rs` that generates the failing query
 2. Check the SMT-LIB output to understand what's being asked
+3. You can also run AIR as a standalone binary.
 
 ## Important Environment Variables
 
