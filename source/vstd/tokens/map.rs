@@ -76,59 +76,153 @@ broadcast use super::super::group_vstd_default;
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
+enum AuthCarrier<K, V> {
+    Auth(Map<K, V>),
+    Frac,
+    Invalid,
+}
+
+#[verifier::reject_recursive_types(K)]
+#[verifier::ext_equal]
+enum FracCarrier<K, V> {
+    Frac { owning: Map<K, V>, dup: Map<K, V> },
+    Invalid,
+}
+
+impl<K, V> AuthCarrier<K, V> {
+    spec fn valid(self) -> bool {
+        !(self is Invalid)
+    }
+
+    spec fn map(self) -> Map<K, V>
+        recommends
+            self.valid(),
+    {
+        match self {
+            AuthCarrier::Auth(m) => m,
+            AuthCarrier::Frac => Map::empty(),
+            AuthCarrier::Invalid => Map::empty(),
+        }
+    }
+}
+
+impl<K, V> FracCarrier<K, V> {
+    spec fn valid(self) -> bool {
+        match self {
+            FracCarrier::Invalid => false,
+            FracCarrier::Frac { owning, dup } => owning.dom().disjoint(dup.dom()),
+        }
+    }
+
+    spec fn owning_map(self) -> Map<K, V> {
+        match self {
+            FracCarrier::Frac { owning, .. } => owning,
+            FracCarrier::Invalid => Map::empty(),
+        }
+    }
+
+    spec fn dup_map(self) -> Map<K, V> {
+        match self {
+            FracCarrier::Frac { dup, .. } => dup,
+            FracCarrier::Invalid => Map::empty(),
+        }
+    }
+}
+
+#[verifier::reject_recursive_types(K)]
+#[verifier::ext_equal]
 // This struct represents the underlying resource algebra for GhostMaps
 struct MapCarrier<K, V> {
-    auth: Option<Option<Map<K, V>>>,
-    frac: Option<Map<K, V>>,
+    auth: AuthCarrier<K, V>,
+    frac: FracCarrier<K, V>,
 }
 
 impl<K, V> PCM for MapCarrier<K, V> {
     closed spec fn valid(self) -> bool {
-        match self.frac {
-            None => false,
-            Some(f) => match self.auth {
-                None => true,
-                Some(None) => false,
-                Some(Some(a)) => f.submap_of(a),
+        match (self.auth, self.frac) {
+            (AuthCarrier::Invalid, _) => false,
+            (_, FracCarrier::Invalid) => false,
+            (AuthCarrier::Auth(auth), FracCarrier::Frac { owning, dup }) => {
+                &&& owning <= auth
+                &&& dup <= auth
+                &&& owning.dom().disjoint(dup.dom())
             },
+            (AuthCarrier::Frac, FracCarrier::Frac { owning, dup }) => owning.dom().disjoint(
+                dup.dom(),
+            ),
         }
     }
 
     closed spec fn op(self, other: Self) -> Self {
-        MapCarrier {
-            auth: if self.auth is Some {
-                if other.auth is Some {
-                    Some(None)
+        let auth = match (self.auth, other.auth) {
+            // Invalid carriers absorb
+            (AuthCarrier::Invalid, _) => AuthCarrier::Invalid,
+            (_, AuthCarrier::Invalid) => AuthCarrier::Invalid,
+            // There can't be two auths
+            (AuthCarrier::Auth(_), AuthCarrier::Auth(_)) => AuthCarrier::Invalid,
+            // Fracs remain the same
+            (AuthCarrier::Frac, AuthCarrier::Frac) => AuthCarrier::Frac,
+            // Whoever is the auth has precedence
+            (AuthCarrier::Auth(_), _) => self.auth,
+            (_, AuthCarrier::Auth(_)) => other.auth,
+        };
+
+        let frac = match (self.frac, other.frac) {
+            // Invalid fracs remain invalid
+            (FracCarrier::Invalid, _) => FracCarrier::Invalid,
+            (_, FracCarrier::Invalid) => FracCarrier::Invalid,
+            // We can mix two owning fracs iff they are disjoint -- we get the union
+            // There is a tricky element here:
+            //  - one of the fracs may be invalid due to their maps overlapping
+            //  - there is no real way to express this in the typesystem
+            //  - we need to allow that through (because it does not equal Invalid)
+            (
+                FracCarrier::Frac { owning: self_owning, dup: self_dup },
+                FracCarrier::Frac { owning: other_owning, dup: other_dup },
+            ) => {
+                let non_overlapping = {
+                    &&& self_owning.dom().disjoint(other_dup.dom())
+                    &&& other_owning.dom().disjoint(self_dup.dom())
+                    &&& self_owning.dom().disjoint(other_owning.dom())
+                };
+                let aggreement = self_dup.agrees(other_dup);
+                if non_overlapping && aggreement {
+                    FracCarrier::Frac {
+                        owning: self_owning.union_prefer_right(other_owning),
+                        dup: self_dup.union_prefer_right(other_dup),
+                    }
                 } else {
-                    self.auth
+                    FracCarrier::Invalid
                 }
-            } else {
-                other.auth
             },
-            frac: match self.frac {
-                None => None,
-                Some(sfr) => match other.frac {
-                    None => None,
-                    Some(ofr) => {
-                        if sfr.dom().disjoint(ofr.dom()) {
-                            Some(sfr.union_prefer_right(ofr))
-                        } else {
-                            None
-                        }
-                    },
-                },
-            },
-        }
+        };
+
+        MapCarrier { auth, frac }
     }
 
     closed spec fn unit() -> Self {
-        MapCarrier { auth: None, frac: Some(Map::empty()) }
+        MapCarrier {
+            auth: AuthCarrier::Frac,
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        }
     }
 
     proof fn closed_under_incl(a: Self, b: Self) {
         broadcast use lemma_submap_of_trans;
-        broadcast use lemma_op_frac_submap_of;
 
+        let ab = MapCarrier::op(a, b);
+        lemma_submap_of_op_frac(a, b);
+        // derive contradiction that the items are disjoint
+        if !a.frac.owning_map().dom().disjoint(a.frac.dup_map().dom()) {
+            // The intersection is not empty
+            lemma_disjoint_iff_empty_intersection(
+                a.frac.owning_map().dom(),
+                a.frac.dup_map().dom(),
+            );
+            let a_k = choose|k: K|
+                a.frac.owning_map().dom().intersect(a.frac.dup_map().dom()).contains(k);
+            assert(ab.frac.owning_map().dom().intersect(ab.frac.dup_map().dom()).contains(a_k));  // CONTRADICTION
+        };
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -154,13 +248,40 @@ impl<K, V> PCM for MapCarrier<K, V> {
     }
 }
 
-broadcast proof fn lemma_op_frac_submap_of<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K, V>)
+proof fn lemma_submap_of_op_frac<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K, V>)
+    requires
+        MapCarrier::op(a, b).valid(),
+    ensures
+        a.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
+        a.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
+        b.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
+        b.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
+{
+    let ab = MapCarrier::op(a, b);
+    assert(ab.frac.owning_map() == a.frac.owning_map().union_prefer_right(b.frac.owning_map()));
+    assert(ab.frac.dup_map() == a.frac.dup_map().union_prefer_right(b.frac.dup_map()));
+    assert(a.frac.owning_map().dom().disjoint(b.frac.owning_map().dom()));
+}
+
+broadcast proof fn lemma_submap_of_op<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K, V>)
     requires
         #[trigger] MapCarrier::op(a, b).valid(),
     ensures
-        a.frac.unwrap() <= MapCarrier::op(a, b).frac.unwrap(),
-        b.frac.unwrap() <= MapCarrier::op(a, b).frac.unwrap(),
+        a.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
+        a.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
+        a.auth.map() <= MapCarrier::op(a, b).auth.map(),
+        b.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
+        b.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
+        b.auth.map() <= MapCarrier::op(a, b).auth.map(),
+        a.valid(),
+        b.valid(),
 {
+    lemma_submap_of_op_frac(a, b);
+    MapCarrier::closed_under_incl(a, b);
+    MapCarrier::commutative(a, b);
+    MapCarrier::closed_under_incl(b, a);
+    let ab = MapCarrier::op(a, b);
+    assert(ab.auth.map() == a.auth.map().union_prefer_right(b.auth.map()));
 }
 
 /// A resource that has the authoritative ownership on the entire map
@@ -186,9 +307,11 @@ pub struct GhostPointsTo<K, V> {
 impl<K, V> GhostMapAuth<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.r.value().auth is Some
-        &&& self.r.value().auth.unwrap() is Some
-        &&& self.r.value().frac == Some(Map::<K, V>::empty())
+        &&& self.r.value().auth is Auth
+        &&& self.r.value().frac == FracCarrier::Frac {
+            owning: Map::<K, V>::empty(),
+            dup: Map::<K, V>::empty(),
+        }
     }
 
     /// Resource location
@@ -198,7 +321,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
     /// Logically underlying [`Map`]
     pub closed spec fn view(self) -> Map<K, V> {
-        self.r.value().auth.unwrap().unwrap()
+        self.r.value().auth.map()
     }
 
     /// Domain of the `GhostMapAuth`
@@ -265,30 +388,33 @@ impl<K, V> GhostMapAuth<K, V> {
             result@ == m,
     {
         broadcast use lemma_submap_of_trans;
-        broadcast use lemma_op_frac_submap_of;
+        broadcast use lemma_submap_of_op;
 
         let tracked mut mself = Self::dummy();
         tracked_swap(self, &mut mself);
 
         use_type_invariant(&mself);
         assert(mself.inv());
-        let tracked mut r = mself.r;
+        let tracked mut self_r = mself.r;
 
-        let rr = MapCarrier {
-            auth: Some(Some(r.value().auth.unwrap().unwrap().union_prefer_right(m))),
-            frac: Some(m),
+        let full_carrier = MapCarrier {
+            auth: AuthCarrier::Auth(self_r.value().auth.map().union_prefer_right(m)),
+            frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
         };
 
-        let tracked r_upd = r.update(rr);
+        assert(full_carrier.valid());
+        let tracked updated_r = self_r.update(full_carrier);
 
-        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(Map::empty()) };
+        let auth_carrier = MapCarrier {
+            auth: updated_r.value().auth,
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        };
+        let frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: updated_r.value().frac };
 
-        let frr = MapCarrier { auth: None, frac: r_upd.value().frac };
-
-        assert(r_upd.value() == MapCarrier::op(arr, frr));
-        let tracked (ar, fr) = r_upd.split(arr, frr);
-        self.r = ar;
-        GhostSubmap { r: fr }
+        assert(updated_r.value() == MapCarrier::op(auth_carrier, frac_carrier));
+        let tracked (auth_r, frac_r) = updated_r.split(auth_carrier, frac_carrier);
+        self.r = auth_r;
+        GhostSubmap { r: frac_r }
     }
 
     /// Insert a key-value pair, receiving the `GhostPointsTo` that asserts ownerships over the key.
@@ -330,31 +456,37 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     auth.delete(submap)
     /// }
     /// ```
-    pub proof fn delete(tracked &mut self, tracked f: GhostSubmap<K, V>)
+    pub proof fn delete(tracked &mut self, tracked submap: GhostSubmap<K, V>)
         requires
-            f.id() == old(self).id(),
+            submap.id() == old(self).id(),
         ensures
             self.id() == old(self).id(),
-            self@ == old(self)@.remove_keys(f@.dom()),
+            self@ == old(self)@.remove_keys(submap@.dom()),
     {
         broadcast use lemma_submap_of_trans;
-        broadcast use lemma_op_frac_submap_of;
+        broadcast use lemma_submap_of_op;
 
         use_type_invariant(&*self);
-        use_type_invariant(&f);
+        use_type_invariant(&submap);
 
         let tracked mut mself = Self::dummy();
         tracked_swap(self, &mut mself);
-        let tracked mut r = mself.r;
+        let tracked mut self_r = mself.r;
 
-        r = r.join(f.r);
+        // join the resource with the original carrier
+        self_r = self_r.join(submap.r);
 
-        let ra = r.value().auth.unwrap().unwrap();
-        let ra_new = ra.remove_keys(f@.dom());
+        // remove keys from the map
+        let auth_map = self_r.value().auth.map();
+        let new_auth_map = auth_map.remove_keys(submap@.dom());
 
-        let rnew = MapCarrier { auth: Some(Some(ra_new)), frac: Some(Map::empty()) };
+        let new_r = MapCarrier {
+            auth: AuthCarrier::Auth(new_auth_map),
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        };
 
-        self.r = r.update(rnew);
+        // update the resource
+        self.r = self_r.update(new_r);
     }
 
     /// Delete a single key from the map
@@ -399,15 +531,26 @@ impl<K, V> GhostMapAuth<K, V> {
             result.0@ == m,
             result.1@ == m,
     {
-        let tracked rr = Resource::alloc(MapCarrier { auth: Some(Some(m)), frac: Some(m) });
+        let tracked full_r = Resource::alloc(
+            MapCarrier {
+                auth: AuthCarrier::Auth(m),
+                frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
+            },
+        );
 
-        let arr = MapCarrier { auth: Some(Some(m)), frac: Some(Map::empty()) };
+        let auth_carrier = MapCarrier {
+            auth: AuthCarrier::Auth(m),
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        };
 
-        let frr = MapCarrier { auth: None, frac: Some(m) };
+        let frac_carrier = MapCarrier {
+            auth: AuthCarrier::Frac,
+            frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
+        };
 
-        assert(rr.value() == MapCarrier::op(arr, frr));
-        let tracked (ar, fr) = rr.split(arr, frr);
-        (GhostMapAuth { r: ar }, GhostSubmap { r: fr })
+        assert(full_r.value() == MapCarrier::op(auth_carrier, frac_carrier));
+        let tracked (auth_r, frac_r) = full_r.split(auth_carrier, frac_carrier);
+        (GhostMapAuth { r: auth_r }, GhostSubmap { r: frac_r })
     }
 }
 
@@ -419,8 +562,9 @@ impl<K, V> GhostMapAuth<K, V> {
 impl<K, V> GhostSubmap<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.r.value().auth is None
-        &&& self.r.value().frac is Some
+        &&& self.r.value().auth is Frac
+        &&& self.r.value().frac is Frac
+        &&& self.r.value().frac.dup_map().is_empty()
     }
 
     /// Checks whether the `GhostSubmap` refers to a single key (and thus can be converted to a
@@ -438,7 +582,7 @@ impl<K, V> GhostSubmap<K, V> {
 
     /// Logically underlying [`Map`]
     pub closed spec fn view(self) -> Map<K, V> {
-        self.r.value().frac.unwrap()
+        self.r.value().frac.owning_map()
     }
 
     /// Domain of the `GhostSubmap`
@@ -517,7 +661,7 @@ impl<K, V> GhostSubmap<K, V> {
 
         let tracked joined = self.r.join_shared(&auth.r);
         joined.validate();
-        assert(self.r.value().frac.unwrap() <= joined.value().frac.unwrap());
+        assert(self.r.value().frac.owning_map() <= joined.value().frac.owning_map());
     }
 
     /// Combining two `GhostSubmap`s is possible.
@@ -603,14 +747,26 @@ impl<K, V> GhostSubmap<K, V> {
         let tracked mut r = Resource::alloc(MapCarrier::<K, V>::unit());
         tracked_swap(&mut self.r, &mut r);
 
-        let rr1 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().remove_keys(s)) };
+        let self_carrier = MapCarrier {
+            auth: AuthCarrier::Frac,
+            frac: FracCarrier::Frac {
+                owning: r.value().frac.owning_map().remove_keys(s),
+                dup: r.value().frac.dup_map(),
+            },
+        };
 
-        let rr2 = MapCarrier { auth: None, frac: Some(r.value().frac.unwrap().restrict(s)) };
+        let res_carrier = MapCarrier {
+            auth: AuthCarrier::Frac,
+            frac: FracCarrier::Frac {
+                owning: r.value().frac.owning_map().restrict(s),
+                dup: r.value().frac.dup_map(),
+            },
+        };
 
-        assert(r.value().frac == MapCarrier::op(rr1, rr2).frac);
-        let tracked (r1, r2) = r.split(rr1, rr2);
-        self.r = r1;
-        GhostSubmap { r: r2 }
+        assert(r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
+        let tracked (self_r, res_r) = r.split(self_carrier, res_carrier);
+        self.r = self_r;
+        GhostSubmap { r: res_r }
     }
 
     /// We can separate a single key out of a `GhostSubmap`
@@ -659,39 +815,45 @@ impl<K, V> GhostSubmap<K, V> {
             auth@ == old(auth)@.union_prefer_right(m),
     {
         broadcast use lemma_submap_of_trans;
-        broadcast use lemma_op_frac_submap_of;
+        broadcast use lemma_submap_of_op;
 
         use_type_invariant(&*self);
         use_type_invariant(&*auth);
 
         let tracked mut mself = Self::dummy();
         tracked_swap(self, &mut mself);
-        let tracked mut fr = mself.r;
+        let tracked mut frac_r = mself.r;
 
         let tracked mut mauth = GhostMapAuth::<K, V>::dummy();
         tracked_swap(auth, &mut mauth);
-        let tracked mut ar = mauth.r;
+        let tracked mut auth_r = mauth.r;
 
-        fr.validate_2(&ar);
-        let tracked mut r = fr.join(ar);
+        frac_r.validate_2(&auth_r);
+        let tracked mut full_r = frac_r.join(auth_r);
 
-        assert(r.value().frac == fr.value().frac);
+        assert(full_r.value().frac.owning_map() == frac_r.value().frac.owning_map());
 
-        let rr = MapCarrier {
-            auth: Some(Some(r.value().auth.unwrap().unwrap().union_prefer_right(m))),
-            frac: Some(r.value().frac.unwrap().union_prefer_right(m)),
+        let auth_carrier = AuthCarrier::Auth(full_r.value().auth.map().union_prefer_right(m));
+        let frac_carrier = FracCarrier::Frac {
+            owning: full_r.value().frac.owning_map().union_prefer_right(m),
+            dup: Map::empty(),
         };
+        let new_full_carrier = MapCarrier { auth: auth_carrier, frac: frac_carrier };
 
-        let tracked r_upd = r.update(rr);
+        assert(new_full_carrier.valid());
+        let tracked r_upd = full_r.update(new_full_carrier);
 
-        let arr = MapCarrier { auth: r_upd.value().auth, frac: Some(Map::empty()) };
+        let new_auth_carrier = MapCarrier {
+            auth: r_upd.value().auth,
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        };
+        let new_frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: r_upd.value().frac };
+        assert(r_upd.value().frac == MapCarrier::op(new_auth_carrier, new_frac_carrier).frac);
+        assert(r_upd.value() == MapCarrier::op(new_auth_carrier, new_frac_carrier));
 
-        let frr = MapCarrier { auth: None, frac: r_upd.value().frac };
-
-        assert(r_upd.value().frac == MapCarrier::op(arr, frr).frac);
-        let tracked (ar, fr) = r_upd.split(arr, frr);
-        auth.r = ar;
-        self.r = fr;
+        let tracked (new_auth_r, new_frac_r) = r_upd.split(new_auth_carrier, new_frac_carrier);
+        auth.r = new_auth_r;
+        self.r = new_frac_r;
     }
 
     /// Converting a `GhostSubmap` into a `GhostPointsTo`
@@ -765,9 +927,11 @@ impl<K, V> GhostPointsTo<K, V> {
         use_type_invariant(self);
         use_type_invariant(auth);
 
+        self.lemma_map_view();
         self.submap.agree(auth);
         assert(self.submap@ <= auth@);
         assert(self.submap@.contains_key(self.key()));
+        assert(self.submap@.contains_pair(self.key(), self.value()));
     }
 
     /// We can combine two `GhostPointsTo`s into a `GhostSubmap`
@@ -830,7 +994,7 @@ impl<K, V> GhostPointsTo<K, V> {
             auth@ == old(auth)@.union_prefer_right(map![self.key() => v]),
     {
         broadcast use lemma_submap_of_trans;
-        broadcast use lemma_op_frac_submap_of;
+        broadcast use lemma_submap_of_op;
 
         use_type_invariant(&*self);
         use_type_invariant(&*auth);
