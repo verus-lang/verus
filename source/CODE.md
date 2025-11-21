@@ -166,7 +166,7 @@ variables.
   - Specifications for Rust's standard library: `std_specs/` directory
 - **state_machines_macros**: Macros for [concurrency-related verification](https://verus-lang.github.io/verus/state_machines/)
 - **rust_verify_test_macros**: Test utilities
-- **cargo-verus**: Cargo integration
+- **cargo-verus**: [Cargo integration](./docs/CARGO-VERUS.md)
 
 ### Vendored dependencies
 
