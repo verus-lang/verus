@@ -606,6 +606,7 @@ impl<'a> GeneralItem<'a> {
             GeneralItem::ForeignItem(_) => false,
             GeneralItem::ImplItem(i) => match i.kind {
                 ImplItemKind::Fn(..) => true,
+                ImplItemKind::Const(..) => true,
                 _ => false,
             },
             GeneralItem::TraitItem(i) => match i.kind {

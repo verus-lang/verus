@@ -163,7 +163,31 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         .help("use `matches` instead"));
     }
 
+    fn_call_or_assoc_const_to_vir(
+        bctx,
+        expr,
+        f,
+        node_substs,
+        _fn_span,
+        Some(args),
+        rust_item,
+        false,
+    )
+}
+
+fn fn_call_or_assoc_const_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    f: DefId,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    _fn_span: Span,
+    args: Option<Vec<&'tcx Expr<'tcx>>>,
+    rust_item: Option<RustItem>,
+    const_var: bool,
+) -> Result<vir::ast::Expr, VirErr> {
     // Normal function call
+    let tcx = bctx.ctxt.tcx;
+    let expr_typ = || typ_of_node(bctx, expr.span, &expr.hir_id, false);
 
     let path = bctx.ctxt.def_id_to_vir_path(f);
     let name = Arc::new(FunX { path: path.clone() });
@@ -178,7 +202,11 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     // If the resolution is statically known, we record the resolved function for the
     // to be used by lifetime_generate.
 
-    let node_substs = fix_node_substs(tcx, bctx.types, node_substs, rust_item, &args, expr);
+    let node_substs = if let Some(args) = &args {
+        fix_node_substs(tcx, bctx.types, node_substs, rust_item, args, expr)
+    } else {
+        node_substs
+    };
 
     let mut record_name = name.clone();
     let target_kind = if tcx.trait_of_assoc(f).is_none() {
@@ -194,7 +222,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 resolved_item: ResolvedItem::FromImpl(did, args),
             } => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let impl_paths = get_impl_paths(bctx, did, args, None);
+                let impl_paths = get_impl_paths(bctx, did, args, None, const_var);
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
                 record_name = f.clone();
@@ -221,7 +249,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 let mut self_trait_impl_path = None;
                 let trait_id = tcx.trait_of_assoc(did).unwrap();
                 let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
-                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
+                let impl_paths =
+                    get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var);
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
@@ -252,16 +281,40 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
 
-    let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
+    let vir_args =
+        if let Some(args) = args { mk_vir_args(bctx, node_substs, f, &args)? } else { vec![] };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
-    let impl_paths = get_impl_paths(bctx, f, node_substs, None);
-    let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
+    let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var);
+    let target =
+        CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage, const_var);
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
         ExprX::Call(target, Arc::new(vir_args), None),
     ))
+}
+
+pub(crate) fn const_var_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: Option<&Expr<'tcx>>,
+    id: DefId,
+    node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
+    hir_id: &rustc_hir::HirId,
+    span: Span,
+) -> Result<vir::ast::Expr, VirErr> {
+    if bctx.ctxt.tcx.trait_of_assoc(id).is_some() {
+        // associated const --> ExprX::Call rather than ExprX::ConstVar
+        let Some(expr) = expr else {
+            unsupported_err!(span, "associated constant in pattern");
+        };
+        return fn_call_or_assoc_const_to_vir(bctx, expr, id, node_substs, span, None, None, true);
+    }
+    let typ = typ_of_node(bctx, span, hir_id, false)?;
+    let path = bctx.ctxt.def_id_to_vir_path(id);
+    let fun = FunX { path };
+    let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+    Ok(bctx.spanned_typed_new(span, &typ, ExprX::ConstVar(Arc::new(fun), autospec_usage)))
 }
 
 pub(crate) fn deref_to_vir<'tcx>(
@@ -290,7 +343,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
-            let impl_paths = get_impl_paths(bctx, did, args, None);
+            let impl_paths = get_impl_paths(bctx, did, args, None, false);
             let resolved = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
 
             record_trait_fun = resolved.clone();
@@ -311,8 +364,9 @@ pub(crate) fn deref_to_vir<'tcx>(
     record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
-    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
-    let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false);
+    let call_target =
+        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage, false);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call(call_target, args, None);
 
@@ -1601,7 +1655,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             typ_args.swap(0, 1);
             let typ_args = Arc::new(typ_args);
 
-            let impl_paths = get_impl_paths(bctx, f, node_substs, None);
+            let impl_paths = get_impl_paths(bctx, f, node_substs, None, false);
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
@@ -1674,19 +1728,25 @@ fn get_impl_paths<'tcx>(
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
+    const_var: bool,
 ) -> vir::ast::ImplPaths {
-    if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
-        crate::rust_to_vir_base::get_impl_paths(
-            bctx.ctxt.tcx,
-            &bctx.ctxt.verus_items,
-            bctx.fun_id,
-            *fid,
-            node_substs,
-            remove_self_trait_bound,
-        )
+    let fid = if const_var {
+        f
+    } else if let rustc_middle::ty::FnDef(fid, _fsubsts) =
+        bctx.ctxt.tcx.type_of(f).skip_binder().kind()
+    {
+        *fid
     } else {
         panic!("unexpected function {:?}", f)
-    }
+    };
+    crate::rust_to_vir_base::get_impl_paths(
+        bctx.ctxt.tcx,
+        &bctx.ctxt.verus_items,
+        bctx.fun_id,
+        fid,
+        node_substs,
+        remove_self_trait_bound,
+    )
 }
 
 fn check_is_builtin_constrain_typ<'tcx>(bctx: &BodyCtxt<'tcx>, e: &'tcx Expr<'tcx>) -> bool {
