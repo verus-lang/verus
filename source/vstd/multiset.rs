@@ -21,9 +21,9 @@ verus! {
 /// where the number of nonzero entries is finite.
 ///
 /// Multisets can be constructed in a few different ways:
-///  * [`Multiset::empty()`] constructs an empty multiset.
+///  * [`Multiset::empty`] constructs an empty multiset.
 ///  * [`Multiset::singleton`] constructs a multiset that contains a single element with multiplicity 1.
-///  * [`Multiset::new`] constructs a multiset from a map of elements to multiplicities.
+///  * [`Multiset::from_map`] constructs a multiset from a map of elements to multiplicities.
 ///  * By manipulating existings multisets with [`Multiset::add`], [`Multiset::insert`],
 ///    [`Multiset::sub`], [`Multiset::remove`], [`Multiset::update`], or [`Multiset::filter`].
 ///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.

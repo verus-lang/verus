@@ -129,7 +129,7 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 }
 
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
     ensures
         r == i,
 ;

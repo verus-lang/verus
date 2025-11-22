@@ -45,7 +45,7 @@ impl<T, U: From<T>> IntoSpecImpl<U> for T {
     }
 }
 
-pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
+pub assume_specification<T, U: From<T>>[ <T as Into<U>>::into ](a: T) -> (ret: U)
     ensures
         call_ensures(U::from, (a,), ret),
 ;
