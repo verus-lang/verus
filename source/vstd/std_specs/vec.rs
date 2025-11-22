@@ -78,7 +78,17 @@ pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
         v@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v: Vec<T, A>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
 pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::with_capacity_in ](capacity: usize, alloc: A) -> (v: Vec<T, A>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
