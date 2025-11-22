@@ -330,3 +330,12 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] arith_bounds_asserted_and_assumed verus_code!{
+        fn test(a: u64, b: u64) {
+            let z = a + b; // FAILS
+            let y = a + b;
+        }
+    } => Err(e) => assert_one_fails(e)
+}

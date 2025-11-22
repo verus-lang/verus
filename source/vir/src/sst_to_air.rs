@@ -1167,32 +1167,32 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         return Ok(mk_eq(&lhh, &rhh));
                     }
                 }
-                BinaryOp::Arith(ArithOp::Add, _) if wrap_arith => {
+                BinaryOp::Arith(ArithOp::Add(_)) if wrap_arith => {
                     return Ok(str_apply(crate::def::ADD, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::Sub, _) if wrap_arith => {
+                BinaryOp::Arith(ArithOp::Sub(_)) if wrap_arith => {
                     return Ok(str_apply(crate::def::SUB, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::Add, _) => {
+                BinaryOp::Arith(ArithOp::Add(_)) => {
                     ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh]))
                 }
-                BinaryOp::Arith(ArithOp::Sub, _) => {
+                BinaryOp::Arith(ArithOp::Sub(_)) => {
                     ExprX::Multi(MultiOp::Sub, Arc::new(vec![lh, rh]))
                 }
-                BinaryOp::Arith(ArithOp::Mul, _) if wrap_arith || !has_const => {
+                BinaryOp::Arith(ArithOp::Mul(_)) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::MUL, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::EuclideanDiv, _) if wrap_arith || !has_const => {
+                BinaryOp::Arith(ArithOp::EuclideanDiv(_)) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::EUC_DIV, &vec![lh, rh]));
                 }
                 // REVIEW: consider introducing singular_mod more earlier pipeline (e.g. from syntax macro?)
-                BinaryOp::Arith(ArithOp::EuclideanMod, _) if expr_ctxt.is_singular => {
+                BinaryOp::Arith(ArithOp::EuclideanMod(_)) if expr_ctxt.is_singular => {
                     return Ok(str_apply(crate::def::SINGULAR_MOD, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::EuclideanMod, _) if wrap_arith || !has_const => {
+                BinaryOp::Arith(ArithOp::EuclideanMod(_)) if wrap_arith || !has_const => {
                     return Ok(str_apply(crate::def::EUC_MOD, &vec![lh, rh]));
                 }
-                BinaryOp::Arith(ArithOp::Mul, _) => {
+                BinaryOp::Arith(ArithOp::Mul(_)) => {
                     ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::Ne => {
@@ -1263,13 +1263,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Inequality(InequalityOp::Lt) => air::ast::BinaryOp::Lt,
                         BinaryOp::Inequality(InequalityOp::Ge) => air::ast::BinaryOp::Ge,
                         BinaryOp::Inequality(InequalityOp::Gt) => air::ast::BinaryOp::Gt,
-                        BinaryOp::Arith(ArithOp::Add, _) => unreachable!(),
-                        BinaryOp::Arith(ArithOp::Sub, _) => unreachable!(),
-                        BinaryOp::Arith(ArithOp::Mul, _) => unreachable!(),
-                        BinaryOp::Arith(ArithOp::EuclideanDiv, _) => {
+                        BinaryOp::Arith(ArithOp::Add(_)) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::Sub(_)) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::Mul(_)) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
                             air::ast::BinaryOp::EuclideanDiv
                         }
-                        BinaryOp::Arith(ArithOp::EuclideanMod, _) => {
+                        BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
                             air::ast::BinaryOp::EuclideanMod
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),

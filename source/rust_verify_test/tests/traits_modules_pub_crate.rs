@@ -381,9 +381,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -456,9 +455,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
