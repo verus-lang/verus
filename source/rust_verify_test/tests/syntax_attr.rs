@@ -1187,3 +1187,24 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_erase_unverified_code code!{
+        use vstd::prelude::*;
+        #[verus_spec(
+            with Tracked(x): Tracked<()>,
+            ensures true,
+        )]
+        fn foo() {
+            proof!{
+                let abcd = Tracked(x);
+                let y = x;
+            }
+            #[cfg_attr(not(customized_cfg), verus_spec(
+                invariant x == (),
+            ))]
+            for i in 0..10 {
+            }
+        }
+    } => Ok(())
+}
