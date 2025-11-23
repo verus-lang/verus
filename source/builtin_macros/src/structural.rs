@@ -1,6 +1,9 @@
 use verus_syn::spanned::Spanned;
 
 pub fn derive_structural_mut(s: &mut synstructure::Structure) -> proc_macro2::TokenStream {
+    if crate::cfg_erase() == crate::EraseGhost::EraseAll {
+        return proc_macro2::TokenStream::new();
+    }
     let assert_receiver_is_structural_body = s
         .variants()
         .iter()
@@ -36,6 +39,9 @@ pub fn derive_structural(mut s: synstructure::Structure) -> proc_macro2::TokenSt
 }
 
 pub fn derive_structural_eq(mut s: synstructure::Structure) -> proc_macro2::TokenStream {
+    if crate::cfg_erase() == crate::EraseGhost::EraseAll {
+        return proc_macro2::TokenStream::new();
+    }
     let mut tokens1 = derive_structural_mut(&mut s);
     let name = &s.ast().ident;
     let tokens2 = quote_spanned_builtin! { builtin, s.ast().span() =>
