@@ -57,6 +57,16 @@ enum VerusIOTarget {
     Local(syn::Local),
     Expr(syn::Expr),
 }
+
+impl quote::ToTokens for VerusIOTarget {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            VerusIOTarget::Local(local) => local.to_tokens(tokens),
+            VerusIOTarget::Expr(expr) => expr.to_tokens(tokens),
+        }
+    }
+}
+
 enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
@@ -329,10 +339,9 @@ pub(crate) fn rewrite_verus_spec(
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    if !erase.keep() {
+    if erase.erase_all() {
         return input;
     }
-
     // Remove the last `,` if `input` has one.
     let mut tokens: Vec<_> = proc_macro2::TokenStream::from(input).into_iter().collect();
     if matches!(tokens.last(), Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',') {
@@ -417,6 +426,9 @@ pub(crate) fn rewrite_verus_spec_on_item_const(
     outer_attr_tokens: proc_macro::TokenStream,
     item_const: ItemConst,
 ) -> proc_macro::TokenStream {
+    if erase_ghost.erase() {
+        return item_const.to_token_stream().into();
+    }
     let spec_attr =
         verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
     let mut verus_item_const = syn_to_verus_syn::<verus_syn::ItemConst>(item_const);
@@ -475,7 +487,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             // we add `requires false` and thus prevent verified function to use it.
             // Allow unverified code to use the function without changing in/output.
             if let Some(with) = &spec_attr.spec.with {
-                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span());
+                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
                 extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
             }
 
@@ -483,6 +495,12 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let spec_stmts =
                 syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
+            if erase.erase() {
+                // In erase mode, just return the stub functions.
+                // No need to add proof statements.
+                fun.to_tokens(&mut new_stream);
+                return proc_macro::TokenStream::from(new_stream);
+            }
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {
                 let proxy = rewrite_const_ret_proxy(&mut fun);
@@ -499,6 +517,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
+        // erase non-function cases if in erase mode
+        _ if erase.erase() => return f.to_token_stream().into(),
         AnyFnOrLoop::Closure(mut closure) => {
             replace_expr(erase, &mut closure.body);
             let mut spec_attr =
@@ -642,6 +662,9 @@ fn rewrite_verus_spec_on_expr_local(
     attr_input: proc_macro::TokenStream,
     io_target: VerusIOTarget,
 ) -> proc_macro::TokenStream {
+    if erase.erase() {
+        return io_target.to_token_stream().into();
+    }
     let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
@@ -772,7 +795,11 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
 // function body, to enable seamless use of unverified call to the function in
 // verification.
 // If the function is const, it will be rewritten to a proxy function and a verified function.
-fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Vec<syn::ItemFn> {
+fn rewrite_unverified_func(
+    fun: &mut syn::ItemFn,
+    span: proc_macro2::Span,
+    erase: EraseGhost,
+) -> Vec<syn::ItemFn> {
     let mut ret = vec![];
     let mut unverified_fun = fun.clone();
     if fun.sig.constness.is_some() {
@@ -781,26 +808,43 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> Ve
         ret.push(unverified_fun);
         unverified_fun = proxy;
     }
-    let stmts = vec![
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(
-                quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
-            ),
-            Some(syn::token::Semi { spans: [span] }),
+    let unimplemented = syn::Stmt::Expr(
+        syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
+        Some(syn::token::Semi { spans: [span] }),
+    );
+    let precondition_false = syn::Stmt::Expr(
+        syn::Expr::Verbatim(
+            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
         ),
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
-            Some(syn::token::Semi { spans: [span] }),
-        ),
-    ];
+        Some(syn::token::Semi { spans: [span] }),
+    );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
-        block.stmts.clear();
-        block.stmts.extend(stmts);
+        // For an unverified function, if it is in keep mode,
+        // we erase the function body to avoid using
+        // proof code, since we do not need to verify anything in unverified
+        // function and we never pass ghost/tracked to unverified function
+        // and so it may cause errors due to undefined vars.
+        // Since the body is erased only in keep mode, we still
+        // see correct body in generated executable in erase mode.
+        if erase.keep() {
+            block.stmts.clear();
+            block.stmts.push(precondition_false);
+            block.stmts.push(unimplemented.clone());
+        }
     }
     // change name to verified_{fname}
     let x = &fun.sig.ident;
     fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+    fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
+
+    // In erase mode, we just keep the verified function with unimplemented!()
+    // since we do not need to verifying the function body and only unverified
+    // function is called in erase mode.
+    if erase.erase() {
+        fun.block.stmts.clear();
+        fun.block.stmts.push(unimplemented);
+    }
     ret.push(unverified_fun);
     ret
 }
