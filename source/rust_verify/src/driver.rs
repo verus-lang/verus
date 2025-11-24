@@ -1,6 +1,8 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
+use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
+use rustc_middle::ty::TyCtxt;
 use std::time::{Duration, Instant};
 
 struct DefaultCallbacks;
@@ -33,6 +35,61 @@ pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
         && !verifier.args.verify_root
 }
 
+// Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    if !do_lifetime {
+        return;
+    }
+    let krate = tcx.hir_crate(());
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn { .. } => {
+                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item_id in impll.items {
+                            let item = tcx.hir_impl_item(*item_id);
+                            match item.kind {
+                                ImplItemKind::Fn { .. } => {
+                                    tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => (),
+                },
+                _ => {}
+            }
+        }
+    }
+}
+pub(crate) struct LifetimeCallbacks {
+    pub(crate) code: String,
+}
+
+impl rustc_driver::Callbacks for LifetimeCallbacks {
+    // note: we only need to call into config here,
+    // to change the file_loader
+    fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
+        cfg.file_loader = Some(Box::new(crate::lifetime::LifetimeFileLoader { rust_code: self.code.clone() }));
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        queries: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        check(queries, false);
+        rustc_driver::Compilation::Stop
+    }
+}
 /*
 We have to run rustc twice on the original source code,
 once erasing ghost code and once keeping ghost code.
@@ -95,7 +152,7 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
         tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(tcx, true);
+            check(tcx, true);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
