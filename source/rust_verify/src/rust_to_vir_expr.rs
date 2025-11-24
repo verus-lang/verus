@@ -2480,7 +2480,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?.to_place()),
+                StructTailExpr::Base(tail_expr) => {
+                    let place = expr_to_vir(bctx, tail_expr, modifier)?.to_place();
+                    let tf = ctor_tail_get_taken_fields(bctx, expr)?;
+                    Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
+                }
                 StructTailExpr::DefaultFields(..) => {
                     unsupported_err!(
                         expr.span,
@@ -3694,4 +3698,45 @@ pub(crate) fn borrow_mut_vir(
     };
     let typ = Arc::new(TypX::MutRef(place.typ.clone()));
     bctx.spanned_typed_new(span, &typ, x)
+}
+
+fn ctor_tail_get_taken_fields<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<Arc<Vec<(vir::ast::Ident, UnfinalizedReadKind)>>, VirErr> {
+    let ExprKind::Struct(_, fields, _) = &expr.kind else {
+        crate::internal_err!(
+            expr.span,
+            "ctor_tail_get_taken_fields should only be called for ExprKind::Struct"
+        );
+    };
+
+    let ty = bctx.types.node_type(expr.hir_id);
+    let TyKind::Adt(adt_def, args) = ty.kind() else {
+        crate::internal_err!(expr.span, "Expected TyKind::Adt for struct expression");
+    };
+
+    if !adt_def.is_struct() {
+        crate::internal_err!(expr.span, "Expected struct for struct expression with tail");
+    }
+    let variant_def = adt_def.non_enum_variant();
+
+    let mut taken_fields = vec![];
+    // Iterate over all fields that are NOT present in the given struct expression.
+    for field_def in variant_def.fields.iter() {
+        if fields.iter().any(|f| f.ident.name == field_def.name) {
+            continue;
+        }
+        let ty = field_def.ty(bctx.ctxt.tcx, args);
+        let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
+        let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
+        let ident = field_ident_from_rust(field_def.name.as_str());
+        taken_fields.push((ident, rk));
+    }
+
+    if fields.len() + taken_fields.len() != variant_def.fields.len() {
+        crate::internal_err!(expr.span, "ctor_tail_get_taken_fields: field counts are wrong");
+    }
+
+    Ok(Arc::new(taken_fields))
 }
