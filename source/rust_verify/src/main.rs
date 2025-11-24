@@ -34,13 +34,13 @@ pub fn main() {
     let internal_program = internal_args.next().unwrap();
     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
-            rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
+            rust_verify::trait_check::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
                 let mut buffer = String::new();
                 use std::io::Read;
                 std::io::stdin().read_to_string(&mut buffer).expect("cannot read stdin");
-                rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
+                rust_verify::trait_check::lifetime_rustc_driver(&internal_args[..], buffer);
                 return;
             }
             arg if arg.contains("rustc") => {

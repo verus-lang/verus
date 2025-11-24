@@ -65,7 +65,7 @@ constructs.
 - `config.rs`: Command-line argument definitions (`Args` struct)
 - `attributes.rs`: Verus attribute parsing (`#[verifier(...)]`)
 - `lifetime_generate.rs`: Lifetime checking for ghost code.
-- `lifetime.rs`: Trait conflict checking (previously also handled lifetime checking) 
+- `trait_*.rs`: Trait conflict checking (see `trait_conflict.rs` for more details)
 - `rust_to_vir.rs`: Main HIR-to-VIR conversion orchestrator
 - `rust_to_vir_func.rs`: Function body conversion
 - `rust_to_vir_expr.rs`: Expression conversion

@@ -3,8 +3,8 @@
 
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
-use crate::lifetime_emit::*;
-use crate::lifetime_generate::*;
+use crate::trait_check_emit::*;
+use crate::trait_check_generate::*;
 use crate::spans::SpanContext;
 use crate::util::error;
 use serde::Deserialize;
@@ -174,7 +174,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     emit_state: &mut EmitState,
     vir_crate: &vir::ast::Krate,
 ) -> State {
-    let mut gen_state = crate::lifetime_generate::State::new();
+    let mut gen_state = crate::trait_check_generate::State::new();
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
     let prelude = PRELUDE

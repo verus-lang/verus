@@ -78,7 +78,7 @@ impl rustc_driver::Callbacks for LifetimeCallbacks {
     // note: we only need to call into config here,
     // to change the file_loader
     fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
-        cfg.file_loader = Some(Box::new(crate::lifetime::LifetimeFileLoader { rust_code: self.code.clone() }));
+        cfg.file_loader = Some(Box::new(crate::trait_check::LifetimeFileLoader { rust_code: self.code.clone() }));
     }
 
     fn after_expansion<'tcx>(
