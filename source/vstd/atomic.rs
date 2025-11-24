@@ -751,59 +751,131 @@ pub fn atomically<X, Y, P>(_f: impl FnOnce(fn (X) -> Y)) -> AtomicUpdate<X, Y, P
 #[doc(hidden)]
 pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
 
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::atomic::open_atomic_update_begin"]
 #[doc(hidden)]
-#[verifier::external]  /* vattr */
-pub fn open_atomic_update_begin<X, Y, Pred: UpdatePredicate<X, Y>>(
-    _upd: AtomicUpdate<X, Y, Pred>,
-) -> X {
-    unimplemented!();
+pub struct BlockGuard<T> {
+    _inner: core::marker::PhantomData<T>,
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::atomic::open_atomic_update_end"]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_begin"]
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
-pub fn open_atomic_update_end<Y>(_y: Y) {
-    unimplemented!();
+pub fn try_open_atomic_update_begin<X, Y, Pred: UpdatePredicate<X, Y>>(
+    _atomic_update: AtomicUpdate<X, Y, Pred>,
+) -> (BlockGuard<AtomicUpdate<X, Y, Pred>>, X) {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_end"]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn try_open_atomic_update_end<X, Y, Pred: UpdatePredicate<X, Y>>(
+    //#[cfg(verus_keep_ghost)]
+    #[verifier::proof]
+    _guard: BlockGuard<AtomicUpdate<X, Y, Pred>>,
+    commit_or_abort: Result<Tracked<Y>, Tracked<X>>,
+) -> Result<(), Tracked<AtomicUpdate<X, Y, Pred>>> {
+    unimplemented!()
 }
 
 #[macro_export]
 macro_rules! open_atomic_update {
-    ($($tail:tt)*) => {
-        #[cfg(verus_keep_ghost_body)]
-        ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
-            $crate::vstd::atomic::open_atomic_update_either_internal!($($tail)*)
-        )
+    ($au:expr, $x:pat => $body:block) => {
+        $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
+            Ok($body)
+        })
     };
 }
 
 #[macro_export]
 macro_rules! open_atomic_update_in_proof {
+    ($au:expr, $x:pat => $body:block) => {
+        $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
+            Ok($body)
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! peek_atomic_update {
+    ($au:expr, $x:ident => $body:block) => {
+        $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
+            { let $x = &($x); $body; }
+            Err($x)
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! peek_atomic_update_in_proof {
+    ($au:expr, $x:ident => $body:block) => {
+        $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
+            { let $x = &($x); $body; }
+            Err($x)
+        })
+    };
+}
+
+#[macro_export]
+macro_rules! try_open_atomic_update {
     ($($tail:tt)*) => {
-        ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
-            $crate::vstd::atomic::open_atomic_update_either_internal!($($tail)*)
+        #[cfg(verus_keep_ghost_body)]
+        ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            $crate::vstd::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
 }
 
 #[macro_export]
-macro_rules! open_atomic_update_either_internal {
+macro_rules! try_open_atomic_update_in_proof {
+    ($($tail:tt)*) => {
+        ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            $crate::vstd::atomic::try_open_atomic_update_internal!($($tail)*)
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! try_open_atomic_update_internal {
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            let $x = $crate::vstd::atomic::open_atomic_update_begin($au);
-            let y = $body;
-            #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::atomic::open_atomic_update_end(y);
+            let (guard, $x) = $crate::vstd::atomic::try_open_atomic_update_begin($au);
+            let res = $body;
+
+            match res {
+                #[cfg(verus_keep_ghost_body)]
+                res => $crate::vstd::atomic::try_open_atomic_update_end(guard, res),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                ::core::result::Result::Ok(..) => {
+                    ::core::result::Result::Ok(())
+                }
+
+                #[cfg(not(verus_keep_ghost_body))]
+                ::core::result::Result::Err(..) => {
+                    ::core::result::Result::Err(
+                        ::verus_builtin::Tracked::assume_new_fallback(
+                            || ::core::unreachable!()
+                        )
+                    )
+                }
+            }
         }
     }
 }
 
 #[doc(hidden)]
-pub use {open_atomic_update_either_internal};
-pub use {open_atomic_update, open_atomic_update_in_proof};
+pub use try_open_atomic_update_internal;
+pub use {
+    open_atomic_update,
+    open_atomic_update_in_proof,
+    peek_atomic_update,
+    peek_atomic_update_in_proof,
+    try_open_atomic_update,
+    try_open_atomic_update_in_proof,
+};
 
 impl<T> PAtomicPtr<T> {
     #[inline(always)]

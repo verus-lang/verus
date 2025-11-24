@@ -1669,12 +1669,17 @@ impl Visitor {
                 let mut ident = x.ident.to_string();
                 // NOTE: This is currently hardcoded for the macros
                 //  * `open_local_invariant`,
-                //  * `open_atomic_invariant`, and
-                //  * `open_atomic_update`
+                //  * `open_atomic_invariant`,
+                //  * `open_atomic_update`,
+                //  * `peek_atomic_update`, and
+                //  * `try_open_atomic_update`
                 // but this could be extended to rewrite other macro
                 // names depending on proof vs exec mode.
-                if let "open_local_invariant" | "open_atomic_invariant" | "open_atomic_update" =
-                    ident.as_str()
+                if let "open_local_invariant"
+                | "open_atomic_invariant"
+                | "open_atomic_update"
+                | "peek_atomic_update"
+                | "try_open_atomic_update" = ident.as_str()
                 {
                     ident.push_str("_in_proof");
                     x.ident = Ident::new(&ident, x.span());

@@ -32,12 +32,15 @@ pub fn middle(x: i32) -> (y: i32)
     requires x == 2,
 {
     atomic_function(x, "hi", ()) atomically |upd| {
-        open_atomic_update!(atom_upd, a => {
+        let res: Result<(), _> = try_open_atomic_update!(atom_upd, a => {
             assert(a == 5);
             let b = upd(a);
             assert(b == 7);
-            b
+            Ok(b)
         });
+
+        assert(res is Ok);
+        assert(atom_upd.resolves());
     }
 }
 

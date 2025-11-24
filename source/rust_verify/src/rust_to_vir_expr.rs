@@ -1035,7 +1035,10 @@ fn is_open_au_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
 }
 
 fn malformed_au_block_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
-    err_span(expr.span, "malformed atomic update block; use `open_atomic_update!` macro instead")
+    err_span(
+        expr.span,
+        "malformed atomic update block; use `try_open_atomic_update!` macro instead",
+    )
 }
 
 fn open_au_block_to_vir<'tcx>(
@@ -1045,9 +1048,12 @@ fn open_au_block_to_vir<'tcx>(
 ) -> Result<ExprOrPlace, VirErr> {
     // ```
     // #[verifier::open_au_block] {
-    //     let $x = open_atomic_update_begin($au);
-    //     let y = $body;
-    //     open_atomic_update_end(y);
+    //     let (guard, $x) = try_open_atomic_update_begin($au);
+    //     let res = $body;
+    //     match res {
+    //         res => try_open_atomic_update_end(guard, res),
+    //         ..?
+    //     }
     // }
     // ```
 
@@ -1055,17 +1061,39 @@ fn open_au_block_to_vir<'tcx>(
         panic!("expr should be a block expression");
     };
 
-    let Block { stmts: [open_stmt, mid_stmt, close_stmt], expr: None, .. } = block else {
+    let Block { stmts: [open_stmt, mid_stmt], expr: Some(close_expr), .. } = block else {
         return malformed_au_block_err(expr);
     };
 
     // ```
-    // let $x = open_atomic_update_begin($au);
+    // let $x = try_open_atomic_update_begin($au);
     // ```
     let StmtKind::Let(LetStmt {
         pat:
-            x_pat @ Pat {
-                kind: PatKind::Binding(BindingMode(ByRef::No, x_mut), x_hir_id, _, None),
+            Pat {
+                kind:
+                    PatKind::Tuple(
+                        [
+                            Pat {
+                                kind:
+                                    PatKind::Binding(
+                                        BindingMode(ByRef::No, Mutability::Not),
+                                        guard_bind,
+                                        _,
+                                        None,
+                                    ),
+                                default_binding_modes: true,
+                                ..
+                            },
+                            x_pat @ Pat {
+                                kind:
+                                    PatKind::Binding(BindingMode(ByRef::No, x_mut), x_bind, _, None),
+                                default_binding_modes: true,
+                                ..
+                            },
+                        ],
+                        dot_dot_pos,
+                    ),
                 default_binding_modes: true,
                 ..
             },
@@ -1095,19 +1123,23 @@ fn open_au_block_to_vir<'tcx>(
         return malformed_au_block_err(expr);
     };
 
-    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateBegin)) =
+    if dot_dot_pos.as_opt_usize().is_some() {
+        return malformed_au_block_err(expr);
+    }
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateBegin)) =
         bctx.ctxt.verus_items.id_to_name.get(begin_fun_id)
     else {
         return malformed_au_block_err(expr);
     };
 
     // ```
-    // let y = $body;
+    // let res = $body;
     // ```
     let StmtKind::Let(LetStmt {
         pat:
             Pat {
-                kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), y_bind, _, None),
+                kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), res_bind, _, None),
                 default_binding_modes: true,
                 ..
             },
@@ -1120,44 +1152,95 @@ fn open_au_block_to_vir<'tcx>(
     };
 
     // ```
-    // open_atomic_update_end(y);
+    // match res {
+    //     res => ...,
+    // }
     // ```
-    let StmtKind::Semi(Expr {
-        kind:
-            ExprKind::Call(
-                Expr {
-                    kind:
-                        ExprKind::Path(QPath::Resolved(
-                            None,
-                            rustc_hir::Path { res: Res::Def(DefKind::Fn, end_fun_id), .. },
-                        )),
-                    ..
-                },
-                [
-                    Expr {
+    let ExprKind::Match(
+        Expr {
+            kind:
+                ExprKind::Path(QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: Res::Local(res_proxy_use), .. },
+                )),
+            ..
+        },
+        [
+            rustc_hir::Arm {
+                pat:
+                    Pat {
                         kind:
-                            ExprKind::Path(QPath::Resolved(
+                            PatKind::Binding(
+                                BindingMode(ByRef::No, Mutability::Not),
+                                res_proxy_bind,
+                                _,
                                 None,
-                                rustc_hir::Path { res: Res::Local(y_use), .. },
-                            )),
+                            ),
+                        default_binding_modes: true,
                         ..
                     },
-                ],
-            ),
-        ..
-    }) = close_stmt.kind
+                guard: None,
+                body: match_arm_body,
+                ..
+            },
+            ..,
+        ],
+        _,
+    ) = close_expr.kind
     else {
         return malformed_au_block_err(expr);
     };
 
-    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::OpenAtomicUpdateEnd)) =
+    if res_proxy_use != res_bind {
+        return malformed_au_block_err(expr);
+    }
+
+    let res_bind = res_proxy_bind;
+    let close_expr = &**match_arm_body;
+
+    // ```
+    // try_open_atomic_update_end(guard, res),
+    // ```
+    let ExprKind::Call(
+        Expr {
+            kind:
+                ExprKind::Path(QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: Res::Def(DefKind::Fn, end_fun_id), .. },
+                )),
+            ..
+        },
+        [
+            Expr {
+                kind:
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(guard_use), .. },
+                    )),
+                ..
+            },
+            Expr {
+                kind:
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(res_use), .. },
+                    )),
+                ..
+            },
+        ],
+    ) = close_expr.kind
+    else {
+        return malformed_au_block_err(expr);
+    };
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateEnd)) =
         bctx.ctxt.verus_items.id_to_name.get(end_fun_id)
     else {
         return malformed_au_block_err(expr);
     };
 
-    if y_bind != y_use {
-        dbg!(y_bind, y_use);
+    if res_bind != res_use || guard_bind != guard_use {
+        dbg!(res_bind, res_use);
         return malformed_au_block_err(expr);
     }
 
@@ -1178,7 +1261,7 @@ fn open_au_block_to_vir<'tcx>(
     let au_vir_arg = expr_to_vir_consume(bctx, au_arg, modifier)?;
     let au_vir_binder = Arc::new(VarBinderX {
         name: pat_to_var(x_pat)?,
-        a: typ_of_node(bctx, x_pat.span, x_hir_id, x_mut.is_mut())?,
+        a: typ_of_node(bctx, x_pat.span, x_bind, x_mut.is_mut())?,
     });
 
     let mid_exp = bctx.spanned_typed_new(

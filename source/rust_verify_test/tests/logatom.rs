@@ -23,7 +23,7 @@ test_verify_one_file! {
                 assert(x == 2);
                 let y = x + 3;
                 assert(y == 5);
-                y
+                Tracked::<i32>(y)
             });
         }
     } => Ok(())
@@ -35,7 +35,7 @@ test_verify_one_file! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, n => {
                 assert(n == 2);
-                n + 7
+                Tracked::<i32>(n + 7)
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic postcondition hold at end of block")
@@ -47,7 +47,7 @@ test_verify_one_file! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, n => {
                 n += 3_i32;
-                n
+                Tracked::<i32>(n)
             });
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot assign twice to immutable variable `n`")
@@ -59,7 +59,7 @@ test_verify_one_file! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, mut n => {
                 n += 3_i32;
-                n
+                Tracked::<i32>(n)
             });
         }
     } => Ok(())
@@ -73,7 +73,7 @@ test_verify_one_file! {
                 assert(x == 2);
                 let tracked y = x + 3;
                 assert(y == 5);
-                y
+                Tracked::<i32>(y)
             });
         }
     } => Ok(())
@@ -85,7 +85,7 @@ test_verify_one_file! {
         exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, n => {
                 assert(n == 2);
-                n + 7
+                Tracked::<i32>(n + 7)
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic postcondition hold at end of block")
@@ -99,7 +99,7 @@ test_verify_one_file! {
                 assert(n == 2);
                 proof { n += 3_i32; }
                 assert(n == 5);
-                n
+                Tracked::<i32>(n)
             });
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot assign twice to immutable variable `n`")
@@ -113,7 +113,7 @@ test_verify_one_file! {
                 assert(n == 2);
                 proof { n += 3_i32; }
                 assert(n == 5);
-                n
+                Tracked::<i32>(n)
             });
         }
     } => Ok(())
@@ -127,7 +127,7 @@ test_verify_one_file! {
                 assert(x == 2);
                 let tracked y = x + 3;
                 assert(y == 5);
-                y
+                Tracked::<i32>(y)
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot open atomic update in spec mode")
@@ -150,7 +150,7 @@ const ATOMIC_FUNCTION: &'static str = verus_code_str! {
             assert(n == 2);
             proof { n += 3_u32; };
             assert(n == 5);
-            n
+            Tracked::<u32>(n)
         });
     }
 };
