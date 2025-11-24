@@ -49,7 +49,7 @@ test_verify_one_file! {
                 atomic_op();
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than 1 atomic operation")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
 }
 
 test_verify_one_file! {
@@ -153,7 +153,7 @@ test_verify_one_file! {
             atomic_op();
         }
 
-    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain more than 1 atomic operation")
+    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain more than one atomic operation")
 }
 
 test_verify_one_file_with_options! {
@@ -187,7 +187,7 @@ test_verify_one_file! {
                 });
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than 1 atomic operation")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
 }
 
 test_verify_one_file! {
@@ -201,7 +201,7 @@ test_verify_one_file! {
                 });
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than 1 atomic operation")
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
 }
 
 test_verify_one_file! {

@@ -10,7 +10,6 @@ use crate::messages::{Span, error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
-use std::cmp::min;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
@@ -385,6 +384,13 @@ struct AtomicInstCollector {
     loops: Vec<Span>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ValidateCtx {
+    AtomicFunction,
+    OpenAtomicInvariant,
+    OpenAtomicUpdate,
+}
+
 impl AtomicInstCollector {
     fn new() -> AtomicInstCollector {
         Default::default()
@@ -405,33 +411,41 @@ impl AtomicInstCollector {
     /// Check that the collected operations are well-formed; error if not
     /// `is_atomic_fn` is for error-reporting purposes; if 'true', then the check
     /// is for a fn marked #[verifier(atomic)]. Otherwise, it's for a invariant block.
-    pub fn validate(&self, inv_block_span: &Span, is_atomic_fn: bool) -> Result<(), VirErr> {
-        let context = if is_atomic_fn { "atomic function" } else { "open_atomic_invariant" };
+    pub fn validate(&self, span: &Span, ctx: ValidateCtx) -> Result<(), VirErr> {
+        use ValidateCtx as V;
 
-        if self.loops.len() > 0 {
+        let ctx = match ctx {
+            V::AtomicFunction => "atomic function",
+            V::OpenAtomicInvariant => "open_atomic_invariant",
+            V::OpenAtomicUpdate => "try_open_atomic_update",
+        };
+
+        if let Some(first_loop) = self.loops.first() {
             return Err(error_with_label(
-                inv_block_span,
-                format!("{context:} cannot contain an 'exec' loop"),
+                span,
+                format!("{ctx} cannot contain an 'exec' loop"),
                 "this invariant block contains a loop",
             )
-            .secondary_span(&self.loops[0]));
-        } else if self.non_atomics.len() > 0 {
-            let mut e =
-                error(inv_block_span, format!("{context:} cannot contain non-atomic operations"));
-            for i in 0..min(self.non_atomics.len(), 3) {
-                e = e.secondary_label(&self.non_atomics[i], "non-atomic here");
-            }
-            return Err(e);
-        } else if self.atomics.len() > 1 {
-            let mut e = error(
-                inv_block_span,
-                format!("{context:} cannot contain more than 1 atomic operation"),
-            );
-            for i in 0..min(self.atomics.len(), 3) {
-                e = e.secondary_label(&self.atomics[i], "atomic here");
-            }
-            return Err(e);
+            .secondary_span(first_loop));
         }
+
+        if self.non_atomics.len() > 0 {
+            let mut err = error(span, format!("{ctx} cannot contain non-atomic operations"));
+            for non_atomic in self.non_atomics.iter().take(3) {
+                err = err.secondary_label(non_atomic, "non-atomic here");
+            }
+            return Err(err);
+        }
+
+        if self.atomics.len() > 1 {
+            let mut err =
+                error(span, format!("{ctx} cannot contain more than one atomic operation"));
+            for atomic in self.non_atomics.iter().take(3) {
+                err = err.secondary_label(atomic, "atomic here");
+            }
+            return Err(err);
+        }
+
         Ok(())
     }
 }
@@ -1740,15 +1754,15 @@ fn check_expr_handle_mut_arg(
                 // mode, and we don't need to do the atomicity check at all.
                 // And of course, we don't do atomicity checks for the 'NonAtomic'
                 // invariant type.
-                let _ = check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+                check_expr(ctxt, record, &mut typing, outer_mode, body)?;
             } else {
                 let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-                let _ = check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+                check_expr(ctxt, record, &mut typing, outer_mode, body)?;
                 typing
                     .atomic_insts
                     .as_ref()
                     .expect("my_atomic_insts")
-                    .validate(&body.span, false)?;
+                    .validate(&body.span, ValidateCtx::OpenAtomicInvariant)?;
             }
 
             Ok(Mode::Exec)
@@ -1770,7 +1784,17 @@ fn check_expr_handle_mut_arg(
             let mut typing = typing.push_var_scope();
             typing.insert(&x_bind.name, Mode::Proof);
 
-            check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+            if typing.atomic_insts.is_some() || outer_mode != Mode::Exec {
+                check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+            } else {
+                let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
+                check_expr(ctxt, record, &mut typing, outer_mode, body)?;
+                typing
+                    .atomic_insts
+                    .as_ref()
+                    .unwrap()
+                    .validate(&body.span, ValidateCtx::OpenAtomicUpdate)?;
+            }
 
             Ok(Mode::Exec)
         }
@@ -2204,7 +2228,11 @@ pub fn check_crate(
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
             check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
-            typing.atomic_insts.as_ref().expect("atomic_insts").validate(&function.span, true)?;
+            typing
+                .atomic_insts
+                .as_ref()
+                .expect("atomic_insts")
+                .validate(&function.span, ValidateCtx::AtomicFunction)?;
         } else {
             check_function(&ctxt, &mut record, &mut typing, function, new_mut_ref)?;
         }

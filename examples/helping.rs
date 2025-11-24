@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs ignore --- wip
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
@@ -138,10 +137,10 @@ impl Flag {
             out = self.value.load(Tracked(&value_perm));
 
             proof {
-                open_atomic_update!(atomic_update, token => {
+                try_open_atomic_update!(atomic_update, token => {
                     auth.agree(&token.value);
                     assert(value_perm.value() == token.value@);
-                    token
+                    Tracked(Ok(token))
                 });
 
                 v = (value_perm, pend_perm, auth, gv, proto);
@@ -215,16 +214,16 @@ impl Flag {
                     assert(gv@ is Some);
                     assert(gv@->0 == other_au);
 
-                    open_atomic_update!(au, mut token => {
-                        let ghost old = auth@;
-                        auth.update(&mut token.value, !old);
-                        token
+                    try_open_atomic_update!(au, mut token => {
+                        let ghost old_auth = auth@;
+                        auth.update(&mut token.value, !old_auth);
+                        Tracked(Ok(token))
                     });
 
-                    open_atomic_update!(other_au.get(), mut token => {
-                        let ghost old = auth@;
-                        auth.update(&mut token.value, !old);
-                        token
+                    try_open_atomic_update!(other_au.get(), mut token => {
+                        let ghost old_auth = auth@;
+                        auth.update(&mut token.value, !old_auth);
+                        Tracked(Ok(token))
                     });
 
                     assert(gv@ is Some);
@@ -263,10 +262,10 @@ impl Flag {
             proof {
                 if res.is_ok() {
                     let tracked au = maybe_au.tracked_take();
-                    open_atomic_update!(au, mut token => {
-                        let ghost old = auth@;
-                        auth.update(&mut token.value, !old);
-                        token
+                    try_open_atomic_update!(au, mut token => {
+                        let ghost old_auth = auth@;
+                        auth.update(&mut token.value, !old_auth);
+                        Tracked(Ok(token))
                     });
                 }
 
@@ -286,10 +285,10 @@ impl Flag {
             proof {
                 if res.is_ok() {
                     let tracked au = maybe_au.tracked_take();
-                    open_atomic_update!(au, mut token => {
-                        let ghost old = auth@;
-                        auth.update(&mut token.value, !old);
-                        token
+                    try_open_atomic_update!(au, mut token => {
+                        let ghost old_auth = auth@;
+                        auth.update(&mut token.value, !old_auth);
+                        Tracked(Ok(token))
                     });
                 }
 

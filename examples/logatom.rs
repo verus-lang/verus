@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs ignore --- wip
 use vstd::prelude::*;
 use vstd::*;
 
@@ -33,11 +32,11 @@ pub fn middle(x: i32) -> (y: i32)
     requires x == 2,
 {
     atomic_function(x, "hi", ()) atomically |upd| {
-        let res: Result<(), _> = try_open_atomic_update!(atom_upd, a => {
+        let tracked Tracked(res) = try_open_atomic_update!(atom_upd, a => {
             assert(a == 5);
-            let b = upd(a);
+            let tracked b = upd(a);
             assert(b == 7);
-            Ok(b)
+            Tracked(Ok(b))
         });
 
         assert(res is Ok);

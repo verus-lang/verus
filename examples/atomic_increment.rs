@@ -8,31 +8,56 @@ use vstd::simple_pptr::*;
 
 verus! {
 
-proof fn tracked_unwrap_err<T, E>(tracked this: Result<T, E>) -> (tracked out: E)
+pub fn increment_bad(patomic: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>)
     requires
-        this is Err,
+        old(perm)@.patomic == patomic.id(),
     ensures
-        Err::<T, E>(out) == this,
+        perm@.patomic == old(perm)@.patomic,
+        perm@.value == old(perm)@.value.wrapping_add(1),
 {
-    match this {
-        Err(out) => out,
-        _ => proof_from_false(),
-    }
+    let val = patomic.load(Tracked(&*perm));
+    patomic.store(Tracked(perm), val.wrapping_add(1));
 }
 
-// pub fn increment_bad(patomic: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>)
-//     requires
-//         perm.view().patomic == patomic.id(),
-//     ensures
-//         patomic.view().value == old(patomic).view().value + 1,
-// {
-//     let val = patomic.load(Tracked(&*perm));
-//     patomic.store(Tracked(perm), val + 1);
-// }
+pub fn increment_bad_fail(patomic: &PAtomicU64)
+    atomically (au) {
+        (old_perm: PermissionU64) -> (new_perm: PermissionU64),
+        requires
+            old_perm@.patomic == patomic.id(),
+        ensures
+            new_perm@.patomic == old_perm@.patomic,
+            new_perm@.value == old_perm@.value.wrapping_add(1),
+        outer_mask any,
+        inner_mask any,
+    },
+{
+    let tracked mut au = au;
+
+    let val;
+    let maybe_au = try_open_atomic_update!(au, perm => {
+        val = patomic.load(Tracked(&perm));
+        Tracked(Err(perm))
+    });
+
+    proof { au = maybe_au.get().tracked_unwrap_err() };
+
+    let next_val = val.wrapping_add(1);
+    try_open_atomic_update!(au, mut perm => {
+        let ghost old_perm = perm;
+        patomic.store(Tracked(&mut perm), next_val);
+
+        assert(perm@.patomic == old_perm@.patomic);
+        assert(perm@.value == old_perm@.value.wrapping_add(1)) by {
+            // this assertion fails, as it should
+            admit();
+        };
+
+        Tracked(Ok(perm))
+    });
+}
 
 pub fn increment_good(patomic: &PAtomicU64)
     atomically (atomic_update) {
-        type IncrementPred,
         (old_perm: PermissionU64) -> (new_perm: PermissionU64),
         requires
             old_perm@.patomic == patomic.id(),
@@ -45,29 +70,28 @@ pub fn increment_good(patomic: &PAtomicU64)
 {
     let tracked mut au = atomic_update;
 
-    let mut val;
+    let mut curr;
     let maybe_au = try_open_atomic_update!(au, perm => {
-        val = patomic.load(Tracked(&perm));
+        curr = patomic.load(Tracked(&perm));
         Tracked(Err(perm))
     });
 
-    proof { au = tracked_unwrap_err(maybe_au.get()) };
+    proof { au = maybe_au.get().tracked_unwrap_err() };
 
-    loop invariant
-        au == atomic_update,
-    {
+    loop invariant au == atomic_update {
+        let next = curr.wrapping_add(1);
+
         let res;
         let maybe_au = try_open_atomic_update!(au, mut perm => {
             let ghost old_perm = perm;
 
-            res = patomic.compare_exchange_weak(Tracked(&mut perm), val, val.wrapping_add(1));
+            res = patomic.compare_exchange_weak(Tracked(&mut perm), curr, next);
 
-            Tracked(match &res {
-                Ok(_) => Ok(perm),
-                Err(_) => {
+            Tracked(match res {
+                Ok(..) => Ok(perm),
+                Err(..) => {
                     assert(perm@ == old_perm@);
-                    assume(perm == old_perm);
-
+                    assume(perm == old_perm); // :(
                     Err(perm)
                 },
             })
@@ -80,9 +104,8 @@ pub fn increment_good(patomic: &PAtomicU64)
             }
 
             Err(new) => {
-                proof { au = tracked_unwrap_err(maybe_au.get()) };
-
-                val = new;
+                proof { au = maybe_au.get().tracked_unwrap_err() };
+                curr = new;
             },
         }
     }
