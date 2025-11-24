@@ -1,14 +1,175 @@
 use super::super::prelude::*;
+use super::cmp::{OrdSpec, PartialEqSpec, PartialOrdSpec};
 use super::core::IndexSetTrustedSpec;
 use super::core::TrustedSpecSealed;
 
+use core::cmp::Ordering;
 use core::slice::Iter;
 
 use verus as verus_;
 
 verus_! {
 
-impl<T, const N: usize> TrustedSpecSealed for [T; N] {}
+pub open spec fn is_sorted_spec<T: PartialOrd>(s: Seq<T>) -> bool {
+    forall|i: int, j: int|
+        #![trigger s[i].partial_cmp_spec(&s[j])]
+        0 <= i < j < s.len() ==> s[i].partial_cmp_spec(&s[j]) == Some(Ordering::Less)
+            || s[i].partial_cmp_spec(&s[j]) == Some(Ordering::Equal)
+}
+
+pub open spec fn is_sorted_by_spec<'a, T: 'a, F: FnMut(&'a T, &'a T) -> bool>(
+    s: Seq<T>,
+    f: F,
+) -> bool {
+    forall|i: int, j: int, b: bool|
+        #![trigger f.ensures((&s[i], &s[j]), b)]
+        0 <= i < j < s.len() ==> f.ensures((&s[i], &s[j]), b) ==> b
+}
+
+pub open spec fn is_sorted_by_pivot_spec<'a, T: 'a, F: FnMut(&'a T) -> Ordering>(
+    s: Seq<T>,
+    f: F,
+) -> bool {
+    // The sequence is partitioned into [Less*, Equal*, Greater*]
+    forall|i: int, j: int, ord1: Ordering, ord2: Ordering|
+        #![trigger f.ensures((&s[i],), ord1), f.ensures((&s[j],), ord2)]
+        0 <= i < j < s.len() && f.ensures((&s[i],), ord1) && f.ensures(
+            (&s[j],),
+            ord2,
+        )
+        // Ordering itself is total.
+         ==> ord1.cmp_spec(&ord2) != Ordering::Greater
+}
+
+pub open spec fn is_sorted_by_key_spec<'a, T: 'a, F: FnMut(&'a T) -> K, K: PartialOrd>(
+    s: Seq<T>,
+    f: F,
+) -> bool {
+    forall|i: int, j: int, k1: K, k2: K|
+        #![trigger f.ensures((&s[i],), k1), f.ensures((&s[j],), k2)]
+        0 <= i < j < s.len() && f.ensures((&s[i],), k1) && f.ensures(
+            (&s[j],),
+            k2,
+        )
+        // K is partially ordered.
+         ==> k1.partial_cmp_spec(&k2) == Some(Ordering::Less) || k1.partial_cmp_spec(&k2) == Some(
+            Ordering::Equal,
+        )
+}
+
+pub assume_specification<T: PartialOrd>[ <[T]>::is_sorted ](s: &[T]) -> (r: bool)
+    ensures
+        r == is_sorted_spec(s@),
+;
+
+pub assume_specification<'a, T, F: FnMut(&'a T, &'a T) -> bool>[ <[T]>::is_sorted_by ](
+    s: &'a [T],
+    compare: F,
+) -> (r: bool)
+    ensures
+        r == is_sorted_by_spec(s@, compare),
+;
+
+pub assume_specification<'a, T, F: FnMut(&'a T) -> K, K: PartialOrd>[ <[T]>::is_sorted_by_key ](
+    s: &'a [T],
+    compare: F,
+) -> (r: bool)
+    ensures
+        r == is_sorted_by_key_spec(s@, compare),
+;
+
+/// Binary searches this slice for a given element.
+///
+/// Please be extra careful that if the slice is not properly sorted, the result is
+/// unspecified and meaningless.
+///
+/// See https://doc.rust-lang.org/stable/core/primitive.slice.html#method.binary_search
+pub assume_specification<T: Ord>[ <[T]>::binary_search ](s: &[T], x: &T) -> (r: Result<
+    usize,
+    usize,
+>)
+    ensures
+        is_sorted_spec(s@) ==> match r {
+            Ok(index) => {
+                &&& 0 <= index < s.len()
+                &&& s[index as int] == *x
+            },
+            Err(insert_index) => {
+                &&& 0 <= insert_index <= s.len()
+                &&& forall|i: int|
+                    #![trigger s[i].cmp_spec(x)]
+                    0 <= i < s.len() ==> {
+                        if i < insert_index {
+                            s[i].cmp_spec(x) != Ordering::Greater
+                        } else {
+                            s[i].cmp_spec(x) != Ordering::Less
+                        }
+                    }
+            },
+        },
+;
+
+/// Binary searches this slice with a comparator function.
+///
+/// Similar to `binary_search`, but allows the caller to provide a custom comparator function
+/// that compares each element to the desired pivot value.
+pub assume_specification<'a, T, F: FnMut(&'a T) -> Ordering>[ <[T]>::binary_search_by ](
+    s: &'a [T],
+    f: F,
+) -> (r: Result<usize, usize>) where
+    ensures
+        is_sorted_by_pivot_spec(s@, f) ==> match r {
+            Ok(index) => {
+                &&& 0 <= index < s.len()
+                &&& forall|ord: Ordering|
+                    #![trigger f.ensures((&s[index as int],), ord)]
+                    f.ensures((&s[index as int],), ord) ==> ord == Ordering::Equal
+            },
+            Err(insert_index) => {
+                &&& 0 <= insert_index <= s.len()
+                &&& forall|i: int, ord: Ordering|
+                    #![trigger f.ensures((&s[i],), ord)]
+                    0 <= i < s.len() && i < insert_index && f.ensures((&s[i],), ord) ==> ord
+                        != Ordering::Greater
+                &&& forall|i: int, ord: Ordering|
+                    #![trigger f.ensures((&s[i],), ord)]
+                    0 <= i < s.len() && i >= insert_index && f.ensures((&s[i],), ord) ==> ord
+                        != Ordering::Less
+            },
+        },
+;
+
+/// Binary searches this slice with a key extraction function.
+pub assume_specification<'a, T, B: Ord, F: FnMut(&'a T) -> B>[ <[T]>::binary_search_by_key ](
+    s: &'a [T],
+    b: &B,
+    f: F,
+) -> (r: Result<usize, usize>)
+    ensures
+        is_sorted_by_key_spec(s@, f) ==> match r {
+            Ok(index) => {
+                &&& 0 <= index < s.len()
+                &&& forall|key: B|
+                    #![trigger f.ensures((&s[index as int],), key)]
+                    f.ensures((&s[index as int],), key) ==> key.cmp_spec(b) == Ordering::Equal
+            },
+            Err(insert_index) => {
+                &&& 0 <= insert_index <= s.len()
+                &&& forall|i: int, key: B|
+                    #![trigger f.ensures((&s[i],), key)]
+                    0 <= i < s.len() && i < insert_index && f.ensures((&s[i],), key)
+                        ==> key.cmp_spec(b) != Ordering::Greater
+                &&& forall|i: int, key: B|
+                    #![trigger f.ensures((&s[i],), key)]
+                    0 <= i < s.len() && i >= insert_index && f.ensures((&s[i],), key)
+                        ==> key.cmp_spec(b) != Ordering::Less
+            },
+        },
+;
+
+impl<T, const N: usize> TrustedSpecSealed for [T; N] {
+
+}
 
 impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
     open spec fn spec_index_set_requires(&self, index: usize) -> bool {
@@ -20,7 +181,9 @@ impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
     }
 }
 
-impl<T> TrustedSpecSealed for [T] {}
+impl<T> TrustedSpecSealed for [T] {
+
+}
 
 impl<T> IndexSetTrustedSpec<usize> for [T] {
     open spec fn spec_index_set_requires(&self, index: usize) -> bool {
