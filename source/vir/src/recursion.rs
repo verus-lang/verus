@@ -132,16 +132,25 @@ pub(crate) fn check_decrease(
         let decreases_at_entry =
             SpannedTyped::new(&exp.span, &height_typ(ctx, exp), decreases_at_entryx);
         // 0 <= decreases_exp < decreases_at_entry
-        let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
-        let call = ExpX::Call(
-            if height_is_int(&exp.typ) {
-                CallFun::InternalFun(InternalFun::CheckDecreaseInt)
+
+        let (args, call_fun) = if height_is_int(&exp.typ) {
+            let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
+            (args, CallFun::InternalFun(InternalFun::CheckDecreaseInt))
+        } else {
+            let call_fun = CallFun::InternalFun(InternalFun::CheckDecreaseHeight);
+            // Coerce to Poly for loops (when we're called after poly.rs)
+            // For recursive functions (loop_id.is_none()), poly.rs will handle this
+            if loop_id.is_some() {
+                let new = crate::poly::coerce_exp_to_poly(ctx, &exp_for_decrease(ctx, exp)?);
+                let old = crate::poly::coerce_exp_to_poly(ctx, &decreases_at_entry);
+                let args = vec![new, old, dec_exp];
+                (args, call_fun)
             } else {
-                CallFun::InternalFun(InternalFun::CheckDecreaseHeight)
-            },
-            Arc::new(vec![]),
-            Arc::new(args),
-        );
+                let args = vec![exp_for_decrease(ctx, exp)?, decreases_at_entry, dec_exp];
+                (args, call_fun)
+            }
+        };
+        let call = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(args));
         dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
     }
     Ok(dec_exp)

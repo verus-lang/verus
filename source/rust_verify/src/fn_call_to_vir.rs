@@ -32,10 +32,10 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun,
-    CallTarget, ChainedOp, ComputeMode, Constant, Dt, ExprX, FieldOpr, FunX, HeaderExpr,
-    HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant,
-    SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent,
-    VariantCheck, VirErr,
+    CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX,
+    HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion,
+    MultiOp, OverflowBehavior, Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1404,7 +1404,11 @@ fn verus_item_to_vir<'tcx, 'a>(
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
             let zero_const = vir::ast_util::const_int_from_u128(0);
             let zero = mk_expr(ExprX::Const(zero_const))?;
-            mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), zero, varg))
+            mk_expr(ExprX::Binary(
+                BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
+                zero,
+                varg,
+            ))
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);
@@ -1651,23 +1655,35 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecOrdItem::Gt => BinaryOp::Inequality(InequalityOp::Gt),
                 },
                 VerusItem::BinaryOp(BinaryOpItem::Arith(arith_item)) => {
-                    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                    let ob = if bctx.in_ghost {
+                        OverflowBehavior::Truncate(range)
+                    } else {
+                        OverflowBehavior::Error(range)
+                    };
                     match arith_item {
-                        ArithItem::BuiltinAdd => BinaryOp::Arith(ArithOp::Add, mode_for_ghostness),
-                        ArithItem::BuiltinSub => BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
-                        ArithItem::BuiltinMul => BinaryOp::Arith(ArithOp::Mul, mode_for_ghostness),
+                        ArithItem::BuiltinAdd => BinaryOp::Arith(ArithOp::Add(ob)),
+                        ArithItem::BuiltinSub => BinaryOp::Arith(ArithOp::Sub(ob)),
+                        ArithItem::BuiltinMul => BinaryOp::Arith(ArithOp::Mul(ob)),
                     }
                 }
                 VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item)) => {
+                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
                     match spec_arith_item {
-                        SpecArithItem::Add => BinaryOp::Arith(ArithOp::Add, Mode::Spec),
-                        SpecArithItem::Sub => BinaryOp::Arith(ArithOp::Sub, Mode::Spec),
-                        SpecArithItem::Mul => BinaryOp::Arith(ArithOp::Mul, Mode::Spec),
+                        SpecArithItem::Add => {
+                            BinaryOp::Arith(ArithOp::Add(OverflowBehavior::Truncate(range)))
+                        }
+                        SpecArithItem::Sub => {
+                            BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Truncate(range)))
+                        }
+                        SpecArithItem::Mul => {
+                            BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Truncate(range)))
+                        }
                         SpecArithItem::EuclideanDiv => {
-                            BinaryOp::Arith(ArithOp::EuclideanDiv, Mode::Spec)
+                            BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
                         }
                         SpecArithItem::EuclideanMod => {
-                            BinaryOp::Arith(ArithOp::EuclideanMod, Mode::Spec)
+                            BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
                         }
                     }
                 }
@@ -1711,15 +1727,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             };
 
-            let e = mk_expr(ExprX::Binary(vop, lhs, rhs))?;
-            if matches!(
-                verus_item,
-                VerusItem::BinaryOp(BinaryOpItem::Arith(_) | BinaryOpItem::SpecArith(_))
-            ) {
-                Ok(mk_ty_clip(&expr_typ()?, &e, true))
-            } else {
-                Ok(e)
-            }
+            mk_expr(ExprX::Binary(vop, lhs, rhs))
         }
         VerusItem::BuiltinFunction(
             re @ (BuiltinFunctionItem::CallRequires | BuiltinFunctionItem::CallEnsures),

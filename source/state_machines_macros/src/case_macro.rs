@@ -82,9 +82,9 @@ pub fn case_on(
             } else {
                 step_name.clone()
             };
-            quote! {
+            quote_vstd! { vstd =>
                 #step::#step_name(#(#params),*) => {
-                    ::verus_builtin::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
+                    #vstd::prelude::assert_by(#name::State::#relation_name(#pre_post, #label_arg #(#params),*), {
                         reveal(#reveal_next_by);
                     });
                     #block
@@ -93,13 +93,13 @@ pub fn case_on(
         })
         .collect();
 
-    let res = quote! {
-        ::verus_builtin_macros::verus_proof_expr!{
+    let res = quote_vstd! { vstd =>
+        #vstd::prelude::verus_proof_expr!{
             {
                 reveal(#reveal_next);
-                match (choose |step: #step| #next_by(#pre_post, #label_arg step)) {
+                match (#vstd::prelude::choose(|step: #step| #next_by(#pre_post, #label_arg step))) {
                     #step::dummy_to_use_type_params(_) => {
-                        ::verus_builtin::assert_by(false, {
+                        #vstd::prelude::assert_by(false, {
                             reveal(#reveal_next_by);
                         });
                     }

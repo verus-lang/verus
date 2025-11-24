@@ -36,7 +36,7 @@ verus! {
 /// The `perm: PointsTo<V>` object tracks two pieces of data:
 ///  * [`perm.pptr()`](PointsTo::pptr) is the pointer that the permission is associated to.
 ///  * [`perm.mem_contents()`](PointsTo::mem_contents) is the memory contents, which is one of either:
-///     * [`MemContents::Uninit`](raw_ptr::MemContents::Uninit) if the memory pointed-to by
+///     * [`MemContents::Uninit`] if the memory pointed-to by
 ///       by the pointer is uninitialized.
 ///     * [`MemContents::Init(v)`](raw_ptr::MemContents::Init) if the memory points-to the
 ///       the value `v`.

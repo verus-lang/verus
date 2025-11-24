@@ -179,11 +179,23 @@ macro_rules! parse_quote_spanned_builtin {
     }
 }
 
-macro_rules! quote_spanned_builtin_vstd {
-    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+macro_rules! quote_spanned_builtin_builtin_macros {
+    ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
             let $v = crate::syntax::Vstd(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
         }
@@ -785,16 +797,18 @@ impl Visitor {
         };
 
         let mut out_stmts = vec![Stmt::Expr(
-            Expr::Verbatim(quote_spanned_builtin_vstd!(builtin, vstd, full_span =>
-                #builtin::assume_(
-                    #builtin::spec_eq(
-                        #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(
-                            #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
-                        ),
-                        ( #args_use_tokens ),
+            Expr::Verbatim(
+                quote_spanned_builtin_builtin_macros_vstd!(builtin, _builtin_macros, vstd, full_span =>
+                    #builtin::assume_(
+                        #builtin::spec_eq(
+                            #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(
+                                #vstd::atomic::AtomicUpdate::pred( #atomic_update ),
+                            ),
+                            ( #args_use_tokens ),
+                        )
                     )
-                )
-            )),
+                ),
+            ),
             Some(Semi { spans: [full_span] }),
         )];
 
@@ -1898,7 +1912,7 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
+                                quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1906,7 +1920,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
-                                ::verus_builtin_macros::verus! {
+                                #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -3423,6 +3437,11 @@ impl Visitor {
                     #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
                 ));
             }
+            let span = clos.span();
+            let output = match &clos.output {
+                ReturnType::Default => Type::Verbatim(quote_spanned!(span => _)),
+                ReturnType::Type(_, _, _, t) => (**t).clone(),
+            };
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3435,10 +3454,10 @@ impl Visitor {
                 let paren_token = Paren { span: into_spans(clos.span()) };
                 let args = Expr::Tuple(ExprTuple { attrs: vec![], paren_token, elems });
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
+                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::req(#args)])
                 ));
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
+                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::ens(#args, ret)])
                 ));
             }
             if let Some(Requires { token, mut exprs }) = requires {
@@ -3480,7 +3499,6 @@ impl Visitor {
                     })
                 }
             }
-            let span = clos.span();
             let inputs = clos.inputs.clone();
             clos.proof_fn = None;
             clos.options = None;
@@ -3494,11 +3512,11 @@ impl Visitor {
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let ret_mode = proof_fn_track_to_type(span, ret_tracked);
                 new_expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
-                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
+                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, #output, _>(#new_expr)
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, _>(#new_expr)
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, #output>(#new_expr)
                     ));
                 }
             }
@@ -5744,6 +5762,21 @@ impl ToTokens for Builtin {
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
+        };
+        tokens.extend(toks);
+    }
+}
+
+pub(crate) struct BuiltinMacros(pub Span);
+
+impl ToTokens for BuiltinMacros {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
     }

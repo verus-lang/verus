@@ -343,7 +343,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     &i,
                     self.mode_or_trusted(content_code_kind),
                     LineContent::Code(content_code_kind),
-                )
+                );
             }
         }
         let entered_proof_directive = match i {
@@ -402,6 +402,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_loop(&mut self, i: &'ast verus_syn::ExprLoop) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -437,6 +440,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_while(&mut self, i: &'ast verus_syn::ExprWhile) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -469,6 +475,28 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             self.mark(&ensures, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         }
         self.visit_expr(&i.cond);
+        self.visit_block(&i.body);
+    }
+
+    fn visit_expr_for_loop(&mut self, i: &'ast verus_syn::ExprForLoop) {
+        for it in &i.attrs {
+            self.visit_attribute(it);
+        }
+        if let Some(decreases) = &i.decreases {
+            self.mark(
+                decreases,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        if let Some(invariant) = &i.invariant {
+            self.mark(
+                &invariant,
+                self.mode_or_trusted(CodeKind::Proof),
+                LineContent::ProofDirective,
+            );
+        }
+        self.visit_expr(&i.expr);
         self.visit_block(&i.body);
     }
 
@@ -796,6 +824,11 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     LineContent::StateMachine(StateMachineCode::StructWithInvariantBody),
                 );
             }
+        } else if outer_last_segment == Some("proof".into())
+            || outer_last_segment == Some("proof_decl".into())
+            || outer_last_segment == Some("proof_with".into())
+        {
+            self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofBlock);
         } else if outer_last_segment == Some("atomic_with_ghost".into())
             || outer_last_segment == Some("my_atomic_with_ghost".into())
         // for mem allocator
@@ -847,6 +880,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         if entered_struct_with_invariants {
             self.inside_verus_macro_or_verify_or_consider -= 1;
         }
+    }
+
+    fn visit_attribute(&mut self, i: &'ast verus_syn::Attribute) {
+        if i.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
+            self.mark(i, CodeKind::Proof, LineContent::ProofDirective);
+        }
+        verus_syn::visit::visit_attribute(self, i);
     }
 
     fn visit_macro_delimiter(&mut self, i: &'ast verus_syn::MacroDelimiter) {
@@ -1150,6 +1190,7 @@ struct ItemAttrExit {
     entered_verify: bool,
     entered_external: bool,
     entered_consider: bool,
+    entered_verus_spec: bool,
 }
 
 impl ItemAttrExit {
@@ -1167,6 +1208,9 @@ impl ItemAttrExit {
             visitor.inside_line_count_ignore_or_external -= 1;
         }
         if self.entered_consider {
+            visitor.inside_verus_macro_or_verify_or_consider -= 1;
+        }
+        if self.entered_verus_spec {
             visitor.inside_verus_macro_or_verify_or_consider -= 1;
         }
     }
@@ -1188,6 +1232,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), Some(third))
@@ -1202,6 +1247,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), Some(third))
@@ -1216,6 +1262,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: false,
                             entered_consider: true,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), None)
@@ -1228,6 +1275,7 @@ impl<'f> Visitor<'f> {
                             entered_verify: true,
                             entered_external: false,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     (Some(first), Some(second), None)
@@ -1240,10 +1288,26 @@ impl<'f> Visitor<'f> {
                             entered_verify: false,
                             entered_external: true,
                             entered_consider: false,
+                            entered_verus_spec: false,
                         };
                     }
                     _ => {}
                 }
+            }
+
+            // Treat #[verus_spec(...)] as entering a Verus region so that
+            // the enclosed code is considered by the visitor like verus! code.
+            if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
+                self.inside_verus_macro_or_verify_or_consider += 1;
+                self.mark(&attr, CodeKind::Spec, LineContent::FunctionSpec);
+                return ItemAttrExit {
+                    entered_trusted: false,
+                    entered_ignore: false,
+                    entered_verify: false,
+                    entered_external: false,
+                    entered_consider: false,
+                    entered_verus_spec: true,
+                };
             }
 
             if attr.path().segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
@@ -1261,6 +1325,7 @@ impl<'f> Visitor<'f> {
             entered_verify: false,
             entered_external: false,
             entered_consider: false,
+            entered_verus_spec: false,
         }
     }
 

@@ -323,7 +323,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::Clip { range: int_range, .. } => {
                 match &arg.x {
-                    ExpX::Binary(BinaryOp::Arith(arith_op, _), lhs, rhs) => {
+                    ExpX::Binary(BinaryOp::Arith(arith_op), lhs, rhs) => {
                         return do_arith_then_clip(
                             ctx,
                             state,
@@ -527,7 +527,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             Ok(BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, extend) })
         }
-        ExpX::Binary(BinaryOp::Arith(arith_op, _), lhs, rhs) => {
+        ExpX::Binary(BinaryOp::Arith(arith_op), lhs, rhs) => {
             return do_arith_then_clip(ctx, state, &exp.span, arith_op, lhs, rhs, None);
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {
@@ -901,7 +901,7 @@ fn do_arith_then_clip(
     if int_range == Some(IntRange::Nat) {
         if lhs_extend == Extend::Zero
             && rhs_extend == Extend::Zero
-            && (*arith_op == ArithOp::Add || *arith_op == ArithOp::Mul)
+            && matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_))
         {
             int_range = None;
         } else {
@@ -909,17 +909,17 @@ fn do_arith_then_clip(
         }
     }
 
-    if matches!(arith_op, ArithOp::Add | ArithOp::Mul | ArithOp::Sub) {
+    if matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_) | ArithOp::Sub(_)) {
         let op = match arith_op {
-            ArithOp::Add => air::ast::BinaryOp::BitAdd,
-            ArithOp::Sub => air::ast::BinaryOp::BitSub,
-            ArithOp::Mul => air::ast::BinaryOp::BitMul,
-            ArithOp::EuclideanDiv | ArithOp::EuclideanMod => unreachable!(),
+            ArithOp::Add(_) => air::ast::BinaryOp::BitAdd,
+            ArithOp::Sub(_) => air::ast::BinaryOp::BitSub,
+            ArithOp::Mul(_) => air::ast::BinaryOp::BitMul,
+            ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_) => unreachable!(),
         };
 
         // How can we represent the result losslessly?
         let (lossless_w, lossless_extend) = match arith_op {
-            ArithOp::Add => {
+            ArithOp::Add(_) => {
                 match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // If X and Y fit in N bits, unsigned,
@@ -954,7 +954,7 @@ fn do_arith_then_clip(
                     }
                 }
             }
-            ArithOp::Sub => {
+            ArithOp::Sub(_) => {
                 let w = match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // max: 2^a - 1
@@ -981,7 +981,7 @@ fn do_arith_then_clip(
                 };
                 (w, Extend::Sign)
             }
-            ArithOp::Mul => match (lhs_extend, rhs_extend) {
+            ArithOp::Mul(_) => match (lhs_extend, rhs_extend) {
                 (Extend::Zero, Extend::Zero) => (lhs_w + rhs_w, Extend::Zero),
                 (Extend::Zero, Extend::Sign) | (Extend::Sign, Extend::Zero) => {
                     (lhs_w + rhs_w, Extend::Sign)
@@ -1062,12 +1062,12 @@ fn do_div_or_mod_then_clip(
     let rhs_expr = bv_rhs.expr.clone();
 
     let bv_expr = match (arith_op, extend) {
-        (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
+        (ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_), Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
-                ArithOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                ArithOp::EuclideanMod => air::ast::BinaryOp::BitURem,
+                ArithOp::EuclideanDiv(_) => air::ast::BinaryOp::BitUDiv,
+                ArithOp::EuclideanMod(_) => air::ast::BinaryOp::BitURem,
                 _ => unreachable!(),
             };
 
@@ -1078,7 +1078,7 @@ fn do_div_or_mod_then_clip(
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
-        (ArithOp::EuclideanDiv, Extend::Sign) => {
+        (ArithOp::EuclideanDiv(_), Extend::Sign) => {
             // Euclidean division for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
@@ -1123,7 +1123,7 @@ fn do_div_or_mod_then_clip(
 
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
-        (ArithOp::EuclideanMod, Extend::Sign) => {
+        (ArithOp::EuclideanMod(_), Extend::Sign) => {
             // Euclidean modulus for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/

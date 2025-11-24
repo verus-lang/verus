@@ -2171,3 +2171,361 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 6)
 }
+
+test_verify_one_file_with_options! {
+    #[test] binders_in_pattern_ghost_vs_no_ghost ["new-mut-ref"] => verus_code! {
+        tracked struct Pair<A, B>(tracked A, tracked B);
+
+        tracked struct GhostPair<A, B>(ghost A, ghost B);
+
+        enum Option<A> {
+            Some(A),
+            None,
+        }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        tracked enum GhostOption<A> {
+            Some(ghost A),
+            None,
+        }
+
+        proof fn consume<X>(tracked x: X) { }
+        proof fn use_ghost<X>(x: X) { }
+
+        proof fn test_ghost<X>(x: X, y: X) {
+            let tracked t = GhostPair(x, y);
+
+            match t {
+                GhostPair(x, _) => { use_ghost(x); }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        proof fn test_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Pair(x, y);
+
+            match t {
+                Pair(x, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        proof fn test_option_ghost<X>(x: X, y: X) {
+            let tracked t = Some(GhostPair(x, y));
+
+            match t {
+                Some(GhostPair(x, _)) => { use_ghost(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        proof fn test_option_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Some(Pair(x, y));
+
+            match t {
+                Some(Pair(x, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        proof fn test_let_ghost<X>(x: X, y: X) {
+            let tracked t = GhostPair(x, y);
+
+            let GhostPair(x, _) = t;
+            use_ghost(x);
+
+            assert(has_resolved(t));
+        }
+
+        proof fn test_let_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Pair(x, y);
+
+            let tracked Pair(x, _) = t;
+            consume(x);
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+
+        proof fn atbinder_test_ghost<X>(x: X, y: X) {
+            let tracked t = GhostPair(x, y);
+
+            match t {
+                x @ GhostPair(_, _) => { use_ghost(x); }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        proof fn atbinder_test_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Pair(x, y);
+
+            match t {
+                x @ Pair(_, _) => { consume(x); }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        proof fn atbinder_test_option_ghost<X>(x: X, y: X) {
+            let tracked t = GhostOption::Some(Pair(x, y));
+
+            match t {
+                GhostOption::Some(x @ Pair(_, _)) => { use_ghost(x); }
+                GhostOption::None => { }
+            }
+
+            assert(has_resolved(t));
+        }
+
+        proof fn atbinder_test_option_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Some(Pair(x, y));
+
+            match t {
+                Some(x @ Pair(_, _)) => { consume(x); }
+                None => { }
+            }
+
+            assert(has_resolved(t)); // FAILS
+        }
+
+        proof fn atbinder_test_let_ghost<X>(x: X, y: X) {
+            let tracked t = GhostPair(x, y);
+
+            let x @ GhostPair(_, _) = t;
+            use_ghost(x);
+
+            assert(has_resolved(t));
+        }
+
+        proof fn atbinder_test_let_no_ghost<X>(tracked x: X, tracked y: X) {
+            let tracked t = Pair(x, y);
+
+            let tracked x @ Pair(_, _) = t;
+            consume(x);
+
+            assert(has_resolved(t)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden ["new-mut-ref"] => verus_code! {
+        struct X {
+            a: u64
+        }
+
+        proof fn test(x: X) {
+            match x {
+                X { a: ref mut y } => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_atbinder_forbidden ["new-mut-ref"] => verus_code! {
+        struct X {
+            a: u64
+        }
+
+        struct Y {
+            x: X
+        }
+
+        proof fn test(y: Y) {
+            match y {
+                Y { x: ref mut x0 @ X { a: _ } } => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked_binder_forbidden ["new-mut-ref"] => verus_code! {
+        tracked struct X {
+            tracked a: u64
+        }
+
+        proof fn test(tracked x: X) {
+            match x {
+                X { a: ref mut y } => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked_atbinder_forbidden ["new-mut-ref"] => verus_code! {
+        tracked struct X {
+            a: u64
+        }
+
+        tracked struct Y {
+            tracked x: X
+        }
+
+        proof fn test(tracked y: Y) {
+            match y {
+                Y { x: ref mut x0 @ X { a: _ } } => {
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_tracked_unwrap ["new-mut-ref"] => verus_code! {
+        fn test<T>(t: &mut Tracked<T>) {
+            let Tracked(r) = t;
+        }
+        // TODO(new_mut_ref): needs better error msg
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode proof, expected mode exec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
+        fn test<T>(t: &mut Ghost<T>) {
+            let Ghost(r) = t;
+        }
+        // TODO(new_mut_ref): needs better error msg
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden_mut_ref_field ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+
+        struct X {
+            a: u64
+        }
+
+        proof fn test(x: Opt<&mut X>) {
+            match x {
+                Opt::Some(X { a: a }) => {
+                }
+                Opt::None => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_match_ok_when_no_binder ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+
+        struct X {
+            a: u64
+        }
+
+        proof fn test(x: Opt<&mut X>) {
+            match x {
+                Opt::Some(X { a: _ }) => {
+                }
+                Opt::None => { }
+            }
+        }
+
+        proof fn test2(x: Opt<&mut X>) {
+            match x {
+                Opt::Some(X { a: _ }) => {
+                }
+                Opt::None => { }
+            }
+
+            assert(x.is_none()); // FAILS
+        }
+
+        proof fn test3(x: Opt<&mut X>) {
+            match x {
+                Opt::Some(X { a: _ }) => {
+                }
+                Opt::None => { }
+            }
+
+            assert(x.is_some()); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_from_enum_with_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::*;
+
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        // Verus's analysis doesn't account for this, so we need to make sure Rust disallows it
+        fn test(xyz: Option<(Box<u64>, Box<u64>)>) {
+            let mut xyz = xyz;
+            let fst_ref = match xyz {
+                Some((ref mut a, _)) => a,
+                None => { loop { } }
+            };
+
+            let snd = match xyz {
+                Some((_, b)) => b,
+                None => { loop { } }
+            };
+
+            *fst_ref = Box::new(20);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `xyz` because it was mutably borrowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] partial_move_from_pair_with_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let mut xyz: (Box<u64>, Box<u64>) = (Box::new(0), Box::new(1));
+
+            let fst_ref = match xyz {
+                (ref mut a, _) => a,
+            };
+
+            let snd = match xyz {
+                (_, b) => b,
+            };
+
+            assert(mut_ref_current(fst_ref) == 0);
+            *fst_ref = Box::new(20);
+
+            assert(snd == 1);
+            assert(xyz.0 == 20);
+            assert(xyz.1 == 1);
+        }
+
+        fn test_fails() {
+            let mut xyz: (Box<u64>, Box<u64>) = (Box::new(0), Box::new(1));
+
+            let fst_ref = match xyz {
+                (ref mut a, _) => a,
+            };
+
+            let snd = match xyz {
+                (_, b) => b,
+            };
+
+            assert(mut_ref_current(fst_ref) == 0);
+            *fst_ref = Box::new(20);
+
+            assert(snd == 1);
+            assert(xyz.0 == 20);
+            assert(xyz.1 == 1);
+            assert(false); // FAILS
+        }
+
+    } => Err(err) => assert_fails(err, 1)
+}

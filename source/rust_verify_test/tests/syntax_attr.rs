@@ -1089,3 +1089,122 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_any_vir_error_msg(e, "postcondition not satisfied")
 }
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_simple code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+        )]
+        fn foo(x: u32) -> u32 {
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+            requires
+                x < 100,
+        )]
+        fn bar(x: u32) -> u32 {
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_spec_with_trailing_comma_complex code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+            )]
+        fn foo(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn bar(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn baz(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>
+                    -> z: Ghost<u32>
+            requires
+                x < 100,
+            ensures
+                ret == x + 1,
+                z@ == x,
+        )]
+        fn qux(x: u32) -> u32 {
+            proof_with!(|= Ghost(x));
+            (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_erase_unverified_code code!{
+        use vstd::prelude::*;
+        #[verus_spec(
+            with Tracked(x): Tracked<()>,
+            ensures true,
+        )]
+        fn foo() {
+            proof!{
+                let abcd = Tracked(x);
+                let y = x;
+            }
+            #[cfg_attr(not(customized_cfg), verus_spec(
+                invariant x == (),
+            ))]
+            for i in 0..10 {
+            }
+        }
+    } => Ok(())
+}

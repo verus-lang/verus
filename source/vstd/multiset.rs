@@ -21,9 +21,9 @@ verus! {
 /// where the number of nonzero entries is finite.
 ///
 /// Multisets can be constructed in a few different ways:
-///  * [`Multiset::empty()`] constructs an empty multiset.
+///  * [`Multiset::empty`] constructs an empty multiset.
 ///  * [`Multiset::singleton`] constructs a multiset that contains a single element with multiplicity 1.
-///  * [`Multiset::new`] constructs a multiset from a map of elements to multiplicities.
+///  * [`Multiset::from_map`] constructs a multiset from a map of elements to multiplicities.
 ///  * By manipulating existings multisets with [`Multiset::add`], [`Multiset::insert`],
 ///    [`Multiset::sub`], [`Multiset::remove`], [`Multiset::update`], or [`Multiset::filter`].
 ///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.
@@ -552,7 +552,7 @@ pub broadcast proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multis
 #[macro_export]
 macro_rules! assert_multisets_equal {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::vstd::multiset::assert_multisets_equal_internal!($($tail)*))
     };
 }
 

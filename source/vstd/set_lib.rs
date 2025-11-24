@@ -950,13 +950,11 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
 
 /// If an injective function is applied to each element of a set to construct
 /// another set, the two sets have the same size.
-// the dafny original lemma reasons with partial function f
 pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     requires
-        injective(f),
-        forall|a: A| x.contains(a) ==> y.contains(#[trigger] f(a)),
-        forall|b: B| (#[trigger] y.contains(b)) ==> exists|a: A| x.contains(a) && f(a) == b,
         x.finite(),
+        injective_on(f, x),
+        x.map(f) == y,
     ensures
         y.finite(),
         x.len() == y.len(),
@@ -970,8 +968,45 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
         }
     } else {
         let a = x.choose();
+        assert(x.remove(a).map(f) == y.remove(f(a)));
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
         assert(y == y.remove(f(a)).insert(f(a)));
+    }
+}
+
+/// If any function is applied to each element of a set to construct
+/// another set, the constructed set's length is at most the original's
+pub proof fn lemma_map_size_bound<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
+    requires
+        x.finite(),
+        x.map(f) == y,
+    ensures
+        y.finite(),
+        y.len() <= x.len(),
+    decreases x.len(),
+{
+    broadcast use group_set_properties;
+
+    if x.is_empty() {
+        if !y.is_empty() {
+            let e = y.choose();
+        }
+    } else {
+        let xx = x.choose();
+        let img = f(xx);
+        let pre = x.filter(|a: A| f(a) == f(xx));
+        x.lemma_len_filter(|a: A| f(a) == f(xx));
+        let wit = choose|a: A| x.contains(a) && f(a) == f(xx);
+        assert forall|b: B| (#[trigger] y.remove(f(xx)).contains(b)) implies exists|a: A|
+            x.difference(pre).contains(a) && f(a) == b by {
+            let pre_wit = choose|a: A| x.contains(a) && f(a) == b;
+            assert(x.difference(pre).contains(pre_wit));
+        }
+
+        assert(x == x.difference(pre).union(pre));
+        assert(y == y.remove(f(xx)).insert(f(xx)));
+        assert(x.difference(pre).map(f) == y.remove(f(xx)));
+        lemma_map_size_bound(x.difference(pre), y.remove(f(xx)), f);
     }
 }
 

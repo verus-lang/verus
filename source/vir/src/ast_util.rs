@@ -872,19 +872,25 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
+pub fn int_range_to_type_string(range: &IntRange) -> String {
+    match range {
+        IntRange::Int => "int".to_string(),
+        IntRange::Nat => "nat".to_string(),
+        IntRange::U(i) => format!("u{}", i),
+        IntRange::I(i) => format!("i{}", i),
+        IntRange::USize => "usize".to_string(),
+        IntRange::ISize => "isize".to_string(),
+        IntRange::Char => "char".to_string(),
+    }
+}
+
 pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
         typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
     }
     match &**typ {
         TypX::Bool => "bool".to_owned(),
-        TypX::Int(IntRange::Nat) => "nat".to_owned(),
-        TypX::Int(IntRange::Int) => "int".to_owned(),
-        TypX::Int(IntRange::ISize) => "isize".to_owned(),
-        TypX::Int(IntRange::USize) => "usize".to_owned(),
-        TypX::Int(IntRange::Char) => "char".to_owned(),
-        TypX::Int(IntRange::U(n)) => format!("u{n}"),
-        TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Int(range) => int_range_to_type_string(range),
         TypX::Float(n) => format!("f{n}"),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
