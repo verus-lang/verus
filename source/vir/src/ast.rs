@@ -447,19 +447,38 @@ pub enum UnaryOpr {
     HasResolved(Typ),
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum OverflowBehavior {
+    /// Return an int. This is the only value allowed in SST.
+    Allow,
+    /// Truncate to the given range
+    Truncate(IntRange),
+    /// Error if the result is outside the given range
+    Error(IntRange),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum Div0Behavior {
+    /// Return the (unspecified) result of divide- or mod-by-0.
+    /// This is the only value allowed in SST.
+    Allow,
+    /// Error if the dividend is 0.
+    Error,
+}
+
 /// Arithmetic operation that might fail (overflow or divide by zero)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum ArithOp {
     /// IntRange::Int +
-    Add,
+    Add(OverflowBehavior),
     /// IntRange::Int -
-    Sub,
+    Sub(OverflowBehavior),
     /// IntRange::Int *
-    Mul,
+    Mul(OverflowBehavior),
     /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
-    EuclideanDiv,
+    EuclideanDiv(Div0Behavior),
     /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
-    EuclideanMod,
+    EuclideanMod(Div0Behavior),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -531,7 +550,7 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    Arith(ArithOp, Mode),
+    Arith(ArithOp),
     /// Bit Vector Operators
     /// mode=Exec means we need overflow-checking
     Bitwise(BitwiseOp, Mode),

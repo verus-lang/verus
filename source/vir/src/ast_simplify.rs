@@ -14,8 +14,6 @@ use crate::ast::{
     Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr,
     Visibility,
 };
-use crate::ast_util::int_range_from_type;
-use crate::ast_util::is_integer_type;
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
     wrap_in_trigger,
@@ -640,34 +638,11 @@ fn simplify_one_expr(
                 ExprX::VarLoc(id) => {
                     // convert VarLoc to Var to be used on the RHS
                     let var = SpannedTyped::new(&lhs.span, &lhs.typ, ExprX::Var(id.clone()));
-                    // insert clipping if the lhs is an integer
-                    let new_rhs = if is_integer_type(&lhs.typ) {
-                        let range = int_range_from_type(&lhs.typ)
-                            .expect("integer types are expected to have a range");
-                        SpannedTyped::new(
-                            &expr.span,
-                            &lhs.typ,
-                            ExprX::Unary(
-                                // REVIEW:
-                                // right now, we are not taking into accound any "verifier(truncate)" annotations
-                                // that may be present in this expression; instead, we always truncate. In the future,
-                                // we may want to revisit this and make it consistent with what happens in regular
-                                // binary expressions.
-                                UnaryOp::Clip { range: range, truncate: true },
-                                SpannedTyped::new(
-                                    &expr.span,
-                                    &lhs.typ,
-                                    ExprX::Binary(op.clone(), var, rhs.clone()),
-                                ),
-                            ),
-                        )
-                    } else {
-                        SpannedTyped::new(
-                            &expr.span,
-                            &lhs.typ,
-                            ExprX::Binary(op.clone(), var, rhs.clone()),
-                        )
-                    };
+                    let new_rhs = SpannedTyped::new(
+                        &expr.span,
+                        &lhs.typ,
+                        ExprX::Binary(op.clone(), var, rhs.clone()),
+                    );
                     Ok(SpannedTyped::new(
                         &expr.span,
                         &expr.typ,
