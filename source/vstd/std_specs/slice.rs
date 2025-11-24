@@ -289,11 +289,6 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     }
 }
 
-pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
-    requires
-        false,
-;
-
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]
