@@ -1199,7 +1199,7 @@ fn open_au_block_to_vir<'tcx>(
     let close_expr = &**match_arm_body;
 
     // ```
-    // try_open_atomic_update_end(guard, res),
+    // try_open_atomic_update_end(guard, res)
     // ```
     let ExprKind::Call(
         Expr {
@@ -1267,7 +1267,7 @@ fn open_au_block_to_vir<'tcx>(
     let mid_exp = bctx.spanned_typed_new(
         mid_stmt.span,
         &typ_of_node(bctx, expr.span, &expr.hir_id, false)?,
-        ExprX::OpenAtomicUpdate(au_vir_arg, au_vir_binder, x_mut.is_mut(), vir_body),
+        ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, x_mut.is_mut(), vir_body),
     );
 
     Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(

@@ -699,7 +699,7 @@ impl<'a> Builder<'a> {
                 bb = self.build(e2, bb)?;
                 Ok(bb)
             }
-            ExprX::OpenAtomicUpdate(e1, _x_bind, _x_mut, e2) => {
+            ExprX::TryOpenAtomicUpdate(e1, _x_bind, _x_mut, e2) => {
                 bb = self.build(e1, bb)?;
                 bb = self.build(e2, bb)?;
                 Ok(bb)

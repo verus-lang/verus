@@ -525,7 +525,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         );
                         reach_set_ops(state, &ctxt);
                     }
-                    ExprX::OpenAtomicUpdate(..) | ExprX::Atomically(..) => {
+                    ExprX::TryOpenAtomicUpdate(..) | ExprX::Atomically(..) => {
                         reach_atomic_update_ops(state, &ctxt);
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {

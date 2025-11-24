@@ -2486,7 +2486,7 @@ pub(crate) fn expr_to_stm_opt(
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
-        ExprX::OpenAtomicUpdate(au_expr, x_bind, x_mut, body) => {
+        ExprX::TryOpenAtomicUpdate(au_expr, x_bind, x_mut, body) => {
             // This is roughtly what the generated SST looks like:
             //
             // ```
@@ -2697,15 +2697,14 @@ pub(crate) fn expr_to_stm_opt(
 
                 // generate output value
 
-                let TypX::Datatype(res_dt, res_typ_args, _) = &*expr.typ else { unreachable!() };
-                let unit_typ = &res_typ_args[0];
-
+                let unit_typ = crate::ast_util::mk_tuple_typ(&Default::default());
                 let (unit_var_id, unit_var_exp) = state.declare_temp_var_stm(
                     &expr.span,
-                    unit_typ,
+                    &unit_typ,
                     LocalDeclKind::Nondeterministic,
                 );
-                stms.push(assume_has_typ(&unit_var_id, unit_typ, &expr.span));
+
+                stms.push(assume_has_typ(&unit_var_id, &unit_typ, &expr.span));
 
                 let out_exp = SpannedTyped::new(
                     &expr.span,

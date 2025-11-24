@@ -771,11 +771,9 @@ pub fn try_open_atomic_update_begin<X, Y, Pred: UpdatePredicate<X, Y>>(
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
 pub fn try_open_atomic_update_end<X, Y, Pred: UpdatePredicate<X, Y>>(
-    //#[cfg(verus_keep_ghost)]
-    #[verifier::proof]
     _guard: BlockGuard<AtomicUpdate<X, Y, Pred>>,
-    commit_or_abort: Result<Tracked<Y>, Tracked<X>>,
-) -> Result<(), Tracked<AtomicUpdate<X, Y, Pred>>> {
+    commit_or_abort: Tracked<Result<Y, X>>,
+) -> Tracked<Result<(), AtomicUpdate<X, Y, Pred>>> {
     unimplemented!()
 }
 
@@ -783,7 +781,8 @@ pub fn try_open_atomic_update_end<X, Y, Pred: UpdatePredicate<X, Y>>(
 macro_rules! open_atomic_update {
     ($au:expr, $x:pat => $body:block) => {
         $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
-            Ok($body)
+            let tracked y = $body;
+            Tracked(Ok(y))
         })
     };
 }
@@ -792,7 +791,8 @@ macro_rules! open_atomic_update {
 macro_rules! open_atomic_update_in_proof {
     ($au:expr, $x:pat => $body:block) => {
         $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
-            Ok($body)
+            let tracked y = $body;
+            Tracked(Ok(y))
         })
     };
 }
@@ -802,7 +802,7 @@ macro_rules! peek_atomic_update {
     ($au:expr, $x:ident => $body:block) => {
         $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
             { let $x = &($x); $body; }
-            Err($x)
+            Tracked(Err($x))
         })
     };
 }
@@ -812,7 +812,7 @@ macro_rules! peek_atomic_update_in_proof {
     ($au:expr, $x:ident => $body:block) => {
         $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
             { let $x = &($x); $body; }
-            Err($x)
+            Tracked(Err($x))
         })
     };
 }
@@ -820,7 +820,6 @@ macro_rules! peek_atomic_update_in_proof {
 #[macro_export]
 macro_rules! try_open_atomic_update {
     ($($tail:tt)*) => {
-        #[cfg(verus_keep_ghost_body)]
         ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
             $crate::vstd::atomic::try_open_atomic_update_internal!($($tail)*)
         )
@@ -843,24 +842,10 @@ macro_rules! try_open_atomic_update_internal {
             #[cfg(verus_keep_ghost_body)]
             let (guard, $x) = $crate::vstd::atomic::try_open_atomic_update_begin($au);
             let res = $body;
-
             match res {
                 #[cfg(verus_keep_ghost_body)]
                 res => $crate::vstd::atomic::try_open_atomic_update_end(guard, res),
-
-                #[cfg(not(verus_keep_ghost_body))]
-                ::core::result::Result::Ok(..) => {
-                    ::core::result::Result::Ok(())
-                }
-
-                #[cfg(not(verus_keep_ghost_body))]
-                ::core::result::Result::Err(..) => {
-                    ::core::result::Result::Err(
-                        ::verus_builtin::Tracked::assume_new_fallback(
-                            || ::core::unreachable!()
-                        )
-                    )
-                }
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
     }

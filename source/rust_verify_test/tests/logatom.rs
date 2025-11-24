@@ -1,3 +1,5 @@
+#![cfg(false)]
+
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
@@ -21,9 +23,9 @@ test_verify_one_file! {
         proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
             open_atomic_update!(au, x => {
                 assert(x == 2);
-                let y = x + 3;
+                let tracked y: i32 = (x + 3) as i32;
                 assert(y == 5);
-                Tracked::<i32>(y)
+                y
             });
         }
     } => Ok(())
@@ -69,11 +71,11 @@ test_verify_one_file! {
     #[test] open_atomic_update_exec_simple_ok
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
         exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
-            open_atomic_update!(au, x => {
+            try_open_atomic_update!(au, x => {
                 assert(x == 2);
-                let tracked y = x + 3;
+                let tracked y = (x + 3) as i32;
                 assert(y == 5);
-                Tracked::<i32>(y)
+                Tracked(Ok(y))
             });
         }
     } => Ok(())

@@ -1737,7 +1737,7 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
-        ExprX::OpenAtomicUpdate(au, x_bind, _x_mut, body) => {
+        ExprX::TryOpenAtomicUpdate(au, x_bind, _x_mut, body) => {
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "cannot open atomic update in spec mode"));
             }

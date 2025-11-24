@@ -125,7 +125,7 @@ fn expr_get_early_exits_rec(
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
             }
-            ExprX::OpenAtomicUpdate(au, _binder, _is_mut, _body) => {
+            ExprX::TryOpenAtomicUpdate(au, _binder, _is_mut, _body) => {
                 expr_get_early_exits_rec(au, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
