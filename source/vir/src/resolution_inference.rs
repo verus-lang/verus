@@ -118,6 +118,7 @@ use crate::ast::{
     Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
 };
+use crate::ast_util::{bool_typ, mk_bool, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::{AstId, Span};
@@ -208,6 +209,8 @@ enum AstPosition {
     After(AstId),
     AfterArguments(AstId),
     OnUnwind(#[allow(dead_code)] AstId),
+    /// After the given bool-typed expression only when that expression evaluates to the given bool
+    AfterBool(AstId, bool),
 }
 
 struct Instruction {
@@ -655,27 +658,62 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
             } => {
-                if cond.is_some() {
-                    todo!() // TODO(new_mut_ref)
-                }
                 if *is_for_loop {
                     todo!() // TODO(new_mut_ref)
                 }
 
-                let body_bb = self.new_bb(AstPosition::Before(body.span.id), true);
+                let outer_body_bb = self.new_bb(AstPosition::Before(body.span.id), true);
                 let post_bb = self.new_bb(AstPosition::After(expr.span.id), true);
 
                 let drops = self.loop_drops(&expr);
                 self.loops.push(LoopEntry {
                     label: label.clone(),
                     break_bb: post_bb,
-                    continue_bb: body_bb,
+                    continue_bb: outer_body_bb,
                     drops: Rc::new(drops),
                 });
 
-                self.basic_blocks[bb].successors.push(body_bb);
+                self.basic_blocks[bb].successors.push(outer_body_bb);
 
-                let end_bb = self.build(body, body_bb);
+                let inner_body_bb = if let Some(cond) = cond {
+                    // loop {
+                    //   (outer body)
+                    //   if cond {
+                    //       (pre_break_bb)
+                    //       break;
+                    //   }
+                    //   (inner body)
+                    // }
+                    //
+                    // outer_body_bb -> {cond} -> cond_end_bb -[on true]-> inner_body_bb
+                    //                             |
+                    //                             ---[on false]-> pre_break_bb -> post_bb
+                    //
+                    // The reason for going through 'pre_break_bb' rather than going straight to
+                    // post_bb is that we can put assumes in pre_break_bb that can be helpful
+                    // to prove the invariants.
+
+                    let cond_end_bb = self.build(cond, outer_body_bb);
+                    let Ok(cond_end_bb) = cond_end_bb else {
+                        self.loops.pop().unwrap();
+                        return Ok(post_bb);
+                    };
+
+                    let pre_break_bb =
+                        self.new_bb(AstPosition::AfterBool(cond.span.id, false), false);
+                    let inner_body_bb = self.new_bb(AstPosition::Before(body.span.id), false);
+
+                    self.basic_blocks[cond_end_bb].successors.push(pre_break_bb);
+                    self.basic_blocks[cond_end_bb].successors.push(inner_body_bb);
+
+                    self.basic_blocks[pre_break_bb].successors.push(post_bb);
+
+                    inner_body_bb
+                } else {
+                    outer_body_bb
+                };
+
+                let end_bb = self.build(body, inner_body_bb);
 
                 let loop_entry = self.loops.pop().unwrap();
 
@@ -687,12 +725,13 @@ impl<'a> Builder<'a> {
                             AstPosition::After(body.span.id),
                             &loop_entry.drops,
                         );
-                        self.basic_blocks[end_bb].successors.push(body_bb);
+                        self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
                 }
 
                 Ok(post_bb)
             }
+
             ExprX::OpenInvariant(e1, _, e2, _) => {
                 // TODO(new_mut_ref): test cases
                 bb = self.build(e1, bb)?;
@@ -1968,7 +2007,14 @@ fn get_resolutions_for_place(
 fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert>) -> Expr {
     let mut id_map = HashMap::<
         AstId,
-        (Vec<FlattenedPlace>, Vec<FlattenedPlace>, Vec<FlattenedPlace>, bool),
+        (
+            Vec<FlattenedPlace>,
+            Vec<FlattenedPlace>,
+            Vec<FlattenedPlace>,
+            Vec<FlattenedPlace>,
+            Vec<FlattenedPlace>,
+            bool,
+        ),
     >::new();
     for r in resolutions.into_iter() {
         let ast_id = match r.position {
@@ -1980,9 +2026,10 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 // advanced unwind-related stuff?
                 continue;
             }
+            AstPosition::AfterBool(ast_id, _b) => ast_id,
         };
         if !id_map.contains_key(&ast_id) {
-            id_map.insert(ast_id, (vec![], vec![], vec![], false));
+            id_map.insert(ast_id, (vec![], vec![], vec![], vec![], vec![], false));
         }
 
         let entry = id_map.get_mut(&ast_id).unwrap();
@@ -1998,6 +2045,12 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 entry.2.push(r.place);
             }
             AstPosition::OnUnwind(_) => unreachable!(),
+            AstPosition::AfterBool(_ast_id, false) => {
+                entry.3.push(r.place);
+            }
+            AstPosition::AfterBool(_ast_id, true) => {
+                entry.4.push(r.place);
+            }
         };
     }
 
@@ -2006,7 +2059,9 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
         &mut VisitorScopeMap::new(),
         &mut id_map,
         &|id_map, scope_map, expr: &Expr| {
-            if let Some((befores, afters, after_args, seen_yet)) = id_map.get_mut(&expr.span.id) {
+            if let Some((befores, afters, after_args, after_f, after_t, seen_yet)) =
+                id_map.get_mut(&expr.span.id)
+            {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
                 }
@@ -2016,11 +2071,14 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
                 let afters_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, afters);
                 let after_args_exprs =
                     filter_and_make_assumes(cfg, &expr.span, scope_map, after_args);
+                let after_f_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_f);
+                let after_t_exprs = filter_and_make_assumes(cfg, &expr.span, scope_map, after_t);
 
                 let e = expr.clone();
                 let e = apply_after_args_exprs(e, after_args_exprs);
                 let e = apply_before_exprs(e, befores_exprs);
                 let e = apply_after_exprs(e, afters_exprs);
+                let e = apply_after_bool_exprs(e, after_f_exprs, after_t_exprs);
 
                 Ok(e)
             } else {
@@ -2028,9 +2086,14 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
             }
         },
         &|id_map, scope_map, stmt| {
-            if let Some((befores, afters, after_args, seen_yet)) = id_map.get_mut(&stmt.span.id) {
+            if let Some((befores, afters, after_args, after_f, after_t, seen_yet)) =
+                id_map.get_mut(&stmt.span.id)
+            {
                 if *seen_yet {
                     panic!("Verus internal error: duplicate AstId");
+                }
+                if after_f.len() > 0 || after_t.len() > 0 {
+                    panic!("Verus internal error: AfterBool should only apply to exprs");
                 }
                 assert!(after_args.len() == 0);
                 *seen_yet = true;
@@ -2062,7 +2125,7 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
     )
     .unwrap();
 
-    for (_, (_, _, _, found)) in id_map.iter() {
+    for (_, (_, _, _, _, _, found)) in id_map.iter() {
         if !*found {
             panic!("resolution_inference: bad run for apply_resolutions");
         }
@@ -2096,11 +2159,7 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
             UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
         ),
     );
-    SpannedTyped::new(
-        &ast_place.span,
-        &crate::ast_util::unit_typ(),
-        ExprX::AssumeResolved(e, ast_place.typ.clone()),
-    )
+    SpannedTyped::new(&ast_place.span, &unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
 }
 
 fn exprs_to_stmts(exprs: Vec<Expr>) -> Vec<Stmt> {
@@ -2129,16 +2188,51 @@ fn apply_after_exprs(expr: Expr, after_exprs: Vec<Expr>) -> Expr {
         for e in after_exprs.into_iter() {
             stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
         }
-        SpannedTyped::new(
-            &expr.span,
-            &crate::ast_util::unit_typ(),
-            ExprX::Block(Arc::new(stmts), None),
-        )
+        SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None))
     };
     SpannedTyped::new(
         &expr.span,
         &expr.typ,
         ExprX::UseLeftWhereRightCanHaveNoAssignments(expr.clone(), e),
+    )
+}
+
+fn apply_after_bool_exprs(expr: Expr, after_f: Vec<Expr>, after_t: Vec<Expr>) -> Expr {
+    if after_f.len() == 0 && after_t.len() == 0 {
+        return expr;
+    }
+
+    // Turn b into:
+    // if b { t_stmts; true } else { f_stmts; false }
+    // where t_stmts are the statements to run on true, and
+    // f_stmts are the statements to run on false
+
+    let mut f_stmts = vec![];
+    for e in after_f.into_iter() {
+        f_stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+    }
+
+    let mut t_stmts = vec![];
+    for e in after_t.into_iter() {
+        t_stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
+    }
+
+    SpannedTyped::new(
+        &expr.span,
+        &bool_typ(),
+        ExprX::If(
+            expr.clone(),
+            SpannedTyped::new(
+                &expr.span,
+                &unit_typ(),
+                ExprX::Block(Arc::new(t_stmts), Some(mk_bool(&expr.span, true))),
+            ),
+            Some(SpannedTyped::new(
+                &expr.span,
+                &unit_typ(),
+                ExprX::Block(Arc::new(f_stmts), Some(mk_bool(&expr.span, false))),
+            )),
+        ),
     )
 }
 
@@ -2152,11 +2246,8 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
             }
-            let block = SpannedTyped::new(
-                &expr.span,
-                &crate::ast_util::unit_typ(),
-                ExprX::Block(Arc::new(stmts), None),
-            );
+            let block =
+                SpannedTyped::new(&expr.span, &unit_typ(), ExprX::Block(Arc::new(stmts), None));
             SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
