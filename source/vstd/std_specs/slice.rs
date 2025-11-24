@@ -83,7 +83,7 @@ pub assume_specification<'a, T, F: FnMut(&'a T) -> K, K: PartialOrd>[ <[T]>::is_
 /// Please be extra careful that if the slice is not properly sorted, the result is
 /// unspecified and meaningless.
 ///
-/// See https://doc.rust-lang.org/stable/core/primitive.slice.html#method.binary_search
+/// See [here](https://doc.rust-lang.org/stable/core/primitive.slice.html#method.binary_search).
 pub assume_specification<T: Ord>[ <[T]>::binary_search ](s: &[T], x: &T) -> (r: Result<
     usize,
     usize,
