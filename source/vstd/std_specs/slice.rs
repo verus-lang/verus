@@ -167,6 +167,100 @@ pub assume_specification<'a, T, B: Ord, F: FnMut(&'a T) -> B>[ <[T]>::binary_sea
         },
 ;
 
+pub assume_specification<T: PartialEq>[ <[T]>::contains ](s: &[T], x: &T) -> (r: bool)
+    ensures
+        r <==> exists|i: int| 0 <= i < s.len() && #[trigger] s[i].eq_spec(x),
+;
+
+pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](s: &[T], needle: &[T]) -> (r: bool)
+    ensures
+        r <==> {
+            &&& needle@.len() <= s@.len()
+            &&& forall|i: int| 0 <= i < needle@.len() ==> #[trigger] s[i].eq_spec(&needle[i])
+        },
+;
+
+pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](s: &[T], needle: &[T]) -> (r: bool)
+    ensures
+        r <==> {
+            &&& needle@.len() <= s@.len()
+            &&& forall|i: int|
+                0 <= i < needle@.len() ==> s[(s@.len() - needle@.len()) + i].eq_spec(&needle[i])
+        },
+;
+
+pub assume_specification<T>[ <[T]>::swap ](s: &mut [T], i: usize, j: usize)
+    requires
+        0 <= i < old(s).len(),
+        0 <= j < old(s).len(),
+    ensures
+        s@ =~= old(s)@.update(i as int, old(s)@[j as int]).update(j as int, old(s)@[i as int]),
+;
+
+pub assume_specification<T>[ <[T]>::reverse ](s: &mut [T])
+    ensures
+        s@ =~= old(s)@.reverse(),
+;
+
+pub assume_specification<T>[ <[T]>::first ](s: &[T]) -> (r: Option<&T>)
+    ensures
+        r == if s@.len() == 0 {
+            None
+        } else {
+            Some(&s@.first())
+        },
+;
+
+pub assume_specification<T>[ <[T]>::last ](s: &[T]) -> (r: Option<&T>)
+    ensures
+        r == if s@.len() == 0 {
+            None
+        } else {
+            Some(&s@.last())
+        },
+;
+
+pub assume_specification<T>[ <[T]>::split_at_checked ](s: &[T], mid: usize) -> (r: Option<
+    (&[T], &[T]),
+>)
+    ensures
+        mid <= s@.len() ==> {
+            &&& r matches Some((left, right)) && {
+                &&& left@ =~= s@.subrange(0, mid as int)
+                &&& right@ =~= s@.subrange(mid as int, s@.len() as int)
+            }
+        },
+        mid > s@.len() ==> r matches None::<(&[T], &[T])>,
+;
+
+pub assume_specification<T>[ <[T]>::split_at ](s: &[T], mid: usize) -> (r: (&[T], &[T]))
+    ensures
+        mid <= s@.len() ==> {
+            &&& r.0@ =~= s@.subrange(0, mid as int)
+            &&& r.1@ =~= s@.subrange(mid as int, s@.len() as int)
+        },
+;
+
+pub assume_specification<T>[ <[T]>::rotate_left ](s: &mut [T], mid: usize)
+    ensures
+        mid <= s@.len() ==> s@ =~= old(s)@.subrange(mid as int, s@.len() as int) + old(s)@.subrange(
+            0,
+            mid as int,
+        ),
+;
+
+pub assume_specification<T>[ <[T]>::rotate_right ](s: &mut [T], mid: usize)
+    ensures
+        mid <= s@.len() ==> s@ =~= old(s)@.subrange((s@.len() - mid as int), s@.len() as int) + old(
+            s,
+        )@.subrange(0, (s@.len() - mid as int)),
+;
+
+pub assume_specification<T, const N: usize>[ <[[T; N]]>::as_flattened ](s: &[[T; N]]) -> (r: &[T])
+    ensures
+        r@ =~= Seq::new(s@.len() as nat, |i: int| s@[i]@).flatten(),
+;
+
 impl<T, const N: usize> TrustedSpecSealed for [T; N] {
 
 }
