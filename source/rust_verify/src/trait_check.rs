@@ -3,9 +3,9 @@
 
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
+use crate::spans::SpanContext;
 use crate::trait_check_emit::*;
 use crate::trait_check_generate::*;
-use crate::spans::SpanContext;
 use crate::util::error;
 use serde::Deserialize;
 use std::fs::File;
@@ -199,7 +199,6 @@ fn emit_check_tracked_lifetimes<'tcx>(
     }
     gen_state
 }
-
 
 pub(crate) struct LifetimeFileLoader {
     pub(crate) rust_code: String,
