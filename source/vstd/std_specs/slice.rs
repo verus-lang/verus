@@ -116,7 +116,7 @@ pub assume_specification<T: Ord>[ <[T]>::binary_search ](s: &[T], x: &T) -> (r: 
 pub assume_specification<'a, T, F: FnMut(&'a T) -> Ordering>[ <[T]>::binary_search_by ](
     s: &'a [T],
     f: F,
-) -> (r: Result<usize, usize>) where
+) -> (r: Result<usize, usize>)
     ensures
         is_sorted_by_pivot_spec(s@, f) ==> match r {
             Ok(index) => {
