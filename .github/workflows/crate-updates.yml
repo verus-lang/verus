@@ -11,6 +11,7 @@ permissions:
 jobs:
   bump-crate-versions:
     runs-on: ubuntu-latest
+    if: github.repository == 'verus-lang/verus'
 
     steps:
       - name: Checkout repository
