@@ -3,12 +3,10 @@
 
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
-use crate::lifetime_emit::*;
-use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
+use crate::trait_check_emit::*;
+use crate::trait_check_generate::*;
 use crate::util::error;
-use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
-use rustc_middle::ty::TyCtxt;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
@@ -56,42 +54,6 @@ macro_rules! ldbg {
     ($($val:expr),+ $(,)?) => {
         ($(ldbg!($val)),+,)
     };
-}
-
-// Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
-    rustc_hir_analysis::check_crate(tcx);
-    if tcx.dcx().err_count() != 0 {
-        return;
-    }
-    if !do_lifetime {
-        return;
-    }
-    let krate = tcx.hir_crate(());
-    for owner in &krate.owners {
-        if let MaybeOwner::Owner(owner) = owner {
-            match owner.node() {
-                OwnerNode::Item(item) => match &item.kind {
-                    rustc_hir::ItemKind::Fn { .. } => {
-                        tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                    }
-                    ItemKind::Impl(impll) => {
-                        for item_id in impll.items {
-                            let item = tcx.hir_impl_item(*item_id);
-                            match item.kind {
-                                ImplItemKind::Fn { .. } => {
-                                    tcx.ensure_ok().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => (),
-                },
-                _ => {}
-            }
-        }
-    }
 }
 
 const PROOF_FN_ONCE: u8 = 1;
@@ -212,7 +174,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     emit_state: &mut EmitState,
     vir_crate: &vir::ast::Krate,
 ) -> State {
-    let mut gen_state = crate::lifetime_generate::State::new();
+    let mut gen_state = crate::trait_check_generate::State::new();
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
     let prelude = PRELUDE
@@ -238,29 +200,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
     gen_state
 }
 
-struct LifetimeCallbacks {
-    code: String,
-}
-
-impl rustc_driver::Callbacks for LifetimeCallbacks {
-    // note: we only need to call into config here,
-    // to change the file_loader
-    fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
-        cfg.file_loader = Some(Box::new(LifetimeFileLoader { rust_code: self.code.clone() }));
-    }
-
-    fn after_expansion<'tcx>(
-        &mut self,
-        _compiler: &rustc_interface::interface::Compiler,
-        queries: TyCtxt<'tcx>,
-    ) -> rustc_driver::Compilation {
-        check(queries, false);
-        rustc_driver::Compilation::Stop
-    }
-}
-
-struct LifetimeFileLoader {
-    rust_code: String,
+pub(crate) struct LifetimeFileLoader {
+    pub(crate) rust_code: String,
 }
 
 impl LifetimeFileLoader {
@@ -302,7 +243,7 @@ struct Diagnostic {
 pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
 
 pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
-    let mut callbacks = LifetimeCallbacks { code: rust_code };
+    let mut callbacks = crate::driver::LifetimeCallbacks { code: rust_code };
     rustc_driver::run_compiler(rustc_args, &mut callbacks)
 }
 

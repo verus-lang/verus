@@ -1,4 +1,4 @@
-use crate::lifetime_ast::*;
+use crate::trait_check_ast::*;
 use rustc_span::{BytePos, Span};
 
 pub(crate) fn encode_id(kind: IdKind, rename_count: usize, raw_id: &String) -> String {

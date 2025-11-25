@@ -3208,9 +3208,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
-                // TODO the "lifetime" subsystem is misnamed now, as its only role is
-                // trait conflict checking
-                crate::lifetime::check_tracked_lifetimes(
+                crate::trait_check::check_tracked_lifetimes(
                     &spans,
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                     lifetime_log_file,
