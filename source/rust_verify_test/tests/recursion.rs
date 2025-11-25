@@ -2062,6 +2062,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] lemma_decreases_poly verus_code! {
+        spec fn dec<A>(x: &A, y: &A) -> bool {
+            decreases_to!(x => y)
+        }
+
+        proof fn test(x: int, y: int) {
+            assert(dec(&20int, &10int));
+            assert(dec(&x, &y) <==> x > y >= 0);
+            assert(dec(&x, &y) <==> x > y); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] commas_in_spec_sigs_github_issue947 verus_code! {
         spec fn add0(a: nat, b: nat) -> nat
             recommends

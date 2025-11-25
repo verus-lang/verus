@@ -494,13 +494,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
-            CallFun::InternalFun(InternalFun::CheckDecreaseInt) => {
-                assert!(exps.len() == 3);
-                let e0 = visit_exp_native(ctx, state, &exps[0]);
-                let e1 = visit_exp_native(ctx, state, &exps[1]);
-                let e2 = visit_exp_native(ctx, state, &exps[2]);
-                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(vec![e0, e1, e2])))
-            }
             CallFun::InternalFun(InternalFun::CheckDecreaseHeight) => {
                 assert!(exps.len() == 3);
                 let e0 = visit_exp_poly(ctx, state, &exps[0]);
