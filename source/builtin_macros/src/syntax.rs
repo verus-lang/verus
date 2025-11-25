@@ -1057,44 +1057,14 @@ impl Visitor {
             }
         }
         if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
-            match set {
-                InvariantNameSet::Any(any) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, any.span() => #verus_builtin::opens_invariants_any()),
-                        ),
-                        Some(Semi { spans: [any.span()] }),
-                    ));
-                }
-                InvariantNameSet::None(none) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, none.span() => #verus_builtin::opens_invariants_none()),
-                        ),
-                        Some(Semi { spans: [none.span()] }),
-                    ));
-                }
-                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
-                    for expr in exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, bracket_token.span.join() => #verus_builtin::opens_invariants([#exprs])),
-                        ),
-                        Some(Semi { spans: [bracket_token.span.close()] }),
-                    ));
-                }
-                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
-                    self.visit_expr_mut(&mut expr);
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set(#expr)),
-                        ),
-                        Some(Semi { spans: [expr.span()] }),
-                    ));
-                }
-            }
+            let full_span = set.span();
+            let mask_expr = self.inv_name_set_to_mask_expr(set);
+            spec_stmts.push(Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, full_span =>
+                    #verus_builtin::opens_invariant_mask(#mask_expr)
+                )),
+                Some(Semi { spans: [full_span] }),
+            ));
         }
 
         if let Some(SignatureUnwind { token, when }) = unwind {

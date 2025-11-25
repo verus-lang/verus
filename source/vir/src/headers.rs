@@ -212,42 +212,11 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     HeaderExprX::ExtraDependency(x) => {
                         extra_dependencies.push(x.clone());
                     }
-                    HeaderExprX::InvariantOpens(span, es) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
+                    HeaderExprX::OpensInvariantMask(mask_spec) => {
+                        if invariant_mask.is_some() {
+                            return Err(error(&stmt.span, "only one invariant mask spec allowed"));
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpens(span.clone(), es.clone()));
-                    }
-                    HeaderExprX::InvariantOpensExcept(span, es) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
-                        }
-                        invariant_mask =
-                            Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
-                    }
-                    HeaderExprX::InvariantOpensSet(e) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
-                        }
-                        invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
+                        invariant_mask = Some(mask_spec.clone());
                     }
                     HeaderExprX::AtomicSpec(e) => {
                         if atomic_update.is_some() {

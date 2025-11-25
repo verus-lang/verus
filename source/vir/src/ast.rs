@@ -613,11 +613,7 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Span, Exprs),
-    /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Span, Exprs),
-    /// The function might open the following invariants, specified as a set
-    InvariantOpensSet(Expr),
+    OpensInvariantMask(MaskSpec),
     /// Atomic update
     AtomicSpec(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.

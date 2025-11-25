@@ -779,41 +779,57 @@ pub fn try_open_atomic_update_end<X, Y, Pred: UpdatePredicate<X, Y>>(
 
 #[macro_export]
 macro_rules! open_atomic_update {
-    ($au:expr, $x:pat => $body:block) => {
-        $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
-            let tracked y = $body;
-            Tracked(Ok(y))
-        })
+    ($($tail:tt)*) => {
+        {
+            let _ = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!($($tail)*, "exec", Ok)
+            );
+        }
     };
 }
 
 #[macro_export]
 macro_rules! open_atomic_update_in_proof {
-    ($au:expr, $x:pat => $body:block) => {
-        $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
-            let tracked y = $body;
-            Tracked(Ok(y))
-        })
+    ($($tail:tt)*) => {
+        {
+            let _ = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!($($tail)*, "proof", Ok)
+            );
+        }
     };
 }
 
 #[macro_export]
 macro_rules! peek_atomic_update {
-    ($au:expr, $x:ident => $body:block) => {
-        $crate::vstd::atomic::try_open_atomic_update!($au, $x => {
-            { let $x = &($x); $body; }
-            Tracked(Err($x))
-        })
+    ($($tail:tt)*) => {
+        {
+            #[verifier::exec]
+            let err_au = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+                    $crate::atomic::try_open_atomic_update_internal!($($tail)*, "exec", Err)
+            );
+
+            #[verifier::ghost_wrapper]
+            $crate::prelude::tracked_exec(
+                #[verifier::tracked_block_wrapped]
+                ::verus_builtin::Tracked::get(err_au).tracked_unwrap_err()
+            )
+        }
     };
 }
 
 #[macro_export]
 macro_rules! peek_atomic_update_in_proof {
-    ($au:expr, $x:ident => $body:block) => {
-        $crate::vstd::atomic::try_open_atomic_update_in_proof!($au, $x => {
-            { let $x = &($x); $body; }
-            Tracked(Err($x))
-        })
+    ($($tail:tt)*) => {
+        {
+            #[verifier::proof]
+            let err_au = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+                    $crate::atomic::try_open_atomic_update_internal!($($tail)*, "proof", Err)
+            );
+
+            ::verus_builtin::Tracked::new(
+                ::verus_builtin::Tracked::get(err_au).tracked_unwrap_err()
+            )
+        }
     };
 }
 
@@ -821,7 +837,7 @@ macro_rules! peek_atomic_update_in_proof {
 macro_rules! try_open_atomic_update {
     ($($tail:tt)*) => {
         ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
-            $crate::vstd::atomic::try_open_atomic_update_internal!($($tail)*)
+            $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
 }
@@ -830,29 +846,57 @@ macro_rules! try_open_atomic_update {
 macro_rules! try_open_atomic_update_in_proof {
     ($($tail:tt)*) => {
         ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
-            $crate::vstd::atomic::try_open_atomic_update_internal!($($tail)*)
+            $crate::atomic::try_open_atomic_update_internal!($($tail)*)
         )
     };
 }
 
 #[macro_export]
 macro_rules! try_open_atomic_update_internal {
+    ($au:expr, $x:pat => $body:block, "exec", $fun:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+            #[verifier::exec]
+            let v = $body;
+
+            #[verifier::ghost_wrapper]
+            ::vstd::prelude::tracked_exec(
+                #[verifier::tracked_block_wrapped]
+                ::core::result::Result::$fun(
+                    ::verus_builtin::Tracked::get(v)
+                )
+            )
+        })
+    };
+
+    ($au:expr, $x:pat => $body:block, "proof", $fun:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+            #[verifier::proof]
+            let v = $body;
+
+            ::verus_builtin::Tracked::new(
+                ::core::result::Result::$fun(
+                    ::verus_builtin::Tracked::get(v)
+                )
+            )
+        })
+    };
+
     ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            let (guard, $x) = $crate::vstd::atomic::try_open_atomic_update_begin($au);
+            let (guard, $x) = $crate::atomic::try_open_atomic_update_begin($au);
             let res = $body;
             match res {
                 #[cfg(verus_keep_ghost_body)]
-                res => $crate::vstd::atomic::try_open_atomic_update_end(guard, res),
+                res => $crate::atomic::try_open_atomic_update_end(guard, res),
                 _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
             }
         }
-    }
+    };
 }
 
 #[doc(hidden)]
-pub use try_open_atomic_update_internal;
+pub use {try_open_atomic_update_internal};
 pub use {
     open_atomic_update,
     open_atomic_update_in_proof,

@@ -2430,6 +2430,7 @@ pub(crate) fn expr_to_stm_opt(
             // let x_tmp = new existential;
             //
             // assume(req(au_tmp, x_tmp));
+            // assert(inner_mask(au_tmp) ⊆ state.mask);
             //
             // let $mut $x = x_tmp;
             // let res = $body;
@@ -2728,13 +2729,17 @@ pub(crate) fn expr_to_stm_opt(
             ));
         }
         ExprX::Atomically(info, args_expr, body_expr) => {
+            // ```
             // let pred = $pred_expr;
             // let au = new existential;
             // assume(pred(au) == pred);
             //
+            // assert(outer_mask(au) ⊆ state.mask);
+            //
             // () = $body;
             //
             // au
+            // ```
 
             let AtomicCallInfoX { au_typ, au_typ_args, pred_typ, .. } = info.as_ref();
 
@@ -2839,13 +2844,18 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::Some(au_var_exp)))
         }
         ExprX::Update(info, x_expr) => {
+            // ```
             // let x = $x_expr;
             // let y = new existential;
+            //
+            // recommend(inner_mask(au) ⊆ outer_mask(au));
+            // assert(inner_mask(au) ⊆ state.mask);
             //
             // assert(req(au, x));
             // assume(ens(au, x, y));
             //
             // y
+            // ```
 
             let AtomicCallInfoX { au_typ_args, x_typ, y_typ, .. } = info.as_ref();
             let Some(au_var_exp) = state.au_var_exp.clone() else {
@@ -2895,9 +2905,7 @@ pub(crate) fn expr_to_stm_opt(
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
                     ))
                 }
-            }
-
-            if !state.checking_recommends(ctx) {
+            } else {
                 let state_mask = state.mask.as_ref().unwrap();
                 for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
                     stms.push(Spanned::new(

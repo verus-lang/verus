@@ -128,41 +128,9 @@ pub fn extra_dependency<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_none"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariant_mask"]
 #[verifier::proof]
-pub fn opens_invariants_none() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_any"]
-#[verifier::proof]
-pub fn opens_invariants_any() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants"]
-#[verifier::proof]
-pub fn opens_invariants<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_except"]
-#[verifier::proof]
-pub fn opens_invariants_except<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_set"]
-#[verifier::proof]
-pub fn opens_invariants_set<A>(_a: A) {
+pub fn opens_invariant_mask(_inv_mask: ()) {
     unimplemented!();
 }
 
