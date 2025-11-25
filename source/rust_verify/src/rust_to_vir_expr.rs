@@ -41,11 +41,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Div0Behavior, Dt,
-    ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode,
-    OverflowBehavior, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent,
-    VariantCheck, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, CallTarget, Constant,
+    Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange,
+    InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX,
+    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -2731,7 +2731,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let tc = bctx.types;
 
     let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
-    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
+    let bb_for_ghostness =
+        if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error };
 
     let vop = match op {
         BinOpKind::And => BinaryOp::And,
@@ -2764,10 +2765,10 @@ fn binopkind_to_binaryop_inner<'tcx>(
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
                 _ => panic!("bitwise XOR for this type not supported"),
             }
@@ -2780,10 +2781,10 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
                 t => panic!("bitwise AND for this type not supported {:#?}", t),
             }
@@ -2796,10 +2797,10 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                 }
                 _ => panic!("bitwise OR for this type not supported"),
             }
@@ -2811,7 +2812,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for <<");
             };
-            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), mode_for_ghostness)
+            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
         }
         BinOpKind::Shr => {
             let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -2820,7 +2821,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for >>");
             };
-            BinaryOp::Bitwise(BitwiseOp::Shr(w), mode_for_ghostness)
+            BinaryOp::Bitwise(BitwiseOp::Shr(w), bb_for_ghostness)
         }
     };
     Ok(vop)

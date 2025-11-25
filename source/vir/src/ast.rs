@@ -466,6 +466,16 @@ pub enum Div0Behavior {
     Error,
 }
 
+/// Behavior for the bounds check of the RHS applied to either Shl (<<) or Shr (>>).
+/// (This doesn't mean anything for the other BitwiseOp kinds)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BitshiftBehavior {
+    /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
+    Allow,
+    /// Error if the right-hand side of the bit-shift is outside the allowed range
+    Error,
+}
+
 /// Arithmetic operation that might fail (overflow or divide by zero)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum ArithOp {
@@ -495,14 +505,15 @@ pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    // Shift right. The bitwidth argument is only needed to do a bounds-check;
-    // the actual result, when computed on unbounded integers, is independent
-    // of the bitwidth.
+    /// Shift right. The bitwidth argument is only needed to do a bounds-check
+    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
+    /// is independent of the bitwidth.
+    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
     Shr(IntegerTypeBitwidth),
-    // Shift left up to w bits, ignoring everything to the left of w.
-    // To interpret the result as an unbounded int,
-    // either zero-extend or sign-extend, depending on the bool argument.
-    // (True = sign-extend, False = zero-extend)
+    /// Shift left up to w bits, ignoring everything to the left of w.
+    /// To interpret the result as an unbounded int,
+    /// either zero-extend or sign-extend, depending on the bool argument.
+    /// (True = sign-extend, False = zero-extend)
     Shl(IntegerTypeBitwidth, bool),
 }
 
@@ -552,8 +563,7 @@ pub enum BinaryOp {
     /// IntRange operations that may require overflow or divide-by-zero checks
     Arith(ArithOp),
     /// Bit Vector Operators
-    /// mode=Exec means we need overflow-checking
-    Bitwise(BitwiseOp, Mode),
+    Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
     /// Used only for handling verus_builtin::array_index

@@ -1,9 +1,9 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, ByRef, CallTarget, ComputeMode,
-    Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, ByRef,
+    CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function, Ident,
+    IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding,
+    PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{
@@ -2607,7 +2607,7 @@ fn binary_op_exp(
         },
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (Mode::Exec, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -2626,7 +2626,7 @@ fn binary_op_exp(
                     let msg = "possible bit shift underflow/overflow";
                     Some((assert_exp, msg))
                 }
-                (Mode::Proof | Mode::Spec, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
                     None

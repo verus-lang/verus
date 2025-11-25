@@ -31,11 +31,11 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
-    ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
-    InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp,
-    OverflowBehavior, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
-    VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BuiltinSpecFun,
+    CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr,
+    HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode,
+    MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt,
+    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1599,16 +1599,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                 VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(spec_bitwise)) => {
                     match spec_bitwise {
                         verus_items::SpecBitwiseItem::BitAnd => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::BitOr => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::BitXor => {
                             if matches!(*lhs.typ, TypX::Bool) {
                                 BinaryOp::Xor
                             } else {
-                                BinaryOp::Bitwise(BitwiseOp::BitXor, Mode::Spec)
+                                BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                             }
                         }
                         verus_items::SpecBitwiseItem::Shl => {
@@ -1618,7 +1618,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             ) else {
                                 return err_span(expr.span, "expected finite integer width");
                             };
-                            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::Shr => {
                             let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -1627,7 +1627,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             ) else {
                                 return err_span(expr.span, "expected finite integer width");
                             };
-                            BinaryOp::Bitwise(BitwiseOp::Shr(w), Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::Shr(w), BitshiftBehavior::Allow)
                         }
                     }
                 }
