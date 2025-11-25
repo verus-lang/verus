@@ -99,9 +99,7 @@ pub trait Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                does_decrease(old(self).decrease(), self.decrease())
-                // REVIEW: This is working around https://github.com/verus-lang/verus/issues/1996
-                && does_decrease(old(self).decrease().unwrap(), self.decrease().unwrap()), 
+                does_decrease(old(self).decrease(), self.decrease()),
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -132,9 +130,7 @@ pub trait DoubleEndedIterator : Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                does_decrease(old(self).decrease(), self.decrease())
-                // REVIEW: Same workaround as above
-                && does_decrease(old(self).decrease().unwrap(), self.decrease().unwrap()), 
+                does_decrease(old(self).decrease(), self.decrease()),
     ;
 
 }
@@ -922,7 +918,7 @@ fn for_loop_test_vec() {
                     y.snapshot@.completes(),        // AUTO
                     y.index == y.snapshot@.seq().len(), // AUTO
                 decreases
-                    y.iter.decrease().unwrap_or(arbitrary()),
+                    y.iter.decrease(),
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
