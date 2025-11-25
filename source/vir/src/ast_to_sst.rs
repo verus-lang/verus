@@ -2812,6 +2812,7 @@ fn place_to_exp_pair_rec(
         PlaceX::Temporary(_) => {
             todo!(); // TODO(new_mut_ref) handle temps
         }
+        PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
     }
 }
 

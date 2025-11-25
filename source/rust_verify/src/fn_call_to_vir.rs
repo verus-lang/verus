@@ -33,9 +33,9 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun, CallTarget,
     ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
-    InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, OverflowBehavior,
-    Quant, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
-    VirErr,
+    InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp,
+    OverflowBehavior, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
