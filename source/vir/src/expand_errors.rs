@@ -275,7 +275,13 @@ fn do_expansion_if_assert_id_matches(
 
             Some(expand_exp(ctx, ectx, assert_id, the_exp, local_decls))
         }
-        StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
+        StmX::Call {
+            assert_id: Some(a_id),
+            fun: crate::sst::CallTarget::Fun(fun),
+            typ_args,
+            args,
+            ..
+        } if a_id == assert_id => {
             let preconditions = split_precondition(ctx, &stm.span, fun, typ_args, args);
             // There might be multiple preconditions, there might be some preconditions
             // with multiple conjuncts ... we want to handle these all the same way,

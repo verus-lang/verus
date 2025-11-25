@@ -943,8 +943,8 @@ fn check_expr_handle_mut_arg(
             }
             Ok(*ret_mode)
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
+            assert!(attrs.autospec == AutospecUsage::Final);
 
             let function = match ctxt.funs.get(x) {
                 None => {
@@ -1074,6 +1074,15 @@ fn check_expr_handle_mut_arg(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, arg, Mode::Spec)?;
             }
             Ok(Mode::Spec)
+        }
+        ExprX::Call(CallTarget::AssumeExternal, es, None) => {
+            if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
+                return Err(error(&expr.span, "cannot call external function from non-exec mode"));
+            }
+            for arg in es.iter() {
+                check_expr_has_mode(ctxt, record, typing, Mode::Exec, arg, Mode::Exec)?;
+            }
+            Ok(Mode::Exec)
         }
         ExprX::Call(_, _, Some(_)) => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));

@@ -456,9 +456,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec), _, _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, attrs), _, _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
-                        assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
+                        assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);

@@ -251,13 +251,23 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         }
     };
 
-    record_call(bctx, expr, ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost));
+    let assume_external_allowed =
+        crate::attributes::get_externals_available_without_declaration_walk_parents(
+            bctx.ctxt.tcx,
+            bctx.fun_id,
+        );
+
+    let resolved_call =
+        ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost, assume_external_allowed);
+    record_call(bctx, expr, resolved_call);
 
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
-    let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
+    let call_target_attrs =
+        vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed };
+    let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
@@ -309,11 +319,16 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    record_call(bctx, expr, ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost));
+    let resolved_call =
+        ResolvedCall::Call(trait_fun.clone(), record_trait_fun, bctx.in_ghost, false);
+    record_call(bctx, expr, resolved_call);
 
     let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
     let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
-    let call_target = CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, autospec_usage);
+    let call_target_attrs =
+        vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed: false };
+    let call_target =
+        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
     let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call(call_target, args, None);
 
@@ -2360,12 +2375,12 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, in_ghost, ae), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost)
+            ResolvedCall::Call(ufun, rfun, in_ghost, ae)
         }
         (resolved_call, _) => resolved_call,
     };

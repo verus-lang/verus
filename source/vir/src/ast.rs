@@ -779,6 +779,13 @@ pub enum ImplPath {
 pub type ImplPaths = Arc<Vec<ImplPath>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CallTargetAttrs {
+    pub autospec: AutospecUsage,
+    /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
+    pub assume_external_allowed: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTargetKind {
     /// Statically known function
     Static,
@@ -795,11 +802,14 @@ pub enum CallTargetKind {
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum CallTarget {
     /// Regular function, passing some type arguments
-    Fun(CallTargetKind, Fun, Typs, ImplPaths, AutospecUsage),
+    Fun(CallTargetKind, Fun, Typs, ImplPaths, CallTargetAttrs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
     BuiltinSpecFun(BuiltinSpecFun, Typs, ImplPaths),
+    /// If enabled, unsoundly allow calls to exec functions with no specs,
+    /// and treat them as requires true, ensures true.
+    AssumeExternal,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq, Hash)]

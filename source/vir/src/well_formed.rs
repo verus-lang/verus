@@ -388,7 +388,17 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), args, _post_args) => {
+        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), args, _post_args) => {
+            if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
+                if ctxt.no_cheating {
+                    return Err(error(
+                        &expr.span,
+                        "call via externals_available_without_declaration not allowed with --no-cheating",
+                    ));
+                }
+                // allow missing function via AssumeExternal
+                return Ok(());
+            }
             let f =
                 check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span, emit)?;
             let Ok(f) = f else {
