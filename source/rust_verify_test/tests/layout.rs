@@ -250,7 +250,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = unsigned_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -258,7 +258,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_max(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -266,7 +266,7 @@ test_verify_one_file! {
         fn test(y: nat) {
             let x = signed_min(y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -274,7 +274,7 @@ test_verify_one_file! {
         fn test() {
             let x = arch_word_bits();
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file_with_options! {

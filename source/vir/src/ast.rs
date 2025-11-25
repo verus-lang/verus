@@ -1049,18 +1049,26 @@ pub enum ReadKind {
     Spec,
 }
 
-// TODO(mut_refs): add ArrayIndex
-// TODO(mut_refs): add Tracked coercions
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ModeWrapperMode {
+    /// For Ghost wrapper
+    Spec,
+    /// For Tracked wrapper
+    Proof,
+}
+
+// TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
-    /// TODO(mut_refs): Decide: is this only for single-variant structs? What about unions?
+    /// TODO(new_mut_ref): Decide: is this only for single-variant structs? What about unions?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
     Local(VarIdent),
     Temporary(Expr),
+    ModeUnwrap(Place, ModeWrapperMode),
 }
 
 /// Statement, similar to rustc_hir::Stmt

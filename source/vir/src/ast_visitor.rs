@@ -785,6 +785,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| place_new(PlaceX::Temporary(R::get(e))))
             }
+            PlaceX::ModeUnwrap(p, mode) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::ModeUnwrap(R::get(p), *mode)))
+            }
         }
     }
 
