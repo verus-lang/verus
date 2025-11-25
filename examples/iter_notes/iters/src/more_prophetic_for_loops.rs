@@ -879,6 +879,7 @@ fn for_loop_test_vec() {
     //
     // for x in y: v 
     //     invariant
+    //        forall |i| 0 <= i < y.index@ ==> w[i] == *(y.seq()[i])
     //         w@ == y.seq().take(y.index@).map_values(|r:&u8| *r) &&
     //         count == w.len() <= u64::MAX
     // {
