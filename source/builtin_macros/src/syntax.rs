@@ -3391,7 +3391,7 @@ impl Visitor {
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                verus_builtin::infer_spec_for_loop_iter(
+                #vstd::prelude::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(VERUS_iter)),
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
