@@ -12,7 +12,7 @@ use crate::ast_util::{
 };
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
     Message, Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error,
     warning,
@@ -1133,7 +1133,9 @@ fn stm_call(
         match &state.mask {
             Some(caller_mask) => {
                 let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
-                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                for assertion in
+                    callee_mask.subset_of(ctx, caller_mask, span, MaskQueryKind::FunctionCall)
+                {
                     stms.push(Spanned::new(
                         span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2375,7 +2377,12 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             if !state.checking_recommends(ctx) {
-                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
+                for assertion in state.mask.as_ref().unwrap().contains(
+                    ctx,
+                    &ns_exp,
+                    &expr.span,
+                    MaskQueryKind::OpenInvariant,
+                ) {
                     stms1.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2511,7 +2518,12 @@ pub(crate) fn expr_to_stm_opt(
 
             if !state.checking_recommends(ctx) {
                 let state_mask = state.mask.as_ref().unwrap();
-                for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
+                for assertion in inner_mask.subset_of(
+                    ctx,
+                    state_mask,
+                    &expr.span,
+                    MaskQueryKind::OpenAtomicUpdate,
+                ) {
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2820,7 +2832,12 @@ pub(crate) fn expr_to_stm_opt(
 
             if !state.checking_recommends(ctx) {
                 let state_mask = state.mask.as_ref().unwrap();
-                for assertion in outer_mask.subset_of(ctx, state_mask, &expr.span) {
+                for assertion in outer_mask.subset_of(
+                    ctx,
+                    state_mask,
+                    &expr.span,
+                    MaskQueryKind::AtomicFunctionCall,
+                ) {
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2899,7 +2916,12 @@ pub(crate) fn expr_to_stm_opt(
                 let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
                 let outer_mask = MaskSet::arbitrary(&outer_mask_exp);
 
-                for assertion in inner_mask.subset_of(ctx, &outer_mask, &expr.span) {
+                for assertion in inner_mask.subset_of(
+                    ctx,
+                    &outer_mask,
+                    &expr.span,
+                    MaskQueryKind::AtomicUpdateWellFormed,
+                ) {
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2907,7 +2929,12 @@ pub(crate) fn expr_to_stm_opt(
                 }
             } else {
                 let state_mask = state.mask.as_ref().unwrap();
-                for assertion in inner_mask.subset_of(ctx, state_mask, &expr.span) {
+                for assertion in inner_mask.subset_of(
+                    ctx,
+                    state_mask,
+                    &expr.span,
+                    MaskQueryKind::UpdateFunctionCall,
+                ) {
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),

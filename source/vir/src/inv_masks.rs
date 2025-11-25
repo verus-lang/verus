@@ -27,6 +27,74 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaskQueryKind {
+    OpenInvariant,
+    OpenAtomicUpdate,
+    FunctionCall,
+    AtomicFunctionCall,
+    UpdateFunctionCall,
+    AtomicUpdateWellFormed,
+}
+
+impl MaskQueryKind {
+    fn is_call(&self) -> bool {
+        match self {
+            Self::FunctionCall | Self::AtomicFunctionCall | Self::UpdateFunctionCall => true,
+            _ => false,
+        }
+    }
+}
+
+impl MaskQueryKind {
+    fn err_one_one(self, primary: &Span, elem: &Span, removed: &Span) -> Message {
+        let mut err = error_with_label(removed, "possible invariant collision", "this invariant")
+            .primary_label(elem, "might be the same as this invariant");
+
+        if self.is_call() {
+            err = err.primary_label(primary, "at this call-site");
+        }
+
+        err
+    }
+
+    fn err_one_many(self, primary: &Span, elem: &Span, _inserted: &Span) -> Message {
+        if self.is_call() {
+            error_with_label(
+                elem,
+                "cannot show this invariant namespace is allowed to be opened",
+                "function might open this invariant namespace",
+            )
+            .primary_label(primary, "might not be allowed at this call-site")
+        } else {
+            error_with_label(
+                elem,
+                "cannot show invariant namespace is in the mask given by the function signature",
+                "invariant opened here",
+            )
+        }
+    }
+
+    fn err_many_one(self, primary: &Span, _set: &Span, removed: &Span) -> Message {
+        error_with_label(
+            &removed,
+            "callee may open invariants disallowed at call-site",
+            "invariant opened here",
+        )
+        .primary_label(primary, "might be opened again in this call")
+    }
+
+    fn err_many_many(self, primary: &Span, set: &Span, inserted: &Span) -> Message {
+        error_with_label(
+            primary,
+            "callee may open invariants that caller cannot",
+            "at this call-site",
+        )
+        .primary_label(set, "invariants opened by callee")
+        .primary_label(inserted, "invariants opened by caller")
+    }
+}
+
 pub fn namespace_id_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
@@ -44,6 +112,16 @@ pub fn namespace_set_typ(ctx: &Ctx) -> Typ {
 }
 
 impl MaskSet {
+    pub fn span(&self) -> &Span {
+        match self {
+            MaskSet::Empty { span } => span,
+            MaskSet::Full { span } => span,
+            MaskSet::Insert { base: _, elem } => &elem.span,
+            MaskSet::Remove { base: _, elem } => &elem.span,
+            MaskSet::Arbitrary { set } => &set.span,
+        }
+    }
+
     pub fn to_exp(self: &Self, ctx: &Ctx) -> Exp {
         match self {
             MaskSet::Empty { span } => {
@@ -116,33 +194,25 @@ impl MaskSet {
         exps.into_iter().fold(Self::full(span), |mask, exp| mask.remove(exp))
     }
 
-    fn contains_internal(
+    pub fn contains(
         self: &Self,
         ctx: &Ctx,
         elem: &Exp,
-        call_span: Option<&Span>,
+        call_span: &Span,
+        kind: MaskQueryKind,
     ) -> Vec<Assertion> {
         match self {
-            MaskSet::Full { span: _ } => vec![],
+            MaskSet::Full { span: _ } => Vec::new(),
             MaskSet::Remove { base, elem: removed } => {
-                let mut asserts = base.contains_internal(ctx, elem, call_span);
+                let mut asserts = base.contains(ctx, elem, call_span, kind);
 
-                let neq_expx = ExpX::Binary(BinaryOp::Ne, removed.clone(), elem.clone());
-                let neq_exp = SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), neq_expx);
+                let neq_exp = SpannedTyped::new(
+                    &elem.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Ne, removed.clone(), elem.clone()),
+                );
 
-                let mut err = error_with_label(
-                    &removed.span,
-                    "possible invariant collision",
-                    "this invariant",
-                )
-                .primary_label(&elem.span, "might be the same as this invariant");
-                match call_span {
-                    None => {}
-                    Some(call_span) => {
-                        err = err.primary_label(call_span, "at this call-site");
-                    }
-                }
-
+                let err = kind.err_one_one(call_span, &elem.span, &removed.span);
                 asserts.push(Assertion { err: err, cond: neq_exp });
                 asserts
             }
@@ -151,43 +221,36 @@ impl MaskSet {
                     crate::def::fn_set_contains_name(&ctx.global.vstd_crate_name),
                     None,
                 );
-                let contains_expx = ExpX::Call(
-                    contains_fun,
-                    namespace_set_typs(),
-                    Arc::new(vec![self.to_exp(ctx), elem.clone()]),
-                );
-                let contains_exp =
-                    SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), contains_expx);
 
-                let err = match call_span {
-                    None => error_with_label(
-                        &elem.span,
-                        "cannot show invariant namespace is in the mask given by the function signature",
-                        "invariant opened here",
+                let set_exp = self.to_exp(ctx);
+                let contains_exp = SpannedTyped::new(
+                    &elem.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Call(
+                        contains_fun,
+                        namespace_set_typs(),
+                        Arc::new(vec![set_exp.clone(), elem.clone()]),
                     ),
-                    Some(call_span) => error_with_label(
-                        &elem.span,
-                        "cannot show this invariant namespace is allowed to be opened",
-                        "function might open this invariant namespace",
-                    )
-                    .primary_label(call_span, "might not be allowed at this call-site"),
-                };
+                );
 
+                let err = kind.err_one_many(call_span, &elem.span, &set_exp.span);
                 vec![Assertion { err: err, cond: contains_exp }]
             }
         }
     }
 
-    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp) -> Vec<Assertion> {
-        self.contains_internal(ctx, elem, None)
-    }
-
-    pub fn subset_of(self: &Self, ctx: &Ctx, other: &Self, call_span: &Span) -> Vec<Assertion> {
+    pub fn subset_of(
+        self: &Self,
+        ctx: &Ctx,
+        other: &Self,
+        call_span: &Span,
+        kind: MaskQueryKind,
+    ) -> Vec<Assertion> {
         match self {
             MaskSet::Empty { span: _ } => return Vec::new(),
             MaskSet::Insert { base, elem: inserted } => {
-                let mut asserts = base.subset_of(ctx, other, call_span);
-                asserts.append(&mut other.contains_internal(ctx, inserted, Some(call_span)));
+                let mut asserts = base.subset_of(ctx, other, call_span, kind);
+                asserts.append(&mut other.contains(ctx, inserted, call_span, kind));
                 return asserts;
             }
             _ => {}
@@ -196,34 +259,30 @@ impl MaskSet {
         match other {
             MaskSet::Full { span: _ } => return Vec::new(),
             MaskSet::Remove { base, elem: removed } => {
-                let mut asserts = self.subset_of(ctx, base, call_span);
-
+                let mut asserts = self.subset_of(ctx, base, call_span, kind);
                 let mut removed_in_self = SpannedTyped::new(
                     &removed.span,
                     &Arc::new(TypX::Bool),
                     ExpX::Const(Constant::Bool(true)),
                 );
-                for assertion in self.contains_internal(ctx, removed, Some(call_span)) {
+
+                for assertion in self.contains(ctx, removed, call_span, kind) {
                     removed_in_self = SpannedTyped::new(
                         &removed.span,
                         &Arc::new(TypX::Bool),
                         ExpX::Binary(BinaryOp::And, removed_in_self, assertion.cond),
                     );
                 }
+
                 let removed_not_in_self = SpannedTyped::new(
                     &removed.span,
                     &Arc::new(TypX::Bool),
                     ExpX::Unary(UnaryOp::Not, removed_in_self),
                 );
-                asserts.push(Assertion {
-                    err: error_with_label(
-                        &removed.span,
-                        "callee may open invariants disallowed at call-site",
-                        "invariant opened here",
-                    )
-                    .primary_label(call_span, "might be opened again in this call"),
-                    cond: removed_not_in_self,
-                });
+
+                let self_span = self.span();
+                let err = kind.err_many_one(call_span, &self_span, &removed.span);
+                asserts.push(Assertion { err, cond: removed_not_in_self });
                 return asserts;
             }
             _ => {}
@@ -233,21 +292,17 @@ impl MaskSet {
             CallFun::Fun(crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name), None);
         let self_exp = self.to_exp(ctx);
         let other_exp = other.to_exp(ctx);
-        let subset_of_expx = ExpX::Call(
-            subset_of_fun,
-            namespace_set_typs(),
-            Arc::new(vec![self_exp.clone(), other_exp.clone()]),
+        let subset_of_exp = SpannedTyped::new(
+            &call_span,
+            &Arc::new(TypX::Bool),
+            ExpX::Call(
+                subset_of_fun,
+                namespace_set_typs(),
+                Arc::new(vec![self_exp.clone(), other_exp.clone()]),
+            ),
         );
-        let subset_of_exp = SpannedTyped::new(&call_span, &Arc::new(TypX::Bool), subset_of_expx);
 
-        let err = error_with_label(
-            call_span,
-            "callee may open invariants that caller cannot",
-            "at this call-site",
-        )
-        .primary_label(&self_exp.span, "invariants opened by callee")
-        .primary_label(&other_exp.span, "invariants opened by caller");
-
+        let err = kind.err_many_many(call_span, &self_exp.span, &other_exp.span);
         vec![Assertion { err: err, cond: subset_of_exp }]
     }
 }
