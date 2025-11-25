@@ -31,11 +31,7 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, BuiltinSpecFun,
-    CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX,
-    HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion,
-    MultiOp, OverflowBehavior, Quant, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
-    VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1511,6 +1507,62 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
+
+        VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))
+        | VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
+            if bctx.ctxt.cmd_line_args.new_mut_ref =>
+        {
+            let tracked_mode =
+                matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut));
+
+            if tracked_mode {
+                record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
+            } else {
+                record_spec_fn_no_proof_args(bctx, expr);
+            }
+            let mwm = if tracked_mode { ModeWrapperMode::Proof } else { ModeWrapperMode::Spec };
+
+            assert!(args.len() == 1);
+
+            let vir_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+
+            // x.borrow_mut() takes &mut Tracked<T> and returns &mut T
+            // so this is equivalent to `&mut (*x).unwrap`
+            // where `unwrap` is the ModeUnwrap projection.
+            // (i.e., the projection that maps a Tracked<T> to the Ghost<T> to the place
+            // "inside" the Tracked or Ghost)
+            // The ModeUnwrap projection can't exist on its own in Verus source,
+            // though the &mut and * will often cancel out with adjacent code.
+            // So we may end up with a nested Place expression where the ModeUnwrap projection
+            // is in the middle.
+            //
+            // Note: (at this time) the outer &mut HAS to cancel out with something,
+            // or else we will error later on account of trying to take a mut borrow
+            // on a non-exec-mode place. So writing this is ok:
+            //    *x.borrow_mut() = foo
+            // but this is not:
+            //    let y = x.borrow_mut()
+
+            let p = crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(
+                bctx, expr.span, &vir_arg,
+            );
+            let typ = match &*p.typ {
+                TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, None, t) => t.clone(),
+                _ => p.typ.clone(),
+            };
+            let p = bctx.spanned_typed_new(expr.span, &typ, PlaceX::ModeUnwrap(p, mwm));
+            // This can't be two-phase since this is an opaque function call from
+            // Rust's perspective.
+            let e = crate::rust_to_vir_expr::borrow_mut_vir(
+                bctx,
+                expr.span,
+                &p,
+                rustc_middle::ty::adjustment::AllowTwoPhase::No,
+            );
+
+            Ok(e)
+        }
+
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut)) => {
             record_spec_fn_no_proof_args(bctx, expr);
 
@@ -1660,16 +1712,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                 VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(spec_bitwise)) => {
                     match spec_bitwise {
                         verus_items::SpecBitwiseItem::BitAnd => {
-                            BinaryOp::Bitwise(BitwiseOp::BitAnd, Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::BitOr => {
-                            BinaryOp::Bitwise(BitwiseOp::BitOr, Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::BitXor => {
                             if matches!(*lhs.typ, TypX::Bool) {
                                 BinaryOp::Xor
                             } else {
-                                BinaryOp::Bitwise(BitwiseOp::BitXor, Mode::Spec)
+                                BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                             }
                         }
                         verus_items::SpecBitwiseItem::Shl => {
@@ -1679,7 +1731,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             ) else {
                                 return err_span(expr.span, "expected finite integer width");
                             };
-                            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::Shr => {
                             let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -1688,7 +1740,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             ) else {
                                 return err_span(expr.span, "expected finite integer width");
                             };
-                            BinaryOp::Bitwise(BitwiseOp::Shr(w), Mode::Spec)
+                            BinaryOp::Bitwise(BitwiseOp::Shr(w), BitshiftBehavior::Allow)
                         }
                     }
                 }

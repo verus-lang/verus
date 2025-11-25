@@ -1,12 +1,4 @@
-use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, ByRef, CallTarget, CallTargetKind, Constant,
-    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function,
-    FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX,
-    Params, Path, PathX, Pattern, PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped,
-    Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
-};
+use crate::ast::*;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -1341,7 +1333,18 @@ impl PlaceX {
             PlaceX::DerefMut(p) => p.x.uses_temporary(),
             PlaceX::Field(_opr, p) => p.x.uses_temporary(),
             PlaceX::Temporary(_) => true,
+            PlaceX::ModeUnwrap(p, _) => p.x.uses_temporary(),
         }
+    }
+}
+
+pub fn place_get_local(p: &Place) -> Option<Place> {
+    match &p.x {
+        PlaceX::Local(_) => Some(p.clone()),
+        PlaceX::DerefMut(p) => place_get_local(p),
+        PlaceX::Field(_opr, p) => place_get_local(p),
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _) => place_get_local(p),
     }
 }
 
@@ -1378,6 +1381,9 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
                 return e.clone();
             }
         }
+        PlaceX::ModeUnwrap(p, _) => {
+            return place_to_expr_rec(p, loc);
+        }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
 }
@@ -1396,5 +1402,14 @@ impl PatternX {
                 copy: false,
             }),
         )
+    }
+}
+
+impl ModeWrapperMode {
+    pub fn to_mode(&self) -> Mode {
+        match self {
+            ModeWrapperMode::Spec => Mode::Spec,
+            ModeWrapperMode::Proof => Mode::Proof,
+        }
     }
 }

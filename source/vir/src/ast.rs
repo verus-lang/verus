@@ -466,6 +466,16 @@ pub enum Div0Behavior {
     Error,
 }
 
+/// Behavior for the bounds check of the RHS applied to either Shl (<<) or Shr (>>).
+/// (This doesn't mean anything for the other BitwiseOp kinds)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BitshiftBehavior {
+    /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
+    Allow,
+    /// Error if the right-hand side of the bit-shift is outside the allowed range
+    Error,
+}
+
 /// Arithmetic operation that might fail (overflow or divide by zero)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum ArithOp {
@@ -495,14 +505,15 @@ pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    // Shift right. The bitwidth argument is only needed to do a bounds-check;
-    // the actual result, when computed on unbounded integers, is independent
-    // of the bitwidth.
+    /// Shift right. The bitwidth argument is only needed to do a bounds-check
+    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
+    /// is independent of the bitwidth.
+    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
     Shr(IntegerTypeBitwidth),
-    // Shift left up to w bits, ignoring everything to the left of w.
-    // To interpret the result as an unbounded int,
-    // either zero-extend or sign-extend, depending on the bool argument.
-    // (True = sign-extend, False = zero-extend)
+    /// Shift left up to w bits, ignoring everything to the left of w.
+    /// To interpret the result as an unbounded int,
+    /// either zero-extend or sign-extend, depending on the bool argument.
+    /// (True = sign-extend, False = zero-extend)
     Shl(IntegerTypeBitwidth, bool),
 }
 
@@ -552,8 +563,7 @@ pub enum BinaryOp {
     /// IntRange operations that may require overflow or divide-by-zero checks
     Arith(ArithOp),
     /// Bit Vector Operators
-    /// mode=Exec means we need overflow-checking
-    Bitwise(BitwiseOp, Mode),
+    Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
     /// Used only for handling verus_builtin::array_index
@@ -870,7 +880,8 @@ pub enum ExprX {
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
-    /// Mutable reference (location)
+    /// Location ("l-value") used for mutable references and assignments.
+    /// Not used when new-mut-refs is enabled.
     Loc(Expr),
     /// Call to a function passing some expression arguments
     /// The optional expression is to be executed *after* the arguments but *before* the call.
@@ -929,12 +940,14 @@ pub enum ExprX {
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
+    /// Not used when new-mut-refs is enabled.
     Assign {
         init_not_mut: bool,
         lhs: Expr,
         rhs: Expr,
         op: Option<BinaryOp>,
     },
+    /// Used only when new-mut-refs is enabled.
     AssignToPlace {
         place: Place,
         rhs: Expr,
@@ -1027,6 +1040,7 @@ pub enum ExprX {
     /// nondeterministic choice
     Nondeterministic,
     /// Creates a mutable borrow from the given place
+    /// Used only when new-mut-refs is enabled.
     BorrowMut(Place),
     /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
     /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
@@ -1035,9 +1049,12 @@ pub enum ExprX {
     /// the semantics of a TwoPhaseBorrowMut node are contextual.
     /// It is the structure of the parent node that determines where the "second phase"
     /// of the borrow is.
+    ///
+    /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
     /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
     /// (resolution_inference.rs)
+    /// Used only when new-mut-refs is enabled.
     AssumeResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
@@ -1064,18 +1081,30 @@ pub enum ReadKind {
     Spec,
 }
 
-// TODO(mut_refs): add ArrayIndex
-// TODO(mut_refs): add Tracked coercions
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ModeWrapperMode {
+    /// For Ghost wrapper
+    Spec,
+    /// For Tracked wrapper
+    Proof,
+}
+
+/// `Place` is the replacement for `Loc` used for new-mut-refs.
+/// It represents a place that can be read from, moved from, or mutated.
+/// (Actually, `Place` is already used sometimes even when
+/// new-mut-refs is disabled, but only for reading.)
+// TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
-    /// TODO(mut_refs): Decide: is this only for single-variant structs? What about unions?
+    /// TODO(new_mut_ref): Decide: is this only for single-variant structs? What about unions?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
     Local(VarIdent),
     Temporary(Expr),
+    ModeUnwrap(Place, ModeWrapperMode),
 }
 
 /// Statement, similar to rustc_hir::Stmt

@@ -68,30 +68,49 @@ pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug, Clone, ToDebugSNode)]
 pub enum ExpX {
+    /// Literal constant (integers, booleans, etc.)
     Const(Constant),
+    /// Local variable reference
     Var(UniqueIdent),
+    /// Reference to a static or const item
     StaticVar(Fun),
+    /// L-value reference to a variable's memory location (for mutable borrows)
     VarLoc(UniqueIdent),
+    /// Variable value at a specific program point (e.g., `old(x)` in postconditions)
     VarAt(UniqueIdent, VarAt),
+    /// L-value derived from an expression (e.g., `(*p)` or `a[i]`)
     Loc(Exp),
-    // used only during sst_to_air to generate AIR Old
+    /// Snapshot reference for generating AIR Old expressions; only used during sst_to_air
     Old(Ident, UniqueIdent),
-    // call to spec function
+    /// Call to a spec function (pure, no side effects)
     Call(CallFun, Typs, Exps),
+    /// Application of a first-class function value (spec closure)
     CallLambda(Exp, Exps),
+    /// Datatype constructor with field bindings
     Ctor(Dt, Ident, Binders<Exp>),
+    /// Built-in nullary operator (e.g., `ConstInt`, `TraitBound`)
     NullaryOpr(NullaryOpr),
+    /// Standard unary operator (e.g., `!`, `-`)
     Unary(UnaryOp, Exp),
+    /// Extended unary operator (e.g., `IsVariant`, `TupleField`)
     UnaryOpr(UnaryOpr, Exp),
+    /// Standard binary operator (e.g., `+`, `&&`, `==`)
     Binary(BinaryOp, Exp, Exp),
+    /// Extended binary operator (e.g., `ExtEq` for extensional equality)
     BinaryOpr(crate::ast::BinaryOpr, Exp, Exp),
+    /// Conditional expression (if-then-else); all three branches are pure
     If(Exp, Exp, Exp),
+    /// Attaches trigger annotations to a quantified expression
     WithTriggers(Trigs, Exp),
+    /// Binding construct: let, forall, exists, lambda, or choose
     Bind(Bnd, Exp),
+    /// Reference to an exec function as a first-class value
     ExecFnByName(Fun),
+    /// Fixed-size array literal
     ArrayLiteral(Exps),
-    // only used internally by the interpreter; should never be seen outside it
+    /// Internal interpreter value; should never escape the interpreter
     Interp(InterpExp),
+    /// Fuel constant for controlling recursive function unrolling depth
     FuelConst(usize),
 }
 
@@ -137,76 +156,91 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug, ToDebugSNode)]
 pub enum StmX {
-    // call to exec/proof function (or spec function for checking_spec_preconditions)
+    /// Call to exec/proof function (or spec function when checking preconditions).
+    /// Unlike `ExpX::Call`, this has side effects and may modify state.
     Call {
         fun: Fun,
+        /// For trait method calls, the resolved concrete implementation
         resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
-        // Some(is_trait_default) for calls to DynamicResolved functions for which a default exists
+        /// Some(is_trait_default) for calls to dynamically-resolved functions (DynamicResolved) with a default impl
         is_trait_default: Option<bool>,
         typ_args: Typs,
         args: Exps,
-        // if split is Some, this is a dummy call to be replaced with assertions for error splitting
+        /// If Some, this is a placeholder call to be expanded into split assertions for error reporting
         split: Option<Message>,
         dest: Option<Dest>,
         assert_id: Option<AssertId>,
     },
-    // note: failed assertion reports Stm's span, plus an optional additional span
+    /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
-    AssertBitVector {
-        requires: Exps,
-        ensures: Exps,
-    },
+    /// Bitvector-specific assertion using a dedicated decision procedure
+    AssertBitVector { requires: Exps, ensures: Exps },
+    /// Isolated verification query (e.g., `assert ... by(...)`) with its own SMT context
     AssertQuery {
         mode: AssertQueryMode,
+        /// Type invariant expressions to assume
         typ_inv_exps: Exps,
+        /// Variables with type invariants
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         body: Stm,
     },
+    /// Assertion checked by verification-time computation/interpretation
     AssertCompute(Option<AssertId>, Exp, crate::ast::ComputeMode),
+    /// Add assumption to verification context (trusted, not checked)
     Assume(Exp),
-    Assign {
-        lhs: Dest,
-        rhs: Exp,
-    },
+    /// Assignment to a mutable variable or location
+    Assign { lhs: Dest, rhs: Exp },
+    /// Set fuel level for a recursive function (controls unrolling depth)
     Fuel(Fun, u32),
+    /// Make a string literal available for use in specifications (hidden by default for perf reasons)
     RevealString(Arc<String>),
+    /// Marks unreachable code; verification assumes this path is never taken
     DeadEnd(Stm),
-    // Assert that the postcondition holds with the given return value
+    /// Function return: asserts postcondition holds, then exits function.
+    /// If `inside_body` is true, adds `assume false` afterward (early return).
     Return {
         assert_id: Option<AssertId>,
         base_error: Message,
         ret_exp: Option<Exp>,
-        // If inside_body = true, we will add an assume false after the statement
         inside_body: bool,
     },
-    BreakOrContinue {
-        label: Option<String>,
-        is_break: bool,
-    },
+    /// Loop control flow to a labeled or innermost loop
+    BreakOrContinue { label: Option<String>, is_break: bool },
+    /// Conditional statement (condition, then-branch, optional else-branch)
     If(Exp, Stm, Option<Stm>),
+    /// Loop with invariants and termination measure.
+    /// We either have (1) a simple while loop or (2) a complex loop:
+    /// 1. cond = Some(...), all invs are true on entry and exit, no break statements
+    /// 2. cond = None, invs may be false at_entry/at_exit, may have break statements
+    /// Any while loop not satisfying (1) is converted to (2).
     Loop {
-        // We either have (1) a simple while loop or (2) a complex loop:
-        // 1. cond = Some(...), all invs are true on entry and exit, no break statements
-        // 2. cond = None, invs may have false at_entry/at_exit, may have break statements
-        // Any while loop not satisfying (1) is converted to (2).
+        /// If true, loop body is verified in isolation (no outer context)
         loop_isolation: bool,
+        /// True if this was originally a for loop (affects error messages)
         is_for_loop: bool,
+        /// Unique identifier for this loop instance
         id: u64,
         label: Option<String>,
+        /// For simple while loops: (condition setup statements, condition expression)
         cond: Option<(Stm, Exp)>,
         body: Stm,
+        /// Loop invariants with info about whether they hold at entry/exit/both
         invs: LoopInvs,
+        /// Termination measure (must decrease on each iteration)
         decrease: Exps,
+        /// Variables requiring type invariant assumptions
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        /// Variables potentially modified by the loop body
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
+    /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
-    ClosureInner {
-        body: Stm,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
-    },
+    /// Body of an exec closure, with associated type invariants
+    ClosureInner { body: Stm, typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>> },
+    /// Raw AIR code injection (for internal use only)
     Air(Arc<String>),
+    /// Sequential composition of statements
     Block(Stms),
 }
 

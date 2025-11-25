@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitwiseOp, ByRef,
-    CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr, Fun, Function,
-    Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
+    Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode,
+    OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{
@@ -2502,7 +2502,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
-                Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
+                crate::ast::Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
                 Arc::new(vec![int_typ]),
                 Default::default(),
             ));
@@ -3275,7 +3275,7 @@ fn binary_op_exp(
         },
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (Mode::Exec, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -3294,7 +3294,7 @@ fn binary_op_exp(
                     let msg = "possible bit shift underflow/overflow";
                     Some((assert_exp, msg))
                 }
-                (Mode::Proof | Mode::Spec, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
                     None
@@ -3480,6 +3480,7 @@ fn place_to_exp_pair_rec(
         PlaceX::Temporary(_) => {
             todo!(); // TODO(new_mut_ref) handle temps
         }
+        PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
     }
 }
 

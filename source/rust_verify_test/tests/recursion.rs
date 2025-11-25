@@ -1754,7 +1754,7 @@ test_verify_one_file! {
         fn test(tree: Tree) {
             let x = decreases_to!(tree => tree);
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {

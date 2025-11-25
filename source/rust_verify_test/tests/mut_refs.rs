@@ -1816,8 +1816,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): currently fails because let-decls don't account for copies
-    #[ignore] #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized ["new-mut-ref"] => verus_code! {
+    #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized ["new-mut-ref"] => verus_code! {
         fn id<A>(a: A) -> A { a }
 
         fn test() {
