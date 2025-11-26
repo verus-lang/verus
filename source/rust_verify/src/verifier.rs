@@ -2745,6 +2745,16 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
+
+        let other_vir_crates = if self.args.new_mut_ref {
+            other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::migrate_mut_ref_krate(krate))
+                .collect()
+        } else {
+            other_vir_crates
+        };
+
         let vir_crate =
             crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
