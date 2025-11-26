@@ -2562,3 +2562,75 @@ test_verify_one_file_with_options! {
 
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_refs_with_if_let ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test_opt(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            if let Some(i) = o_ref {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+        }
+
+        fn test_opt_fails1(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            if let Some(i) = o_ref {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+
+            assert(o is Some); // FAILS
+            assert(o is None); // FAILS
+        }
+
+        fn test_explicit_ref_mut(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            if let Some(ref mut i) = o {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+        }
+
+        fn test_explicit_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            if let Some(ref mut i) = o {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+
+            assert(o is Some); // FAILS
+            assert(o is None); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
