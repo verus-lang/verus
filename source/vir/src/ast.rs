@@ -860,6 +860,7 @@ pub struct AtomicCallInfoX {
     pub x_typ: Typ,
     pub y_typ: Typ,
     pub pred_typ: Typ,
+    pub call_span: Span,
 }
 
 /// Expression, similar to rustc_hir::Expr

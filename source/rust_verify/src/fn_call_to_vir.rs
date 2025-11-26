@@ -31,7 +31,12 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt,
+    ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind,
+    Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, SpannedTyped,
+    Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent,
+    VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -483,10 +488,41 @@ fn verus_item_to_vir<'tcx, 'a>(
                 )))
             }
             SpecItem::InvMaskSet => {
+                pub fn typ_is_int_set(typ: &Typ) -> bool {
+                    // NOTE: This validation check is a little bit fuzzy on purpose, since there
+                    // are some tests (e.g. `tests/core_special_setup.rs`) that import vstd as a
+                    // module rather than a crate, so we need to accept either.
+                    //
+                    // A user can fool this check by defining a type named "Set", and placing it
+                    // in a module called "set". This is fine however, since the inv mask is not
+                    // trusted code. A non-sensical mask simply makes the corresponding function
+                    // or atomic update annoying/impossible to define/call. This check exists to
+                    // help, rather than to restrict the user.
+
+                    let TypX::Datatype(Dt::Path(path), args, _) = typ.as_ref() else {
+                        return false;
+                    };
+
+                    let [.., module_name, type_name] = path.segments.as_slice() else {
+                        return false;
+                    };
+
+                    if module_name.as_str() != "set" || type_name.as_str() != "Set" {
+                        return false;
+                    }
+
+                    let [int_typ] = args.as_slice() else { return false };
+                    matches!(int_typ.as_ref(), TypX::Int(..))
+                }
+
                 record_spec_fn_no_proof_args(bctx, expr);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let set = expr_to_vir_consume(&bctx, args[0], ExprModifier::REGULAR)?;
-                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensSet(set)))
+                let set_expr = expr_to_vir_consume(&bctx, args[0], ExprModifier::REGULAR)?;
+                if !typ_is_int_set(&set_expr.typ) {
+                    return err_span(args[0].span.clone(), "invariant mask must be a set of ints");
+                }
+
+                mk_expr(ExprX::InvMask(vir::ast::MaskSpec::InvariantOpensSet(set_expr)))
             }
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
@@ -611,7 +647,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
-                    return malformed_err(&expr);
+                    return malformed_err(expr);
                 };
 
                 let body = tcx.hir_body(closure.body);
@@ -623,13 +659,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                     return malformed_err(expr);
                 };
 
+                let expr_span = bctx.ctxt.spans.to_air_span(expr.span);
                 let args_expr = if let [single] = args.as_slice() {
                     single.clone()
                 } else {
-                    let span = bctx.ctxt.spans.to_air_span(expr.span);
                     let typs = args.iter().map(|e| e.typ.clone()).collect();
                     let tup_typ = mk_tuple_typ(&Arc::new(typs));
-                    SpannedTyped::new(&span, &tup_typ, mk_tuple_x(args))
+                    SpannedTyped::new(&expr_span, &tup_typ, mk_tuple_x(args))
                 };
 
                 let info = Arc::new(AtomicCallInfoX {
@@ -638,6 +674,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     x_typ: x_typ.clone(),
                     y_typ: y_typ.clone(),
                     pred_typ: pred_typ.clone(),
+                    call_span: expr_span,
                 });
 
                 let (tx, rx) = std::sync::mpsc::channel();

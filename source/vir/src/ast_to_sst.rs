@@ -2874,7 +2874,7 @@ pub(crate) fn expr_to_stm_opt(
             // y
             // ```
 
-            let AtomicCallInfoX { au_typ_args, x_typ, y_typ, .. } = info.as_ref();
+            let AtomicCallInfoX { au_typ_args, x_typ, y_typ, call_span, .. } = info.as_ref();
             let Some(au_var_exp) = state.au_var_exp.clone() else {
                 panic!("update function outside of atomically block");
             };
@@ -2919,7 +2919,7 @@ pub(crate) fn expr_to_stm_opt(
                 for assertion in inner_mask.subset_of(
                     ctx,
                     &outer_mask,
-                    &expr.span,
+                    &call_span,
                     MaskQueryKind::AtomicUpdateWellFormed,
                 ) {
                     stms.push(Spanned::new(

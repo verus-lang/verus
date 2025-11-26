@@ -479,13 +479,14 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        // todo: this should emit a note from the recommends check
-        // that the mask pair is inverted
+        assert_eq!(err.errors.len(), 1);
+        assert_eq!(err.notes.len(), 1);
 
-        dbg!(&err);
+        assert!(err.errors[0].code.is_none());
+        assert!(err.notes[0].code.is_none());
 
-        assert!(!err.errors.is_empty());
-        assert!(!err.notes.is_empty());
+        assert!(err.errors[0].message.contains("callee may open invariants that caller cannot"));
+        assert!(err.notes[0].message.contains("inner mask of atomic update is not contained in the outer mask"));
     }
 }
 

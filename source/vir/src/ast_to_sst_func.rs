@@ -20,7 +20,7 @@ use crate::sst::{
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
 use crate::sst_util::{subst_exp, subst_local_decl, subst_stm};
-use crate::util::vec_map;
+use crate::util::{vec_map, vec_map_result};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -639,17 +639,11 @@ impl MaskSpec {
     ) -> Result<MaskSet, VirErr> {
         let mask_set = match self {
             MaskSpec::InvariantOpens(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list(&exps, &span)
             }
             MaskSpec::InvariantOpensExcept(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list_complement(&exps, &span)
             }
             MaskSpec::InvariantOpensSet(expr) => {

@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs, UnaryOp};
 use crate::context::Ctx;
-use crate::messages::{Message, Span, error_with_label};
+use crate::messages::{Message, Span, error, error_with_label};
 use crate::sst::{CallFun, Exp, ExpX};
 use std::sync::Arc;
 
@@ -30,68 +30,152 @@ pub struct Assertion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaskQueryKind {
     OpenInvariant,
-    OpenAtomicUpdate,
     FunctionCall,
+    OpenAtomicUpdate,
     AtomicFunctionCall,
     UpdateFunctionCall,
     AtomicUpdateWellFormed,
 }
 
+/// The operations on invariant masks here have been phrased as generic set operations
+/// to align with their theoretical model, yet to emit more precise and helpful diagnostics,
+/// we make some strong assumptions about how mask sets are constucted in the current
+/// implementation, in particular:
+///
+///  - `MaskSet::Empty` corresponds to the mask "none" of an empty list of namespaces,
+///  - `MaskSet::Full` always corresponds to the mask "any",
+///  - `MaskSet::Insert` is exclusively used as a list constructor, and
+///  - `MaskSet::Remove` is only used when opening an invariant.
+///
+/// All invariant mask related checks are either subset (⊆) or membership (∈) queries.
+/// An assertion of the form `A ⊆ B`, and by extention `a ∈ B = {a} ⊆ B`, can fail for
+/// different reasons, we distinguish four different cases, from which we attempt to
+/// abduce different causes using the assumptions listed above:
+///
+/// - [`err_elem_removed`]: `elem` is equal to an element removed from B,
+///     meaning the user is trying to open an invariant twice.
+///
+/// - [`err_elem_not_member`]: `elem` is not a member of B,
+///     meaning the user is trying to open an invariant that is not in the current mask.
+///
+/// - [`err_set_removed_elem`]: A contains an element that was removed from B,
+///     meaning a mask in an open invariant block contains the open invariant.
+///
+/// - [`err_not_subset`]: A is not a subset of B,
+///     meaning there is a conflict between two masks (fallback case).
+
 impl MaskQueryKind {
-    fn is_call(&self) -> bool {
+    fn err_elem_removed(self, primary: &Span, elem: &Span, removed_elem: &Span) -> Message {
+        let base_err = || {
+            error_with_label(removed_elem, "possible invariant collision", "this invariant")
+                .primary_label(elem, "might be the same as this invariant")
+        };
+
         match self {
-            Self::FunctionCall | Self::AtomicFunctionCall | Self::UpdateFunctionCall => true,
-            _ => false,
+            MaskQueryKind::OpenInvariant => base_err(),
+
+            MaskQueryKind::FunctionCall
+            | MaskQueryKind::AtomicFunctionCall
+            | MaskQueryKind::UpdateFunctionCall => {
+                base_err().primary_label(primary, "at this call-site")
+            }
+
+            MaskQueryKind::OpenAtomicUpdate => error_with_label(
+                removed_elem,
+                "possible invariant collision with atomic update inner mask",
+                "this invariant",
+            )
+            .primary_label(elem, "might be the same as this invariant")
+            .primary_label(primary, "tried to open atomic update here"),
+
+            MaskQueryKind::AtomicUpdateWellFormed => unreachable!(),
         }
     }
-}
 
-impl MaskQueryKind {
-    fn err_one_one(self, primary: &Span, elem: &Span, removed: &Span) -> Message {
-        let mut err = error_with_label(removed, "possible invariant collision", "this invariant")
-            .primary_label(elem, "might be the same as this invariant");
+    fn err_elem_not_member(self, primary: &Span, elem: &Span, _set: &Span) -> Message {
+        match self {
+            MaskQueryKind::OpenInvariant => error_with_label(
+                elem,
+                "cannot show invariant namespace is in the mask given by the scope",
+                "invariant opened here",
+            ),
 
-        if self.is_call() {
-            err = err.primary_label(primary, "at this call-site");
-        }
-
-        err
-    }
-
-    fn err_one_many(self, primary: &Span, elem: &Span, _inserted: &Span) -> Message {
-        if self.is_call() {
-            error_with_label(
+            MaskQueryKind::FunctionCall
+            | MaskQueryKind::AtomicFunctionCall
+            | MaskQueryKind::UpdateFunctionCall => error_with_label(
                 elem,
                 "cannot show this invariant namespace is allowed to be opened",
                 "function might open this invariant namespace",
             )
-            .primary_label(primary, "might not be allowed at this call-site")
-        } else {
-            error_with_label(
+            .primary_label(primary, "might not be allowed at this call-site"),
+
+            MaskQueryKind::OpenAtomicUpdate => error_with_label(
                 elem,
-                "cannot show invariant namespace is in the mask given by the function signature",
-                "invariant opened here",
+                "cannot show this invariant namespace is allowed to be opened",
+                "atomic update might open this invariant namespace",
             )
+            .primary_label(primary, "might not be allowed when opening atomic update here"),
+
+            MaskQueryKind::AtomicUpdateWellFormed => error(
+                primary,
+                "inner mask of atomic update is not contained in the outer mask; \
+                this may make it impossible to construct the atomic update",
+            ),
         }
     }
 
-    fn err_many_one(self, primary: &Span, _set: &Span, removed: &Span) -> Message {
-        error_with_label(
-            &removed,
-            "callee may open invariants disallowed at call-site",
-            "invariant opened here",
-        )
-        .primary_label(primary, "might be opened again in this call")
+    fn err_set_removed_elem(self, primary: &Span, _set: &Span, removed_elem: &Span) -> Message {
+        match self {
+            MaskQueryKind::OpenInvariant => unreachable!(),
+
+            MaskQueryKind::FunctionCall
+            | MaskQueryKind::AtomicFunctionCall
+            | MaskQueryKind::UpdateFunctionCall => error_with_label(
+                &removed_elem,
+                "callee may open invariants disallowed at call-site",
+                "invariant opened here",
+            )
+            .primary_label(primary, "might be opened again in this call"),
+
+            MaskQueryKind::OpenAtomicUpdate => error_with_label(
+                &removed_elem,
+                "atomic update may open invariants disallowed at call-site",
+                "invariant opened here",
+            )
+            .primary_label(primary, "might be opened again here"),
+
+            MaskQueryKind::AtomicUpdateWellFormed => unreachable!(),
+        }
     }
 
-    fn err_many_many(self, primary: &Span, set: &Span, inserted: &Span) -> Message {
-        error_with_label(
-            primary,
-            "callee may open invariants that caller cannot",
-            "at this call-site",
-        )
-        .primary_label(set, "invariants opened by callee")
-        .primary_label(inserted, "invariants opened by caller")
+    fn err_not_subset(self, primary: &Span, left_set: &Span, right_set: &Span) -> Message {
+        match self {
+            MaskQueryKind::OpenInvariant => unreachable!(),
+
+            MaskQueryKind::FunctionCall
+            | MaskQueryKind::AtomicFunctionCall
+            | MaskQueryKind::UpdateFunctionCall => error_with_label(
+                primary,
+                "callee may open invariants that caller cannot",
+                "at this call-site",
+            )
+            .primary_label(left_set, "invariants opened by callee")
+            .primary_label(right_set, "invariants opened by caller"),
+
+            MaskQueryKind::OpenAtomicUpdate => error_with_label(
+                primary,
+                "atomic update may open invariants that caller cannot",
+                "tried to open atomic update here",
+            )
+            .primary_label(left_set, "atomic update inner mask here")
+            .primary_label(right_set, "invariants opened here"),
+
+            MaskQueryKind::AtomicUpdateWellFormed => error(
+                primary,
+                "inner mask of atomic update is not contained in the outer mask; \
+                this may make it impossible to construct the atomic update",
+            ),
+        }
     }
 }
 
@@ -191,6 +275,13 @@ impl MaskSet {
     }
 
     pub fn from_list_complement(exps: &Vec<Exp>, span: &Span) -> MaskSet {
+        assert!(
+            exps.is_empty(),
+            "The error messages generated in this module have been designed with \
+            the assumption that `opens_invariants_except` is not implemented. \
+            If you remove this panic, please also adjust the diagnostics."
+        );
+
         exps.into_iter().fold(Self::full(span), |mask, exp| mask.remove(exp))
     }
 
@@ -212,7 +303,7 @@ impl MaskSet {
                     ExpX::Binary(BinaryOp::Ne, removed.clone(), elem.clone()),
                 );
 
-                let err = kind.err_one_one(call_span, &elem.span, &removed.span);
+                let err = kind.err_elem_removed(call_span, &elem.span, &removed.span);
                 asserts.push(Assertion { err: err, cond: neq_exp });
                 asserts
             }
@@ -233,7 +324,7 @@ impl MaskSet {
                     ),
                 );
 
-                let err = kind.err_one_many(call_span, &elem.span, &set_exp.span);
+                let err = kind.err_elem_not_member(call_span, &elem.span, &set_exp.span);
                 vec![Assertion { err: err, cond: contains_exp }]
             }
         }
@@ -281,7 +372,7 @@ impl MaskSet {
                 );
 
                 let self_span = self.span();
-                let err = kind.err_many_one(call_span, &self_span, &removed.span);
+                let err = kind.err_set_removed_elem(call_span, &self_span, &removed.span);
                 asserts.push(Assertion { err, cond: removed_not_in_self });
                 return asserts;
             }
@@ -302,7 +393,7 @@ impl MaskSet {
             ),
         );
 
-        let err = kind.err_many_many(call_span, &self_exp.span, &other_exp.span);
+        let err = kind.err_not_subset(call_span, &self_exp.span, &other_exp.span);
         vec![Assertion { err: err, cond: subset_of_exp }]
     }
 }
