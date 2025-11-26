@@ -1200,7 +1200,6 @@ fn check_expr_handle_mut_arg(
                 }
             };
 
-            mode = mode_join(outer_mode, mode);
             if let Some(CtorUpdateTail { place, taken_fields }) = update {
                 let place_mode =
                     check_place(ctxt, record, typing, outer_mode, place, PlaceAccess::Read)?;
