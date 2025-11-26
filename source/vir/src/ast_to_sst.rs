@@ -2658,7 +2658,7 @@ fn binary_op_exp(
             ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
                 OverflowBehavior::Allow => None,
                 OverflowBehavior::Truncate(range) => Some(range),
-                OverflowBehavior::Error(_) => None,
+                OverflowBehavior::Error(range) => Some(range),
             },
             _ => None,
         }
