@@ -2634,3 +2634,94 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file_with_options! {
+    #[test] side_effects_in_match_arg ["new-mut-ref"] => verus_code! {
+        enum Blah {
+            A(bool),
+            B(bool, bool),
+            C,
+        }
+
+        fn add1(b: &mut u64) -> (ret: (Blah, Blah))
+            requires mut_ref_current(b) < 100
+            ensures mut_ref_future(b) == mut_ref_current(b) + 1
+        {
+            *b = *b + 1;
+            (Blah::C, Blah::C)
+        }
+
+        fn test1() {
+            let mut i = 0;
+
+            match add1(&mut i) {
+                (Blah::A(t), _) => { }
+                (Blah::B(t, u), _) => { }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test2() {
+            let mut i = 0;
+
+            match add1(&mut i).0 {
+                Blah::A(t) => { }
+                Blah::B(t, u) => { }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test1_fails() {
+            let mut i = 0;
+
+            match add1(&mut i) {
+                (Blah::A(t), _) => {
+                    assert(false); // FAILS
+                }
+                (Blah::B(t, u), _) => {
+                    assert(false); // FAILS
+                }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test2_fails() {
+            let mut i = 0;
+
+            match add1(&mut i).0 {
+                Blah::A(t) => {
+                    assert(false); // FAILS
+                }
+                Blah::B(t, u) => { }
+                _ => {
+                    assert(false); // FAILS
+                }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test3() {
+            let mut i = 0;
+
+            let (r, t) = add1(&mut i);
+
+            assert(i == 1);
+        }
+
+        fn test3_fails() {
+            let mut i = 0;
+
+            let (r, t) = add1(&mut i);
+
+            assert(i == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
