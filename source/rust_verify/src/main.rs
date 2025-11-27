@@ -34,13 +34,13 @@ pub fn main() {
     let internal_program = internal_args.next().unwrap();
     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
-            rust_verify::trait_check::LIFETIME_DRIVER_ARG => {
+            rust_verify::trait_check::TC_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
                 internal_args.insert(0, internal_program);
                 let mut buffer = String::new();
                 use std::io::Read;
                 std::io::stdin().read_to_string(&mut buffer).expect("cannot read stdin");
-                rust_verify::trait_check::lifetime_rustc_driver(&internal_args[..], buffer);
+                rust_verify::trait_check::trait_check_rustc_driver(&internal_args[..], buffer);
                 return;
             }
             arg if arg.contains("rustc") => {
@@ -293,9 +293,9 @@ pub fn main() {
 
         // Rust time:
         let rust_init = stats.time_rustc;
-        let lifetime = stats.time_lifetime;
+        let trait_conflicts = stats.time_trait_conflicts;
         let compile = stats.time_compile;
-        let rust = rust_init + lifetime + compile;
+        let rust = rust_init + trait_conflicts + compile;
 
         // total verification time
         let vir_rust_to_vir = verifier.time_vir_rust_to_vir; // included in verifier.time_vir
@@ -340,7 +340,7 @@ pub fn main() {
                 "rust": {
                     "total": rust.as_millis(),
                     "init-and-types": rust_init.as_millis(),
-                    "lifetime": lifetime.as_millis(),
+                    "trait-conflicts": trait_conflicts.as_millis(),
                     "compile": compile.as_millis(),
                 },
                 "verification": {
@@ -418,7 +418,7 @@ pub fn main() {
             }
             println!("    rust-time:          {:>10} ms", rust.as_millis());
             println!("        init-and-types:     {:>10} ms", rust_init.as_millis());
-            println!("        lifetime-time:      {:>10} ms", lifetime.as_millis());
+            println!("        trait-conflicts:    {:>10} ms", trait_conflicts.as_millis());
             println!("        compile-time:       {:>10} ms", compile.as_millis());
 
             println!("    verification-time:  {:>10} ms", verify.as_millis());
