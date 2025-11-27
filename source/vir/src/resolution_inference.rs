@@ -674,17 +674,15 @@ impl<'a> Builder<'a> {
             }
             ExprX::Loop {
                 loop_isolation: _,
-                is_for_loop,
+                // for loops have already been de-sugared by this point, so they don't
+                // need special handling
+                is_for_loop: _,
                 label,
                 cond,
                 body,
                 invs: _,
                 decrease: _,
             } => {
-                if *is_for_loop {
-                    todo!() // TODO(new_mut_ref)
-                }
-
                 let outer_body_bb = self.new_bb(AstPosition::Before(body.span.id), true);
                 let post_bb = self.new_bb(AstPosition::After(expr.span.id), true);
 
