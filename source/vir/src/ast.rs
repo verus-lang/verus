@@ -69,6 +69,7 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     UserDefinedTypeInvariantPass(u64),
+    ResInfTemp(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -1048,8 +1049,17 @@ pub enum PlaceX {
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
     Local(VarIdent),
-    Temporary(Expr),
+    /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
+
+    /// Unnamed temporary. The resolution_inference pass will replace many of these with
+    /// named locals.
+    Temporary(Expr),
+    /// Evaluate expr then return the place
+    /// This is useful when expanding temporaries, e.g., Temporary(expr) expands to
+    /// WithExpr({ tmp = expr; }, Local(tmp))
+    /// Without this node, such a transformation would be significantly more complicated
+    WithExpr(Expr, Place),
 }
 
 /// Statement, similar to rustc_hir::Stmt

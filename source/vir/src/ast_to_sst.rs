@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{
-    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
+    QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ,
 };
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
@@ -1254,13 +1254,18 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::AssignToPlace { place, rhs, op: None } => {
-            let loc = place_to_expr_loc(place);
-            let expr = SpannedTyped::new(
-                &expr.span,
-                &expr.typ,
-                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: None },
-            );
-            expr_to_stm_opt(ctx, state, &expr)
+            let (mut stms1, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, _e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
+
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
+            stms1.append(&mut stms2);
+
+            let e2 = unwrap_or_return_never!(e2, stms1);
+
+            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e2 };
+            stms1.push(Spanned::new(expr.span.clone(), assign));
+
+            Ok((stms1, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
@@ -2810,6 +2815,9 @@ fn place_to_exp_pair_rec(
             Ok((vec![], Some((e_l, e_r))))
         }
         PlaceX::Temporary(_) => {
+            Err(error(&place.span, format!("Verus Internal Error: Temporary should have been named")))
+        }
+        PlaceX::WithExpr(_e, _p) => {
             todo!(); // TODO(new_mut_ref) handle temps
         }
         PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),

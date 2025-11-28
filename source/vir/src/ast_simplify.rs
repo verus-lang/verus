@@ -346,6 +346,8 @@ fn simplify_one_place(
     }
 }
 
+/// Returns a "pure place", i.e., a Place with no-side effects, and which is rooted
+/// at a Local (rather than a Temporary).
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
@@ -369,9 +371,17 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
         }
         PlaceX::Local(_l) => (vec![], place.clone()),
         PlaceX::Temporary(expr) => {
+            // Note that if this place is being mutated, then the Temporary node will already
+            // have been simplified out; i.e., this case only happens for reads/moves.
             let (ts, var_ident) = temp_var(state, expr);
             let p = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(var_ident));
             (vec![ts], p)
+        }
+        PlaceX::WithExpr(expr, p) => {
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            stmts.insert(0,
+                Spanned::new(place.span.clone(), StmtX::Expr(expr.clone())));
+            (stmts, p1)
         }
     }
 }

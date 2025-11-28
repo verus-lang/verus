@@ -3576,6 +3576,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Temporary(expr) => {
             return expr_to_loc_coerce_modes(expr);
         }
+        PlaceX::WithExpr(..) => {
+            panic!("Verus Internal Error: unexpected PlaceX::WithExpr")
+        }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }
@@ -3684,7 +3687,7 @@ pub(crate) fn borrow_mut_vir(
 
     let x = match allow_two_phase {
         AllowTwoPhase::Yes => {
-            if place.x.uses_temporary() {
+            if place.x.uses_unnamed_temporary() {
                 ExprX::BorrowMut(place.clone())
             } else {
                 ExprX::TwoPhaseBorrowMut(place.clone())
