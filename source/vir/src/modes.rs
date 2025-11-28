@@ -131,14 +131,16 @@ pub(crate) struct TypeInvInfo {
 
 pub type ReadKindFinals = HashMap<u64, ReadKind>;
 
-// Accumulated data recorded during mode checking
+/// Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
-    // Modes of InferSpecForLoopIter
+    /// Modes of InferSpecForLoopIter
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
     type_inv_info: TypeInvInfo,
     read_kind_finals: ReadKindFinals,
     var_modes: HashMap<VarIdent, Mode>,
+    /// Modes of all PlaceX::Temporary nodes
+    temporary_modes: HashMap<crate::messages::AstId, Mode>,
 }
 
 #[derive(Debug)]
@@ -895,10 +897,21 @@ fn check_place_rec_inner(
             Ok(Mode::Exec)
         }
         PlaceX::Local(var) => typing.get(var, &place.span),
-        PlaceX::Temporary(e) => check_expr(ctxt, record, typing, outer_mode, e),
+        PlaceX::Temporary(e) => {
+            let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
+            assert!(!record.temporary_modes.contains_key(&place.span.id));
+            record.temporary_modes.insert(place.span.id, mode);
+            Ok(mode)
+        }
         PlaceX::ModeUnwrap(p, wrapper_mode) => {
             let mode = check_place_rec(ctxt, record, typing, outer_mode, p, access)?;
             Ok(mode_join(mode, wrapper_mode.to_mode()))
+        }
+        PlaceX::WithExpr(..) => {
+            return Err(error(
+                &place.span,
+                &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
+            ));
         }
     }
 }
@@ -2270,6 +2283,7 @@ fn check_function(
                         &ctxt.datatypes,
                         &ctxt.funs,
                         &record.var_modes,
+                        &record.temporary_modes,
                     ));
                 }
             }
@@ -2319,6 +2333,7 @@ pub fn check_crate(
         type_inv_info,
         read_kind_finals: HashMap::new(),
         var_modes: HashMap::new(),
+        temporary_modes: HashMap::new(),
     };
     let mut state = State {
         vars: ScopeMap::new(),

@@ -6,9 +6,7 @@ use crate::ast::{
     VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{
-    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
-};
+use crate::ast_util::{QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -1254,13 +1252,18 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::AssignToPlace { place, rhs, op: None } => {
-            let loc = place_to_expr_loc(place);
-            let expr = SpannedTyped::new(
-                &expr.span,
-                &expr.typ,
-                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: None },
-            );
-            expr_to_stm_opt(ctx, state, &expr)
+            let (mut stms1, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, _e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
+
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
+            stms1.append(&mut stms2);
+
+            let e2 = unwrap_or_return_never!(e2, stms1);
+
+            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e2 };
+            stms1.push(Spanned::new(expr.span.clone(), assign));
+
+            Ok((stms1, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
@@ -2718,7 +2721,6 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
     };
 
     let (stms, exps) = place_to_exp_pair(ctx, state, place)?;
-    assert!(stms.len() == 0); // TODO(new_mut_ref): fix this
     let (lhs_exp, normal_exp) = exps.unwrap(); // TODO(new_mut_ref): fix this
 
     // phase 1
@@ -2730,7 +2732,9 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
     let equal = sst_equal(&expr.span, &cur_exp, &normal_exp);
     let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
 
-    let phase1_stms = vec![has_typ_stm, assume_stm];
+    let mut phase1_stms = stms;
+    phase1_stms.push(has_typ_stm);
+    phase1_stms.push(assume_stm);
 
     // phase 2
 
@@ -2809,8 +2813,26 @@ fn place_to_exp_pair_rec(
             let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
             Ok((vec![], Some((e_l, e_r))))
         }
-        PlaceX::Temporary(_) => {
-            todo!(); // TODO(new_mut_ref) handle temps
+        PlaceX::Temporary(e) => {
+            let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = v.to_value().unwrap(); // TODO(new_mut_ref) fix this
+
+            let (temp_id, temp_var) =
+                state.declare_temp_var_stm(&exp.span, &exp.typ, LocalDeclKind::MutableTemporary);
+            stms.push(init_var(&exp.span, &temp_id, &exp));
+
+            let e_l = mk_exp(ExpX::VarLoc(temp_id.clone()));
+
+            Ok((stms, Some((e_l, temp_var))))
+        }
+        PlaceX::WithExpr(e, p) => {
+            let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let _e = v.to_value().unwrap(); // TODO(new_mut_ref) fix this
+
+            let (mut stms2, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            stms.append(&mut stms2);
+
+            Ok((stms, exps))
         }
         PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
     }
