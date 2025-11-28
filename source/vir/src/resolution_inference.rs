@@ -674,7 +674,7 @@ impl<'a> Builder<'a> {
             }
             ExprX::Loop {
                 loop_isolation: _,
-                // for loops have already been de-sugared by this point, so they don't
+                // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
                 label,
@@ -683,7 +683,12 @@ impl<'a> Builder<'a> {
                 invs: _,
                 decrease: _,
             } => {
-                let outer_body_bb = self.new_bb(AstPosition::Before(body.span.id), true);
+                let outer_body_bb_pos = match cond {
+                    Some(cond) => AstPosition::Before(cond.span.id),
+                    None => AstPosition::Before(body.span.id),
+                };
+
+                let outer_body_bb = self.new_bb(outer_body_bb_pos, true);
                 let post_bb = self.new_bb(AstPosition::After(expr.span.id), true);
 
                 let drops = self.loop_drops(&expr);
