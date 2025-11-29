@@ -879,9 +879,9 @@ fn for_loop_test_vec() {
     //
     // for x in y: v 
     //     invariant
-    //        forall |i| 0 <= i < y.index@ ==> w[i] == *(y.seq()[i])
-    //         w@ == y.seq().take(y.index@).map_values(|r:&u8| *r) &&
-    //         count == w.len() <= u64::MAX
+    //         w.len() == y.index,
+    //         forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+    //         count == w.len() <= u64::MAX,
     // {
     //     w.push(x);
     //     count += 1;
@@ -909,8 +909,8 @@ fn for_loop_test_vec() {
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
-                      // inv
-                      w@ == y.seq().take(y.index@).map_values(|r:&u8| *r) &&
+                      w.len() == y.index &&
+                      (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]) &&
                       count == w.len() <= u64::MAX
                     }),
                 ensures
@@ -967,7 +967,8 @@ fn for_loop_test_map() {
     //
     // for x in y: m
     //     invariant
-    //         w@ == y.seq().take(y.index@) 
+    //         w.len() == y.index,
+    //         forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]),
     // {
     //     w.push(x);
     // }
@@ -986,12 +987,16 @@ fn for_loop_test_map() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(), 
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+                    y.iter.seq().len() == y.snapshot@.seq().len() - y.index@,
+                    forall |i| 
+                        #![trigger y.iter.seq()[i]]
+                    0 <= i < y.iter.seq().len() ==> y.iter.seq()[i] == y.snapshot@.seq().skip(y.index@)[i],
+                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@),
+                    (y.iter.completes() ==> y.snapshot@.completes()),
 
                     // User invariants
                     ({ 
@@ -999,7 +1004,9 @@ fn for_loop_test_map() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                     // inv
-                    w@ == y.seq().take(y.index@)
+                    //w@ == y.seq().take(y.index@) 
+                    w.len() == y.index
+                    && (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i])
                     && (forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8)
                     && (y.index@ < y.snapshot@.seq().len() ==> x < 8)
                     }),
@@ -1028,13 +1035,20 @@ fn for_loop_test_map() {
                     assert(x < 8);
                     w.push(x);
                 };
+                // assert(w.len() == y.index);
+                // assert(forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]);
+                // assert forall |i| 0 <= i < y.seq().len() implies y.seq()[i] < 8 by {
+                //     assert(y.seq()[i] == VERUS_old_snap.seq()[i]);
+                //     assert(VERUS_old_snap.seq()[i] < 8);
+                // };
+                // assert(forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8);
+                // assert(y.index@ < y.snapshot@.seq().len() ==> x < 8);
             }
         }
     };
     // Make sure our invariant was useful
     assert(w@ == v@.map_values(|i:u8| (i + 1) as u8));
 }
-
 
 fn for_loop_test_take() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -1047,7 +1061,8 @@ fn for_loop_test_take() {
     //
     // for x in y: m
     //     invariant
-    //         w@ == y.seq().take(y.index()).map_values(|u: &u8| *u)
+    //         &&& w.len() == y.index
+    //         &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
     // {
     //     w.push(*x);
     // }
@@ -1078,7 +1093,8 @@ fn for_loop_test_take() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u)
+                      &&& w.len() == y.index
+                      &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1123,7 +1139,8 @@ fn for_loop_test_skip() {
     //
     // for x in y: m
     //     invariant
-    //         w@ == y.seq().map_values(|u: &u8| *u)
+    //        &&& w.len() == y.index
+    //        &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
     // {
     //     w.push(*x);
     // }
@@ -1153,7 +1170,8 @@ fn for_loop_test_skip() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u)
+                      &&& w.len() == y.index
+                      &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1199,7 +1217,8 @@ fn for_loop_test_rev() {
     //
     // for x in y: m
     //     invariant
-    //         w@ + y.seq().map_values(|u: &u8| *u) == v@.reverse()
+    //        &&& w.len() == y.index
+    //        &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
     // {
     //     w.push(*x);
     // }
@@ -1228,7 +1247,8 @@ fn for_loop_test_rev() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u) 
+                      &&& w.len() == y.index
+                      &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1273,7 +1293,8 @@ fn for_loop_test_double_rev() {
     //
     // for x in y: m
     //     invariant
-    //         w@ + y.seq().map_values(|u: &u8| *u) == v@
+    //        &&& w.len() == y.index
+    //        &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
     // {
     //     w.push(*x);
     // }
@@ -1301,7 +1322,8 @@ fn for_loop_test_double_rev() {
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
 
                       // inv
-                      &&& w@ == y.seq().take(y.index@).map_values(|u: &u8| *u) 
+                      &&& w.len() == y.index
+                      &&& forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
