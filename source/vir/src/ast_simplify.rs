@@ -8,11 +8,11 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, ByRef, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
-    KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped,
-    Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr,
-    Visibility,
+    Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange,
+    ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck,
+    VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
@@ -471,7 +471,8 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
-            let (temp_decl, update) = small_or_temp(state, &place_to_expr(update));
+            let CtorUpdateTail { place, taken_fields: _ } = update;
+            let (temp_decl, update) = small_or_temp(state, &place_to_expr(place));
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
             if temp_decl.len() == 0 {

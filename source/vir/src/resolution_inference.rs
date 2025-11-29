@@ -114,11 +114,11 @@ outside the loop. In all other cases, this check shouldn't matter.
 */
 
 use crate::ast::{
-    BinaryOp, ByRef, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Mode, ModeWrapperMode,
-    Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped,
-    Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
+    BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
+    Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
 };
-use crate::ast_util::{bool_typ, mk_bool, unit_typ};
+use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::{AstId, Span};
@@ -291,6 +291,7 @@ struct LoopEntry {
     drops: Rc<Vec<FlattenedPlace>>,
 }
 
+#[derive(Clone)]
 enum ComputedPlaceTyped {
     /// Temporary, or subfield thereof
     OfTemp,
@@ -436,6 +437,7 @@ impl<'a> Builder<'a> {
     /// Process the given expression for building the CFG. Return the basic block
     /// corresponds to the end of the expression's execution, or Err(()) if
     /// execution never reachs the end of the expression.
+    /// (This is not a real Err,
     fn build(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
         let span_id = expr.span.id;
         let mut bb = bb;
@@ -510,7 +512,46 @@ impl<'a> Builder<'a> {
                     Ok(main_bb)
                 }
             }
-            ExprX::Ctor(_dt, _id, binders, opt_place) => {
+            ExprX::Ctor(_dt, _id, binders, Some(CtorUpdateTail { place, taken_fields })) => {
+                // CtorUpdateTail can only happen for Ctor-style ctor, so we don't need
+                // to account for TwoPhaseBorrows. (If this ever changes we'll just get a panic
+                // later about unhandled TwoPhaseBorrowMut node)
+
+                for b in binders.iter() {
+                    let e = &b.a;
+                    bb = self.build(e, bb)?;
+                }
+
+                let (p, bb1) = self.build_place_typed(place, bb)?;
+                bb = bb1;
+
+                for (field_name, unfinal_read_kind) in taken_fields.iter() {
+                    if self.is_move(unfinal_read_kind) {
+                        if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
+                            // This case should be unreachable because we already checked the ReadKind
+                            panic!(
+                                "Verus Internal State: inconsistent state, move out of ghost place"
+                            )
+                        }
+                        if let Some(mut p) = p.clone().get_place_for_move() {
+                            p.projections.push(ProjectionTyped::struct_field(
+                                &place.typ,
+                                field_name,
+                                &self.locals.datatypes,
+                            ));
+                            let p = self.locals.add_place(p, false);
+                            self.push_instruction(
+                                bb,
+                                AstPosition::After(place.span.id),
+                                InstructionKind::MoveFrom(p),
+                            );
+                        }
+                    }
+                }
+
+                Ok(bb)
+            }
+            ExprX::Ctor(_dt, _id, binders, None) => {
                 let mut two_phase_delayed_mutations = vec![];
 
                 // TODO(new_mut_ref): tests for two-phase borrows
@@ -542,9 +583,6 @@ impl<'a> Builder<'a> {
                     );
                 }
 
-                if opt_place.is_some() {
-                    todo!()
-                }
                 Ok(bb)
             }
             ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
@@ -1621,6 +1659,48 @@ impl ComputedPlaceTyped {
                 None
             }
         }
+    }
+}
+
+impl ProjectionTyped {
+    fn struct_field(
+        dt_typ: &Typ,
+        field_name: &Ident,
+        datatypes: &HashMap<Path, Datatype>,
+    ) -> ProjectionTyped {
+        let typ = undecorate_typ(dt_typ);
+        let (dt, typ_args) = match &*typ {
+            TypX::Datatype(dt, typ_args, _) => (dt, typ_args),
+            _ => panic!("Internal Verus Error: struct_field called for non-struct type"),
+        };
+        let (variant_name, field_typ) = match dt {
+            Dt::Tuple(_arity) => {
+                panic!("Internal Verus Error: struct_field called for tuple")
+                /*let p = field_name.parse::<usize>().unwrap();
+                let field_typ = typ_args[p].clone()
+                let variant_name = crate::def::prefix_tuple_variant(arity);
+                (variant_name, field_typ)*/
+            }
+            Dt::Path(path) => {
+                let datatype = &datatypes[path];
+                assert!(datatype.x.variants.len() == 1);
+                let variant = &datatype.x.variants[0];
+                let field = crate::ast_util::get_field(&variant.fields, field_name);
+                let field_typ =
+                    subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+                (variant.name.clone(), field_typ)
+            }
+        };
+        ProjectionTyped::StructField(
+            FieldOpr {
+                datatype: dt.clone(),
+                variant: variant_name.clone(),
+                field: field_name.clone(),
+                get_variant: false,
+                check: crate::ast::VariantCheck::None,
+            },
+            field_typ,
+        )
     }
 }
 

@@ -1,8 +1,8 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, Datatype, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion,
-    MultiOp, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
-    Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail, Datatype, Dt, Expr,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode,
+    ModeCoercion, MultiOp, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -1192,25 +1192,55 @@ fn check_expr_handle_mut_arg(
                 }
                 Dt::Tuple(_) => (None, Mode::Exec),
             };
-            if let Some(update) = update {
+
+            let get_field_mode = |field_ident: &crate::ast::Ident| {
+                match variant_opt {
+                    Some(variant) => get_field(&variant.fields, field_ident).a.1,
+                    None => Mode::Exec, // tuple field is Mode exec
+                }
+            };
+
+            if let Some(CtorUpdateTail { place, taken_fields }) = update {
                 let place_mode =
-                    check_place(ctxt, record, typing, outer_mode, update, PlaceAccess::Read)?;
-                mode = mode_join(mode, place_mode);
+                    check_place(ctxt, record, typing, outer_mode, place, PlaceAccess::Read)?;
+
+                for (taken_field, _) in taken_fields.iter() {
+                    let field_mode = get_field_mode(taken_field);
+                    let arg_mode = mode_join(place_mode, field_mode);
+                    if !mode_le(arg_mode, field_mode) {
+                        // allow this arg by weakening whole struct's mode
+                        mode = mode_join(mode, arg_mode);
+                    }
+                }
             }
             for arg in binders.iter() {
-                let field_mode = match variant_opt {
-                    Some(variant) => get_field(&variant.fields, &arg.name).a.1,
-                    None => Mode::Exec, // tuple field is Mode exec
-                };
-                let mode_arg =
+                let field_mode = get_field_mode(&arg.name);
+                let arg_mode =
                     check_expr(ctxt, record, typing, mode_join(outer_mode, field_mode), &arg.a)?;
-                if !mode_le(mode_arg, field_mode) {
+                if !mode_le(arg_mode, field_mode) {
                     // allow this arg by weakening whole struct's mode
-                    mode = mode_join(mode, mode_arg);
+                    mode = mode_join(mode, arg_mode);
                 }
             }
 
             record.type_inv_info.ctor_needs_check.insert(expr.span.id, mode != Mode::Spec);
+
+            // Now that we've computed the final mode of this struct expr, go back through
+            // all the 'take_fields' and see which ones require moves.
+            // TODO(new_mut_ref) as in the ExprX::ReadPlace case, this is not as aggressive
+            // about marking things spec as it should be.
+            if let Some(CtorUpdateTail { place: _, taken_fields }) = update {
+                for (taken_field, read_kind) in taken_fields.iter() {
+                    let field_mode = get_field_mode(taken_field);
+                    let arg_mode = mode_join(field_mode, mode);
+
+                    let final_read_kind = match arg_mode {
+                        Mode::Spec => ReadKind::Spec,
+                        _ => read_kind.preliminary_kind,
+                    };
+                    record.read_kind_finals.insert(read_kind.id, final_read_kind);
+                }
+            }
 
             Ok(mode)
         }
