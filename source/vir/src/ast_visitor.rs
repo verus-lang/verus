@@ -1089,6 +1089,124 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             })
         })
     }
+
+    fn visit_field(&mut self, field: &Field) -> Result<R::Ret<Field>, Err> {
+        let (typ, mode, visibility) = &field.a;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| field.new_a((R::get(typ), *mode, visibility.clone())))
+    }
+
+    fn visit_fields(&mut self, fields: &Vec<Field>) -> Result<R::Vec<Field>, Err> {
+        R::map_vec(fields, &mut |b| self.visit_field(b))
+    }
+
+    fn visit_variant(&mut self, variant: &Variant) -> Result<R::Ret<Variant>, Err> {
+        let fields = self.visit_fields(&variant.fields)?;
+        R::ret(|| Variant {
+            name: variant.name.clone(),
+            fields: R::get_vec_a(fields),
+            ctor_style: variant.ctor_style.clone(),
+        })
+    }
+
+    fn visit_variants(&mut self, variants: &Vec<Variant>) -> Result<R::Vec<Variant>, Err> {
+        R::map_vec(variants, &mut |v| self.visit_variant(v))
+    }
+
+    fn visit_datatype(&mut self, datatype: &Datatype) -> Result<R::Ret<Datatype>, Err> {
+        let DatatypeX {
+            name,
+            proxy,
+            owning_module,
+            visibility,
+            transparency,
+            typ_params,
+            typ_bounds,
+            variants,
+            mode,
+            ext_equal,
+            user_defined_invariant_fn,
+            sized_constraint,
+            destructor,
+        } = &datatype.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let variants = self.visit_variants(variants)?;
+        let sized_constraint = R::map_opt(sized_constraint, &mut |t| self.visit_typ(t))?;
+        R::ret(|| {
+            datatype.new_x(DatatypeX {
+                name: name.clone(),
+                proxy: proxy.clone(),
+                owning_module: owning_module.clone(),
+                visibility: visibility.clone(),
+                transparency: transparency.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                variants: R::get_vec_a(variants),
+                mode: *mode,
+                ext_equal: *ext_equal,
+                user_defined_invariant_fn: user_defined_invariant_fn.clone(),
+                sized_constraint: R::get_opt(sized_constraint),
+                destructor: *destructor,
+            })
+        })
+    }
+
+    fn visit_assoc_type_impl(&mut self, imp: &AssocTypeImpl) -> Result<R::Ret<AssocTypeImpl>, Err> {
+        let AssocTypeImplX {
+            name,
+            impl_path,
+            typ_params,
+            typ_bounds,
+            trait_path,
+            trait_typ_args,
+            typ,
+            impl_paths,
+        } = &imp.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let trait_typ_args = self.visit_typs(trait_typ_args)?;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| {
+            imp.new_x(AssocTypeImplX {
+                name: name.clone(),
+                impl_path: impl_path.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                trait_path: trait_path.clone(),
+                trait_typ_args: R::get_vec_a(trait_typ_args),
+                typ: R::get(typ),
+                impl_paths: impl_paths.clone(),
+            })
+        })
+    }
+
+    fn visit_trait_impl(&mut self, imp: &TraitImpl) -> Result<R::Ret<TraitImpl>, Err> {
+        let TraitImplX {
+            impl_path,
+            typ_params,
+            typ_bounds,
+            trait_path,
+            trait_typ_args,
+            trait_typ_arg_impls,
+            owning_module,
+            auto_imported,
+            external_trait_blanket,
+        } = &imp.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let trait_typ_args = self.visit_typs(trait_typ_args)?;
+        R::ret(|| {
+            imp.new_x(TraitImplX {
+                impl_path: impl_path.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                trait_path: trait_path.clone(),
+                trait_typ_args: R::get_vec_a(trait_typ_args),
+                trait_typ_arg_impls: trait_typ_arg_impls.clone(),
+                owning_module: owning_module.clone(),
+                auto_imported: *auto_imported,
+                external_trait_blanket: *external_trait_blanket,
+            })
+        })
+    }
 }
 
 pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
@@ -1154,6 +1272,7 @@ where
     visitor.visit_typ(typ)
 }
 
+#[allow(dead_code)]
 pub(crate) fn map_typs_visitor_env<E, FT>(typs: &Typs, env: &mut E, ft: &FT) -> Result<Typs, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
@@ -1656,21 +1775,8 @@ pub(crate) fn map_datatype_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let datatypex = datatype.x.clone();
-    let typ_bounds = map_generic_bounds_visitor(&datatypex.typ_bounds, env, ft)?;
-    let mut variants: Vec<Variant> = Vec::new();
-    for variant in datatypex.variants.iter() {
-        let mut fields: Vec<Field> = Vec::new();
-        for field in variant.fields.iter() {
-            let (typ, mode, vis) = &field.a;
-            let typ = map_typ_visitor_env(typ, env, ft)?;
-            fields.push(field.new_a((typ, *mode, vis.clone())));
-        }
-        let variant = Variant { fields: Arc::new(fields), ..variant.clone() };
-        variants.push(variant);
-    }
-    let variants = Arc::new(variants);
-    Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_datatype(datatype)
 }
 
 pub(crate) fn map_trait_impl_visitor_env<E, FT>(
@@ -1681,29 +1787,8 @@ pub(crate) fn map_trait_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let TraitImplX {
-        impl_path,
-        typ_params,
-        typ_bounds,
-        trait_path,
-        trait_typ_args,
-        trait_typ_arg_impls,
-        owning_module,
-        auto_imported,
-        external_trait_blanket,
-    } = &imp.x;
-    let impx = TraitImplX {
-        impl_path: impl_path.clone(),
-        typ_params: typ_params.clone(),
-        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
-        trait_path: trait_path.clone(),
-        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-        trait_typ_arg_impls: trait_typ_arg_impls.clone(),
-        owning_module: owning_module.clone(),
-        auto_imported: *auto_imported,
-        external_trait_blanket: *external_trait_blanket,
-    };
-    Ok(Spanned::new(imp.span.clone(), impx))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_trait_impl(imp)
 }
 
 pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
@@ -1714,26 +1799,6 @@ pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let AssocTypeImplX {
-        name,
-        impl_path,
-        typ_params,
-        typ_bounds,
-        trait_path,
-        trait_typ_args,
-        typ,
-        impl_paths,
-    } = &assoc.x;
-    let typ = map_typ_visitor_env(typ, env, ft)?;
-    let assocx = AssocTypeImplX {
-        name: name.clone(),
-        impl_path: impl_path.clone(),
-        typ_params: typ_params.clone(),
-        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
-        trait_path: trait_path.clone(),
-        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-        typ,
-        impl_paths: impl_paths.clone(),
-    };
-    Ok(Spanned::new(assoc.span.clone(), assocx))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_assoc_type_impl(assoc)
 }
