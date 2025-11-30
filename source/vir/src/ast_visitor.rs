@@ -3,8 +3,8 @@ use crate::ast::{
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
     GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
     ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    TraitImpl, TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -1147,6 +1147,38 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 user_defined_invariant_fn: user_defined_invariant_fn.clone(),
                 sized_constraint: R::get_opt(sized_constraint),
                 destructor: *destructor,
+            })
+        })
+    }
+
+    #[allow(dead_code)]
+    fn visit_trait(&mut self, tr: &Trait) -> Result<R::Ret<Trait>, Err> {
+        let TraitX {
+            name,
+            proxy,
+            visibility,
+            typ_params,
+            typ_bounds,
+            assoc_typs,
+            assoc_typs_bounds,
+            methods,
+            is_unsafe,
+            external_trait_extension,
+        } = &tr.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let assoc_typs_bounds = self.visit_generic_bounds(assoc_typs_bounds)?;
+        R::ret(|| {
+            tr.new_x(TraitX {
+                name: name.clone(),
+                proxy: proxy.clone(),
+                visibility: visibility.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                assoc_typs: assoc_typs.clone(),
+                assoc_typs_bounds: R::get_vec_a(assoc_typs_bounds),
+                methods: methods.clone(),
+                is_unsafe: *is_unsafe,
+                external_trait_extension: external_trait_extension.clone(),
             })
         })
     }
