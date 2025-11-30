@@ -2393,7 +2393,7 @@ version = "0.0.0-2025-08-12-1837"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2025-11-24-2240"
+version = "0.0.0-2025-11-30-0053"
 dependencies = [
  "proc-macro2",
  "quote",
