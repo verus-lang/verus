@@ -96,6 +96,7 @@ impl ResolvedTypeCollection {
             | TypX::SpecFn(..)
             | TypX::AnonymousClosure(..)
             | TypX::FnDef(..)
+            | TypX::Dyn(..)
             | TypX::Boxed(_)
             | TypX::TypParam(_)
             | TypX::Projection { .. }

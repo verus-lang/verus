@@ -396,6 +396,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
+                UnaryOp::ToDyn => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,

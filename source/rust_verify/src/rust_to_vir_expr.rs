@@ -53,6 +53,7 @@ use vir::ast_util::{
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
+#[derive(Clone, Debug)]
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
     Place(Place),
@@ -1280,6 +1281,18 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
+
+            let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+            let op = match (tyr1.kind(), tyr2.kind()) {
+                (_, TyKind::Dynamic(_, _, rustc_middle::ty::DynKind::Dyn)) => Some(UnaryOp::ToDyn),
+                _ => None,
+            };
+            if let Some(op) = op {
+                let arg = arg.consume(bctx, get_inner_ty());
+                let x = ExprX::Unary(op, arg);
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
+            }
 
             let f = match (ty1.kind(), ty2.kind()) {
                 (TyKind::RawPtr(t1, _), TyKind::RawPtr(t2, _)) => {

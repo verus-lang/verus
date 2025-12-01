@@ -245,6 +245,8 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    /// dyn T<...args...> for some trait T (given by the Path) applied to trait type arguments
+    Dyn(Path, Typs, ImplPaths),
     /// When an opaque type is defined (e.g., by a function return), Rustc creates
     /// an unique opaque type constructor for it.
     /// This opaque type is just an instantiation of the opaque type constructor with args
@@ -357,6 +359,8 @@ pub enum UnaryOp {
         to_mode: Mode,
         kind: ModeCoercion,
     },
+    /// Coerce from concrete type to dyn T
+    ToDyn,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -1453,6 +1457,21 @@ pub struct OpaqueTypeX {
 pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
 pub type OpaqueTypes = Vec<OpaqueType>;
 
+/// Does the trait satisfy Verus's additional dyn-compatibility requirements,
+/// on top of Rust's dyn-compatibility requirements?
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum DynCompatible {
+    /// If Rust accepts trait as dyn compatible, Verus also accepts trait as dyn compatible
+    Accept,
+    /// The trait fails one of Verus's requirements for dyn compatibility
+    Reject { reason: String },
+    /// The trait satisfies Verus's requirements, but has a ?Sized blanket impl,
+    /// for which there is currently a known Rust unsoundness with dyn
+    /// (see https://github.com/rust-lang/rust/issues/57893 );
+    /// we can remove this case when the Rust issue is fixed.
+    RejectUnsizedBlanketImpl { trait_path: Path },
+}
+
 pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
@@ -1466,6 +1485,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // Initially set to None during translation to VIR,
+    // then set to Some after all the Function declarations have been processed.
+    pub dyn_compatible: Option<Arc<DynCompatible>>,
     // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
     // Some((TSpec, TSpecImpl))
     pub external_trait_extension: Option<(Path, Path)>,
