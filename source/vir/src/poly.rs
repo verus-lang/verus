@@ -138,6 +138,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
+        TypX::Dyn(..) => None,
         TypX::Decorate(d, None, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
             let m1 = typ_as_mono(allocator_typ)?;
@@ -202,6 +203,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
                 typ_as_mono(typ).is_none()
             }
         }
+        TypX::Dyn(..) => true,
         TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
@@ -239,6 +241,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
@@ -268,6 +271,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
@@ -290,6 +294,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
+        | TypX::Dyn(..)
         | TypX::Primitive(_, _)
         | TypX::FnDef(..) => exp.clone(),
         TypX::AnonymousClosure(..) => {
@@ -554,6 +559,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     mk_exp(ExpX::Unary(*op, e1))
                 }
                 UnaryOp::HeightTrigger => {
+                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp(ExpX::Unary(*op, e1))
+                }
+                UnaryOp::ToDyn => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }

@@ -175,6 +175,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
+        TypX::Dyn(..) => str_typ(POLY),
         TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
@@ -350,6 +351,7 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
                 vec![t]
             }
         }
+        TypX::Dyn(name, typs, _) => mk_id(dyn_id(ctx, name, typs), crate::def::DECORATE_NIL_DYN),
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
             mk_id(primitive_id(ctx, &name, typs), base)
@@ -452,6 +454,15 @@ pub(crate) fn datatype_id(ctx: &Ctx, path: &Path, typs: &Typs) -> Expr {
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
+fn dyn_id(ctx: &Ctx, tr: &Path, typs: &Typs) -> Expr {
+    let f_name = crate::def::prefix_dyn_id(tr);
+    let mut args: Vec<Expr> = Vec::new();
+    for t in typs.iter() {
+        args.extend(typ_to_ids(ctx, t));
+    }
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
+}
+
 pub(crate) fn primitive_id(ctx: &Ctx, name: &Primitive, typs: &Typs) -> Expr {
     let f_name = primitive_type_id(name);
     let mut args: Vec<Expr> = Vec::new();
@@ -533,6 +544,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
+        TypX::Dyn(..) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Primitive(Primitive::Array, _) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
         }
@@ -625,6 +637,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_box, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
         TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
@@ -658,6 +671,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
@@ -846,6 +860,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
+    let exp_typ = &exp.typ;
 
     let result = match &exp.x {
         ExpX::Const(c) => {
@@ -1032,6 +1047,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
+            }
+            UnaryOp::ToDyn => {
+                let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(exp_typ) else {
+                    panic!("ToDyn should have type TypX::Dyn: {:?}", exp_typ)
+                };
+                let inner_self_typ = undecorate_typ(&exp.typ); // strip off any Box, etc.
+                let mut args: Vec<Expr> = typ_to_ids(&inner_self_typ);
+                for t in typ_args.iter() {
+                    args.extend(typ_to_ids(t));
+                }
+                args.push(exp_to_expr(ctx, exp, expr_ctxt)?);
+                ident_apply(&crate::def::to_dyn(trait_path), &args)
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)

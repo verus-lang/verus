@@ -101,6 +101,9 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Datatype(Dt::Path(path), typs, _) => {
             Box::new(TypX::Datatype(state.datatype_name(path), vec![], gen_typs(state, typs)))
         }
+        vir::ast::TypX::Dyn(path, typs, _) => {
+            Box::new(TypX::Dyn(state.trait_name(path), gen_typs(state, typs)))
+        }
         vir::ast::TypX::Primitive(Primitive::Array, ts) => {
             assert!(ts.len() == 2);
             Box::new(TypX::Datatype(

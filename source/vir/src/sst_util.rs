@@ -452,6 +452,7 @@ impl ExpX {
                 }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
+                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);

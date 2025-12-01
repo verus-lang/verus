@@ -343,6 +343,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
+            UnaryOp::ToDyn => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
             }

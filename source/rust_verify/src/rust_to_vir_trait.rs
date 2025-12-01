@@ -468,6 +468,7 @@ pub(crate) fn translate_trait<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        dyn_compatible: None,
         external_trait_extension,
     };
     vir.traits.push(ctxt.spanned_new(trait_span, traitx));

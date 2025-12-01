@@ -847,6 +847,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     Arc::new(TypX::Datatype(path.clone(), R::get_vec_a(ts), impl_paths.clone()))
                 })
             }
+            TypX::Dyn(path, ts, impl_paths) => {
+                let ts = self.visit_typs(ts)?;
+                R::ret(|| Arc::new(TypX::Dyn(path.clone(), R::get_vec_a(ts), impl_paths.clone())))
+            }
             TypX::Primitive(p, ts) => {
                 let ts = self.visit_typs(ts)?;
                 R::ret(|| Arc::new(TypX::Primitive(p.clone(), R::get_vec_a(ts))))
@@ -1172,6 +1176,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             assoc_typs_bounds,
             methods,
             is_unsafe,
+            dyn_compatible,
             external_trait_extension,
         } = &tr.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
@@ -1187,6 +1192,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 assoc_typs_bounds: R::get_vec_a(assoc_typs_bounds),
                 methods: methods.clone(),
                 is_unsafe: *is_unsafe,
+                dyn_compatible: dyn_compatible.clone(),
                 external_trait_extension: external_trait_extension.clone(),
             })
         })
@@ -1287,6 +1293,37 @@ where
     match visitor.visit_typ(typ) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) struct WalkTypVisitorEnv<'a, E, FT> {
+    pub(crate) env: &'a mut E,
+    pub(crate) ft: &'a FT,
+}
+
+impl<'a, E, FT> AstVisitor<Walk, VirErr, NoScoper> for WalkTypVisitorEnv<'a, E, FT>
+where
+    FT: Fn(&mut E, &Typ) -> Result<(), VirErr>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), VirErr> {
+        self.visit_typ_rec(typ)?;
+        (self.ft)(&mut self.env, typ)
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) -> Result<(), VirErr> {
+        self.visit_expr_rec(expr)
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), VirErr> {
+        self.visit_stmt_rec(stmt)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<(), VirErr> {
+        self.visit_place_rec(place)
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), VirErr> {
+        self.visit_pattern_rec(pattern)
     }
 }
 

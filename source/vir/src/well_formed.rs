@@ -21,6 +21,7 @@ struct Ctxt<'a> {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
+    pub(crate) traits: HashMap<Path, Trait>,
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
@@ -69,6 +70,31 @@ fn check_one_typ<Emit: EmitError>(
         TypX::Datatype(Dt::Path(path), _, _) => {
             let _ = check_path_and_get_datatype(ctxt, path, span, emit)?;
             Ok(())
+        }
+        TypX::Dyn(path, _, _) => {
+            if let Some(tr) = ctxt.traits.get(path) {
+                use crate::ast::DynCompatible;
+                match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
+                    DynCompatible::Accept => Ok(()),
+                    DynCompatible::Reject { reason } => {
+                        let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
+                        Err(error(span, msg))
+                    }
+                    DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
+                        let name = path_as_friendly_rust_name(trait_path);
+                        let msg = format!(
+                            "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
+                            name,
+                        );
+                        Err(error(span, msg))
+                    }
+                }
+            } else {
+                Err(error(
+                    span,
+                    &format!("trait {} not declared to Verus", path_as_friendly_rust_name(path)),
+                ))
+            }
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
             check_function_access(ctxt, fun, None, span, emit)?;
@@ -1809,7 +1835,7 @@ pub fn check_crate(
     let diag_map: HashMap<Path, usize> = HashMap::new();
     let new_diags: Vec<VirErrAs> = Vec::new();
     let mut emit = EmitErrorState { diag_map, diags: new_diags };
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate, unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, &mut emit, no_verify)?;
