@@ -1,10 +1,10 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
-    Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
-    GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr, CtorUpdateTail,
+    CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
+    FunctionX, GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr,
+    Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt,
+    StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
