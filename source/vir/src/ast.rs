@@ -710,7 +710,8 @@ pub enum PatternX {
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
@@ -892,7 +893,8 @@ pub enum ExprX {
     Call(CallTarget, Exprs, Option<Expr>),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
     Ctor(Dt, Ident, Binders<Expr>, Option<CtorUpdateTail>),
     /// Primitive 0-argument operation
