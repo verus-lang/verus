@@ -21,12 +21,12 @@ they can be seamlessly cast to and fro.
 use super::layout::*;
 use super::prelude::*;
 use crate::vstd::endian::*;
+use crate::vstd::layout;
 use crate::vstd::primitive_int::PrimitiveInt;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
-use crate::vstd::layout;
 
 verus! {
 
@@ -366,7 +366,6 @@ impl<T> PointsTo<[T]> {
     // spec fn len_equiv_metadata(self) -> bool {
     //     self.ptr()@.metadata == self.mem_contents_seq().len()
     // }
-
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
@@ -473,14 +472,15 @@ impl<T> PointsTo<[T]> {
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<[S]>)
         ensures
             *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int 
-            || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len() <= self.ptr() as int,
+            self.ptr() as int + size_of::<T>() * self.mem_contents_seq().len() <= other.ptr() as int
+                || other.ptr() as int + size_of::<S>() * other.mem_contents_seq().len()
+                <= self.ptr() as int,
     ;
 
     pub axiom fn into_map(tracked self) -> (tracked m: Map<usize, PointsTo<T>>)
-        ensures 
+        ensures
             m.dom() == Set::new(|i: usize| i < self.mem_contents_seq().len()),
-            forall |i| 
+            forall|i|
                 #![trigger m.dom().contains(i)]
                 #![trigger self.mem_contents_seq()[i as int]]
                 #![trigger m[i].opt_value()]
@@ -539,28 +539,41 @@ impl PointsTo<str> {
     ;
 }
 
+// #[verifier::type_invariant]
+// spec fn inv<T>(pt: Map<usize, PointsTo<T>>) -> bool {
+//     forall|i|
+//         pt.dom().contains(i) ==> pt[i].ptr()@.provenance == pt.ptr()@.provenance
+//             && pt[i].ptr()@.addr == pt.ptr()@.addr + i
+//             && i < self.ptr()@.metadata
+// }
+
 impl<T> Map<usize, PointsTo<T>> {
-    /// The pointer that this permission is associated with.
+    // Invariants:
+    // for each address, ptr of PointsTo has the correct index offset from the initial pointer
+    // They all have the same provenance
+    // #[verifier::type_invariant]
+    // spec fn inv(self) -> bool {
+    //     forall|i|
+    //         self.dom().contains(i) ==> self[i].ptr()@.provenance == self.ptr()@.provenance
+    //                                     && self[i].ptr()@.addr == self.ptr()@.addr + i
+    // }
+
+    /// The pointer that this permission is associated with. 
+    /// Every index in the map should be bounded by `ptr()@.metadata`, 
+    /// so that all of the addresses of the individual `PointsTo`s fall within this pointer. 
     pub uninterp spec fn ptr(&self) -> *mut [T];
-
-    // TODO: figure out if I should track the "original" number of keys, or something
-    // Instead of phy()@.len(), maybe ptr()@.metadata?
-    // /// The actual number of per
-    // pub uninterp spec fn actual_len(&self) -> usize;
-
-    // /// The sequence of (possibly uninitialized) memory that this permission gives access to.
-    // pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
 
     // We would like to use align_of_val and size_of_val for the value that this permission corresponds to,
     // but value() has type Seq<T>, which is not associated with an alignment or a size.
     /// The physical value associated with this permission.
+    /// Needed for sound conversions to and from `PointsTo<[T]>`. 
+    /// TODO: figure out exactly what role it plays in `PointsTo<[T]>`
     pub uninterp spec fn phy(&self) -> &[T];
 
     /// Returns `true` if all of the permission's associated memory is initialized.
     // #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        forall|i|
-            self.dom().contains(i) ==> #[trigger] self[i].is_init()
+        forall|i| self.dom().contains(i) ==> #[trigger] self[i].is_init()
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subset is initialized.
@@ -580,57 +593,47 @@ impl<T> Map<usize, PointsTo<T>> {
     /// Returns `true` if all of the permission's associated memory is uninitialized.
     // #[verifier::inline]
     pub open spec fn is_fully_uninit(&self) -> bool {
-        forall|i|
-            self.dom().contains(i) ==> #[trigger] self[i].is_uninit()
-    }
-
-    /// Returns a sequence where for each index,
-    /// if the permission's associated memory at that index is initialized,
-    /// the corresponding index in the sequence holds that value.
-    /// Otherwise, the value at that index is meaningless.
-    // #[verifier::inline]
-    // make it a Map or a Set?
-    pub open spec fn value(&self) -> Set<(usize, T)> 
-        recommends 
-            self.is_init()
-    {
-        // self.map_values(|pt: PointsTo<T>| pt.value())
-        self.kv_pairs().map(|kv: (usize, PointsTo<T>)| (kv.0, kv.1.value()))
-        // Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+        forall|i| self.dom().contains(i) ==> #[trigger] self[i].is_uninit()
     }
 
     pub open spec fn to_seq(&self) -> Seq<T>
         recommends
-            self.is_init(), 
+            self.is_init(),
             self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
     {
         Seq::new(self.ptr()@.metadata as nat, |i: int| self[i as usize].value())
     }
 
-    pub axiom fn submap(tracked &mut self, begin: usize, size: usize) -> (tracked out_map: Self)
-        requires 
+    // Slightly more restrictive than a normal submap because we take a contiguous submap
+    pub axiom fn contiguous_submap(tracked &mut self, begin: usize, size: usize) -> (tracked out_map: Self)
+        requires
             Set::new(|i: usize| begin <= i < begin + size).subset_of(old(self).dom()),
         ensures
-            self == old(self).remove_keys(Set::new(|i: usize| begin <= i < begin + size)),
             out_map == old(self).restrict(Set::new(|i: usize| begin <= i < begin + size)),
-            out_map.ptr() == ptr_mut_from_data(PtrData::<[T]> { addr: (old(self).ptr()@.addr + begin) as usize, provenance: old(self).ptr()@.provenance, metadata: size}),
+            self == old(self).remove_keys(Set::new(|i: usize| begin <= i < begin + size)),
+            out_map.ptr() == ptr_mut_from_data(
+                PtrData::<[T]> {
+                    addr: (old(self).ptr()@.addr + begin) as usize,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: size,
+                },
+            ),
             self.ptr() == old(self).ptr(),
-            // todo: what about phy()
+            // out_map.phy() == slice_subrange(old(self).phy(), begin, (begin+size) as usize),
+            self.phy() == old(self).phy(),
+    // TODO: does this way of handling phy() make sense? 
+    // TODO: How to support spec subslice?
     ;
 
     pub axiom fn disjoint_union(tracked &mut self, other: Self)
         requires
             old(self).ptr()@.provenance == other.ptr()@.provenance,
             old(self).dom().disjoint(other.dom()),
-        ensures 
-            *self == old(self).union_prefer_right(other), 
+        ensures
+            *self == old(self).union_prefer_right(other),
             self.ptr() == old(self).ptr(),
+            // TODO: what about phy()?
     ;
-
-    // pub axiom fn len_equiv_metadata(&self) 
-    //     ensures 
-    //         self.ptr()@.metadata == self.mem_contents_seq().len(),
-    // ;
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
@@ -657,41 +660,14 @@ impl<T> Map<usize, PointsTo<T>> {
     pub axiom fn ptr_bounds(
         tracked &self,
     )
-    // TODO: do I need this requires?
+    // TODO: do I need this requires? Or do these bounds hold of possibly-null pointers?
         requires
             size_of::<T>() * self.ptr()@.metadata != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-            // I think we want something bigger than self.len() here - something to do with the max of the keys?
             self.ptr()@.addr + self.ptr()@.metadata * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
-
-    // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
-    // Probably skip unless I need it
-    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
-    // pub axiom fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to:
-    //     &Self)
-    //     requires
-    //         start_index + len <= self.mem_contents_seq().len(),
-    //     ensures
-    //         sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
-    //             PtrData {
-    //                 addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize,
-    //                 provenance: self.ptr()@.provenance,
-    //                 metadata: len as usize,
-    //             },
-    //         ),
-    //         sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
-    //             start_index as int,
-    //             start_index as int + len as int,
-    //         ),
-    //         sub_points_to.phy()@ == self.phy()@.subrange(
-    //             start_index as int,
-    //             start_index as int + len as int,
-    //         ),
-    // ;
-    // use tracked_remove_keys instead
 
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
@@ -708,28 +684,31 @@ impl<T> Map<usize, PointsTo<T>> {
     //         self.ptr() == old(self).ptr(),
     //         self.is_uninit(),
     // ;
+
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     ///
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
+    // TODO: why does this take in a &mut reference?
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &Map<usize, PointsTo<S>>)
         ensures
             *old(self) == *self,
-            self.ptr() as int + size_of::<T>() * self.ptr()@.metadata <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() * other.len() <= self.ptr() as int,
+            self.ptr() as int + size_of::<T>() * self.ptr()@.metadata <= other.ptr() as int
+                || other.ptr() as int + size_of::<S>() * other.ptr()@.metadata <= self.ptr() as int,
     ;
 
     pub axiom fn into_slice(tracked self) -> (tracked pt: PointsTo<[T]>)
-        requires 
+        requires
             self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
-        ensures 
+        ensures
             pt.mem_contents_seq().len() == self.ptr()@.metadata,
-            forall |i| 
-                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int] == self[i].opt_value(),
-            pt.ptr() == self.ptr(), 
+            forall|i|
+                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                    == self[i].opt_value(),
+            pt.ptr() == self.ptr(),
             pt.phy() == self.phy(),
-            // What about pt.phy()?
+    // Does this make sense for pt.phy()?
     ;
 }
 
@@ -1180,10 +1159,14 @@ impl PointsToRaw {
     ;
 
     /// Creates a `PointsTo<[V]>` permission from a `PointsToRaw` permission
-    /// with address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`; 
+    /// with address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`;
     /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`.
-    pub axiom fn into_typed_slice<V>(tracked self, start: usize, length: usize) -> (tracked points_to: PointsTo<[V]>)
+    pub axiom fn into_typed_slice<V>(
+        tracked self,
+        start: usize,
+        length: usize,
+    ) -> (tracked points_to: PointsTo<[V]>)
         requires
             start as int % layout::align_of::<V>() as int == 0,
             self.is_range(start as int, (length * layout::size_of::<V>()) as int),
@@ -1193,15 +1176,18 @@ impl PointsToRaw {
             ),
             points_to.is_uninit(),
             // Q: Is it better to have this explicit postcondition or make it a type invariant? Always true so can make broadcast axiom, accessible to clients.
-            points_to.mem_contents_seq().len() == length, 
-            // TODO: how to initialize points_to.phy()?
+            points_to.mem_contents_seq().len()
+                == length,
+    // TODO: how to initialize points_to.phy()?
+
     ;
 
     /// Creates a `PointsTo<[V]>` permission from a `PointsToRaw` permission
-    /// with address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`; 
+    /// with address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`;
     /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`.
-    pub axiom fn into_typed_map<V>(tracked self, start: usize, length: usize) -> (tracked points_to: Map<usize, PointsTo<V>>)
+    pub axiom fn into_typed_map<V>(tracked self, start: usize, length: usize) -> (tracked points_to:
+        Map<usize, PointsTo<V>>)
         requires
             start as int % layout::align_of::<V>() as int == 0,
             self.is_range(start as int, (length * layout::size_of::<V>()) as int),
@@ -1265,7 +1251,7 @@ impl<V> Map<usize, PointsTo<V>> {
     /// and a range corresponding to the address of the `PointsTo<V>`,  size of `V`, and length.
     pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
-            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata)
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
@@ -1278,7 +1264,7 @@ impl<V> Map<usize, PointsTo<V>> {
     /// and a range corresponding to the address of the `PointsTo<V>`, size of `V`, and length.
     pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         requires
-            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata)
+            self.dom() == Set::new(|i: usize| i < self.ptr()@.metadata),
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
