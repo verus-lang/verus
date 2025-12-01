@@ -987,28 +987,29 @@ fn for_loop_test_map() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len(), 
+                    0 <= y.index@ <= y.seq().len(), 
 
                     // Internal invariants that help maintain the other internal invariants
                     y.snapshot == VERUS_old_snap,
-                    y.iter.seq().len() == y.snapshot@.seq().len() - y.index@,
+                    y.iter.seq().len() == y.seq().len() - y.index@,
                     forall |i| 
                         #![trigger y.iter.seq()[i]]
-                    0 <= i < y.iter.seq().len() ==> y.iter.seq()[i] == y.snapshot@.seq().skip(y.index@)[i],
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@),
+                        //#![trigger y.seq().skip(y.index@)[i]]
+                    0 <= i < y.iter.seq().len() ==> y.iter.seq()[i] == y.seq().skip(y.index@)[i],
+                    //y.iter.seq() =~= y.seq().skip(y.index@),
                     (y.iter.completes() ==> y.snapshot@.completes()),
 
                     // User invariants
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                     // inv
                     //w@ == y.seq().take(y.index@) 
                     w.len() == y.index
                     && (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i])
                     && (forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8)
-                    && (y.index@ < y.snapshot@.seq().len() ==> x < 8)
+                    && (y.index@ < y.seq().len() ==> x < 8)
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
@@ -1016,6 +1017,8 @@ fn for_loop_test_map() {
                 decreases
                     y.iter.decrease(),
             {
+                //let ghost old_snap = y.snapshot@;
+                //assert(y.snapshot@.seq() == y.seq());
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
                 match y.iter.next() {
@@ -1035,11 +1038,16 @@ fn for_loop_test_map() {
                     assert(x < 8);
                     w.push(x);
                 };
-                // assert(w.len() == y.index);
+                //assert(w.len() == y.index);
                 // assert(forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]);
+                // assert(w@ == y.seq().take(y.index@));
+                // assert(y.seq() == old_snap.seq());
+                // assert(y.snapshot == VERUS_old_snap);
                 // assert forall |i| 0 <= i < y.seq().len() implies y.seq()[i] < 8 by {
                 //     assert(y.seq()[i] == VERUS_old_snap.seq()[i]);
-                //     assert(VERUS_old_snap.seq()[i] < 8);
+                //     assert(y.seq()[i] == old_snap.seq()[i]);
+                //     //assert(old_snap.seq()[i] < 8);
+                //     //assert(VERUS_old_snap.seq()[i] < 8);
                 // };
                 // assert(forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8);
                 // assert(y.index@ < y.snapshot@.seq().len() ==> x < 8);
