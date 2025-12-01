@@ -1,10 +1,10 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
-    Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
-    GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
+    FunctionX, GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr,
+    Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt,
+    StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -315,9 +315,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let oe = self.visit_opt_expr(opt_e)?;
                 R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es), R::get_opt(oe))))
             }
-            ExprX::Ctor(dt, id, binders, opt_e) => {
+            ExprX::Ctor(dt, id, binders, opt_tail) => {
                 let bs = self.visit_binders_expr(binders)?;
-                let oe = self.visit_opt_place(opt_e)?;
+                let oe = R::map_opt(opt_tail, &mut |p| self.visit_ctor_update_tail(p))?;
                 R::ret(|| {
                     expr_new(ExprX::Ctor(dt.clone(), id.clone(), R::get_vec_a(bs), R::get_opt(oe)))
                 })
@@ -648,6 +648,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 })
             }
         }
+    }
+
+    fn visit_ctor_update_tail(
+        &mut self,
+        tail: &CtorUpdateTail,
+    ) -> Result<R::Ret<CtorUpdateTail>, Err> {
+        let CtorUpdateTail { place, taken_fields } = tail;
+        let place = self.visit_place(place)?;
+        R::ret(|| CtorUpdateTail { place: R::get(place), taken_fields: taken_fields.clone() })
     }
 
     fn visit_arms(&mut self, arms: &Arms) -> Result<R::Vec<Arm>, Err> {

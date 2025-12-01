@@ -2549,3 +2549,127 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file_with_options! {
+    #[test] ctor_with_update_tail ["new-mut-ref"] => verus_code! {
+        tracked struct TTPair<A, B> {
+            tracked a: A,
+            tracked b: B,
+        }
+
+        fn test1() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            assert(has_resolved(p.b)); // FAILS
+
+            proof {
+                *p2.b.borrow_mut() = 4;
+            }
+        }
+
+        fn test2() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            // ok, p.a was not moved
+            assert(has_resolved(p.a));
+
+            proof {
+                *p2.b.borrow_mut() = 4;
+            }
+        }
+
+        fn test3() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p2.a.borrow_mut() = 5;
+                *p2.b.borrow_mut() = 6;
+            }
+
+            assert(g1@ == 4);
+            assert(g3@ == 5);
+            assert(g2@ == 6);
+
+            assert(false); // FAILS
+        }
+
+        spec fn id<A>(a: A) -> A { a }
+
+        fn test4() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked ref_g3 = &mut g3;
+            // this doesn't do any moves because it's ghost mode:
+            let ghost p2 = TTPair {
+                a: id(ref_g3),
+                .. p
+            };
+
+            assert(has_resolved(p.b));
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
