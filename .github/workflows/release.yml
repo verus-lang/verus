@@ -11,6 +11,7 @@ permissions:
 jobs:
   copy-release:
     runs-on: ubuntu-latest
+    if: github.repository == 'verus-lang/verus'
 
     steps:
       - name: Get Release Info
@@ -38,7 +39,7 @@ jobs:
         run: |
           new_release_tag=$(echo $release_tag | sed 's/\/rolling//')
           new_release_name=$(echo $release_name | sed 's/Rolling //')
-          
+
           response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\": \"$new_release_tag\", \"name\": \"$new_release_name\", \"body\": \"$release_tag\"}" \
@@ -54,12 +55,12 @@ jobs:
           new_release_id: ${{ env.new_release_id }}
         run: |
           assets=$(echo $release_assets | jq -c '.[]')
-          
+
           for asset in $assets; do
             asset_url=$(echo $asset | jq -r '.url')
             asset_name=$(echo $asset | jq -r '.name')
             asset_download_url=$(curl -s -H "Authorization: token $GITHUB_TOKEN" $asset_url | jq -r '.browser_download_url')
-            
+
             curl -L -o $asset_name -H "Authorization: token $GITHUB_TOKEN" $asset_download_url
             curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
               -H "Content-Type: application/octet-stream" \
