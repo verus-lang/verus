@@ -97,6 +97,7 @@ pub struct ToDebugSNodeOpts {
     pub no_type: bool,
     pub no_fn_details: bool,
     pub no_encoding: bool,
+    pub friendly_types: bool,
 }
 
 pub const COMPACT_TONODEOPTS: ToDebugSNodeOpts =
@@ -224,16 +225,20 @@ impl ToDebugSNode for num_bigint::BigInt {
 
 impl ToDebugSNode for air::ast::TypX {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        use air::ast::TypX;
-        match self {
-            TypX::Bool => Node::Atom("Bool".to_string()),
-            TypX::Int => Node::Atom("Int".to_string()),
-            TypX::Fun => Node::Atom("Fun".to_string()),
-            TypX::Named(ident) => {
-                Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
-            }
-            TypX::BitVec(size) => {
-                Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
+        if opts.friendly_types {
+            Node::Atom(format!("`{;}`", crate::ast_util::typ_to_diagnostic_str(self)))
+        } else {
+            use air::ast::TypX;
+            match self {
+                TypX::Bool => Node::Atom("Bool".to_string()),
+                TypX::Int => Node::Atom("Int".to_string()),
+                TypX::Fun => Node::Atom("Fun".to_string()),
+                TypX::Named(ident) => {
+                    Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
+                }
+                TypX::BitVec(size) => {
+                    Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
+                }
             }
         }
     }
@@ -522,5 +527,66 @@ pub fn write_krate_sst(
         let group_node = nodes!(group {group.to_node(opts)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&group_node))
             .expect("cannot write to vir write");
+    }
+}
+
+enum NodeInCtorStyle {
+    OneLine(String),
+    Lines(Vec<String>),
+}
+
+fn node_to_ctor_style(node: &Node, indent: usize, max_line_len: usize) -> NodeInCtorStyle {
+    match node {
+        Node::Atom(s) => NodeInCtorStyle::OneLine(s.clone()),
+        Node::List(l) => {
+            let mut ctor = None;
+            if l.length() >= 2 {
+                if let Node::Atom(s) = &l[0] {
+                    if s == "__printer_ctor_style" {
+                        if let Node::Atom(s) = &l[1] {
+                            ctor = Some((s.clone(), &l[2..]));
+                        }
+                    }
+                }
+            }
+            match ctor {
+                Some((ctor_name, args)) => {
+                    let mut lines = vec![];
+                    let mut total_len = 0;
+                    let mut all_one_line = true;
+                    for arg in args.iter() {
+                        let line = node_to_ctor_style(node, indent + 4, max_line_len);
+                        if let NodeInCtorStyle::OneLine(s) = &line {
+                            total_len += s.len();
+                        } else {
+                            all_one_line = false;
+                        }
+                        lines.push(line);
+                    }
+                    if all_one_line &&
+                        indent + total_len + ctor_name.len() + (args.len() * 2) <= max_line_len
+                    {
+                        let mut v = vec![ctor_name.clone()];
+                        if args.len() > 0 {
+                            v.push("(");
+                            for (i, arg) in lines.iter().enumerate() {
+                                if i != 0 {
+                                    v.push(", ");
+                                }
+                                if let NodeInCtorStyle::OneLine(s) = &line {
+                                    v.push(s.clone());
+                                } else {
+                                    unreachable!();
+                                }
+                            }
+                            v.push(")");
+                        }
+                        NodeInCtorStyle::OneLine(v.join(""))
+                    } else {
+                        
+                    }
+                }
+            }
+        }
     }
 }
