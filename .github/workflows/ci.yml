@@ -20,15 +20,9 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
       - name: setup rust
-        run: |
-          brew unlink rustup
-          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup rust toolchain
-        run: |
-          . "$HOME/.cargo/env"
-          which rustup
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: setup verusfmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -58,15 +52,9 @@ jobs:
           ./tools/get-z3.sh
           echo z3 version `./z3 --version`
       - name: setup rust
-        run: |
-          brew unlink rustup
-          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup rust toolchain
-        run: |
-          . "$HOME/.cargo/env"
-          which rustup
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: download singular
         if: matrix.features == 'singular'
         run: |
@@ -167,15 +155,9 @@ jobs:
           ./tools/get-z3.sh
           echo z3 version `./z3 --version`
       - name: setup rust
-        run: |
-          brew unlink rustup
-          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup rust toolchain
-        run: |
-          . "$HOME/.cargo/env"
-          which rustup
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: build and test
         working-directory: ./source
         run: |
@@ -218,17 +200,9 @@ jobs:
           .\tools\get-z3.ps1
           Write-Host "z3 version $(.\z3.exe --version)"
       - name: setup rust
-        run: |
-          # Disable the download progress bar which can cause perf issues
-          $ProgressPreference = "SilentlyContinue"
-          Invoke-WebRequest https://win.rustup.rs/ -OutFile rustup-init.exe
-          .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --default-toolchain=none
-          del rustup-init.exe
-        shell: powershell
-      - name: setup rust toolchain
-        run: |
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: build verus release
         working-directory: .\source
         run: |
@@ -262,12 +236,9 @@ jobs:
           ./tools/get-z3.sh
           echo z3 version `./z3 --version`
       - name: setup rust
-        run: |
-          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup rust toolchain
-        run: |
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: build and test
         working-directory: ./source
         run: |
@@ -302,15 +273,9 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
       - name: setup rust
-        run: |
-          brew unlink rustup
-          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      - name: setup rust toolchain
-        run: |
-          . "$HOME/.cargo/env"
-          which rustup
-          rustup --version
-          rustup toolchain install
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
       - name: check rustdoc
         working-directory: ./source
         run: |
