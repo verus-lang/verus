@@ -4,11 +4,9 @@ fn main() { }
 
 verus! {
 
-mod prophetic;
-mod prophetic_for_loops;
-mod more_prophetic_for_loops;
-mod more_prophetic_quantified;
-mod test;
+mod for_loops_quantified;
+mod for_loops_seq_ops;
+mod prophetic_iters;
 
 // Use a module here, so that we can `broadcast use` in the examples further below.
 mod iters {
