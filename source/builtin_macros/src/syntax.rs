@@ -4674,6 +4674,7 @@ enum MacroElement {
     Colon(Token![:]),
     Expr(Expr),
     Mut(Token![mut]),
+    At(Token![@]),
 }
 
 #[derive(Debug)]
@@ -4731,6 +4732,8 @@ impl Parse for MacroElement {
             Ok(MacroElement::Colon(input.parse()?))
         } else if input.peek(Token![mut]) {
             Ok(MacroElement::Mut(input.parse()?))
+        } else if input.peek(Token![@]) {
+            Ok(MacroElement::At(input.parse()?))
         } else {
             Ok(MacroElement::Expr(input.parse()?))
         }
@@ -4834,6 +4837,7 @@ impl ToTokens for MacroElement {
             MacroElement::Colon(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
             MacroElement::Mut(e) => e.to_tokens(tokens),
+            MacroElement::At(e) => e.to_tokens(tokens),
         }
     }
 }

@@ -175,6 +175,7 @@ fn handle_autospec<'tcx>(
                     autospec: None,
                     bit_vector: false,
                     atomic: false,
+                    skip_inst_collector: false,
                     integer_ring: false,
                     is_decrease_by: false,
                     check_recommends: false,
@@ -1011,6 +1012,7 @@ fn make_attributes<'tcx>(
         bit_vector: vattrs.bit_vector,
         autospec: None, // filled in later
         atomic: vattrs.atomic,
+        skip_inst_collector: vattrs.skip_inst_collector,
         integer_ring: vattrs.integer_ring,
         is_decrease_by: vattrs.decreases_by,
         check_recommends: vattrs.check_recommends,

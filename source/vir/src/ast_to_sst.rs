@@ -2544,11 +2544,16 @@ pub(crate) fn expr_to_stm_opt(
 
             let body_exp = unwrap_or_return_never!(body_exp, stms);
             let res_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
-            let res_typ = res_var_exp.typ.clone();
+            let res_typ = undecorate_typ(&res_var_exp.typ);
 
             // generate condition
 
-            let TypX::Datatype(res_dt, ..) = &*res_typ else { unreachable!() };
+            let TypX::Datatype(res_dt, ..) = &*res_typ else {
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed atomic update block; result should be a datatype",
+                );
+            };
 
             let ok_variant = Arc::new("Ok".to_owned());
             let err_variant = Arc::new("Err".to_owned());
@@ -2608,29 +2613,15 @@ pub(crate) fn expr_to_stm_opt(
 
                 // bind for private post condition
 
-                for (name, var_exp) in [
-                    ("#vstd::atomic::AtomicUpdate::input", x_temp_var_exp.clone()),
-                    ("#vstd::atomic::AtomicUpdate::output", y_var_exp),
-                ] {
-                    let call = SpannedTyped::new(
-                        &expr.span,
-                        &var_exp.typ,
-                        ExpX::Call(
-                            ctx.fn_from_path(name),
-                            typ_args.clone(),
-                            Arc::new(vec![au_temp_var_exp.clone()]),
-                        ),
-                    );
-
-                    stms.push(Spanned::new(
-                        expr.span.clone(),
-                        StmX::Assume(SpannedTyped::new(
-                            &expr.span,
-                            &Arc::new(TypX::Bool),
-                            ExpX::Binary(BinaryOp::Eq(Mode::Spec), call, var_exp),
-                        )),
-                    ));
-                }
+                atomic_update_bind_arrow(
+                    ctx,
+                    expr,
+                    typ_args,
+                    &au_temp_var_exp,
+                    &x_temp_var_exp,
+                    &y_var_exp,
+                    &mut stms,
+                );
 
                 // mark as resolved
 
@@ -2978,29 +2969,15 @@ pub(crate) fn expr_to_stm_opt(
 
             // bind for private post condition
 
-            for (name, var_exp) in [
-                ("#vstd::atomic::AtomicUpdate::input", x_var_exp.clone()),
-                ("#vstd::atomic::AtomicUpdate::output", y_var_exp.clone()),
-            ] {
-                let call = SpannedTyped::new(
-                    &expr.span,
-                    &var_exp.typ,
-                    ExpX::Call(
-                        ctx.fn_from_path(name),
-                        au_typ_args.clone(),
-                        Arc::new(vec![au_var_exp.clone()]),
-                    ),
-                );
-
-                stms.push(Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assume(SpannedTyped::new(
-                        &expr.span,
-                        &Arc::new(TypX::Bool),
-                        ExpX::Binary(BinaryOp::Eq(Mode::Spec), call, var_exp),
-                    )),
-                ));
-            }
+            atomic_update_bind_arrow(
+                ctx,
+                expr,
+                au_typ_args,
+                &au_var_exp,
+                &x_var_exp,
+                &y_var_exp,
+                &mut stms,
+            );
 
             Ok((stms, ReturnValue::Some(y_var_exp)))
         }
@@ -3220,6 +3197,36 @@ pub(crate) fn expr_to_stm_opt(
             stms.append(&mut stms2);
             Ok((stms, ReturnValue::Some(exp1)))
         }
+    }
+}
+
+fn atomic_update_bind_arrow(
+    ctx: &Ctx,
+    expr: &Expr,
+    typ_args: &Typs,
+    au_exp: &Exp,
+    x_exp: &Exp,
+    y_exp: &Exp,
+    stms: &mut Vec<Stm>,
+) {
+    for (name, var_exp) in [
+        ("#vstd::atomic::AtomicUpdate::input", x_exp),
+        ("#vstd::atomic::AtomicUpdate::output", y_exp),
+    ] {
+        let call = SpannedTyped::new(
+            &expr.span,
+            &var_exp.typ,
+            ExpX::Call(ctx.fn_from_path(name), typ_args.clone(), Arc::new(vec![au_exp.clone()])),
+        );
+
+        stms.push(Spanned::new(
+            expr.span.clone(),
+            StmX::Assume(SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Binary(BinaryOp::Eq(Mode::Spec), call, var_exp.clone()),
+            )),
+        ));
     }
 }
 

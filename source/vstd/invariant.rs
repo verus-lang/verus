@@ -271,6 +271,7 @@ pub struct OpenInvariantCredit {}
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit")]
 #[verifier::external_body]
 #[inline(always)]
+#[verifier::skip_inst_collector]
 pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
     opens_invariants none
     no_unwind
@@ -282,12 +283,14 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 #[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_in_proof"]
 #[doc(hidden)]
 #[inline(always)]
+#[verifier::skip_inst_collector]
 pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
 }
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit")]
 #[doc(hidden)]
 #[inline(always)]
+#[verifier::skip_inst_collector]
 pub fn spend_open_invariant_credit(
     #[allow(unused_variables)]
     credit: Tracked<OpenInvariantCredit>,

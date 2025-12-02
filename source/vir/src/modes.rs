@@ -69,41 +69,18 @@ impl Ghost {
 }
 
 struct SpecialPaths {
-    pub(crate) create_open_invariant_credit_name: String,
-    pub(crate) spend_open_invariant_credit_name: String,
     pub(crate) exec_nonstatic_call_name: String,
 }
 
 impl SpecialPaths {
     pub fn new(vstd_crate_name: Arc<String>) -> Self {
-        let create_open_invariant_credit_name = path_as_vstd_name(
-            &crate::def::create_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
-        )
-        .expect("could not find path to create_open_invariant_credit");
-        let spend_open_invariant_credit_name = path_as_vstd_name(
-            &crate::def::spend_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
-        )
-        .expect("could not find path to spend_open_invariant_credit");
         let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(
             &Some(vstd_crate_name.clone()),
             false,
         ))
         .expect("could not find path to exec_nonstatic_call");
-        Self {
-            create_open_invariant_credit_name,
-            spend_open_invariant_credit_name,
-            exec_nonstatic_call_name,
-        }
-    }
 
-    pub fn is_create_or_spend_open_invariant_credit_path(&self, path: &Path) -> bool {
-        match path_as_vstd_name(path) {
-            None => false,
-            Some(s) => {
-                s == *self.create_open_invariant_credit_name
-                    || s == *self.spend_open_invariant_credit_name
-            }
-        }
+        Self { exec_nonstatic_call_name }
     }
 
     pub fn is_exec_nonstatic_call_path(&self, path: &Path) -> bool {
@@ -1082,26 +1059,11 @@ fn check_expr_handle_mut_arg(
                     ));
                 }
             }
-
-            if function.x.mode == Mode::Exec {
-                match typing.update_atomic_insts() {
-                    None => {}
-                    Some(ai) => {
-                        if function.x.attrs.atomic {
-                            ai.add_atomic(&expr.span);
-                        } else {
-                            // A call to `create_open_invariant_credit` or `spend_open_invariant_credit`
-                            // is a no-op, so it's fine to include in an atomic block. And it's useful
-                            // to be able to do so, so that we can nest an opening of an invariant
-                            // inside an opening of another invariant. So we special-case these calls
-                            // to not treat them as non-atomic.
-                            if !ctxt
-                                .special_paths
-                                .is_create_or_spend_open_invariant_credit_path(&x.path)
-                            {
-                                ai.add_non_atomic(&expr.span);
-                            }
-                        }
+            if function.x.mode == Mode::Exec && !function.x.attrs.skip_inst_collector {
+                if let Some(collector) = typing.update_atomic_insts() {
+                    match function.x.attrs.atomic {
+                        true => collector.add_atomic(&expr.span),
+                        false => collector.add_non_atomic(&expr.span),
                     }
                 }
             }

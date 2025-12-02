@@ -1226,6 +1226,9 @@ pub struct FunctionAttrsX {
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
     pub atomic: bool,
+    /// Instructs the `AtomicInstCollector` to ignore all calls to this function.
+    /// This allows the function to be called freely in invariant and atomic update blocks.
+    pub skip_inst_collector: bool,
     /// Verify non_linear arithmetic using Singular
     pub integer_ring: bool,
     /// This is a proof of termination for another spec function
