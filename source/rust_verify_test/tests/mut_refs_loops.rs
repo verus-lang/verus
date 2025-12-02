@@ -876,3 +876,285 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file_with_options! {
+    #[test] for_loops ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn some_bool() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop1() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref));
+            assert(x == 20);
+
+            for i in 0 .. 10 {
+                assert(has_resolved(x_ref));
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop2() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            for i in 0 .. 10 {
+                assert(has_resolved(x_ref)); // FAILS
+            }
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop3() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            for i in 0 .. 10 {
+                *x_ref = 20;
+
+                assert(has_resolved(x_ref)); // FAILS
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop7() {
+            for i in 0 .. 10 {
+                let mut x = 0;
+                let mut x_ref = &mut x;
+
+                *x_ref = 20;
+
+                assert(has_resolved(x_ref));
+                assert(x == 20);
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] for_loops_loop_isolation_false ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn some_bool() -> bool { true }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop1() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref));
+            assert(x == 20);
+
+            for i in 0 .. 10 {
+                assert(has_resolved(x_ref));
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop2() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            for i in 0 .. 10 {
+            }
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop2_2() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            for i in 0 .. 10 {
+                assert(has_resolved(x_ref)); // FAILS
+            }
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref));
+        }
+
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop3() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            assert(has_resolved(x_ref)); // FAILS
+
+            for i in 0 .. 10 {
+                *x_ref = 20;
+
+                assert(has_resolved(x_ref)); // FAILS
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop4() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            for i in 0 .. 10 {
+                if some_bool() {
+                    assert(has_resolved(x_ref));
+                    //assert(x == 20); // TODO(new_mut_ref): presently no way to specify the invariant we need
+                    break;
+                }
+
+                *x_ref = 20;
+            }
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop6() {
+            let mut x = 0;
+            let mut x_ref = &mut x;
+
+            *x_ref = 20;
+
+            for i in 0 .. 10 {
+                if some_bool() {
+                    assert(has_resolved(x_ref)); // FAILS
+                    break;
+                }
+            }
+
+            *x_ref = 20;
+        }
+
+        #[verifier::loop_isolation(false)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop7() {
+            for i in 0 .. 10 {
+                let mut x = 0;
+                let mut x_ref = &mut x;
+
+                *x_ref = 20;
+
+                assert(has_resolved(x_ref));
+                assert(x == 20);
+            }
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] while_loops_with_mutation_in_condition ["new-mut-ref"] => verus_code! {
+        fn some_bool(x: &mut u64) -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop1() {
+            let mut x: u64 = 0;
+            let x_ref = &mut x;
+
+            while some_bool(x_ref) {
+                assert(has_resolved(x_ref)); // FAILS
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop2() {
+            let mut x: u64 = 0;
+            let x_ref = &mut x;
+
+            while some_bool(x_ref) {
+                assert(has_resolved(x_ref));
+                break;
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop3() {
+            let mut x: u64 = 0;
+            let x_ref = &mut x;
+
+            while ({
+                assert(has_resolved(x_ref)); // FAILS
+                some_bool(x_ref)
+            }) {
+                break;
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop4() {
+            let mut x: u64 = 0;
+            let x_ref = &mut x;
+
+            while ({
+                let b = some_bool(x_ref);
+                assert(has_resolved(x_ref));
+                b
+            }) {
+                break;
+            }
+
+            assert(has_resolved(x_ref));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop5() {
+            let mut x: u64 = 0;
+            let x_ref = &mut x;
+
+            let mut y: u64 = 0;
+            let y_ref = &mut y;
+
+            while ({
+                assert(has_resolved(x_ref));
+                some_bool(y_ref)
+            }) {
+                break;
+            }
+
+            assert(has_resolved(x_ref));
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

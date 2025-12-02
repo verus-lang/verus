@@ -2745,6 +2745,16 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
+
+        let other_vir_crates = if self.args.new_mut_ref {
+            other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::migrate_mut_ref_krate(krate))
+                .collect()
+        } else {
+            other_vir_crates
+        };
+
         let vir_crate =
             crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
@@ -3010,9 +3020,9 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// time when entered the `after_expansion` callback
     pub(crate) rust_end_time: Option<Instant>,
     /// start time of lifetime analysys
-    pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) tc_start_time: Option<Instant>,
     /// end time of lifetime analysys
-    pub(crate) lifetime_end_time: Option<Instant>,
+    pub(crate) tc_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
     pub(crate) spans: Option<SpanContext>,
@@ -3188,15 +3198,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 self.verifier.encountered_error = true;
                 return rustc_driver::Compilation::Stop;
             }
-            self.lifetime_start_time = Some(Instant::now());
+            self.tc_start_time = Some(Instant::now());
             let status = if self.verifier.args.no_lifetime {
                 Ok(vec![])
             } else {
-                let log_lifetime =
-                    self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
-                let lifetime_log_file = if log_lifetime {
-                    let file =
-                        self.verifier.create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
+                let log_trait_conflicts =
+                    self.verifier.args.log_all || self.verifier.args.log_args.log_trait_conflicts;
+                let tc_log_file = if log_trait_conflicts {
+                    let file = self
+                        .verifier
+                        .create_log_file(None, crate::config::TRAIT_CONFLICT_FILE_SUFFIX);
                     match file {
                         Err(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error);
@@ -3208,13 +3219,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
-                crate::trait_check::check_tracked_lifetimes(
+                crate::trait_check::check_trait_conflicts(
                     &spans,
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
-                    lifetime_log_file,
+                    tc_log_file,
                 )
             };
-            self.lifetime_end_time = Some(Instant::now());
+            self.tc_end_time = Some(Instant::now());
             match status {
                 Ok(msgs) => {
                     if msgs.len() > 0 {

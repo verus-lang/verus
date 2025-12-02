@@ -1,7 +1,7 @@
 //! This file was previously concerned with lifetime checking of tracked code,
 //! but now all it does is invoke the trait-conflict checker.
 
-// In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
+// In functions executed through the trait-conflict checker rustc driver, use `ldbg!` for debug output.
 
 use crate::spans::SpanContext;
 use crate::trait_check_emit::*;
@@ -38,15 +38,15 @@ macro_rules! ldbg {
     // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
     // will be malformed.
     () => {
-        ::std::eprintln!("{}[lifetime {}:{}]", LDBG_PREFIX, $crate::file!(), $crate::line!())
+        ::std::eprintln!("{}[trait-conflict-checking {}:{}]", LDBG_PREFIX, $crate::file!(), $crate::line!())
     };
     ($val:expr $(,)?) => {
         // Use of `match` here is intentional because it affects the lifetimes
         // of temporaries - https://stackoverflow.com/a/48732525/1063961
         match $val {
             tmp => {
-                let __string = ::std::format!("[lifetime {}:{}] {} = {:#?}", ::std::file!(), ::std::line!(), ::std::stringify!($val), &tmp);
-                ::std::eprintln!("{}", $crate::lifetime::ldbg_prefix_all_lines(__string));
+                let __string = ::std::format!("[trait-conflict-checking {}:{}] {} = {:#?}", ::std::file!(), ::std::line!(), ::std::stringify!($val), &tmp);
+                ::std::eprintln!("{}", $crate::trait_check::ldbg_prefix_all_lines(__string));
                 tmp
             }
         }
@@ -63,6 +63,7 @@ const PROOF_FN_COPY: u8 = 4;
 const PROOF_FN_SEND: u8 = 5;
 const PROOF_FN_SYNC: u8 = 6;
 
+// REVIEW: Most of this may be unnecessary now that lifetime-checking has moved out of here
 const PRELUDE: &str = "\
 #![feature(negative_impls)]
 #![feature(with_negative_coherence)]
@@ -169,7 +170,7 @@ where ProofFnConfirm: ConfirmUsage<A, O, B, F>, ProofFnConfirm: ConfirmCopy<D, F
 fn main() {}
 ";
 
-fn emit_check_tracked_lifetimes<'tcx>(
+fn emit_check_trait_conflicts<'tcx>(
     spans: &SpanContext,
     emit_state: &mut EmitState,
     vir_crate: &vir::ast::Krate,
@@ -200,15 +201,15 @@ fn emit_check_tracked_lifetimes<'tcx>(
     gen_state
 }
 
-pub(crate) struct LifetimeFileLoader {
+pub(crate) struct TCFileLoader {
     pub(crate) rust_code: String,
 }
 
-impl LifetimeFileLoader {
+impl TCFileLoader {
     const FILENAME: &'static str = "dummyrs.rs";
 }
 
-impl rustc_span::source_map::FileLoader for LifetimeFileLoader {
+impl rustc_span::source_map::FileLoader for TCFileLoader {
     fn file_exists(&self, _path: &std::path::Path) -> bool {
         panic!("unexpected call to file_exists")
     }
@@ -240,29 +241,29 @@ struct Diagnostic {
     rendered: Option<String>,
 }
 
-pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
+pub const TC_DRIVER_ARG: &'static str = "--internal-trait-conflict-driver";
 
-pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
-    let mut callbacks = crate::driver::LifetimeCallbacks { code: rust_code };
+pub fn trait_check_rustc_driver(rustc_args: &[String], rust_code: String) {
+    let mut callbacks = crate::driver::TCCallbacks { code: rust_code };
     rustc_driver::run_compiler(rustc_args, &mut callbacks)
 }
 
-pub(crate) fn check_tracked_lifetimes<'tcx>(
+pub(crate) fn check_trait_conflicts<'tcx>(
     spans: &SpanContext,
     vir_crate: &vir::ast::Krate,
-    lifetime_log_file: Option<File>,
+    tc_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let mut emit_state = EmitState::new();
-    let gen_state = emit_check_tracked_lifetimes(spans, &mut emit_state, vir_crate);
+    let gen_state = emit_check_trait_conflicts(spans, &mut emit_state, vir_crate);
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
         rust_code.push_str(&line.text);
         rust_code.push('\n');
     }
-    if let Some(mut file) = lifetime_log_file {
-        write!(file, "{}", &rust_code).expect("error writing to lifetime log file");
+    if let Some(mut file) = tc_log_file {
+        write!(file, "{}", &rust_code).expect("error writing to trait-conflict log file");
     }
-    let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
+    let rustc_args = vec![TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         // avoid warning about jobserver fd
@@ -272,12 +273,11 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("could not execute lifetime rustc process");
+        .expect("could not execute trait-conflict rustc process");
     let mut child_stdin = child.stdin.take().expect("take stdin");
-    // std::fs::write("/tmp/verus_lifetime_generate.rs", rust_code.clone()).unwrap();
-    child_stdin.write(rust_code.as_bytes()).expect("failed to send code to lifetime rustc");
+    child_stdin.write(rust_code.as_bytes()).expect("failed to send code to trait-conflict rustc");
     std::mem::drop(child_stdin);
-    let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    let run = child.wait_with_output().expect("trait-conflict rustc wait failed");
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
     let mut msgs: Vec<Message> = Vec::new();
     let debug = false;
@@ -349,7 +349,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         dbg!(msgs.len());
     }
     if msgs.len() == 0 && !run.status.success() {
-        Err(error("lifetime checking failed"))
+        Err(error("trait-conflict checking failed"))
     } else {
         Ok(msgs)
     }

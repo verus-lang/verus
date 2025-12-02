@@ -87,18 +87,16 @@ cargo-verus and the verus driver. This approach is necessary because:
 
 ### Variable Reference
 
-| Variable                              | Purpose                            | Set By      | Read By      |
-|---------------------------------------|------------------------------------|-------------|--------------|
-| `VERUS_DRIVER_VIA_CARGO`              | Indicates cargo-verus invocation   | cargo-verus | verus driver |
-| `VERUS_DRIVER_ARGS`                   | Common Verus args for all packages | cargo-verus | verus driver |
-| `VERUS_DRIVER_ARGS_FOR_{id}`          | Per-package Verus args             | cargo-verus | verus driver |
-| `VERUS_DRIVER_VERIFY_{id}`            | "1" if package should be verified  | cargo-verus | verus driver |
-| `VERUS_DRIVER_IS_BUILTIN_{id}`        | "1" if package is `verus_builtin`  | cargo-verus | verus driver |
-| `VERUS_DRIVER_IS_BUILTIN_MACROS_{id}` | "1" if package is `builtin_macros` | cargo-verus | verus driver |
-| `RUSTC_WRAPPER`                       | Path to verus binary               | cargo-verus | cargo        |
-| `__CARGO_DEFAULT_LIB_METADATA`        | Trigger a cargo rebuild when       | cargo-verus | cargo        |
-|                                       | exported .vir file changes         |             |              |
-|---------------------------------------------------------------------------------------------------------|
+| Variable                              | Purpose                                                | Set By      | Read By      |
+|---------------------------------------|--------------------------------------------------------|-------------|--------------|
+| `VERUS_DRIVER_VIA_CARGO`              | Indicates cargo-verus invocation                       | cargo-verus | verus driver |
+| `VERUS_DRIVER_ARGS`                   | Common Verus args for all packages                     | cargo-verus | verus driver |
+| `VERUS_DRIVER_ARGS_FOR_{id}`          | Per-package Verus args                                 | cargo-verus | verus driver |
+| `VERUS_DRIVER_VERIFY_{id}`            | "1" if package should be verified                      | cargo-verus | verus driver |
+| `VERUS_DRIVER_IS_BUILTIN_{id}`        | "1" if package is `verus_builtin`                      | cargo-verus | verus driver |
+| `VERUS_DRIVER_IS_BUILTIN_MACROS_{id}` | "1" if package is `builtin_macros`                     | cargo-verus | verus driver |
+| `RUSTC_WRAPPER`                       | Path to verus binary                                   | cargo-verus | cargo        |
+| `__CARGO_DEFAULT_LIB_METADATA`        | Trigger cargo rebuild when exported .vir file changes  | cargo-verus | cargo        |
 
 ### Package ID Generation
 

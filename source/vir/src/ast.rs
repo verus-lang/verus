@@ -708,7 +708,8 @@ pub enum PatternX {
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
@@ -863,6 +864,17 @@ pub struct AtomicCallInfoX {
     pub call_span: Span,
 }
 
+/// Represents the expression after the '..' in a "ctor update"
+/// like the `foo` in `{ a: e1, b: e2, .. foo }`.
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CtorUpdateTail {
+    pub place: Place,
+    /// This list needs to contain all the fields that are NOT explicitly listed.
+    /// i.e., this is all the fields that are moved or copied out of the input struct.
+    /// This information is needed by resolution analysis.
+    pub taken_fields: Arc<Vec<(Ident, UnfinalizedReadKind)>>,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -890,9 +902,10 @@ pub enum ExprX {
     Call(CallTarget, Exprs, Option<Expr>),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Dt, Ident, Binders<Expr>, Option<Place>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<CtorUpdateTail>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation

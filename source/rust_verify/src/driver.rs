@@ -70,16 +70,17 @@ pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>, do_lifetime: bool) {
         }
     }
 }
-pub(crate) struct LifetimeCallbacks {
+
+pub(crate) struct TCCallbacks {
     pub(crate) code: String,
 }
 
-impl rustc_driver::Callbacks for LifetimeCallbacks {
+impl rustc_driver::Callbacks for TCCallbacks {
     // note: we only need to call into config here,
     // to change the file_loader
     fn config<'tcx>(&mut self, cfg: &mut rustc_interface::interface::Config) {
         cfg.file_loader =
-            Some(Box::new(crate::trait_check::LifetimeFileLoader { rust_code: self.code.clone() }));
+            Some(Box::new(crate::trait_check::TCFileLoader { rust_code: self.code.clone() }));
     }
 
     fn after_expansion<'tcx>(
@@ -87,10 +88,12 @@ impl rustc_driver::Callbacks for LifetimeCallbacks {
         _compiler: &rustc_interface::interface::Compiler,
         queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
+        // REVIEW: is this call needed for trait-conflict checking?
         check(queries, false);
         rustc_driver::Compilation::Stop
     }
 }
+
 /*
 We have to run rustc twice on the original source code,
 once erasing ghost code and once keeping ghost code.
@@ -169,7 +172,7 @@ pub struct Stats {
     /// time it took to verify the crate (this includes VIR generation, SMT solving, etc.)
     pub time_verify: Duration,
     /// tiem for lifetime/borrow checking
-    pub time_lifetime: Duration,
+    pub time_trait_conflicts: Duration,
     /// compilation time
     pub time_compile: Duration,
 }
@@ -296,8 +299,8 @@ pub fn run(
         verifier,
         rust_start_time: Instant::now(),
         rust_end_time: None,
-        lifetime_start_time: None,
-        lifetime_end_time: None,
+        tc_start_time: None,
+        tc_end_time: None,
         rustc_args: rustc_args.clone(),
         verus_externs,
         spans: None,
@@ -307,12 +310,12 @@ pub fn run(
         verifier,
         rust_start_time,
         rust_end_time,
-        lifetime_start_time,
-        lifetime_end_time,
+        tc_start_time,
+        tc_end_time,
         ..
     } = verifier_callbacks;
     let time1 = Instant::now();
-    let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
+    let time_trait_conflicts = match (tc_start_time, tc_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,
         _ => Duration::new(0, 0),
     };
@@ -327,8 +330,8 @@ pub fn run(
             verifier,
             Stats {
                 time_rustc,
-                time_verify: (time1 - time0) - time_lifetime,
-                time_lifetime,
+                time_verify: (time1 - time0) - time_trait_conflicts,
+                time_trait_conflicts,
                 time_compile: Duration::new(0, 0),
             },
             Err(()),
@@ -345,8 +348,8 @@ pub fn run(
 
     let stats = Stats {
         time_rustc,
-        time_verify: (time1 - time0) - time_lifetime,
-        time_lifetime,
+        time_verify: (time1 - time0) - time_trait_conflicts,
+        time_trait_conflicts,
         time_compile: time2 - time1,
     };
 

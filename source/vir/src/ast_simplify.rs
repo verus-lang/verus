@@ -8,11 +8,11 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, ByRef, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
-    KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped,
-    Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr,
-    Visibility,
+    Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange,
+    ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck,
+    VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
@@ -96,8 +96,10 @@ fn is_small_expr(expr: &Expr) -> bool {
     }
 }
 
-fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
-    // put expr into a temp variable to avoid duplicating it
+/// Create a temporary and return:
+///  - A Stmt that assigns the given `expr` to the temporary
+///  - The name of the temporary
+fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
     let pattern = PatternX::simple_var(name, false, &expr.span, &expr.typ);
@@ -108,7 +110,12 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
         els: None,
     };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
-    (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+    (temp_decl, temp)
+}
+
+fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
+    let (temp_decl, var_ident) = temp_var(state, expr);
+    (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(var_ident)))
 }
 
 fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
@@ -339,6 +346,36 @@ fn simplify_one_place(
     }
 }
 
+fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
+    match &place.x {
+        PlaceX::Field(field_opr, p) => {
+            if !matches!(field_opr.check, VariantCheck::None) {
+                todo!(); // TODO(new_mut_ref)
+            }
+            let (stmts, p1) = place_to_pure_place(state, p);
+            let p2 =
+                SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
+            (stmts, p2)
+        }
+        PlaceX::DerefMut(p) => {
+            let (stmts, p1) = place_to_pure_place(state, p);
+            let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p1));
+            (stmts, p2)
+        }
+        PlaceX::ModeUnwrap(p, mwm) => {
+            let (stmts, p1) = place_to_pure_place(state, p);
+            let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::ModeUnwrap(p1, *mwm));
+            (stmts, p2)
+        }
+        PlaceX::Local(_l) => (vec![], place.clone()),
+        PlaceX::Temporary(expr) => {
+            let (ts, var_ident) = temp_var(state, expr);
+            let p = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(var_ident));
+            (vec![ts], p)
+        }
+    }
+}
+
 // note that this gets called *bottom up*
 // that is, if node A is the parent of children B and C,
 // then simplify_one_expr is called first on B and C, and then on A
@@ -434,7 +471,8 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
-            let (temp_decl, update) = small_or_temp(state, &place_to_expr(update));
+            let CtorUpdateTail { place, taken_fields: _ } = update;
+            let (temp_decl, update) = small_or_temp(state, &place_to_expr(place));
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
             if temp_decl.len() == 0 {
@@ -531,11 +569,17 @@ fn simplify_one_expr(
             }
         }
         ExprX::Match(place, arms1) => {
-            // TODO(new_mut_ref) need to handle the case where the scrutinee has temporaries
+            let mut place = place.clone();
 
-            let expr0 = place_to_expr(place);
-            let (temp_decl, expr0) =
-                if ctx.new_mut_ref { (vec![], expr0) } else { small_or_temp(state, &expr0) };
+            let (temp_decl, expr0) = if ctx.new_mut_ref {
+                let (stmts, p) = place_to_pure_place(state, &place);
+                place = p;
+                let unused = crate::ast_util::mk_bool(&expr.span, false);
+                (stmts, unused)
+            } else {
+                let expr0 = place_to_expr(&place);
+                small_or_temp(state, &expr0)
+            };
 
             // Translate into If expression
             let t_bool = Arc::new(TypX::Bool);
@@ -547,7 +591,7 @@ fn simplify_one_expr(
                 let test_pattern = if ctx.new_mut_ref {
                     crate::patterns::pattern_to_exprs(
                         ctx,
-                        place,
+                        &place,
                         &arm.x.pattern,
                         has_guard,
                         &mut decls,
@@ -720,14 +764,13 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         }
         StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
             if ctx.new_mut_ref {
-                // TODO(new_mut_ref) need to handle the case where the scrutinee has temporaries
-                let mut decls: Vec<Stmt> = Vec::new();
+                let (mut stmts, place) = place_to_pure_place(state, init);
                 let _pattern_check =
-                    crate::patterns::pattern_to_exprs(ctx, init, pattern, false, &mut decls)?;
+                    crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts)?;
                 if let Some(_els) = &els {
                     todo!(); // TODO(new_mut_ref)
                 }
-                Ok(decls)
+                Ok(stmts)
             } else {
                 let mut decls: Vec<Stmt> = Vec::new();
                 let (temp_decl, init) = small_or_temp(state, &place_to_expr(init));
