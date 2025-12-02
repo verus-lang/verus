@@ -78,7 +78,11 @@ impl<'a> NodeWriter<'a> {
         result
     }
 
-    pub fn node_to_string(&mut self, node: &Node) -> String {
+    pub fn node_to_string(&mut self, node: &Node, opts: &ToDebugSNodeOpts) -> String {
+        if opts.other_style {
+            return node_to_other_style(node);
+        }
+
         use sise::Writer;
         let indentation = " ";
         let style = sise::SpacedStringWriterStyle { line_break: &("\n".to_string()), indentation };
@@ -98,14 +102,16 @@ pub struct ToDebugSNodeOpts {
     pub no_fn_details: bool,
     pub no_encoding: bool,
     pub friendly_types: bool,
+    pub span_id: bool,
+    pub other_style: bool,
 }
 
 pub const COMPACT_TONODEOPTS: ToDebugSNodeOpts =
-    ToDebugSNodeOpts { no_span: true, no_type: true, no_fn_details: true, no_encoding: true };
+    ToDebugSNodeOpts { no_span: true, no_type: true, no_fn_details: true, no_encoding: true, friendly_types: false, other_style: false };
 
 impl Default for ToDebugSNodeOpts {
     fn default() -> Self {
-        Self { no_span: false, no_type: false, no_fn_details: false, no_encoding: false }
+        Self { no_span: false, no_type: false, no_fn_details: false, no_encoding: false, friendly_types: false, other_style: false }
     }
 }
 
@@ -225,20 +231,16 @@ impl ToDebugSNode for num_bigint::BigInt {
 
 impl ToDebugSNode for air::ast::TypX {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        if opts.friendly_types {
-            Node::Atom(format!("`{;}`", crate::ast_util::typ_to_diagnostic_str(self)))
-        } else {
-            use air::ast::TypX;
-            match self {
-                TypX::Bool => Node::Atom("Bool".to_string()),
-                TypX::Int => Node::Atom("Int".to_string()),
-                TypX::Fun => Node::Atom("Fun".to_string()),
-                TypX::Named(ident) => {
-                    Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
-                }
-                TypX::BitVec(size) => {
-                    Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
-                }
+        use air::ast::TypX;
+        match self {
+            TypX::Bool => Node::Atom("Bool".to_string()),
+            TypX::Int => Node::Atom("Int".to_string()),
+            TypX::Fun => Node::Atom("Fun".to_string()),
+            TypX::Named(ident) => {
+                Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
+            }
+            TypX::BitVec(size) => {
+                Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
             }
         }
     }
@@ -248,14 +250,58 @@ impl<A: ToDebugSNode> ToDebugSNode for SpannedTyped<A> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span && opts.no_type {
             self.x.to_node(opts)
+        } else if opts.other_style {
+            let node = self.x.to_node(opts);
+            let span_meta = if !opts.no_span {
+                if opts.span_id {
+                    format!("{}\"{}\"{}", "{", self.span.id, "}");
+                } else {
+                    format!("{}\"{}\"{}", "{", self.span.as_string, "}")
+                }
+            } else {
+                "".to_string()
+            };
+            let type_meta = if !opts.no_type {
+                format!("[`{}`]", crate::ast_util::typ_to_diagnostic_str(&self.typ))
+            } else {
+                "".to_string()
+            };
+            let meta = format!("{:}{:}", type_meta, span_meta);
+            if meta.len() > 0 {
+                match node {
+                    Node::Atom(s) => Node::Atom(format!("{}{}", s, meta)),
+                    Node::List(args) => {
+                        let t = if args.len() >= 2 {
+                            if let Node::Atom(s) = &args[1] {
+                                s == "__printer_other_style"
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+
+                    }
+                }
+            } else {
+                node
+            }
         } else {
             let mut v = vec![Node::Atom("@@".to_string())];
             if !opts.no_span {
-                v.push(Node::Atom(format!("\"{}\"", self.span.as_string)));
+                if opts.span_id {
+                    v.push(Node::Atom(format!("\"{}\"", self.span.id)));
+                } else {
+                    v.push(Node::Atom(format!("\"{}\"", self.span.as_string)));
+                }
             }
             v.push(self.x.to_node(opts));
             if !opts.no_type {
-                v.push(self.typ.to_node(opts));
+                if opts.friendly_types {
+                    v.push(Node::Atom(format!("`{}`", crate::ast_util::typ_to_diagnostic_str(&self.typ))));
+                } else {
+                    v.push(self.typ.to_node(opts));
+                }
             }
             Node::List(v)
         }
@@ -408,7 +454,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
             writeln!(&mut write, ";; {}", &datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
-        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts), opts))
             .expect("cannot write to vir write");
     }
     for function in functions.iter() {
@@ -416,47 +462,47 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
             writeln!(&mut write, ";; {}", &function.span.as_string)
                 .expect("cannot write to vir write");
         }
-        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts), opts))
             .expect("cannot write to vir write");
     }
     for group in reveal_groups.iter() {
         let group_id_node = nodes!(group_id {path_to_node(&group.x.name.path)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&group_id_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&group_id_node, opts))
             .expect("cannot write to vir write");
     }
     for t in traits.iter() {
         let t = nodes!(trait {path_to_node(&t.x.name)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
+        writeln!(&mut write, "{}\n", nw.node_to_string(&t, opts)).expect("cannot write to vir write");
     }
     for t in trait_impls.iter() {
         let t = nodes!(trait_impl {path_to_node(&t.x.impl_path)} {path_to_node(&t.x.trait_path)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&t)).expect("cannot write to vir write");
+        writeln!(&mut write, "{}\n", nw.node_to_string(&t, opts)).expect("cannot write to vir write");
     }
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
             writeln!(&mut write, ";; {}", &assoc.span.as_string)
                 .expect("cannot write to vir write");
         }
-        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts), opts))
             .expect("cannot write to vir write");
     }
     for module in modules.iter() {
         let module_id_node = nodes!(module_id {path_to_node(&module.x.path)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&module_id_node, opts))
             .expect("cannot write to vir write");
     }
     for external_fn in external_fns.iter() {
         let external_fn_node = nodes!(external_fn {external_fn.to_node(opts)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&external_fn_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&external_fn_node, opts))
             .expect("cannot write to vir write");
     }
     for external_type in external_types.iter() {
         let external_type_node = nodes!(external_type {path_to_node(external_type)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&external_type_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&external_type_node, opts))
             .expect("cannot write to vir write");
     }
     let arch_nodes = nodes!(arch_word_bits {arch.word_bits.to_node(opts)});
-    writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes))
+    writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes, opts))
         .expect("cannot write to vir write");
 }
 
@@ -482,7 +528,7 @@ pub fn write_krate_sst(
             writeln!(&mut write, ";; {}", &datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
-        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts), opts))
             .expect("cannot write to vir write");
     }
     for function in functions.iter() {
@@ -490,7 +536,7 @@ pub fn write_krate_sst(
             writeln!(&mut write, ";; {}", &function.span.as_string)
                 .expect("cannot write to vir write");
         }
-        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts), opts))
             .expect("cannot write to vir write");
     }
     for trait_ in traits.iter() {
@@ -499,7 +545,7 @@ pub fn write_krate_sst(
                 .expect("cannot write to vir write");
         }
         let trait_node = Node::List(vec![Node::Atom("trait".to_owned()), trait_.to_node(opts)]);
-        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_node, opts))
             .expect("cannot write to vir write");
     }
     writeln!(&mut write, ";; trait_impls").expect("cannot write to vir write");
@@ -509,7 +555,7 @@ pub fn write_krate_sst(
                 .expect("cannot write to vir write");
         }
         let trait_impl = nodes!(trait_impl {trait_impl.to_node(opts)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_impl))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_impl, opts))
             .expect("cannot write to vir write");
     }
     writeln!(&mut write, ";; assoc_type_impls").expect("cannot write to vir write");
@@ -519,71 +565,146 @@ pub fn write_krate_sst(
                 .expect("cannot write to vir write");
         }
         let assoc_type_impl = nodes!(assoc_type_impl {assoc.to_node(opts)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl, opts))
             .expect("cannot write to vir write");
     }
     writeln!(&mut write, ";; reveal_groups").expect("cannot write to vir write");
     for group in reveal_groups.iter() {
         let group_node = nodes!(group {group.to_node(opts)});
-        writeln!(&mut write, "{}\n", nw.node_to_string(&group_node))
+        writeln!(&mut write, "{}\n", nw.node_to_string(&group_node, opts))
             .expect("cannot write to vir write");
     }
 }
 
-enum NodeInCtorStyle {
+fn node_to_other_style(node: &Node) -> String {
+    let s = node_to_other_style_rec(node, 0, 120);
+    match s {
+        NodeInOtherStyle::OneLine(s) => s,
+        NodeInOtherStyle::Lines(s) => s.join("\n"),
+    }
+}
+
+enum NodeInOtherStyle {
     OneLine(String),
     Lines(Vec<String>),
 }
 
-fn node_to_ctor_style(node: &Node, indent: usize, max_line_len: usize) -> NodeInCtorStyle {
+fn node_to_other_style_rec(node: &Node, indent: usize, max_line_len: usize) -> NodeInOtherStyle {
+    const INDENT: usize = 4;
+    fn indentation(i: usize) -> String {
+        (0..i).map(|_| " ").collect::<String>()
+    }
+
     match node {
-        Node::Atom(s) => NodeInCtorStyle::OneLine(s.clone()),
-        Node::List(l) => {
+        Node::Atom(s) => NodeInOtherStyle::OneLine(s.clone()),
+        Node::List(args) => {
             let mut ctor = None;
-            if l.length() >= 2 {
-                if let Node::Atom(s) = &l[0] {
-                    if s == "__printer_ctor_style" {
-                        if let Node::Atom(s) = &l[1] {
-                            ctor = Some((s.clone(), &l[2..]));
+            if args.len() >= 2 {
+                if let Node::Atom(s) = &args[0] {
+                    if s == "__printer_other_style" {
+                        if let Node::Atom(s) = &args[1] {
+                            ctor = Some((s.clone(), &args[2..]));
                         }
                     }
                 }
             }
             match ctor {
+                Some((ctor_name, args)) if args.len() == 0 => {
+                    NodeInOtherStyle::OneLine(ctor_name)
+                }
                 Some((ctor_name, args)) => {
-                    let mut lines = vec![];
+                    let mut args_rendered = vec![];
                     let mut total_len = 0;
                     let mut all_one_line = true;
                     for arg in args.iter() {
-                        let line = node_to_ctor_style(node, indent + 4, max_line_len);
-                        if let NodeInCtorStyle::OneLine(s) = &line {
+                        let line = node_to_other_style_rec(arg, indent + INDENT, max_line_len);
+                        if let NodeInOtherStyle::OneLine(s) = &line {
                             total_len += s.len();
                         } else {
                             all_one_line = false;
                         }
-                        lines.push(line);
+                        args_rendered.push(line);
                     }
                     if all_one_line &&
                         indent + total_len + ctor_name.len() + (args.len() * 2) <= max_line_len
                     {
                         let mut v = vec![ctor_name.clone()];
-                        if args.len() > 0 {
-                            v.push("(");
-                            for (i, arg) in lines.iter().enumerate() {
-                                if i != 0 {
-                                    v.push(", ");
+                        v.push("(".to_string());
+                        for (i, arg) in args_rendered.into_iter().enumerate() {
+                            if i != 0 {
+                                v.push(", ".to_string());
+                            }
+                            if let NodeInOtherStyle::OneLine(s) = arg {
+                                v.push(s);
+                            } else {
+                                unreachable!();
+                            }
+                        }
+                        v.push(")".to_string());
+                        NodeInOtherStyle::OneLine(v.join(""))
+                    } else {
+                        let mut v = vec![];
+                        v.push(format!("{}{}{}", indentation(indent), ctor_name, "("));
+                        for line in args_rendered.into_iter() {
+                            match line {
+                                NodeInOtherStyle::OneLine(s) => {
+                                    v.push(format!("{}{},", indentation(indent + INDENT), s));
                                 }
-                                if let NodeInCtorStyle::OneLine(s) = &line {
-                                    v.push(s.clone());
-                                } else {
-                                    unreachable!();
+                                NodeInOtherStyle::Lines(mut l) => {
+                                    let last = l.len() - 1;
+                                    l[last] += ",";
+                                    v.append(&mut l)
                                 }
                             }
-                            v.push(")");
                         }
-                        NodeInCtorStyle::OneLine(v.join(""))
+                        v.push(format!("{}{}", indentation(indent), ")"));
+                        NodeInOtherStyle::Lines(v)
+                    }
+                }
+                _ => {
+                    let mut args_rendered = vec![];
+                    let mut total_len = 0;
+                    let mut all_one_line = true;
+                    for arg in args.iter() {
+                        let line = node_to_other_style_rec(arg, indent + INDENT, max_line_len);
+                        if let NodeInOtherStyle::OneLine(s) = &line {
+                            total_len += s.len();
+                        } else {
+                            all_one_line = false;
+                        }
+                        args_rendered.push(line);
+                    }
+                    if all_one_line && indent + total_len + (args.len() * 2) <= max_line_len {
+                        let mut v = vec!["[".to_string()];
+                        for (i, arg) in args_rendered.into_iter().enumerate() {
+                            if i != 0 {
+                                v.push(", ".to_string());
+                            }
+                            if let NodeInOtherStyle::OneLine(s) = arg {
+                                v.push(s);
+                            } else {
+                                unreachable!();
+                            }
+                        }
+                        v.push("]".to_string());
+                        NodeInOtherStyle::OneLine(v.join(""))
                     } else {
-                        
+                        let mut v = vec![];
+                        v.push(format!("{}{}", indentation(indent), "["));
+                        for line in args_rendered.into_iter() {
+                            match line {
+                                NodeInOtherStyle::OneLine(s) => {
+                                    v.push(format!("{}{},", indentation(indent + INDENT), s));
+                                }
+                                NodeInOtherStyle::Lines(mut l) => {
+                                    let last = l.len() - 1;
+                                    l[last] += ",";
+                                    v.append(&mut l)
+                                }
+                            }
+                        }
+                        v.push(format!("{}{}", indentation(indent), "]"));
+                        NodeInOtherStyle::Lines(v)
                     }
                 }
             }

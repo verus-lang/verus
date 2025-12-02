@@ -342,7 +342,7 @@ pub fn parse_args_with_imports(
         (LOG_VIR_SST, "Log SST"),
         (
             LOG_VIR_OPTION,
-            "Set VIR logging option (e.g. `--log vir-option=no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
+            "Set VIR logging option (e.g. `--log vir-option=no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`, `friendly_types`, `other_style`) (default: verbose)",
         ),
         (LOG_TRAIT_CONFLICTS, "Log trait-conflict-checking for --erasure macro"),
         (LOG_INTERPRETER, "Log assert_by_compute's interpreter progress"),
@@ -736,6 +736,8 @@ pub fn parse_args_with_imports(
                             no_type: vir_opts.contains(&"no_type"),
                             no_fn_details: vir_opts.contains(&"no_fn_details"),
                             no_encoding: vir_opts.contains(&"no_encoding"),
+                            friendly_types: vir_opts.contains(&"friendly_types"),
+                            other_style: vir_opts.contains(&"other_style"),
                         }
                     }
                 } else {

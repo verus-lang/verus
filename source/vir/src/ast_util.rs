@@ -969,7 +969,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
         TypX::ConstBool(_) => format!("constbool"),
-        TypX::Air(_) => panic!("unexpected air type here"),
+        TypX::Air(_) => format!("VERUS_INTERNAL_AIR_TYPE"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
             path_as_friendly_rust_name(&f.path),
