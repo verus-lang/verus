@@ -37,12 +37,16 @@ fn for_loop_test_vec() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(),
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+                    
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
+                    y.iter.seq().len() == y.seq().len() - y.index@,
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
+                    (y.iter.completes() ==> y.snapshot@.completes()),
 
                     ({ 
                       // Grab the next val for (possible) use in inv
@@ -130,12 +134,11 @@ fn for_loop_test_map() {
 
                     // Internal invariants that help maintain the other internal invariants
                     y.snapshot == VERUS_old_snap,
+
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
                     y.iter.seq().len() == y.seq().len() - y.index@,
-                    forall |i| 
-                        #![trigger y.iter.seq()[i]]
-                        //#![trigger y.seq().skip(y.index@)[i]]
-                    0 <= i < y.iter.seq().len() ==> y.iter.seq()[i] == y.seq().skip(y.index@)[i],
-                    //y.iter.seq() =~= y.seq().skip(y.index@),
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
                     (y.iter.completes() ==> y.snapshot@.completes()),
 
                     // User invariants
@@ -147,6 +150,7 @@ fn for_loop_test_map() {
                     //w@ == y.seq().take(y.index@) 
                     w.len() == y.index
                     && (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i])
+
                     && (forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8)
                     && (y.index@ < y.seq().len() ==> x < 8)
                     }),
@@ -177,19 +181,6 @@ fn for_loop_test_map() {
                     assert(x < 8);
                     w.push(x);
                 };
-                //assert(w.len() == y.index);
-                // assert(forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]);
-                // assert(w@ == y.seq().take(y.index@));
-                // assert(y.seq() == old_snap.seq());
-                // assert(y.snapshot == VERUS_old_snap);
-                // assert forall |i| 0 <= i < y.seq().len() implies y.seq()[i] < 8 by {
-                //     assert(y.seq()[i] == VERUS_old_snap.seq()[i]);
-                //     assert(y.seq()[i] == old_snap.seq()[i]);
-                //     //assert(old_snap.seq()[i] < 8);
-                //     //assert(VERUS_old_snap.seq()[i] < 8);
-                // };
-                // assert(forall |i| 0 <= i < y.seq().len() ==> y.seq()[i] < 8);
-                // assert(y.index@ < y.snapshot@.seq().len() ==> x < 8);
             }
         }
     };
@@ -228,12 +219,16 @@ fn for_loop_test_take() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(),
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
+                    y.iter.seq().len() == y.seq().len() - y.index@,
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
+                    y.iter.completes() ==> y.snapshot@.completes(),
 
                     ({ 
                       // Grab the next val for (possible) use in inv
@@ -306,12 +301,16 @@ fn for_loop_test_skip() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(),
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
+                    y.iter.seq().len() == y.seq().len() - y.index@,
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
+                    (y.iter.completes() ==> y.snapshot@.completes()),
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
@@ -382,12 +381,16 @@ fn for_loop_test_rev() {
                 invariant
 
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(),
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
+                    y.iter.seq().len() == y.seq().len() - y.index@,
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
+                    y.iter.completes() ==> y.snapshot@.completes(),
 
                     ({ 
                       // Grab the next val for (possible) use in inv
@@ -457,12 +460,16 @@ fn for_loop_test_double_rev() {
                     y.iter.decrease() is Some,
                 invariant
                     // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len() &&
+                    0 <= y.index@ <= y.snapshot@.seq().len(),
 
                     // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap &&
-                    y.iter.seq() =~= y.snapshot@.seq().skip(y.index@) &&
-                    (y.iter.completes() ==> y.snapshot@.completes()) &&
+                    y.snapshot == VERUS_old_snap,
+
+                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
+                    y.iter.seq().len() == y.seq().len() - y.index@,
+                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
+
+                    y.iter.completes() ==> y.snapshot@.completes(),
 
                     ({ 
                       // Grab the next val for (possible) use in inv
