@@ -153,6 +153,34 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
+///
+/// A `TypDecoration` can be applied to a type (via `TypX::Decorate`) to represent
+/// a different type that has the same encoding at the SMT level.
+/// For example, `u64` is represented in VIR as `Int(IntRange::U(64))`
+/// while `Box<u64>` is represented in VIR as `Decorate(Box, Int(IntRange::U(64)))`.
+/// Since the VIR types differ only in the "decoration", we know they are represented
+/// by the same SMT sort (air's Int type, in this case).
+/// Many functions (e.g., HasType) that depend on a type can be written
+/// to only depend on the "base type" (i.e., the type minus the decoration).
+///
+/// Furthermore, many functions can be elided entirely because they are simply the identity
+/// operation, e.g., `Box::new` takes a `T` to a `Box<T>`; but since these types are
+/// equivalent up to decoration, they are represented the same in SMT, and it happens the
+/// function is the identity function.
+///
+/// However, decorations are not totally irrelevant. They are still significant for resolving
+/// traits (e.g., `u64` and `Box<u64>` might implement the same trait in different ways).
+///
+/// In some places, the decoration of a Typ cannot be considered meaningful due to these
+/// implicit 'identity' coercions:
+///   - `expr.typ`
+///   - `place.typ`
+///   - `pattern.typ`
+///   - `exp.typ` (SST nodes)
+/// But in other places, types must be exactly correct, *including* decoration:
+///   - type arguments for a Call
+///   - `pattern_binding.typ` (type of a local variable declaration)
+///   - Most places where `Typ` is given as an explicit field of a node
 #[derive(
     Debug,
     Serialize,
@@ -170,8 +198,10 @@ pub enum TypDecoration {
     /// &T
     Ref,
     /// &mut T
+    /// For new-mut-ref, don't use this; use TypX::MutRef instead
     MutRef,
     /// Box<T>
+    /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,
     /// Rc<T>
     Rc,
