@@ -507,7 +507,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
-    unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
+    unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
         PatKind::Binding(_binding_mode, canonical, x, subpat) => {
