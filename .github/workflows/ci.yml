@@ -114,6 +114,9 @@ jobs:
         with:
           toolchain: 1.91.0
 
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
       - name: download singular
         if: matrix.features == 'singular'
         run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
@@ -174,12 +177,12 @@ jobs:
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features record-history --test basic
+              VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features record-history --test basic
               ;;
             "no-alloc")
               ;;
@@ -190,14 +193,14 @@ jobs:
               ;;
             *)
               if [ ${{ matrix.build }} == "macos" ]; then
-                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p air
-                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
                 cd vstd
                 unset -f cargo
                 cargo build
               else
                 # run only the basic tests (we only fully test on macos)
-                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --test basic
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --test basic
               fi
               ;;
           esac
