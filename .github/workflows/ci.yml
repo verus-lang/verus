@@ -19,50 +19,108 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.91.0
+
       - name: setup verusfmt
-        run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
+
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          . "$HOME/.cargo/env"
           . ../tools/activate
           vargo fmt -- --check
+
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
-        run: |
-          . "$HOME/.cargo/env"
-          cargo fmt -- --check
+        run: cargo fmt -- --check
 
-  test-and-release-macos:
+  docs:
     runs-on: macos-14
-    strategy:
-      matrix:
-        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular', 'cvc5']
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
+
+      - name: check rustdoc
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          ./tools/get-z3.sh
+          ./tools/docs.sh --check
+
+  test:
+    strategy:
+      matrix:
+        build: [macos, macos-x86_64, macos-record-history, macos-no-std, macos-no-alloc, macos-singular, macos-cvc5, linux, windows]
+        include:
+          - build: macos
+            os: macos-14
+            features: ''
+            release_name: verus-arm64-macos
+          - build: macos-x86_64
+            os: macos-15-intel
+            features: ''
+            release_name: verus-x86-macos
+          - build: macos-record-history
+            os: macos-14
+            features: 'record-history'
+          - build: macos-no-std
+            os: macos-14
+            features: 'no-std'
+          - build: macos-no-alloc
+            os: macos-14
+            features: 'no-alloc'
+          - build: macos-singular
+            os: macos-14
+            features: 'singular'
+          - build: macos-cvc5
+            os: macos-14
+            features: 'cvc5'
+          - build: linux
+            os: ubuntu-latest
+            features: ''
+            release_name: verus-x86-linux
+          - build: windows
+            os: windows-latest
+            features: ''
+            release_name: verus-x86-win
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
       - name: get z3
         working-directory: ./source
         run: |
           ./tools/get-z3.sh
           echo z3 version `./z3 --version`
+
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.91.0
+
       - name: download singular
         if: matrix.features == 'singular'
-        run: |
-          curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
-      - name: build and test
+        run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
+
+      - name: build
         working-directory: ./source
         run: |
-          . "$HOME/.cargo/env"
           . ../tools/activate
           vargo clean
 
@@ -70,13 +128,9 @@ jobs:
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
               DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              vargo build --features record-history
-              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --features record-history --test basic
+              vargo build --release --features record-history
               ;;
             "no-std")
               vargo build --vstd-no-std
@@ -93,199 +147,100 @@ jobs:
             "cvc5")
               ./tools/get-cvc5.sh
               echo cvc5 version `./cvc5 --version`
-              vargo build
-              vargo run -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+              vargo build --release
               ;;
             *)
-              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
-              VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
-              cd vstd
-              unset -f cargo
-              cargo build
+              vargo build --release
+
+              # build zip file with release if we're not on a fork
+              if [ ${{ github.repository }} == 'verus-lang/verus' ]; then
+                ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+                cp -R ./target-verus/release ../${{ matrix.release_name }}
+                cd ..;
+                if [ ${{ matrix.os }} == "windows-latest" ]; then
+                  7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
+                else
+                  zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
+                fi
+                cd ./source
+              fi
+          esac
+
+      - name: test
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+
+          case "${{ matrix.features }}" in
+            "singular")
+              hdiutil attach ../Singular-4-3-2_M1.dmg
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              ;;
+            "record-history")
+              VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --features record-history --test basic
+              ;;
+            "no-alloc")
+              ;;
+            "no-std")
+              ;;
+            "cvc5")
+              vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+              ;;
+            *)
+              if [ ${{ matrix.build }} == "macos" ]; then
+                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p air
+                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test
+                cd vstd
+                unset -f cargo
+                cargo build
+              else
+                # run only the basic tests (we only fully test on macos)
+                VERUS_Z3_PATH="$(pwd)/z3" vargo test --release -p rust_verify_test --test basic
+              fi
               ;;
           esac
+
       - name: build line-count tool
+        if: matrix.features == ''
         working-directory: ./source/tools/line_count
-        run: |
-          cargo build
-      - name: build verus release
-        if: matrix.features == ''
-        working-directory: ./source
-        run: |
-          . "$HOME/.cargo/env"
-          . ../tools/activate
-          vargo clean
-          vargo build --release
-          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release ../verus-arm64-macos
-          cd ..; zip -r verus-arm64-macos.zip ./verus-arm64-macos
-      - name: run verus release
-        if: matrix.features == ''
-        working-directory: ./source
-        run: |
-          ls -Al ./target-verus/release
-          ./target-verus/release/verus ../examples/test.rs
+        run: cargo build
+
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
-        if: matrix.features == '' && github.repository == 'verus-lang/verus'
+        if: github.repository == 'verus-lang/verus' && matrix.release_name != ''
         with:
-            name: verus-arm64-macos
-            path: verus-arm64-macos.zip
-      - name: build docs
-        if: matrix.features == ''
-        working-directory: ./source
-        run: |
-          . "$HOME/.cargo/env"
-          ./tools/docs.sh
-      - name: upload verusdoc artifact
-        uses: actions/upload-artifact@v4
-        if: matrix.features == '' && github.repository == 'verus-lang/verus'
-        with:
-          name: verusdoc
-          path: source/doc
+          name: ${{ matrix.release_name }}
+          path: ${{ matrix.release_name }}.zip
 
-  smoke-test-and-release-macos-x86:
-    runs-on: macos-15-intel
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: get z3
-        working-directory: ./source
-        run: |
-          ./tools/get-z3.sh
-          echo z3 version `./z3 --version`
-      - name: setup rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.91.0
-      - name: build and test
-        working-directory: ./source
-        run: |
-          . "$HOME/.cargo/env"
-          . ../tools/activate
-          vargo clean
-          vargo build
-          VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --test basic
-      - name: build verus release
-        working-directory: ./source
-        run: |
-          . "$HOME/.cargo/env"
-          . ../tools/activate
-          vargo clean
-          vargo build --release
-          # TODO ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release ../verus-x86-macos
-          cd ..; zip -r verus-x86-macos.zip ./verus-x86-macos
-      - name: run verus release
-        working-directory: ./source
-        run: |
-          ls -Al ./target-verus/release
-          ./target-verus/release/verus ../examples/test.rs
-      - name: upload verus release artifact
-        uses: actions/upload-artifact@v4
-        if: github.repository == 'verus-lang/verus'
-        with:
-            name: verus-x86-macos
-            path: verus-x86-macos.zip
-
-  smoke-test-and-release-windows:
-    runs-on: windows-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: get z3
-        shell: pwsh
-        working-directory: .\source
-        run: |
-          .\tools\get-z3.ps1
-          Write-Host "z3 version $(.\z3.exe --version)"
-      - name: setup rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.91.0
-      - name: build verus release
-        working-directory: .\source
-        run: |
-          ../tools/activate.ps1
-          $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; vargo build --release
-          # TODO: (currently fails misteriously) $env:VERUS_Z3_PATH = "$(Get-Location)/z3.exe"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release ../verus-x86-win
-          cd ..; Compress-Archive -Path .\verus-x86-win -DestinationPath .\verus-x86-win.zip
-        shell: powershell
-      - name: run verus release
-        working-directory: .\source
-        run: |
-          ls .\target-verus\release
-          $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; Start-Process "$(Get-Location)\target-verus\release\verus.exe" "$(Get-Location)\..\examples\test.rs"
-        shell: powershell
-      - name: upload verus release artifact
-        uses: actions/upload-artifact@v4
-        if: github.repository == 'verus-lang/verus'
-        with:
-            name: verus-x86-win
-            path: verus-x86-win.zip
-
-  smoke-test-and-release-linux:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-      - name: get z3
-        working-directory: ./source
-        run: |
-          ./tools/get-z3.sh
-          echo z3 version `./z3 --version`
-      - name: setup rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.91.0
-      - name: build and test
-        working-directory: ./source
-        run: |
-          . ../tools/activate
-          vargo clean
-          vargo build
-          VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --test basic
-      - name: build verus release
-        working-directory: ./source
-        run: |
-          . ../tools/activate
-          vargo clean
-          vargo build --release
-          # TODO ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release ../verus-x86-linux
-          cd ..; zip -r verus-x86-linux.zip ./verus-x86-linux
-      - name: run verus release
-        working-directory: ./source
-        run: |
-          ls -Al ./target-verus/release
-          ./target-verus/release/verus ../examples/test.rs
-      - name: upload verus release artifact
-        uses: actions/upload-artifact@v4
-        if: github.repository == 'verus-lang/verus'
-        with:
-            name: verus-x86-linux
-            path: verus-x86-linux.zip
-
-  docs:
+  build-docs:
+    needs: [fmt, docs]
     runs-on: macos-14
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.91.0
-      - name: check rustdoc
+
+      - name: build docs
         working-directory: ./source
         run: |
-          . "$HOME/.cargo/env"
           . ../tools/activate
           ./tools/get-z3.sh
-          ./tools/docs.sh --check
+          ./tools/docs.sh
+
+      - name: upload verusdoc artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: verusdoc
+          path: source/doc
 
   release:
-    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos, smoke-test-and-release-macos-x86, docs]
+    needs: [build-docs, test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
     runs-on: ubuntu-latest
     steps:
@@ -301,8 +256,7 @@ jobs:
           echo $RELEASE_NAME $TAG_NAME
 
       - name: list artifacts
-        run: |
-          ls -Al .
+        run: ls -Al .
 
       - name: update release
         id: update_release
