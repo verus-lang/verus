@@ -1289,6 +1289,21 @@ fn is_unsized_blanket_impl(ti: &TraitImpl) -> bool {
     }
 }
 
+// TODO: delete this when https://github.com/rust-lang/rust/issues/57893 is fixed
+pub fn get_dyn_traits(krate: &Krate) -> HashSet<Path> {
+    use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
+    let mut dyn_traits: HashSet<Path> = HashSet::new();
+    let ft = &|dyn_traits: &mut HashSet<Path>, typ: &Typ| {
+        if let TypX::Dyn(trait_path, _, _) = &**typ {
+            dyn_traits.insert(trait_path.clone());
+        }
+        Ok(())
+    };
+    let mut visitor = WalkTypVisitorEnv { env: &mut dyn_traits, ft };
+    visitor.visit_krate(krate).unwrap();
+    dyn_traits
+}
+
 // This extends the trait dyn compatibility rules from
 // https://doc.rust-lang.org/reference/items/traits.html .
 // See https://github.com/verus-lang/verus/discussions/1047 .

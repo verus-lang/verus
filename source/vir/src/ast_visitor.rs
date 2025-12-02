@@ -1,10 +1,10 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
-    GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant, LoopInvariants, MaskSpec,
+    NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX,
+    Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -1242,6 +1242,45 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 owning_module: owning_module.clone(),
                 auto_imported: *auto_imported,
                 external_trait_blanket: *external_trait_blanket,
+            })
+        })
+    }
+
+    fn visit_krate(&mut self, krate: &Krate) -> Result<R::Ret<Krate>, Err> {
+        let KrateX {
+            functions,
+            reveal_groups,
+            datatypes,
+            traits,
+            trait_impls,
+            assoc_type_impls,
+            modules,
+            external_fns,
+            external_types,
+            path_as_rust_names,
+            arch,
+            opaque_types,
+        } = &**krate;
+        let functions = R::map_vec(functions, &mut |f| self.visit_function(f))?;
+        let datatypes = R::map_vec(datatypes, &mut |d| self.visit_datatype(d))?;
+        let traits = R::map_vec(traits, &mut |t| self.visit_trait(t))?;
+        let trait_impls = R::map_vec(trait_impls, &mut |ti| self.visit_trait_impl(ti))?;
+        let assoc_type_impls =
+            R::map_vec(assoc_type_impls, &mut |ati| self.visit_assoc_type_impl(ati))?;
+        R::ret(|| {
+            Arc::new(KrateX {
+                functions: R::get_vec(functions),
+                reveal_groups: reveal_groups.clone(),
+                datatypes: R::get_vec(datatypes),
+                traits: R::get_vec(traits),
+                trait_impls: R::get_vec(trait_impls),
+                assoc_type_impls: R::get_vec(assoc_type_impls),
+                modules: modules.clone(),
+                external_fns: external_fns.clone(),
+                external_types: external_types.clone(),
+                path_as_rust_names: path_as_rust_names.clone(),
+                arch: arch.clone(),
+                opaque_types: opaque_types.clone(),
             })
         })
     }

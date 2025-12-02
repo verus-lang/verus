@@ -272,6 +272,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_rust_blanket_unsoundness2 verus_code! {
+        // https://github.com/rust-lang/rust/issues/57893
+        trait TraitA { type Item: ?Sized; }
+        trait TraitB<T> { }
+        impl<X: TraitA> TraitB<X> for X::Item { }
+        impl TraitA for () { type Item = dyn TraitB<()>; }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations of trait")
+}
+
+test_verify_one_file! {
     #[test] dyn_in_struct verus_code! {
         use vstd::prelude::*;
         trait T { fn f(&self) {} }
