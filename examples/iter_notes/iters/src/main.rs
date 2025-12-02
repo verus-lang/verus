@@ -7,6 +7,7 @@ verus! {
 mod for_loops_quantified;
 mod for_loops_seq_ops;
 mod prophetic_iters;
+mod no_term;
 
 // Use a module here, so that we can `broadcast use` in the examples further below.
 mod iters {
