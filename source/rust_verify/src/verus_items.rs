@@ -196,7 +196,7 @@ pub(crate) enum SpecArithItem {
     Add,
     Sub,
     Mul,
-    EuclideanDiv,
+    EuclideanOrRealDiv,
     EuclideanMod,
 }
 
@@ -246,6 +246,7 @@ pub(crate) enum SpecLiteralItem {
     Integer,
     Int,
     Nat,
+    Decimal,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -261,6 +262,7 @@ pub(crate) enum UnaryOpItem {
     SpecLiteral(SpecLiteralItem),
     SpecNeg,
     SpecCastInteger,
+    SpecCastReal,
     SpecGhostTracked(SpecGhostTrackedItem),
 }
 
@@ -318,6 +320,7 @@ pub(crate) enum MarkerItem {
 pub(crate) enum BuiltinTypeItem {
     Int,
     Nat,
+    Real,
     FnSpec,
     Ghost,
     Tracked,
@@ -478,7 +481,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::SpecAdd::spec_add",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Add))),
         ("verus::verus_builtin::SpecSub::spec_sub",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Sub))),
         ("verus::verus_builtin::SpecMul::spec_mul",       VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::Mul))),
-        ("verus::verus_builtin::SpecEuclideanDiv::spec_euclidean_div", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanDiv))),
+        ("verus::verus_builtin::SpecEuclideanOrRealDiv::spec_euclidean_or_real_div", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanOrRealDiv))),
         ("verus::verus_builtin::SpecEuclideanMod::spec_euclidean_mod", VerusItem::BinaryOp(BinaryOpItem::SpecArith(SpecArithItem::EuclideanMod))),
 
         ("verus::verus_builtin::SpecBitAnd::spec_bitand", VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::BitAnd))),
@@ -510,8 +513,10 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::spec_literal_integer",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Integer))),
         ("verus::verus_builtin::spec_literal_int",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Int))),
         ("verus::verus_builtin::spec_literal_nat",        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Nat))),
+        ("verus::verus_builtin::spec_literal_decimal",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal))),
         ("verus::verus_builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
         ("verus::verus_builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
+        ("verus::verus_builtin::spec_cast_real"   ,       VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
         ("verus::verus_builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
         ("verus::verus_builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::verus_builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
@@ -568,6 +573,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::verus_builtin::int",                     VerusItem::BuiltinType(BuiltinTypeItem::Int)),
         ("verus::verus_builtin::nat",                     VerusItem::BuiltinType(BuiltinTypeItem::Nat)),
+        ("verus::verus_builtin::real",                    VerusItem::BuiltinType(BuiltinTypeItem::Real)),
         ("verus::verus_builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
         ("verus::verus_builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),

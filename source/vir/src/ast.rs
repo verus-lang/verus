@@ -257,7 +257,10 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
+    /// Integer type: int, nat, i8, ..., i128, u8, ..., u128, isize, usize, char
     Int(IntRange),
+    /// SMT solver's real number (ghost code only)
+    Real,
     /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
     Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
@@ -378,6 +381,8 @@ pub enum UnaryOp {
         range: IntRange,
         truncate: bool,
     },
+    /// Convert integer type to real type (SMT to_real operation)
+    IntToReal,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
@@ -522,6 +527,18 @@ pub enum ArithOp {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum RealArithOp {
+    /// Real number add (spec mode only)
+    Add,
+    /// Real number subtract (spec mode only)
+    Sub,
+    /// Real number multiply (spec mode only)
+    Mul,
+    /// Real number divide (spec mode only)
+    Div,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IntegerTypeBitwidth {
     /// Exact number of bits (e.g. 8 for u8/i8)
     Width(u32),
@@ -592,6 +609,8 @@ pub enum BinaryOp {
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
     Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
@@ -679,6 +698,8 @@ pub enum Constant {
     Bool(bool),
     /// integer of arbitrary size
     Int(BigInt),
+    /// String is >= 1 decimal digits, then one decimal point, then >= 1 decimal digits
+    Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
     // Hold unicode values here

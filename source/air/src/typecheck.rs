@@ -52,10 +52,15 @@ pub fn it() -> Typ {
     Arc::new(TypX::Int)
 }
 
+pub fn rt() -> Typ {
+    Arc::new(TypX::Real)
+}
+
 fn typ_name(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
+        TypX::Real => "Real".to_string(),
         TypX::Fun => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
         TypX::BitVec(n) => format!("BitVec{}", n),
@@ -74,6 +79,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
+        TypX::Real => Ok(()),
         TypX::Fun => Ok(()),
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
@@ -93,24 +99,24 @@ fn check_typs(typing: &Typing, typs: &[Typ]) -> Result<(), TypeError> {
     Ok(())
 }
 
-fn check_exprs(
-    typing: &mut Typing,
+fn check_has_typs(
+    _typing: &mut Typing,
     f_name: &str,
     f_typs: &[Typ],
     f_typ: &Typ,
-    exprs: &[Expr],
+    arg_typs: &[Typ],
 ) -> Result<Typ, TypeError> {
-    if f_typs.len() != exprs.len() {
+    if f_typs.len() != arg_typs.len() {
         return Err(format!(
             "in call to {}, expected {} arguments, found {} arguments",
             f_name,
             f_typs.len(),
-            exprs.len()
+            arg_typs.len()
         ));
     }
     for i in 0..f_typs.len() {
-        let et = check_expr(typing, &exprs[i])?;
-        if !typ_eq(&et, &f_typs[i]) {
+        let et = &arg_typs[i];
+        if !typ_eq(et, &f_typs[i]) {
             return Err(format!(
                 "in call to {}, argument #{} has type {:?} when it should have type {:?}",
                 f_name,
@@ -121,6 +127,36 @@ fn check_exprs(
         }
     }
     Ok(f_typ.clone())
+}
+
+fn check_exprs(
+    typing: &mut Typing,
+    f_name: &str,
+    f_typs: &[Typ],
+    f_typ: &Typ,
+    exprs: &[Expr],
+) -> Result<Typ, TypeError> {
+    let arg_typs: Result<Vec<Typ>, TypeError> =
+        exprs.iter().map(|e| check_expr(typing, e)).collect();
+    check_has_typs(typing, f_name, f_typs, f_typ, &arg_typs?)
+}
+
+// If exprs[0] has type real, check that all exprs are real, otherwise check that all exprs are int
+fn check_exprs_int_or_real(
+    typing: &mut Typing,
+    f_name: &str,
+    n_f_typs: usize,
+    f_typ: &Option<Typ>,
+    exprs: &[Expr],
+) -> Result<Typ, TypeError> {
+    let arg_typs: Result<Vec<Typ>, TypeError> =
+        exprs.iter().map(|e| check_expr(typing, e)).collect();
+    let arg_typs = arg_typs?;
+    let scalar_typ =
+        if arg_typs.len() > 0 && matches!(&*arg_typs[0], TypX::Real) { rt() } else { it() };
+    let f_typ = f_typ.as_ref().unwrap_or(&scalar_typ);
+    let f_typs: Vec<Typ> = (0..n_f_typs).into_iter().map(|_| scalar_typ.clone()).collect();
+    check_has_typs(typing, f_name, &f_typs, f_typ, &arg_typs)
 }
 
 fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
@@ -203,6 +239,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
+        ExprX::Const(Constant::Real(_)) => Ok(Arc::new(TypX::Real)),
         ExprX::Const(Constant::BitVec(_, width)) => Ok(Arc::new(TypX::BitVec(*width))),
         ExprX::Var(x) => match typing.get(x) {
             Some(DeclaredX::Var { typ, .. }) => Ok(typ.clone()),
@@ -246,6 +283,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         }
         ExprX::Unary(UnaryOp::BitSignExtend(n), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitSignExtend(*n), "sign_extend", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::ToReal, e1) => {
+            check_exprs(typing, "not", &[it()], &rt(), &[e1.clone()])
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
@@ -304,22 +344,25 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
-            check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs_int_or_real(typing, "<=", 2, &Some(bt()), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Ge, e1, e2) => {
-            check_exprs(typing, ">=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs_int_or_real(typing, ">=", 2, &Some(bt()), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Lt, e1, e2) => {
-            check_exprs(typing, "<", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs_int_or_real(typing, "<", 2, &Some(bt()), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Gt, e1, e2) => {
-            check_exprs(typing, ">", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
+            check_exprs_int_or_real(typing, ">", 2, &Some(bt()), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::EuclideanDiv, e1, e2) => {
             check_exprs(typing, "div", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::EuclideanMod, e1, e2) => {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::RealDiv, e1, e2) => {
+            check_exprs(typing, "/", &[rt(), rt()], &rt(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitULt, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitULt, "bvlt", &[e1.clone(), e2.clone()])
@@ -398,7 +441,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
             };
-            let f_typs = vec_map(exprs, |_| t.clone());
             match op {
                 MultiOp::Distinct => {
                     if exprs.len() > 0 {
@@ -410,7 +452,13 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     }
                     Ok(bt())
                 }
-                _ => check_exprs(typing, x, &f_typs, &t, exprs),
+                MultiOp::Add | MultiOp::Sub | MultiOp::Mul => {
+                    check_exprs_int_or_real(typing, x, exprs.len(), &None, exprs)
+                }
+                _ => {
+                    let f_typs = vec_map(exprs, |_| t.clone());
+                    check_exprs(typing, x, &f_typs, &t, exprs)
+                }
             }
         }
         ExprX::IfElse(e1, e2, e3) => {
