@@ -7,6 +7,9 @@ verus!{
 
 broadcast use group_decrease_axioms;
 
+/// Example of what our desugaring will look like when the user
+/// has added #[verifier::exec_allows_no_decreases_clause]
+
 #[verifier::exec_allows_no_decreases_clause]
 fn for_loop_test_vec() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -38,18 +41,7 @@ fn for_loop_test_vec() {
                 // invariant_except_break
                 //     y.iter.decrease() is Some,
                 invariant
-                    // Internal invariants that assist the user
-                    0 <= y.index@ <= y.snapshot@.seq().len(),
-
-                    // Internal invariants that help maintain the other internal invariants
-                    y.snapshot == VERUS_old_snap,
-                    
-                    // Previously: y.iter.seq() =~= y.seq().skip(y.index@),
-                    y.iter.seq().len() == y.seq().len() - y.index@,
-                    forall |i| 0 <= i < y.iter.seq().len() ==> #[trigger] y.iter.seq()[i] == y.seq()[y.index@ + i],
-
-                    (y.iter.completes() ==> y.snapshot@.completes()),
-
+                    y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
@@ -69,14 +61,11 @@ fn for_loop_test_vec() {
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                match y.iter.next() {
+                match y.next(Ghost(VERUS_old_snap)) {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
                     }
-                }
-                proof {
-                    y.index@ = y.index@ + 1;
                 }
                 let x = VERUS_loop_next;
                 let () = {
@@ -87,7 +76,6 @@ fn for_loop_test_vec() {
             }
         }
     };
-
     // Make sure our invariant was useful
     assert(w@.len() == v@.len());
     assert(w@ == v@);
