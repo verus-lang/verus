@@ -64,11 +64,9 @@ jobs:
           - build: macos
             os: macos-14
             features: ''
-            release_name: verus-arm64-macos
           - build: macos-x86_64
             os: macos-15-intel
             features: ''
-            release_name: verus-x86-macos
           - build: macos-record-history
             os: macos-14
             features: 'record-history'
@@ -87,11 +85,9 @@ jobs:
           - build: linux
             os: ubuntu-latest
             features: ''
-            release_name: verus-x86-linux
           - build: windows
             os: windows-latest
             features: ''
-            release_name: verus-x86-win
 
     runs-on: ${{ matrix.os }}
 
@@ -133,7 +129,7 @@ jobs:
               DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
               ;;
             "record-history")
-              vargo build --release --features record-history
+              vargo build --features record-history
               ;;
             "no-std")
               vargo build --vstd-no-std
@@ -150,23 +146,11 @@ jobs:
             "cvc5")
               ./tools/get-cvc5.sh
               echo cvc5 version `./cvc5 --version`
-              vargo build --release
+              vargo build
               ;;
             *)
-              vargo build --release
-
-              # build zip file with release if we're not on a fork
-              if [ ${{ github.repository }} == 'verus-lang/verus' ]; then
-                ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-                cp -R ./target-verus/release ../${{ matrix.release_name }}
-                cd ..;
-                if [ ${{ matrix.os }} == "windows-latest" ]; then
-                  7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
-                else
-                  zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
-                fi
-                cd ./source
-              fi
+              vargo build
+              ;;
           esac
 
       - name: test
@@ -177,30 +161,30 @@ jobs:
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              RUSTFLAGS="-C debug-assertions" DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air --features singular
-              RUSTFLAGS="-C debug-assertions" DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features singular --test integer_ring
-              RUSTFLAGS="-C debug-assertions" DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --features record-history --test basic
+              VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features record-history --test basic
               ;;
             "no-alloc")
               ;;
             "no-std")
               ;;
             "cvc5")
-              vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+              vargo run -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
               ;;
             *)
               if [ ${{ matrix.build }} == "macos" ]; then
-                RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-                RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test
                 cd vstd
                 unset -f cargo
                 cargo build
               else
                 # run only the basic tests (we only fully test on macos)
-                RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test --test basic
+                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
               fi
               ;;
           esac
@@ -210,12 +194,6 @@ jobs:
         working-directory: ./source/tools/line_count
         run: cargo build
 
-      - name: upload verus release artifact
-        uses: actions/upload-artifact@v4
-        if: github.repository == 'verus-lang/verus' && matrix.release_name != ''
-        with:
-          name: ${{ matrix.release_name }}
-          path: ${{ matrix.release_name }}.zip
 
   build-docs:
     needs: [fmt, docs]
@@ -242,8 +220,73 @@ jobs:
           name: verusdoc
           path: source/doc
 
+  build-release:
+    needs: [test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
+
+    strategy:
+      matrix:
+        build: [macos, macos-x86_64, linux, windows]
+        include:
+          - build: macos
+            os: macos-14
+            release_name: verus-arm64-macos
+          - build: macos-x86_64
+            os: macos-15-intel
+            release_name: verus-x86-macos
+          - build: linux
+            os: ubuntu-latest
+            release_name: verus-x86-linux
+          - build: windows
+            os: windows-latest
+            release_name: verus-x86-win
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo z3 version `./z3 --version`
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
+
+      - name: build
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+
+      - name: create archive
+        run: |
+          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release ../${{ matrix.release_name }}
+          cd ..;
+          if [ ${{ matrix.os }} == "windows-latest" ]; then
+            7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
+          else
+            zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
+
+      - name: upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.release_name }}
+          path: ${{ matrix.release_name }}.zip
+
   release:
-    needs: [build-docs, test]
+    needs: [build-docs, build-release]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
     runs-on: ubuntu-latest
     steps:
