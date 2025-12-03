@@ -242,7 +242,21 @@ impl PartialOrd for Fingerprint {
     }
 }
 
-const RUST_FLAGS: &str = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations --cfg procmacro2_semver_exempt";
+fn rust_flags() -> String {
+    const NEEDED_CFGS: [&str; 4] = [
+        "--cfg proc_macro_span",
+        "--cfg verus_keep_ghost",
+        "--cfg span_locations",
+        "--cfg procmacro2_semver_exempt",
+    ];
+
+    let user_rustflags = std::env::var("RUSTFLAGS").unwrap_or_default();
+    NEEDED_CFGS
+        .into_iter()
+        .chain(std::iter::once(user_rustflags.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 fn main() {
     match run() {
@@ -798,7 +812,7 @@ fn run() -> Result<(), String> {
                     .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_TARGET_DIR", target_verus_dir_absolute)
-                    .env("RUSTFLAGS", RUST_FLAGS)
+                    .env("RUSTFLAGS", rust_flags())
                     .args(&args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -1019,7 +1033,7 @@ fn run() -> Result<(), String> {
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VARGO_IN_NEXTEST", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", RUST_FLAGS)
+                    .env("RUSTFLAGS", rust_flags())
                     .env("CARGO", current_exe)
                     .args(&new_args);
                 log_command(&cargo, verbose);
@@ -1033,7 +1047,7 @@ fn run() -> Result<(), String> {
                     .env("RUST_MIN_STACK", test_rust_min_stack())
                     .env("RUSTC_BOOTSTRAP", "1")
                     .env("VERUS_IN_VARGO", "1")
-                    .env("RUSTFLAGS", RUST_FLAGS)
+                    .env("RUSTFLAGS", rust_flags())
                     .args(&new_args);
                 log_command(&cargo, verbose);
                 let status = cargo
@@ -1048,7 +1062,7 @@ fn run() -> Result<(), String> {
                 .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", RUST_FLAGS)
+                .env("RUSTFLAGS", rust_flags())
                 .args(&args);
             log_command(&cargo, verbose);
             cargo
@@ -1068,7 +1082,7 @@ fn run() -> Result<(), String> {
                 .env("RUST_MIN_STACK", test_rust_min_stack())
                 .env("RUSTC_BOOTSTRAP", "1")
                 .env("VERUS_IN_VARGO", "1")
-                .env("RUSTFLAGS", RUST_FLAGS)
+                .env("RUSTFLAGS", rust_flags())
                 .args(args);
             log_command(&cargo, verbose);
             let status = cargo
@@ -1102,7 +1116,7 @@ fn run() -> Result<(), String> {
                         .env("RUST_MIN_STACK", test_rust_min_stack())
                         .env("RUSTC_BOOTSTRAP", "1")
                         .env("VERUS_IN_VARGO", "1")
-                        .env("RUSTFLAGS", RUST_FLAGS)
+                        .env("RUSTFLAGS", rust_flags())
                         .arg("build")
                         .arg("-p")
                         .arg(target);
@@ -1351,7 +1365,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
                             .env("VERUS_IN_VARGO", "1")
-                            .env("RUSTFLAGS", RUST_FLAGS)
+                            .env("RUSTFLAGS", rust_flags())
                             .arg("run")
                             .arg("-p")
                             .arg("vstd_build")
