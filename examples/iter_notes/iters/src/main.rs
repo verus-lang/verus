@@ -4,6 +4,7 @@ fn main() { }
 
 verus! {
 
+mod loop_break;
 mod for_loops_quantified;
 mod for_loops_seq_ops;
 mod prophetic_iters;
