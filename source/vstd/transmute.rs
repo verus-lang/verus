@@ -291,9 +291,7 @@ impl PointsTo<str> {
             self.is_init(),
         ensures
             ret.is_init(),
-            ret.value() == target@@,
-            // TODO: okay to just erase?
-            // ret.phy() == target,
+            ret.value() == target@,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
             ret.ptr()@.metadata == self.ptr()@.metadata,
