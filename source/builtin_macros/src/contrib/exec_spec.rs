@@ -1805,8 +1805,8 @@ pub fn exec_spec(input: TokenStream) -> TokenStream {
         .collect::<Result<Vec<_>, _>>();
 
     match res {
-        Ok(ts) => quote! {
-            ::verus_builtin_macros::verus! { #(#ts)* }
+        Ok(ts) => quote_vstd! { vstd =>
+            #vstd::prelude::verus! { #(#ts)* }
         }
         .into(),
         Err(err) => err,

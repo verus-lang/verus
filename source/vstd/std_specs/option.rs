@@ -2,8 +2,6 @@
 use super::super::prelude::*;
 
 use core::option::Option;
-use core::option::Option::None;
-use core::option::Option::Some;
 
 verus! {
 
@@ -27,36 +25,37 @@ pub trait OptionAdditionalFns<T>: Sized {
     #[allow(non_snake_case)]
     spec fn arrow_0(&self) -> T;
 
-    /// Auxilliary spec function for the spec of `tracked_unwrap`, `tracked_borrow`, and `tracked_take`.
-    spec fn tracked_is_some(&self) -> bool;
-
+    #[allow(deprecated)]
     proof fn tracked_unwrap(tracked self) -> (tracked t: T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_expect(tracked self, msg: &str) -> (tracked t: T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
         requires
-            self.tracked_is_some(),
+            self.is_Some(),
         ensures
             t == self->0,
     ;
 
+    #[allow(deprecated)]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
-            old(self).tracked_is_some(),
+            old(self).is_Some(),
         ensures
             t == old(self)->0,
-            !self.tracked_is_some(),
+            self.is_None(),
     ;
 }
 
@@ -84,10 +83,6 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier::inline]
     open spec fn arrow_0(&self) -> T {
         get_variant_field(self, "Some", "0")
-    }
-
-    open spec fn tracked_is_some(&self) -> bool {
-        is_variant(self, "Some")
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {

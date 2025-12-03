@@ -42,10 +42,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
-    FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Place,
-    PlaceX, Primitive, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr,
-    UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, CallTarget, Constant,
+    Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange,
+    InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX,
+    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -503,7 +504,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
-    unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
+    unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
         PatKind::Binding(_binding_mode, canonical, x, subpat) => {
@@ -2096,12 +2097,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     expr_to_vir(bctx, arg, modifier)?
                 };
                 let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-                let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-                mk_expr(ExprX::Binary(
-                    BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
-                    zero,
-                    varg,
-                ))
+                let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                let ob = if bctx.in_ghost {
+                    OverflowBehavior::Allow
+                } else {
+                    OverflowBehavior::Error(range)
+                };
+                mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg))
             }
             UnOp::Deref => deref_expr_to_vir(bctx, expr, arg, modifier),
         },
@@ -2112,13 +2114,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             if ret.is_some() {
                 return Ok(ExprOrPlace::Expr(ret.unwrap()));
             }
-            let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-            let vop = binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?;
+            let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-                    Ok(ExprOrPlace::Expr(mk_ty_clip(&expr_typ()?, &e, true)))
-                }
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(ExprOrPlace::Expr(e)),
                 BinOpKind::Div | BinOpKind::Rem => {
                     match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
@@ -2250,7 +2249,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, None)
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, None)
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(lhs), modifier)?;
@@ -2488,7 +2487,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?.to_place()),
+                StructTailExpr::Base(tail_expr) => {
+                    let place = expr_to_vir(bctx, tail_expr, modifier)?.to_place();
+                    let tf = ctor_tail_get_taken_fields(bctx, expr)?;
+                    Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
+                }
                 StructTailExpr::DefaultFields(..) => {
                     unsupported_err!(
                         expr.span,
@@ -2622,6 +2625,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
+            if bctx.types.is_method_call(expr) {
+                unsupported_err!(expr.span, "overloaded op-assignment operator");
+            }
+
             if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
                 let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
                 if matches!(range, IntRange::I(_) | IntRange::ISize) {
@@ -2629,7 +2636,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     unsupported_err!(expr.span, "div/mod on signed finite-width integers");
                 }
             }
-            expr_assign_to_vir_innermost(bctx, tc, lhs, mk_expr, rhs, modifier, Some(op))
+            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, modifier, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
@@ -2710,10 +2717,8 @@ fn lit_to_vir<'tcx>(
 fn assignop_kind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<AssignOpKind>,
-    tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
-    mode_for_ghostness: Mode,
 ) -> Result<BinaryOp, VirErr> {
     let bop: BinOpKind = match op.node {
         AssignOpKind::AddAssign => BinOpKind::Add,
@@ -2727,16 +2732,20 @@ fn assignop_kind_to_binaryop<'tcx>(
         AssignOpKind::ShlAssign => BinOpKind::Shl,
         AssignOpKind::ShrAssign => BinOpKind::Shr,
     };
-    binopkind_to_binaryop_inner(bctx, bop, tc, lhs, rhs, mode_for_ghostness)
+    binopkind_to_binaryop_inner(bctx, bop, lhs, rhs)
 }
 fn binopkind_to_binaryop_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: BinOpKind,
-    tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
-    mode_for_ghostness: Mode,
 ) -> Result<BinaryOp, VirErr> {
+    let tc = bctx.types;
+
+    let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
+    let bb_for_ghostness =
+        if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error };
+
     let vop = match op {
         BinOpKind::And => BinaryOp::And,
         BinOpKind::Or => BinaryOp::Or,
@@ -2746,19 +2755,32 @@ fn binopkind_to_binaryop_inner<'tcx>(
         BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
         BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
         BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-        BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, mode_for_ghostness),
-        BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, mode_for_ghostness),
-        BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, mode_for_ghostness),
-        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, mode_for_ghostness),
-        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, mode_for_ghostness),
+        BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
+            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs), false)?;
+            let range = get_range(&ty);
+            let ob = if bctx.in_ghost {
+                OverflowBehavior::Truncate(range)
+            } else {
+                OverflowBehavior::Error(range)
+            };
+
+            match op {
+                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add(ob)),
+                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub(ob)),
+                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul(ob)),
+                _ => unreachable!(),
+            }
+        }
+        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
+        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
         BinOpKind::BitXor => {
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
                 _ => panic!("bitwise XOR for this type not supported"),
             }
@@ -2771,10 +2793,10 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
                 t => panic!("bitwise AND for this type not supported {:#?}", t),
             }
@@ -2787,10 +2809,10 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     );
                 }
                 (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                 }
                 (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, mode_for_ghostness)
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
                 }
                 _ => panic!("bitwise OR for this type not supported"),
             }
@@ -2802,7 +2824,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for <<");
             };
-            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), mode_for_ghostness)
+            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
         }
         BinOpKind::Shr => {
             let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -2811,7 +2833,7 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for >>");
             };
-            BinaryOp::Bitwise(BitwiseOp::Shr(w), mode_for_ghostness)
+            BinaryOp::Bitwise(BitwiseOp::Shr(w), bb_for_ghostness)
         }
     };
     Ok(vop)
@@ -2820,17 +2842,14 @@ fn binopkind_to_binaryop_inner<'tcx>(
 fn binopkind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<BinOpKind>,
-    tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
-    mode_for_ghostness: Mode,
 ) -> Result<BinaryOp, VirErr> {
-    binopkind_to_binaryop_inner(bctx, op.node, tc, lhs, rhs, mode_for_ghostness)
+    binopkind_to_binaryop_inner(bctx, op.node, lhs, rhs)
 }
 
 fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<ExprOrPlace, vir::messages::Message>,
     rhs: &Expr<'tcx>,
@@ -2841,11 +2860,8 @@ fn expr_assign_to_vir_innermost<'tcx>(
         let vir_lhs = expr_to_vir(bctx, lhs, modifier)?.to_place();
         let vir_rhs = expr_to_vir_consume(bctx, rhs, modifier)?;
 
-        let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
         let op = match op_kind {
-            Some(op) => {
-                Some(assignop_kind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?)
-            }
+            Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
             None => None,
         };
 
@@ -2910,9 +2926,8 @@ fn expr_assign_to_vir_innermost<'tcx>(
             }
         })
     }
-    let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
     let op = match op_kind {
-        Some(op) => Some(assignop_kind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
+        Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
         None => None,
     };
 
@@ -3551,6 +3566,7 @@ fn add_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Exp
     inner_expr
 }
 
+/// This is only for use outside new-mut-ref and will eventually be deleted
 pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::VarLoc(var_ident.clone()),
@@ -3560,6 +3576,16 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Field(opr, p) => {
             let e = place_to_loc(p)?;
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
+        }
+        PlaceX::ModeUnwrap(p, m) => {
+            let e = place_to_loc(p)?;
+            let op = UnaryOp::CoerceMode {
+                op_mode: Mode::Proof,
+                from_mode: Mode::Proof,
+                to_mode: m.to_mode(),
+                kind: vir::ast::ModeCoercion::BorrowMut,
+            };
+            ExprX::Unary(op, e)
         }
         PlaceX::Temporary(expr) => {
             return expr_to_loc_coerce_modes(expr);
@@ -3601,7 +3627,7 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
     Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }
 
-fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
+pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
@@ -3623,7 +3649,34 @@ fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
 }
 
-fn borrow_mut_vir(
+/// Like the above, but also cancels with two-phase borrows
+/// It's _probably_ okay to always call this, but it's good to be caution about two-phase
+pub(crate) fn deref_mut_allow_cancelling_two_phase(
+    bctx: &BodyCtxt,
+    span: Span,
+    place: &Place,
+) -> Place {
+    match &place.x {
+        PlaceX::Temporary(e) => match &e.x {
+            ExprX::BorrowMut(place) => {
+                return place.clone();
+            }
+            ExprX::TwoPhaseBorrowMut(place) => {
+                return place.clone();
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+
+    let t = match &*place.typ {
+        TypX::MutRef(t) => t.clone(),
+        _ => panic!("expected mut ref"),
+    };
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+}
+
+pub(crate) fn borrow_mut_vir(
     bctx: &BodyCtxt,
     span: Span,
     place: &Place,
@@ -3655,4 +3708,45 @@ fn borrow_mut_vir(
     };
     let typ = Arc::new(TypX::MutRef(place.typ.clone()));
     bctx.spanned_typed_new(span, &typ, x)
+}
+
+fn ctor_tail_get_taken_fields<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<Arc<Vec<(vir::ast::Ident, UnfinalizedReadKind)>>, VirErr> {
+    let ExprKind::Struct(_, fields, _) = &expr.kind else {
+        crate::internal_err!(
+            expr.span,
+            "ctor_tail_get_taken_fields should only be called for ExprKind::Struct"
+        );
+    };
+
+    let ty = bctx.types.node_type(expr.hir_id);
+    let TyKind::Adt(adt_def, args) = ty.kind() else {
+        crate::internal_err!(expr.span, "Expected TyKind::Adt for struct expression");
+    };
+
+    if !adt_def.is_struct() {
+        crate::internal_err!(expr.span, "Expected struct for struct expression with tail");
+    }
+    let variant_def = adt_def.non_enum_variant();
+
+    let mut taken_fields = vec![];
+    // Iterate over all fields that are NOT present in the given struct expression.
+    for field_def in variant_def.fields.iter() {
+        if fields.iter().any(|f| f.ident.name == field_def.name) {
+            continue;
+        }
+        let ty = field_def.ty(bctx.ctxt.tcx, args);
+        let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
+        let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
+        let ident = field_ident_from_rust(field_def.name.as_str());
+        taken_fields.push((ident, rk));
+    }
+
+    if fields.len() + taken_fields.len() != variant_def.fields.len() {
+        crate::internal_err!(expr.span, "ctor_tail_get_taken_fields: field counts are wrong");
+    }
+
+    Ok(Arc::new(taken_fields))
 }

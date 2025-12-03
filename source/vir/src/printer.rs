@@ -228,6 +228,7 @@ impl ToDebugSNode for air::ast::TypX {
         match self {
             TypX::Bool => Node::Atom("Bool".to_string()),
             TypX::Int => Node::Atom("Int".to_string()),
+            TypX::Real => Node::Atom("Real".to_string()),
             TypX::Fun => Node::Atom("Fun".to_string()),
             TypX::Named(ident) => {
                 Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])

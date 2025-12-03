@@ -1,12 +1,4 @@
-use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, ByRef, CallTarget, CallTargetKind, Constant,
-    DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function,
-    FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX,
-    Params, Path, PathX, Pattern, PatternBinding, PatternX, Place, PlaceX, Quant, SpannedTyped,
-    Stmt, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
-};
+use crate::ast::*;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -136,6 +128,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
+        (TypX::Real, TypX::Real) => true,
         (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
@@ -194,6 +187,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
+        (TypX::Real, _) => false,
         (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
@@ -872,19 +866,26 @@ pub fn wrap_in_trigger(expr: &Expr) -> Expr {
     )
 }
 
+pub fn int_range_to_type_string(range: &IntRange) -> String {
+    match range {
+        IntRange::Int => "int".to_string(),
+        IntRange::Nat => "nat".to_string(),
+        IntRange::U(i) => format!("u{}", i),
+        IntRange::I(i) => format!("i{}", i),
+        IntRange::USize => "usize".to_string(),
+        IntRange::ISize => "isize".to_string(),
+        IntRange::Char => "char".to_string(),
+    }
+}
+
 pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     fn typs_to_comma_separated_str(typs: &[Arc<TypX>]) -> String {
         typs.iter().map(|t| typ_to_diagnostic_str(t)).collect::<Vec<_>>().join(", ")
     }
     match &**typ {
         TypX::Bool => "bool".to_owned(),
-        TypX::Int(IntRange::Nat) => "nat".to_owned(),
-        TypX::Int(IntRange::Int) => "int".to_owned(),
-        TypX::Int(IntRange::ISize) => "isize".to_owned(),
-        TypX::Int(IntRange::USize) => "usize".to_owned(),
-        TypX::Int(IntRange::Char) => "char".to_owned(),
-        TypX::Int(IntRange::U(n)) => format!("u{n}"),
-        TypX::Int(IntRange::I(n)) => format!("i{n}"),
+        TypX::Int(range) => int_range_to_type_string(range),
+        TypX::Real => "real".to_owned(),
         TypX::Float(n) => format!("f{n}"),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
@@ -1336,7 +1337,18 @@ impl PlaceX {
             PlaceX::DerefMut(p) => p.x.uses_temporary(),
             PlaceX::Field(_opr, p) => p.x.uses_temporary(),
             PlaceX::Temporary(_) => true,
+            PlaceX::ModeUnwrap(p, _) => p.x.uses_temporary(),
         }
+    }
+}
+
+pub fn place_get_local(p: &Place) -> Option<Place> {
+    match &p.x {
+        PlaceX::Local(_) => Some(p.clone()),
+        PlaceX::DerefMut(p) => place_get_local(p),
+        PlaceX::Field(_opr, p) => place_get_local(p),
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _) => place_get_local(p),
     }
 }
 
@@ -1373,6 +1385,9 @@ fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
                 return e.clone();
             }
         }
+        PlaceX::ModeUnwrap(p, _) => {
+            return place_to_expr_rec(p, loc);
+        }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
 }
@@ -1391,5 +1406,14 @@ impl PatternX {
                 copy: false,
             }),
         )
+    }
+}
+
+impl ModeWrapperMode {
+    pub fn to_mode(&self) -> Mode {
+        match self {
+            ModeWrapperMode::Spec => Mode::Spec,
+            ModeWrapperMode::Proof => Mode::Proof,
+        }
     }
 }

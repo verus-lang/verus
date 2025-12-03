@@ -76,8 +76,8 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
 
     output_wf(&sdi, &mut stream, wf_body_stream);
 
-    Ok(quote! {
-        ::verus_builtin_macros::verus!{
+    Ok(quote_vstd! { vstd =>
+        #vstd::prelude::verus!{
             #stream
         }
     })

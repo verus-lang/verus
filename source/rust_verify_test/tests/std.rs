@@ -610,3 +610,55 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] vec_from_elem verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Debug)]
+        pub struct X {
+            pub u: u64
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> (s: Self)
+                ensures s.u == (if self.u < 1000 { self.u + 1 } else { 1000 })
+            {
+                X { u: if self.u < 1000 { self.u + 1 } else { 1000 } }
+            }
+        }
+
+        fn test1() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 0 || v@[0].u == 1);
+            assert(v@[1].u == 0 || v@[1].u == 1);
+            assert(v@[2].u == 0 || v@[2].u == 1);
+            assert(v@[3].u == 0 || v@[3].u == 1);
+        }
+
+        fn test2() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 0); // FAILS
+        }
+
+        fn test3() {
+            let x = X { u: 0 };
+            let v = vec![x; 4];
+            assert(v.len() == 4);
+            assert(v@[0].u == 1); // FAILS
+        }
+
+        fn test4() {
+            let v = vec![12; 4];
+            assert(v.len() == 4);
+            assert(v@[0] == 12);
+            assert(v@[1] == 12);
+            assert(v@[2] == 12);
+            assert(v@[3] == 12);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

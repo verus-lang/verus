@@ -100,6 +100,7 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
+    Real,
     Float(u32),
     Datatype(Dt, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
@@ -133,6 +134,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Real => Some(Arc::new(MonoTypX::Real)),
         TypX::Float(range) => Some(Arc::new(MonoTypX::Float(*range))),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -168,6 +170,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Real => Arc::new(TypX::Real),
         MonoTypX::Float(range) => Arc::new(TypX::Float(*range)),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
@@ -189,7 +192,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => false,
         TypX::SpecFn(..) | TypX::FnDef(..) => false,
         TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
@@ -222,7 +225,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 /// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => typ.clone(),
         TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
@@ -262,7 +265,8 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Bool | TypX::Int(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Real | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -287,6 +291,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Real
         | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
@@ -542,6 +547,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -639,6 +645,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Implies | BinaryOp::Inequality(_) => (true, false),
                 BinaryOp::HeightCompare { .. } => (false, true),
                 BinaryOp::Arith(..) => (true, false),
+                BinaryOp::RealArith(..) => (true, false),
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),

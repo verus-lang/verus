@@ -1,5 +1,5 @@
 //! This module provides runtime utilities for the compiled
-//! executable code of [`builtin_macros::exec_spec`].
+//! executable code of [`verus_builtin_macros::exec_spec`].
 #![cfg(all(feature = "alloc", feature = "std"))]
 
 use crate::prelude::*;

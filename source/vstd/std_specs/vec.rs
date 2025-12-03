@@ -58,7 +58,7 @@ pub uninterp spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
-pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
+pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &Vec<T, A>)
     ensures
         #[trigger] spec_vec_len(v) == v@.len(),
 {
@@ -78,7 +78,17 @@ pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
         v@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v: Vec<T, A>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
 pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::with_capacity_in ](capacity: usize, alloc: A) -> (v: Vec<T, A>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
@@ -343,6 +353,12 @@ impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoI
         IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
     }
 }
+
+// This is used by `vec![x; n]`
+pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -> (v: Vec<T>)
+    ensures
+        v.len() == n,
+        forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
 impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
     T,

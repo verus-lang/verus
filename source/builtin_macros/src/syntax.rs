@@ -183,11 +183,23 @@ macro_rules! parse_quote_spanned_builtin {
     }
 }
 
-macro_rules! quote_spanned_builtin_vstd {
-    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+macro_rules! quote_spanned_builtin_builtin_macros {
+    ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
             let $v = crate::syntax::Vstd(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
         }
@@ -1539,7 +1551,7 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
+                                quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1547,7 +1559,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
-                                ::verus_builtin_macros::verus! {
+                                #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -2558,7 +2570,8 @@ impl Visitor {
                 }
                 BinOp::Div(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
+                    *expr =
+                        quote_verbatim!(span, attrs => #left.spec_euclidean_or_real_div(#right));
                 }
                 BinOp::Rem(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
@@ -2614,7 +2627,11 @@ impl Visitor {
             let src = cast.expr;
             let attrs = cast.attrs;
             let ty = cast.ty;
-            *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            if is_probably_real_type(&ty) {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_real(#src));
+            } else {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            }
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
@@ -2627,7 +2644,7 @@ impl Visitor {
     }
 
     /// Handle integer literals.
-    fn handle_lit(&mut self, expr: &mut Expr) -> bool {
+    fn handle_lit_int(&mut self, expr: &mut Expr) -> bool {
         let Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) = expr else {
             return false;
         };
@@ -2659,11 +2676,34 @@ impl Visitor {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
             } else if lit.suffix() == "nat" {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+            } else if lit.suffix() == "real" {
+                // For convenience, allow literals like 5real in addition to 5.0real
+                let n = n + ".0";
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
             } else {
                 // Has a native Rust integer suffix, so leave it as a native Rust literal
             }
         }
 
+        true
+    }
+
+    /// Handle float/real literals.
+    fn handle_lit_float(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
+            return false;
+        };
+        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+            let span = lit.span();
+            let n = lit.base10_digits().to_string();
+            if lit.suffix() == "" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal(#n));
+            } else if lit.suffix() == "real" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
+            } else {
+                // Has a native Rust integer suffix, so leave it as a native Rust literal
+            }
+        }
         true
     }
 
@@ -3379,7 +3419,7 @@ impl Visitor {
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                verus_builtin::infer_spec_for_loop_iter(
+                #vstd::prelude::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(VERUS_iter)),
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
@@ -3606,7 +3646,8 @@ impl VisitMut for Visitor {
             || self.handle_reveal_hide(expr)
             || self.handle_mode_blocks(expr)
             || self.handle_cast(expr)
-            || self.handle_lit(expr)
+            || self.handle_lit_int(expr)
+            || self.handle_lit_float(expr)
             || self.handle_closures(expr)
             || self.handle_unary_ops(expr)
             || self.handle_big_and_big_or(expr)
@@ -5289,6 +5330,16 @@ fn is_probably_nat_or_int_type(typ: &Type) -> bool {
     }
 }
 
+fn is_probably_real_type(typ: &Type) -> bool {
+    match typ {
+        Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+            None => false,
+            Some(ident) => ident.to_string() == "real",
+        },
+        _ => false,
+    }
+}
+
 pub(crate) struct Builtin(pub Span);
 
 impl ToTokens for Builtin {
@@ -5299,6 +5350,21 @@ impl ToTokens for Builtin {
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
+        };
+        tokens.extend(toks);
+    }
+}
+
+pub(crate) struct BuiltinMacros(pub Span);
+
+impl ToTokens for BuiltinMacros {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
     }

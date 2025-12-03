@@ -1151,7 +1151,7 @@ test_verify_one_file! {
             assert(x.seq() == x1.push(x1.len() as u64));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: &mut dereference in this position (note: &mut dereference is implicit here)")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
 }
 
 test_verify_one_file! {

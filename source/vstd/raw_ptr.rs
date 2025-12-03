@@ -1,23 +1,19 @@
+//! Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).
+//! The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
+//! to the largest extent that is reasonable."
+//!
+//! For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
+//!
+//! ### Pointer model
+//!
+//! A pointer consists of an address (`ptr.addr()` or `ptr as usize`), a provenance `ptr@.provenance`,
+//! and metadata `ptr@.metadata` (which is trivial except for pointers to non-sized types).
+//! Note that in spec code, pointer equality requires *all 3* to be equal, whereas runtime equality (eq)
+//! only compares addresses and metadata.
+//!
+//! `*mut T` vs. `*const T` do not have any semantic difference and Verus treats them as the same;
+//! they can be seamlessly cast to and fro.
 #![allow(unused_imports)]
-
-/*!
-Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).
-The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
-to the largest extent that is reasonable."
-
-For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
-
-### Pointer model
-
-A pointer consists of an address (`ptr.addr()` or `ptr as usize`), a provenance `ptr@.provenance`,
-and metadata `ptr@.metadata` (which is trivial except for pointers to non-sized types).
-Note that in spec code, pointer equality requires *all 3* to be equal, whereas runtime equality (eq)
-only compares addresses and metadata.
-
-`*mut T` vs. `*const T` do not have any semantic difference and Verus treats them as the same;
-they can be seamlessly cast to and fro.
-*/
-
 use super::layout::*;
 use super::prelude::*;
 
