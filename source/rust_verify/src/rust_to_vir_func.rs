@@ -1275,7 +1275,11 @@ pub(crate) fn check_item_fn<'tcx>(
 
         // TODO(new_mut_ref): be more precise here
         // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-        let is_mut_var = is_mut_var || (ctxt.cmd_line_args.new_mut_ref && param_mode != Mode::Spec);
+        let is_mut_var = if ctxt.cmd_line_args.new_mut_ref {
+            is_mut_var || (param_mode != Mode::Spec && mode != Mode::Spec)
+        } else {
+            is_mut_var
+        };
 
         if is_mut_var {
             if mode == Mode::Spec {
