@@ -125,6 +125,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
+        MonoTypX::Real => str_ident("real"),
         MonoTypX::Float(n) => Arc::new(format!("f{}", n)),
         MonoTypX::Datatype(dt, typs) => {
             return crate::def::monotyp_apply(
@@ -155,6 +156,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Bool => bool_typ(),
         TypX::Int(_) => int_typ(),
+        TypX::Real => Arc::new(air::ast::TypX::Real),
         TypX::Float(_) => int_typ(),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
@@ -236,6 +238,7 @@ pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id_sized(range_to_id(range)),
+        MonoTypX::Real => mk_id_sized(str_var(crate::def::TYPE_ID_REAL)),
         MonoTypX::Float(n) => {
             let bits = Constant::Nat(Arc::new(n.to_string()));
             mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
@@ -332,6 +335,7 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id_sized(range_to_id(range)),
+        TypX::Real => mk_id_sized(str_var(crate::def::TYPE_ID_REAL)),
         TypX::Float(n) => {
             let bits = Constant::Nat(Arc::new(n.to_string()));
             mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
@@ -560,7 +564,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
-        TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
+        TypX::Bool | TypX::Real | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
@@ -614,6 +618,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Real => Some(str_ident(crate::def::BOX_REAL)),
         TypX::Float(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
@@ -650,6 +655,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Real => Some(str_ident(crate::def::UNBOX_REAL)),
         TypX::Float(_) => Some(str_ident(crate::def::UNBOX_INT)),
         TypX::Datatype(dt, _, _) => {
             if ctx.datatype_is_transparent[dt] {
@@ -731,6 +737,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
+        crate::ast::Constant::Real(r) => air::ast_util::mk_real(r),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
@@ -1030,6 +1037,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 apply_range_fun(&f_name, &range, vec![expr])
             }
             UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::IntToReal => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                Arc::new(ExprX::Unary(air::ast::UnaryOp::ToReal, expr))
+            }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }
@@ -1195,6 +1206,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Arith(ArithOp::Mul(_)) => {
                     ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh]))
                 }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Add) => {
+                    return Ok(str_apply(crate::def::RADD, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Sub) => {
+                    return Ok(str_apply(crate::def::RSUB, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Mul) => {
+                    return Ok(str_apply(crate::def::RMUL, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Div) => {
+                    return Ok(str_apply(crate::def::RDIV, &vec![lh, rh]));
+                }
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
@@ -1272,6 +1295,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
                             air::ast::BinaryOp::EuclideanMod
                         }
+                        BinaryOp::RealArith(..) => unreachable!(),
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
                         BinaryOp::ArrayIndex => unreachable!(),

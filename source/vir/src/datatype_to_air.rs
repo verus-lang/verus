@@ -78,6 +78,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool => false,
         TypX::Int(_) => false,
+        TypX::Real => false,
         TypX::Float(_) => false,
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {

@@ -346,6 +346,54 @@ fn verus_item_to_vir<'tcx, 'a>(
                 f_name
             ),
         ),
+        VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
+            record_spec_fn_allow_proof_args(bctx, expr);
+            unsupported_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
+            let arg = &args[0];
+            let s = get_string_lit_arg(&args[0], &f_name)?;
+            match &*expr_typ()? {
+                TypX::Float(32) => {
+                    let f: f32 = match s.to_string().parse() {
+                        Ok(f) => f,
+                        Err(err) => {
+                            return err_span(arg.span, format!("float out of range {}", err));
+                        }
+                    };
+                    mk_expr(ExprX::Const(Constant::Float32(f32::to_bits(f))))
+                }
+                TypX::Float(64) => {
+                    let f: f64 = match s.to_string().parse() {
+                        Ok(f) => f,
+                        Err(err) => {
+                            return err_span(arg.span, format!("float out of range {}", err));
+                        }
+                    };
+                    mk_expr(ExprX::Const(Constant::Float64(f64::to_bits(f))))
+                }
+                TypX::Real => {
+                    let is_valid_real = s.chars().all(|c| c.is_ascii_digit() || c == '.')
+                        && s.chars().filter(|c| *c == '.').count() == 1
+                        && !s.starts_with(".")
+                        && !s.ends_with(".");
+                    if !is_valid_real {
+                        return err_span(
+                            arg.span,
+                            "real literal must be digits, followed by a decimal point, followed by digits",
+                        );
+                    }
+                    mk_expr(ExprX::Const(Constant::Real(s.to_string())))
+                }
+                _ => {
+                    return err_span(
+                        expr.span,
+                        format!(
+                            "unexpected type for floating point or real literal: {}",
+                            typ_to_diagnostic_str(&expr_typ()?),
+                        ),
+                    );
+                }
+            }
+        }
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(spec_literal_item)) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
@@ -1170,6 +1218,17 @@ fn verus_item_to_vir<'tcx, 'a>(
             let triggers = Arc::new(trigs);
             mk_expr(ExprX::WithTriggers { triggers, body })
         }
+        VerusItem::UnaryOp(UnaryOpItem::SpecCastReal) => {
+            record_spec_fn_allow_proof_args(bctx, expr);
+            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
+            let source_ty = undecorate_typ(&source_vir.typ);
+            match &*source_ty {
+                TypX::Int(_) => mk_expr(ExprX::Unary(UnaryOp::IntToReal, source_vir)),
+                _ => err_span(expr.span, "Only integer types can be cast to real"),
+            }
+        }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
             let to_ty = undecorate_typ(&expr_typ()?);
@@ -1576,6 +1635,20 @@ fn verus_item_to_vir<'tcx, 'a>(
                         ArithItem::BuiltinMul => BinaryOp::Arith(ArithOp::Mul(ob)),
                     }
                 }
+                VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item))
+                    if matches!(&*undecorate_typ(&expr_typ()?), TypX::Real) =>
+                {
+                    use vir::ast::RealArithOp;
+                    match spec_arith_item {
+                        SpecArithItem::Add => BinaryOp::RealArith(RealArithOp::Add),
+                        SpecArithItem::Sub => BinaryOp::RealArith(RealArithOp::Sub),
+                        SpecArithItem::Mul => BinaryOp::RealArith(RealArithOp::Mul),
+                        SpecArithItem::EuclideanOrRealDiv => BinaryOp::RealArith(RealArithOp::Div),
+                        SpecArithItem::EuclideanMod => {
+                            unreachable!("spec mod operation cannot have type real")
+                        }
+                    }
+                }
                 VerusItem::BinaryOp(BinaryOpItem::SpecArith(spec_arith_item)) => {
                     let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
                     match spec_arith_item {
@@ -1588,7 +1661,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         SpecArithItem::Mul => {
                             BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Truncate(range)))
                         }
-                        SpecArithItem::EuclideanDiv => {
+                        SpecArithItem::EuclideanOrRealDiv => {
                             BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
                         }
                         SpecArithItem::EuclideanMod => {

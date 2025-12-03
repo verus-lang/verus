@@ -941,6 +941,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 (Arc::new(TypX::Int(IntRange::Int)), false)
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
+            } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Real)) = verus_item {
+                (Arc::new(TypX::Real), false)
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 
@@ -1424,6 +1426,7 @@ pub(crate) fn is_smt_arith<'tcx>(
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
+        (TypX::Real, TypX::Real) => Ok(true),
         _ => Ok(false),
     }
 }

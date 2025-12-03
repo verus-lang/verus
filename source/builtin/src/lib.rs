@@ -703,6 +703,11 @@ impl core::cmp::Ord for nat {
     }
 }
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::real")]
+#[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
+pub struct real;
+
 //
 // Structural
 //
@@ -916,6 +921,22 @@ unsafe impl Boolean for bool {
     const CONST_DEFAULT: Self = false;
 }
 
+pub unsafe trait Decimal: Copy {
+    const CONST_DEFAULT: Self;
+}
+unsafe impl Decimal for real {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = real;
+}
+unsafe impl Decimal for f32 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0.0;
+}
+unsafe impl Decimal for f64 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0.0;
+}
+
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_integer"]
@@ -944,6 +965,18 @@ pub const fn spec_literal_int(_s: &str) -> int {
 #[verifier::spec]
 pub const fn spec_literal_nat(_s: &str) -> nat {
     nat
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_decimal"]
+#[allow(non_camel_case_types)]
+#[verifier::spec]
+pub const fn spec_literal_decimal<
+    hint_please_add_suffix_on_literal_like_100f32_or_100real: Decimal,
+>(
+    _s: &str,
+) -> hint_please_add_suffix_on_literal_like_100f32_or_100real {
+    hint_please_add_suffix_on_literal_like_100f32_or_100real::CONST_DEFAULT
 }
 
 // Fixed-width add
@@ -976,6 +1009,14 @@ pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 #[verifier::spec]
 pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
     To::CONST_DEFAULT
+}
+
+// represent "expr as real"
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::spec_cast_real"]
+#[verifier::spec]
+pub const fn spec_cast_real<From: Copy>(_from: From) -> real {
+    real::CONST_DEFAULT
 }
 
 #[cfg(verus_keep_ghost)]
@@ -1043,13 +1084,13 @@ pub trait SpecMul<Rhs = Self> {
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
-pub trait SpecEuclideanDiv<Rhs = Self> {
+pub trait SpecEuclideanOrRealDiv<Rhs = Self> {
     type Output;
 
     #[cfg(verus_keep_ghost)]
-    #[rustc_diagnostic_item = "verus::verus_builtin::SpecEuclideanDiv::spec_euclidean_div"]
+    #[rustc_diagnostic_item = "verus::verus_builtin::SpecEuclideanOrRealDiv::spec_euclidean_or_real_div"]
     #[verifier::spec]
-    fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
+    fn spec_euclidean_or_real_div(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait SpecEuclideanMod<Rhs = Self> {
@@ -1192,6 +1233,38 @@ macro_rules! impl_ord {
     }
 }
 
+macro_rules! impl_ord_self_rhs {
+    ([$($t:ty)*]) => {
+        $(
+            impl SpecOrd for $t {
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn spec_lt(self, _rhs: Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn spec_le(self, _rhs: Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn spec_gt(self, _rhs: Self) -> bool {
+                    unimplemented!()
+                }
+
+                #[cfg(verus_keep_ghost)]
+                #[verifier::spec]
+                fn spec_ge(self, _rhs: Self) -> bool {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
 macro_rules! impl_unary_op {
     ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
         $(
@@ -1263,6 +1336,8 @@ impl_ord!([
     char
 ]);
 
+impl_ord_self_rhs!([real]);
+
 impl_unary_op!(SpecNeg, spec_neg, int, [
     int nat
     usize u8 u16 u32 u64 u128
@@ -1303,12 +1378,12 @@ impl_binary_op_nat!(SpecMul, spec_mul, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_rhs!(SpecEuclideanDiv, spec_euclidean_div, Self, Self, [
+impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, Self, [
     int nat
     usize u8 u16 u32 u64 u128
 ]);
 
-impl_binary_op_rhs!(SpecEuclideanDiv, spec_euclidean_div, Self, int, [
+impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
@@ -1317,6 +1392,11 @@ impl_binary_op_rhs!(SpecEuclideanMod, spec_euclidean_mod, Self, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+impl_binary_op_rhs!(SpecAdd, spec_add, Self, Self, [real]);
+impl_binary_op_rhs!(SpecSub, spec_sub, Self, Self, [real]);
+impl_binary_op_rhs!(SpecMul, spec_mul, Self, Self, [real]);
+impl_binary_op_rhs!(SpecEuclideanOrRealDiv, spec_euclidean_or_real_div, Self, Self, [real]);
 
 impl_binary_op_rhs!(SpecBitAnd, spec_bitand, Self, Self, [
     usize u8 u16 u32 u64 u128

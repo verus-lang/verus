@@ -186,6 +186,7 @@ fn datatypes_invs(
                         | TypX::PointeeMetadata(_) => {
                             roots.insert(container_name.clone());
                         }
+                        TypX::Real => {}
                         TypX::SpecFn(..) => {
                             roots.insert(container_name.clone());
                         }

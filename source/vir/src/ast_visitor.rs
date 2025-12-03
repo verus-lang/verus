@@ -815,6 +815,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &**typ {
             TypX::Bool => R::ret(|| typ.clone()),
             TypX::Int(_) => R::ret(|| typ.clone()),
+            TypX::Real => R::ret(|| typ.clone()),
             TypX::Float(_) => R::ret(|| typ.clone()),
             TypX::TypParam(_) => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),

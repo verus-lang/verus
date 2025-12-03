@@ -72,7 +72,10 @@ fn gen_num_typ(n: TypNum, ts: Vec<Typ>) -> Typ {
 // Rust's complex conventions for Sized.
 fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
     match &**typ {
-        vir::ast::TypX::Bool | vir::ast::TypX::Int(..) | vir::ast::TypX::Float(..) => {
+        vir::ast::TypX::Bool
+        | vir::ast::TypX::Int(..)
+        | vir::ast::TypX::Real
+        | vir::ast::TypX::Float(..) => {
             Box::new(TypX::Primitive(vir::ast_util::typ_to_diagnostic_str(typ)))
         }
         vir::ast::TypX::Opaque { .. } => {

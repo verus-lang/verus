@@ -342,6 +342,10 @@ impl BinaryOp {
                 Add(_) | Sub(_) => (30, 30, 31),
                 Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => (40, 40, 41),
             },
+            RealArith(o) => match o {
+                crate::ast::RealArithOp::Add | crate::ast::RealArithOp::Sub => (30, 30, 31),
+                crate::ast::RealArithOp::Mul | crate::ast::RealArithOp::Div => (40, 40, 41),
+            },
             Bitwise(o, _) => match o {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
@@ -369,6 +373,7 @@ impl ExpX {
             Const(c) => match c {
                 Constant::Bool(b) => (format!("{}", b), 99),
                 Constant::Int(i) => (format!("{}", i), 99),
+                Constant::Real(r) => (format!("{}", r), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
                 Constant::Char(c) => (format!("'{}'", c), 99),
                 Constant::Float32(c) => (format!("'{}'", c), 99),
@@ -442,6 +447,9 @@ impl ExpX {
                 ),
                 UnaryOp::FloatToBits => {
                     (format!("float_to_bits({})", exp.x.to_user_string(global)), 99)
+                }
+                UnaryOp::IntToReal => {
+                    (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
                 }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
@@ -530,6 +538,12 @@ impl ExpX {
                         Mul(_) => "*",
                         EuclideanDiv(_) => "/",
                         EuclideanMod(_) => "%",
+                    },
+                    RealArith(o) => match o {
+                        crate::ast::RealArithOp::Add => "+",
+                        crate::ast::RealArithOp::Sub => "-",
+                        crate::ast::RealArithOp::Mul => "*",
+                        crate::ast::RealArithOp::Div => "/",
                     },
                     Bitwise(o, _) => match o {
                         BitXor => "^",

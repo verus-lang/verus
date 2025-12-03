@@ -54,7 +54,7 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => true,
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => true,
         TypX::ConstInt(_) | TypX::ConstBool(_) | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
@@ -181,6 +181,7 @@ fn check_positive_uses(
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
+        TypX::Real => Ok(()),
         TypX::Float(..) => Ok(()),
         TypX::Opaque { .. } => {
             panic!("Opaque type is not expected in struct definitions");

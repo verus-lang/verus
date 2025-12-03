@@ -118,6 +118,7 @@ impl Parser {
         match node {
             Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
+            Node::Atom(s) if s.to_string() == "Real" => Ok(Arc::new(TypX::Real)),
             Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Fun)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
             Node::List(nodes) if is_bitvec(nodes).is_some() => {
@@ -167,6 +168,9 @@ impl Parser {
             }
             Node::Atom(s) if s.len() > 0 && s.chars().all(|c| c.is_ascii_digit()) => {
                 Ok(Arc::new(ExprX::Const(Constant::Nat(Arc::new(s.clone())))))
+            }
+            Node::Atom(s) if crate::ast_util::is_valid_real(s) => {
+                Ok(Arc::new(ExprX::Const(Constant::Real(Arc::new(s.clone())))))
             }
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(ExprX::Var(Arc::new(s.clone())))),
             Node::List(nodes) if nodes.len() > 0 => {
@@ -242,6 +246,7 @@ impl Parser {
                 let uop = match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
                     Node::Atom(s) if s.to_string() == "bvnot" => Some(UnaryOp::BitNot),
+                    Node::Atom(s) if s.to_string() == "to_real" => Some(UnaryOp::ToReal),
                     Node::List(nodes)
                         if nodes.len() == 4
                             && nodes[0] == Node::Atom("_".to_string())
@@ -288,6 +293,7 @@ impl Parser {
                     Node::Atom(s) if s.to_string() == ">" => Some(BinaryOp::Gt),
                     Node::Atom(s) if s.to_string() == "div" => Some(BinaryOp::EuclideanDiv),
                     Node::Atom(s) if s.to_string() == "mod" => Some(BinaryOp::EuclideanMod),
+                    Node::Atom(s) if s.to_string() == "/" => Some(BinaryOp::RealDiv),
                     Node::Atom(s) if s.to_string() == "bvxor" => Some(BinaryOp::BitXor),
                     Node::Atom(s) if s.to_string() == "bvand" => Some(BinaryOp::BitAnd),
                     Node::Atom(s) if s.to_string() == "bvor" => Some(BinaryOp::BitOr),
