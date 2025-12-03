@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   fmt:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
         run: cargo fmt -- --check
 
   docs:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -62,25 +62,25 @@ jobs:
         build: [macos, macos-x86_64, macos-record-history, macos-no-std, macos-no-alloc, macos-singular, macos-cvc5, linux, windows]
         include:
           - build: macos
-            os: macos-14
+            os: macos-latest
             features: ''
           - build: macos-x86_64
             os: macos-15-intel
             features: ''
           - build: macos-record-history
-            os: macos-14
+            os: macos-latest
             features: 'record-history'
           - build: macos-no-std
-            os: macos-14
+            os: macos-latest
             features: 'no-std'
           - build: macos-no-alloc
-            os: macos-14
+            os: macos-latest
             features: 'no-alloc'
           - build: macos-singular
-            os: macos-14
+            os: macos-latest
             features: 'singular'
           - build: macos-cvc5
-            os: macos-14
+            os: macos-latest
             features: 'cvc5'
           - build: linux
             os: ubuntu-latest
@@ -197,7 +197,7 @@ jobs:
 
   build-docs:
     needs: [fmt, docs]
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -229,7 +229,7 @@ jobs:
         build: [macos, macos-x86_64, linux, windows]
         include:
           - build: macos
-            os: macos-14
+            os: macos-latest
             release_name: verus-arm64-macos
           - build: macos-x86_64
             os: macos-15-intel
