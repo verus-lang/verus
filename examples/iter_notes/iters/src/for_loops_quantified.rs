@@ -66,6 +66,7 @@ fn for_loop_test_vec() {
                 let x = VERUS_loop_next;
                 let () = {
                     // body
+                    assert(w.len() == y.index@ - 1);
                     w.push(*x);
                     count += 1;
                 };
