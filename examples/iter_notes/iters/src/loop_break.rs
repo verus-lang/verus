@@ -81,7 +81,7 @@ fn existing_version(v: Vec<&u8>) {
             0 <= i <= v.len(),
             sum == sum_u8(v@.take(i as int)),
         ensures
-            sum == sum_u8(v@.take(i as int)) || (sum == u8::MAX && sum_u8(v@.take(i as int)) > u8::MAX),
+            (i == v.len() && sum == sum_u8(v@.take(i as int))) || (i <= v.len() && sum == u8::MAX && sum_u8(v@.take(i as int)) > u8::MAX),
         decreases
             v.len() - i,
     {
@@ -95,6 +95,11 @@ fn existing_version(v: Vec<&u8>) {
             break;
         }
     }
+    proof {
+        sum_u8_monotonic_forall();
+    }
+    assert(v@ == v@.take(v.len() as int)); // OBSERVE
+    assert(sum == sum_u8(v@) || (sum == u8::MAX && sum_u8(v@) > u8::MAX));
 }
 
 fn for_loop_test_skip(v: Vec<u8>) {
@@ -106,8 +111,8 @@ fn for_loop_test_skip(v: Vec<u8>) {
     //     invariant_except_break
     //         sum == sum_u8(v@.take(y.index@))
     //      ensures
-    //         sum == sum_u8(v@.take(y.index@)) || 
-    //            (sum == u8::MAX && sum_u8(v@.take(y.index@)) > u8::MAX),
+    //          (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) || 
+    //              (sum == u8::MAX && sum_u8(y.seq().take(y.index@)) > u8::MAX),
     // {
     //     assert(v@.take(y.index@).drop_last() == v@.take(y.index@ - 1 as int)); // OBSERVE
     //     if x <= u8::MAX - sum {
@@ -183,8 +188,8 @@ fn for_loop_test_skip(v: Vec<u8>) {
 
     assert(iter.seq() == v@.map_values(|e:u8| &e)); // OBSERVE
     assert(iter.seq() == iter.seq().take(iter.seq().len() as int)); // OBSERVE
-    //assert(sum == sum_u8(v@.map_values(|e:u8| &e)) || sum == u8::MAX);
     proof {
+        // PAPER CUT: Can't call a lemma on the prophetic sequence
         sum_u8_monotonic_forall();
     }
     assert(sum == sum_u8(v@.map_values(|e:u8| &e)) || 
