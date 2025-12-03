@@ -14,6 +14,7 @@ permissions:
   contents: write
 
 jobs:
+  # check if formatting is correct
   fmt:
     runs-on: ubuntu-latest
     steps:
@@ -38,58 +39,120 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo fmt -- --check
 
-  docs:
-    runs-on: ubuntu-latest
+  # check if it builds and runs on macos, running the full test suite
+  # (in release mode because it makes a huge difference)
+  full-test:
+    runs-on: macos-latest
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo z3 version `./z3 --version`
+
+      - name: get cvc5
+        working-directory: ./source
+        run: |
+          ./tools/get-cvc5.sh
+          echo cvc5 version `./cvc5 --version`
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.91.0
 
-      - name: check rustdoc
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: build
         working-directory: ./source
         run: |
           . ../tools/activate
-          ./tools/get-z3.sh
-          ./tools/docs.sh --check
+          vargo clean
+          RUSTFLAGS="-C debug-assertions" vargo build --release
 
-  test:
+      - name: full tests
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
+          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
+          # check cvc5
+          vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: cargo build
+
+  # check if it builds and that basic tests pass on our main supported platforms
+  basic-test:
     strategy:
       matrix:
-        build: [macos, macos-x86_64, macos-record-history, macos-no-std, macos-no-alloc, macos-singular, macos-cvc5, linux, windows]
+        build: [macos-x86_64, linux, windows]
         include:
-          - build: macos
-            os: macos-latest
-            features: ''
           - build: macos-x86_64
             os: macos-15-intel
-            features: ''
-          - build: macos-record-history
-            os: macos-latest
-            features: 'record-history'
-          - build: macos-no-std
-            os: macos-latest
-            features: 'no-std'
-          - build: macos-no-alloc
-            os: macos-latest
-            features: 'no-alloc'
-          - build: macos-singular
-            os: macos-latest
-            features: 'singular'
-          - build: macos-cvc5
-            os: macos-latest
-            features: 'cvc5'
           - build: linux
             os: ubuntu-latest
-            features: ''
           - build: windows
             os: windows-latest
-            features: ''
 
     runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo z3 version `./z3 --version`
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.91.0
+
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: build
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build
+
+      - name: basic tests
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
+
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: cargo build
+
+  # check if esoteric conficurations build
+  smoke-test:
+    strategy:
+      matrix:
+        features: [record-history, no-std, no-alloc, singular]
+
+    runs-on: macos-latest
 
     defaults:
       run:
@@ -143,17 +206,9 @@ jobs:
               unset -f cargo
               cargo build --no-default-features
               ;;
-            "cvc5")
-              ./tools/get-cvc5.sh
-              echo cvc5 version `./cvc5 --version`
-              vargo build
-              ;;
-            *)
-              vargo build
-              ;;
           esac
 
-      - name: test
+      - name: smoke test
         working-directory: ./source
         run: |
           . ../tools/activate
@@ -168,35 +223,12 @@ jobs:
             "record-history")
               VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features record-history --test basic
               ;;
-            "no-alloc")
-              ;;
-            "no-std")
-              ;;
-            "cvc5")
-              vargo run -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-              ;;
-            *)
-              if [ ${{ matrix.build }} == "macos" ]; then
-                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air
-                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test
-                cd vstd
-                unset -f cargo
-                cargo build
-              else
-                # run only the basic tests (we only fully test on macos)
-                VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
-              fi
-              ;;
           esac
 
-      - name: build line-count tool
-        if: matrix.features == ''
-        working-directory: ./source/tools/line_count
-        run: cargo build
-
-
+  # build the documentation
+  # will complain if there are warnings
   build-docs:
-    needs: [fmt, docs]
+    needs: [fmt]
     runs-on: ubuntu-latest
     steps:
       - name: checkout
@@ -212,16 +244,18 @@ jobs:
         run: |
           . ../tools/activate
           ./tools/get-z3.sh
-          ./tools/docs.sh
+          ./tools/docs.sh --strict # strict will complain if there are warnings
 
       - name: upload verusdoc artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
         uses: actions/upload-artifact@v4
         with:
           name: verusdoc
           path: source/doc
 
+  # build the release artifacts
   build-release:
-    needs: [test]
+    needs: [basic-test, smoke-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
 
     strategy:
@@ -285,8 +319,9 @@ jobs:
           name: ${{ matrix.release_name }}
           path: ${{ matrix.release_name }}.zip
 
+  # upload the release artifacts
   release:
-    needs: [build-docs, build-release]
+    needs: [build-docs, build-release, full-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
     runs-on: ubuntu-latest
     steps:
