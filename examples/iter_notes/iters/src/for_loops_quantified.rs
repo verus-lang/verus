@@ -39,7 +39,7 @@ fn for_loop_test_vec() {
                     y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // User inv
                       w.len() == y.index &&
@@ -50,7 +50,7 @@ fn for_loop_test_vec() {
                     // REVIEW: This works, but only if we don't allow `break`s inside a for loop.
                     //         It appears that may be the case, although the error messages are confusing.
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
@@ -133,7 +133,7 @@ fn for_loop_test_map() {
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
@@ -193,7 +193,7 @@ fn for_loop_test_take() {
                     y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // inv
                       &&& w.len() == y.index
@@ -201,7 +201,7 @@ fn for_loop_test_take() {
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
@@ -261,7 +261,7 @@ fn for_loop_test_skip() {
                     y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // inv
                       &&& w.len() == y.index
@@ -269,7 +269,7 @@ fn for_loop_test_skip() {
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease()
             {
@@ -327,7 +327,7 @@ fn for_loop_test_rev() {
                     y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // inv
                       &&& w.len() == y.index
@@ -335,7 +335,7 @@ fn for_loop_test_rev() {
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
@@ -392,7 +392,7 @@ fn for_loop_test_double_rev() {
                     y.wf(VERUS_old_snap),
                     ({ 
                       // Grab the next val for (possible) use in inv
-                      let x = if y.index@ < y.snapshot@.seq().len() { y.snapshot@.seq()[y.index@] } else { arbitrary() };
+                      let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // inv
                       &&& w.len() == y.index
@@ -400,7 +400,7 @@ fn for_loop_test_double_rev() {
                     }),
                 ensures
                     y.snapshot@.completes(),        // AUTO
-                    y.index == y.snapshot@.seq().len(), // AUTO
+                    y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
