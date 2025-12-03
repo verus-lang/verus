@@ -1362,8 +1362,12 @@ where
         v.visit_pred_type_clause(it);
     }
     v.visit_perm_clause(&node.perm_clause);
-    v.visit_requires(&node.requires);
-    v.visit_ensures(&node.ensures);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     if let Some(it) = &node.outer_mask {
         v.visit_outer_mask(it);
     }

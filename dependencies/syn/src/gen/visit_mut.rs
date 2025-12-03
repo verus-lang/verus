@@ -1366,8 +1366,12 @@ where
         v.visit_pred_type_clause_mut(it);
     }
     v.visit_perm_clause_mut(&mut node.perm_clause);
-    v.visit_requires_mut(&mut node.requires);
-    v.visit_ensures_mut(&mut node.ensures);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
     if let Some(it) = &mut node.outer_mask {
         v.visit_outer_mask_mut(it);
     }

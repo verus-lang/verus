@@ -349,8 +349,34 @@ impl Debug for Lite<syn::AtomicSpec> {
             formatter.field("type_clause", Print::ref_cast(val));
         }
         formatter.field("perm_clause", Lite(&self.value.perm_clause));
-        formatter.field("requires", Lite(&self.value.requires));
-        formatter.field("ensures", Lite(&self.value.ensures));
+        if let Some(val) = &self.value.requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Requires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("requires", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.outer_mask {
             #[derive(RefCast)]
             #[repr(transparent)]

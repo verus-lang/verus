@@ -539,13 +539,27 @@ test_verify_one_file! {
         pub exec fn atomic_function()
             atomically (au) {
                 type FunctionPred,
-                (num: &mut u32) -> (_silly: ()),
+                (num: &mut u32),
                 requires *old(num) == 2,
                 ensures *num == 3,
             },
         {
             try_open_atomic_update!(au, r => {
                 proof { *r += 1_u32; }
+                Tracked(Ok(()))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_extremely_boring
+    verus_code! {
+        use vstd::atomic::*;
+        pub exec fn atomic_function()
+            atomically (au) {},
+        {
+            try_open_atomic_update!(au, _void => {
                 Tracked(Ok(()))
             });
         }

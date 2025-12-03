@@ -709,20 +709,24 @@ impl Visitor {
                 < #old_ty, #new_ty, #pred_ident #generics >
         );
 
-        let mut old_val = TokenStream::new();
-        let mut new_val = TokenStream::new();
-        perm_clause.old_perms.to_value_tokens(&mut old_val);
-        perm_clause.new_perms.to_value_tokens(&mut new_val);
+        let mut old_pat = TokenStream::new();
+        let mut new_pat = TokenStream::new();
+        perm_clause.old_perms.to_pattern_tokens(&mut old_pat);
+        perm_clause.new_perms.to_pattern_tokens(&mut new_pat);
 
         let mut atomic_req = quote!(true);
         let mut atomic_ens = quote!(true);
 
-        for req in &requires.exprs.exprs {
-            quote_spanned!(requires.token.span => && ( #req )).to_tokens(&mut atomic_req);
+        if let Some(requires) = &requires {
+            for req in &requires.exprs.exprs {
+                quote_spanned!(requires.token.span => && ( #req )).to_tokens(&mut atomic_req);
+            }
         }
 
-        for ens in &ensures.exprs.exprs {
-            quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
+        if let Some(ensures) = &ensures {
+            for ens in &ensures.exprs.exprs {
+                quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
+            }
         }
 
         if let Some(ident) = &self_ident {
@@ -742,12 +746,12 @@ impl Visitor {
         ));
 
         let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
-            open spec fn req(self, #old_val: #old_ty) -> bool {
+            open spec fn req(self, #old_pat: #old_ty) -> bool {
                 let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
                 #atomic_req
             }
 
-            open spec fn ens(self, #old_val: #old_ty, #new_val: #new_ty) -> bool {
+            open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> bool {
                 let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #generics , ( #args_ty_tokens ) >(self);
                 #atomic_ens
             }

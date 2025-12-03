@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2025-11-10-1957",
+  "version": "0.0.0-2025-11-16-0050",
   "types": [
     {
       "ident": "Abi",
@@ -395,10 +395,14 @@
           "syn": "PermClause"
         },
         "requires": {
-          "syn": "Requires"
+          "option": {
+            "syn": "Requires"
+          }
         },
         "ensures": {
-          "syn": "Ensures"
+          "option": {
+            "syn": "Ensures"
+          }
         },
         "outer_mask": {
           "option": {

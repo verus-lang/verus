@@ -622,6 +622,7 @@ ast_struct! {
 }
 
 ast_struct! {
+    #[derive(Default)]
     pub struct PermClause {
         pub old_perms: PermTuple,
         pub arrow_token: Option<Token![->]>,
@@ -654,8 +655,8 @@ ast_struct! {
         pub block_token: token::Brace,
         pub type_clause: Option<PredTypeClause>,
         pub perm_clause: PermClause,
-        pub requires: Requires,
-        pub ensures: Ensures,
+        pub requires: Option<Requires>,
+        pub ensures: Option<Ensures>,
         pub outer_mask: Option<OuterMask>,
         pub inner_mask: Option<InnerMask>,
         pub comma_token: Option<Token![,]>,
@@ -1740,6 +1741,10 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for PermClause {
         fn parse(input: ParseStream) -> Result<Self> {
+            if !input.peek(token::Paren) {
+                return Ok(Default::default());
+            }
+
             let old_perms = input.parse()?;
             let (arrow_token, new_perms) = if input.peek(Token![->]) {
                 let arrow_token = input.parse()?;
@@ -1838,7 +1843,9 @@ pub mod parsing {
 
 #[cfg(feature = "printing")]
 mod printing {
-    use crate::expr::printing::outer_attrs_to_tokens;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::{expr::printing::outer_attrs_to_tokens, spanned::Spanned};
 
     use super::*;
     use proc_macro2::TokenStream;
@@ -2498,6 +2505,23 @@ mod printing {
                     comma.to_tokens(tokens);
                 }
             });
+        }
+
+        pub fn to_pattern_tokens(&self, tokens: &mut TokenStream) {
+            // Since we don't have general support for pattern matching yet,
+            // we generate throw-away idents as patterns for empty tuples.
+            //
+            // The idents are never used, so we don't have to remember them,
+            // they just have to be locally unique to prevent name collisions
+            // in function argument position.
+            if self.fields.is_empty() {
+                static COUNTER: AtomicU64 = AtomicU64::new(0);
+                let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                let ident = Ident::new(&format!("_perm_tup{id}"), self.span());
+                ident.to_tokens(tokens);
+            } else {
+                self.to_value_tokens(tokens);
+            }
         }
     }
 
