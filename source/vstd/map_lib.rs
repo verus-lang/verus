@@ -413,6 +413,46 @@ impl<K, V> Map<K, V> {
         };
         assert(lhs == rhs);
     }
+
+    /// Inserting a value in a map means it contains the value that was inserted.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let a = map![1int => 2int];
+    ///     assert(a.contains_value(2));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_insert_contains_value(self, k: K, v: V)
+        ensures
+            #[trigger] self.insert(k, v).contains_value(v),
+    {
+        assert(self.insert(k, v).contains_key(k));
+    }
+
+    /// Inserting a value in a map where that key is already present ensures
+    /// The contains value sees (only) the updated value;
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let a = map![1int => 2int].insert(1int, 3int);
+    ///     assert(!a.contains_value(2));
+    ///     assert(a.contains_value(3));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_insert_invariant_contains(self, old_v: V, k: K, v: V)
+        requires
+            self.contains_key(k) ==> self[k] != old_v,
+            old_v != v,
+        ensures
+            #[trigger] self.insert(k, v).contains_value(old_v) == self.contains_value(old_v),
+    {
+        if self.contains_value(old_v) {
+            let old_k = choose|key: K| #[trigger] self.dom().contains(key) && self[key] == old_v;
+            assert(self.insert(k, v).contains_key(old_k));
+        }
+    }
 }
 
 impl<K, V> Map<Seq<K>, V> {
@@ -717,6 +757,8 @@ pub broadcast group group_map_properties {
 pub broadcast group group_map_extra {
     Map::lemma_map_remove_keys_insert,
     Map::lemma_filter_keys_insert,
+    Map::lemma_insert_contains_value,
+    Map::lemma_insert_invariant_contains,
     Map::lemma_prefixed_entries_get,
     Map::lemma_prefixed_entries_contains,
     Map::lemma_prefixed_entries_insert,

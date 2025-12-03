@@ -36,7 +36,8 @@
 /// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
-use syn::{Expr, Item, parse2, spanned::Spanned};
+use syn::visit_mut::VisitMut;
+use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 
 use crate::{
     EraseGhost,
@@ -50,6 +51,8 @@ pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
 
+const VERUS_SPEC: &str = "verus_spec";
+
 enum VerusIOTarget {
     Local(syn::Local),
     Expr(syn::Expr),
@@ -57,6 +60,7 @@ enum VerusIOTarget {
 enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
+    ItemConst(ItemConst),
 }
 
 impl syn::parse::Parse for VerusSpecTarget {
@@ -73,6 +77,11 @@ impl syn::parse::Parse for VerusSpecTarget {
                 input.advance_to(&fork);
                 return Ok(VerusSpecTarget::IOTarget(VerusIOTarget::Local(local)));
             }
+        }
+        let fork = input.fork();
+        if let Ok(item_const) = fork.parse::<ItemConst>() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::ItemConst(item_const));
         }
 
         let expr: Expr = input.parse()?;
@@ -96,7 +105,7 @@ pub(crate) fn rewrite_verus_attribute(
     let mut contains_non_external = false;
     let mut contains_external = false;
     let mut spec_fun = None;
-    const VERIFY_ATTRS: [&str; 2] = ["rlimit", "spinoff_prover"];
+    const VERIFY_ATTRS: [&str; 3] = ["rlimit", "spinoff_prover", "external_derive"];
     const DUAL_ATTR: &str = "dual_spec";
     const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
 
@@ -151,6 +160,10 @@ pub(crate) fn rewrite_verus_attribute(
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
     }
 
+    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
+    let mut impl_item_replacer = ImplItemReplacer { verify_const: true };
+    impl_item_replacer.visit_item_mut(&mut item);
+
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
@@ -158,8 +171,6 @@ pub(crate) fn rewrite_verus_attribute(
     spec_fun.map(|f| f.to_tokens(&mut new_stream));
     new_stream.into()
 }
-
-use syn::visit_mut::VisitMut;
 
 struct ExecReplacer {
     erase: EraseGhost,
@@ -197,7 +208,7 @@ impl VisitMut for ExecReplacer {
             return;
         }
         if let Some(last) = node.path().segments.last() {
-            if last.ident == "verus_spec" {
+            if last.ident == VERUS_SPEC {
                 *node = syn::parse_quote! {
                     #[doc = r"verus_spec is applied only in verification mode"]
                 }
@@ -230,7 +241,7 @@ impl VisitMut for ExecReplacer {
                 {
                     attrs.push(crate::syntax::mk_rust_attr_syn(
                         with_args.span(),
-                        "verus_spec",
+                        VERUS_SPEC,
                         with_args,
                     ));
                     with_args = TokenStream::new();
@@ -248,6 +259,40 @@ impl VisitMut for ExecReplacer {
                     panic!("Expected a function call after proof_with! macro");
                 }
             };
+        }
+    }
+}
+
+struct ImplItemReplacer {
+    verify_const: bool,
+}
+
+fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
+    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
+}
+
+impl VisitMut for ImplItemReplacer {
+    fn visit_impl_item_fn_mut(&mut self, method: &mut syn::ImplItemFn) {
+        syn::visit_mut::visit_impl_item_fn_mut(self, method);
+        // Help verus_spec be aware that it is in impl function.
+        if let Some(verus_spec) = get_verus_spec(&method.attrs) {
+            let span = verus_spec.span();
+            method.attrs.push(crate::syntax::mk_rust_attr_syn(
+                span,
+                "allow",
+                quote_spanned! { span => (unused, verus_impl_method_marker)},
+            ));
+        }
+    }
+
+    fn visit_impl_item_const_mut(&mut self, i: &mut syn::ImplItemConst) {
+        syn::visit_mut::visit_impl_item_const_mut(self, i);
+        if !self.verify_const {
+            return;
+        }
+        // Add verus_spec if not exists
+        if get_verus_spec(&i.attrs).is_none() {
+            i.attrs.push(crate::syntax::mk_rust_attr_syn(i.span(), VERUS_SPEC, TokenStream::new()));
         }
     }
 }
@@ -287,6 +332,15 @@ pub(crate) fn rewrite_verus_spec(
     if !erase.keep() {
         return input;
     }
+
+    // Remove the last `,` if `input` has one.
+    let mut tokens: Vec<_> = proc_macro2::TokenStream::from(input).into_iter().collect();
+    if matches!(tokens.last(), Some(proc_macro2::TokenTree::Punct(p)) if p.as_char() == ',') {
+        tokens.pop();
+    }
+    let input: proc_macro::TokenStream =
+        tokens.into_iter().collect::<proc_macro2::TokenStream>().into();
+
     let f = match syn::parse::<VerusSpecTarget>(input) {
         Ok(f) => f,
         Err(err) => {
@@ -303,6 +357,9 @@ pub(crate) fn rewrite_verus_spec(
     match f {
         VerusSpecTarget::FnOrLoop(f) => {
             rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
+        }
+        VerusSpecTarget::ItemConst(i) => {
+            rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
@@ -350,6 +407,39 @@ fn closure_to_fn_sig(closure: &syn::ExprClosure) -> syn::Signature {
     }
 }
 
+fn syn_to_verus_syn<V: verus_syn::parse::Parse>(input: impl ToTokens) -> V {
+    let tokens = input.to_token_stream();
+    verus_syn::parse2(tokens).unwrap()
+}
+
+pub(crate) fn rewrite_verus_spec_on_item_const(
+    erase_ghost: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    item_const: ItemConst,
+) -> proc_macro::TokenStream {
+    let spec_attr =
+        verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
+    let mut verus_item_const = syn_to_verus_syn::<verus_syn::ItemConst>(item_const);
+    let span = verus_item_const.span();
+    if spec_attr.spec.ensures.is_some() {
+        verus_item_const.ensures = spec_attr.spec.ensures;
+        verus_item_const.mode = verus_syn::FnMode::Exec(verus_syn::ModeExec {
+            exec_token: verus_syn::Token![exec](span),
+        });
+        verus_item_const.block = Some(Box::new(verus_syn::Block {
+            brace_token: verus_syn::token::Brace::default(),
+            stmts: vec![verus_syn::Stmt::Expr(
+                verus_syn::Expr::Verbatim(verus_item_const.expr.to_token_stream()),
+                None,
+            )],
+        }));
+        verus_item_const.eq_token = None;
+        verus_item_const.expr = None;
+        verus_item_const.semi_token = None;
+    }
+    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+}
+
 pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
@@ -364,6 +454,20 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
+            let is_hidden_impl_marker = |attr: &syn::Attribute| {
+                attr.path().get_ident().map_or(false, |ident| {
+                    ident == "allow"
+                        && matches!(&attr.meta, syn::Meta::List(meta_list)
+                        if meta_list.tokens.to_string().contains("verus_impl_method_marker"))
+                })
+            };
+
+            // Check if the function has the impl method marker
+            let is_impl_fn = fun.attrs.iter().any(&is_hidden_impl_marker);
+
+            // Remove the marker attribute (internal use only)
+            fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
+
             let mut new_stream = TokenStream::new();
 
             // Create a copy of unverified function.
@@ -376,7 +480,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             }
 
             // Update function signature based on verus_spec.
-            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, false, false);
+            let spec_stmts =
+                syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
             // Create const proxy function if it is a const function.
             if fun.sig.constness.is_some() {

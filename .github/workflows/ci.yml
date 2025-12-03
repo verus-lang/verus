@@ -116,6 +116,10 @@ jobs:
               cargo build
               ;;
           esac
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: |
+          cargo build
       - name: build verus release
         if: matrix.features == ''
         working-directory: ./source
@@ -153,7 +157,7 @@ jobs:
           path: source/doc
 
   smoke-test-and-release-macos-x86:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - name: checkout
         uses: actions/checkout@v4

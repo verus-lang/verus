@@ -22,6 +22,16 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for function in krate.functions.iter() {
+        if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+            return Err(error(
+                &function.span,
+                &format!(
+                    "The verifier does not support opaque types together with the check-api-safety flag: `{:}`. Unverified, safe client code may be able to call this function without satisfying the precondition.",
+                    fun_as_friendly_rust_name(&function.x.name),
+                ),
+            ));
+        }
+
         if function.x.mode == Mode::Exec
             && function.x.visibility.is_public()
             && !function.x.attrs.is_unsafe

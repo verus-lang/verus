@@ -29,6 +29,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
         TypX::MutRef(_) => false,
+        TypX::Opaque { .. } => false,
     }
 }
 

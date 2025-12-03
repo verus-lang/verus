@@ -10,6 +10,7 @@
 // programmatically from the syntax tree description.
 
 #![allow(
+    clippy::format_push_string,
     clippy::items_after_statements,
     clippy::manual_let_else,
     clippy::match_like_matches_macro,

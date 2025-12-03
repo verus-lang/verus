@@ -238,7 +238,7 @@ fn runtime_assert_internal(b: bool) {
 #[macro_export]
 macro_rules! assert_by_contradiction {
     ($($a:tt)*) => {
-        verus_proof_macro_exprs!($crate::assert_by_contradiction_internal!($($a)*))
+        $crate::vstd::prelude::verus_proof_macro_exprs!($crate::assert_by_contradiction_internal!($($a)*))
     }
 }
 
@@ -246,9 +246,10 @@ macro_rules! assert_by_contradiction {
 #[macro_export]
 macro_rules! assert_by_contradiction_internal {
     ($predicate:expr, $bblock:block) => {
-        ::verus_builtin::assert_by($predicate, {
+        $crate::vstd::prelude::assert_by($predicate, {
             if !$predicate {
-                $bblock::verus_builtin::assert_(false);
+                $bblock
+                $crate::vstd::prelude::assert_(false);
             }
         });
     };

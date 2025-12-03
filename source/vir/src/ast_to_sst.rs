@@ -1990,8 +1990,8 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::AssertQuery { requires, ensures, proof, mode } => {
-            // Note that `ExprX::AssertQuery` makes a separate query for AssertQueryMode::NonLinear and AssertQueryMode::BitVector
-            // only `requires` and type invariants will be provided to prove `ensures`
+            // Note that `ExprX::AssertQuery` makes a separate query for AssertQueryMode::NonLinear and AssertQueryMode::BitVector.
+            // Only `requires` and type invariants will be provided to prove `ensures`.
             match mode {
                 AssertQueryMode::NonLinear => {
                     let mut inner_body: Vec<Stm> = Vec::new();
@@ -2085,7 +2085,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
 
                 AssertQueryMode::BitVector => {
-                    // check if assertion block is consisted only with requires/ensures
+                    // check if assertion block consists only of requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
                     let proof_block_err =
                         Err(error(&expr.span, "assert_bitvector_by cannot contain a proof block"));

@@ -368,7 +368,10 @@ impl<T> PointsTo<[T]> {
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
     // #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T> {
+    pub open spec fn value(&self) -> Seq<T> 
+        recommends 
+            self.is_init(),
+    {
         Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
     }
 
