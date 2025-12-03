@@ -34,5 +34,6 @@ unzip "$filename.zip"
 rm -f z3
 
 cp "$filename/bin/z3" .
+echo "z3 located at $(pwd)"
 rm -r "$filename"
 rm "$filename.zip"
