@@ -139,13 +139,15 @@ fn for_loop_test_skip(v: Vec<u8>) {
                       true
                     }),
                 ensures
-                    // REVIEW: Omit these when the for loop contains a break?
+                    // TODO: Automatically omit these when the for loop contains a break?
                     // y.snapshot@.completes(),        // AUTO
                     // y.index == y.seq().len(), // AUTO
                     
                     // User ensures 
-                    sum == sum_u8(y.seq()) || 
-                    (sum == u8::MAX && sum_u8(y.seq()) > u8::MAX),
+                    // sum == sum_u8(y.seq()) || 
+                    //     (sum == u8::MAX && sum_u8(y.seq()) > u8::MAX),
+                    (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) || 
+                        (sum == u8::MAX && sum_u8(y.seq().take(y.index@)) > u8::MAX),
                 decreases
                     y.iter.decrease(),
             {
@@ -154,8 +156,6 @@ fn for_loop_test_skip(v: Vec<u8>) {
                 match y.next(Ghost(VERUS_old_snap)) {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
-// TODO: Without this assert, the user-supplied ensures clause fails
-                        assert(y.seq() == y.seq().take(y.index@));
                         break
                     }
                 }
@@ -167,12 +167,12 @@ fn for_loop_test_skip(v: Vec<u8>) {
                         sum += *x;
                     } else {
                         sum = u8::MAX;
-                    assert(sum_u8(y.seq().take(y.index@)) > u8::MAX);
-                    assert(sum_u8(y.seq()) > u8::MAX) by {
-                        // PAPER CUT: Can't call a lemma on the prophetic sequence
-                        //sum_u8_monotonic(y.seq(), y.index@, y.seq().len() as int);
-                        sum_u8_monotonic_forall();
-                    }
+                    // assert(sum_u8(y.seq().take(y.index@)) > u8::MAX);
+                    // assert(sum_u8(y.seq()) > u8::MAX) by {
+                    //     // PAPER CUT: Can't call a lemma on the prophetic sequence
+                    //     //sum_u8_monotonic(y.seq(), y.index@, y.seq().len() as int);
+                    //     sum_u8_monotonic_forall();
+                    // }
 
                         break;
                     }
@@ -182,8 +182,11 @@ fn for_loop_test_skip(v: Vec<u8>) {
     };
 
     assert(iter.seq() == v@.map_values(|e:u8| &e)); // OBSERVE
-
-    assert(sum == sum_u8(v@.map_values(|e:u8| &e)) || sum == u8::MAX);
+    assert(iter.seq() == iter.seq().take(iter.seq().len() as int)); // OBSERVE
+    //assert(sum == sum_u8(v@.map_values(|e:u8| &e)) || sum == u8::MAX);
+    proof {
+        sum_u8_monotonic_forall();
+    }
     assert(sum == sum_u8(v@.map_values(|e:u8| &e)) || 
             (sum == u8::MAX && sum_u8(v@.map_values(|e:u8| &e)) > u8::MAX));
 
