@@ -734,17 +734,73 @@ impl <I: Iterator> VerusForLoopIterator<I> {
         self.snapshot@.seq()
     }
 
+    /// These properties help maintain the properties in wf,
+    /// but they don't need to be exposed to the client 
+    #[verifier::prophetic]
+    pub closed spec fn wf_inner(self, original_snapshot: I) -> bool {
+        &&& self.iter.seq().len() == self.seq().len() - self.index@
+        &&& forall |i| 0 <= i < self.iter.seq().len() ==> #[trigger] self.iter.seq()[i] == self.seq()[self.index@ + i]
+        &&& self.iter.completes() ==> self.snapshot@.completes()
+    }
+
+    /// These properties are needed for the client code to verify
+    #[verifier::prophetic]
+    pub open spec fn wf(self, original_snapshot: I) -> bool {
+        &&& self.snapshot == original_snapshot 
+        &&& 0 <= self.index@ <= self.seq().len()
+        &&& self.wf_inner(original_snapshot)
+    }
+
     pub fn new(iter: I) -> (s: Self)
         ensures
             s.index == 0,
             s.snapshot == iter,
             s.iter == iter,
+            s.wf(s.snapshot@),
     {
         VerusForLoopIterator {
             index: Ghost(0),
             snapshot: Ghost(iter),
             iter,
         }
+    }
+
+    pub fn next(&mut self, original_snapshot: Ghost<I>) -> (ret: Option<I::Item>)
+        requires 
+            old(self).wf(original_snapshot@),
+        ensures
+            self.seq() == old(self).seq(),
+            self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
+            self.iter.obeys_iter_laws() ==> self.wf(original_snapshot@),
+            self.iter.obeys_iter_laws() && ret is None ==>
+                self.snapshot@.completes() && self.index@ == self.seq().len(),
+            self.iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
+                r == old(self).seq()[old(self).index@]),
+            // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
+            // call_ensures(I::next, (&mut old(self).iter,), ret),
+            self.iter.obeys_iter_laws() == old(self).iter.obeys_iter_laws(),
+            self.iter.obeys_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
+            self.iter.obeys_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
+            self.iter.obeys_iter_laws() ==> 
+            ({
+                if old(self).iter.seq().len() > 0 {
+                    &&& self.iter.seq() == old(self).iter.seq().drop_first()
+                    &&& ret == Some(old(self).iter.seq()[0])
+                } else {
+                    self.iter.seq() === old(self).iter.seq() && ret === None && self.iter.completes()
+                }
+            }),
+            self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
+                does_decrease(old(self).iter.decrease(), self.iter.decrease()),
+    {
+        assert(self.iter.seq().len() == self.seq().len() - self.index@);
+        let ret = self.iter.next();
+        proof {
+            if ret.is_some() {
+                self.index@ = self.index@ + 1;
+            }
+        }
+        ret
     }
 }
 
