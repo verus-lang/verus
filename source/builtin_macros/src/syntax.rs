@@ -1060,7 +1060,7 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
+        if let Some(SignatureInvariants { set, .. }) = opens_invariants {
             let full_span = set.span();
             let mask_expr = self.inv_name_set_to_mask_expr(set);
             spec_stmts.push(Stmt::Expr(

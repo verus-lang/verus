@@ -5944,6 +5944,9 @@ impl Debug for Lite<syn::SignatureInvariants> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("set", Lite(&self.value.set));
+        if self.value.comma.is_some() {
+            formatter.field("comma", &Present);
+        }
         formatter.finish()
     }
 }

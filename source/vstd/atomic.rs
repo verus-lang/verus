@@ -800,9 +800,8 @@ pub fn try_open_atomic_update_end<X, Y, Pred: UpdatePredicate<X, Y>>(
 #[doc(hidden)]
 #[verifier::skip_inst_collector]
 pub proof fn au_commit_wrap_proof<X, Y>(tracked y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Ok,
-        res@->Ok_0 == y@,
+    ensures res@ is Ok, res@->Ok_0 == y@,
+    opens_invariants none
 {
     Tracked(Ok(y.get()))
 }
@@ -810,9 +809,8 @@ pub proof fn au_commit_wrap_proof<X, Y>(tracked y: Tracked<Y>) -> (res: Tracked<
 #[doc(hidden)]
 #[verifier::skip_inst_collector]
 pub exec fn au_commit_wrap_exec<X, Y>(y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Ok,
-        res@->Ok_0 == y@,
+    ensures res@ is Ok, res@->Ok_0 == y@,
+    opens_invariants none
 {
     Tracked(Ok(y.get()))
 }
@@ -820,9 +818,8 @@ pub exec fn au_commit_wrap_exec<X, Y>(y: Tracked<Y>) -> (res: Tracked<Result<Y, 
 #[doc(hidden)]
 #[verifier::skip_inst_collector]
 pub proof fn au_abort_wrap_proof<X, Y>(tracked x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Err,
-        res@->Err_0 == x@,
+    ensures res@ is Err, res@->Err_0 == x@,
+    opens_invariants none
 {
     Tracked(Err(x.get()))
 }
@@ -830,9 +827,8 @@ pub proof fn au_abort_wrap_proof<X, Y>(tracked x: Tracked<X>) -> (res: Tracked<R
 #[doc(hidden)]
 #[verifier::skip_inst_collector]
 pub exec fn au_abort_wrap_exec<X, Y>(x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Err,
-        res@->Err_0 == x@,
+    ensures res@ is Err, res@->Err_0 == x@,
+    opens_invariants none
 {
     Tracked(Err(x.get()))
 }
@@ -842,10 +838,9 @@ pub exec fn au_abort_wrap_exec<X, Y>(x: Tracked<X>) -> (res: Tracked<Result<Y, X
 pub proof fn au_abort_unwrap_proof<X, Y, Pred>(
     tracked err_au: Tracked<Result<(), AtomicUpdate<X, Y, Pred>>>,
 ) -> (au: Tracked<AtomicUpdate<X, Y, Pred>>)
-    requires
-        err_au@ is Err,
-    ensures
-        err_au@->Err_0 == au@,
+    requires err_au@ is Err,
+    ensures err_au@->Err_0 == au@,
+    opens_invariants none
 {
     Tracked(err_au.get().tracked_unwrap_err())
 }
@@ -855,10 +850,9 @@ pub proof fn au_abort_unwrap_proof<X, Y, Pred>(
 pub exec fn au_abort_unwrap_exec<X, Y, Pred>(
     err_au: Tracked<Result<(), AtomicUpdate<X, Y, Pred>>>,
 ) -> (au: Tracked<AtomicUpdate<X, Y, Pred>>)
-    requires
-        err_au@ is Err,
-    ensures
-        err_au@->Err_0 == au@,
+    requires err_au@ is Err,
+    ensures err_au@->Err_0 == au@,
+    opens_invariants none
 {
     Tracked(err_au.get().tracked_unwrap_err())
 }
@@ -1071,6 +1065,28 @@ impl<T> PAtomicPtr<T> {
     {
         return self.ato.fetch_or(n, Ordering::SeqCst);
     }
+}
+
+pub broadcast group group_atomic_axioms {
+    PermissionBool::view_bijective,
+    //
+    // signed atomic integers
+    //
+    PermissionI8::view_bijective,
+    PermissionI16::view_bijective,
+    PermissionI32::view_bijective,
+    #[cfg(target_has_atomic = "64")]
+    PermissionI64::view_bijective,
+    PermissionIsize::view_bijective,
+    //
+    // signed atomic integers
+    //
+    PermissionU8::view_bijective,
+    PermissionU16::view_bijective,
+    PermissionU32::view_bijective,
+    #[cfg(target_has_atomic = "64")]
+    PermissionU64::view_bijective,
+    PermissionUsize::view_bijective,
 }
 
 } // verus!

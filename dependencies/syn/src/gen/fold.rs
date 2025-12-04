@@ -4499,6 +4499,7 @@ where
     crate::SignatureInvariants {
         token: node.token,
         set: f.fold_invariant_name_set(node.set),
+        comma: node.comma,
     }
 }
 pub fn fold_signature_spec<F>(

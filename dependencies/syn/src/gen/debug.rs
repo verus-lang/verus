@@ -3547,6 +3547,7 @@ impl Debug for crate::SignatureInvariants {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("token", &self.token);
         formatter.field("set", &self.set);
+        formatter.field("comma", &self.comma);
         formatter.finish()
     }
 }

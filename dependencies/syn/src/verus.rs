@@ -205,6 +205,7 @@ ast_struct! {
     pub struct SignatureInvariants {
         pub token: Token![opens_invariants],
         pub set: InvariantNameSet,
+        pub comma: Option<Token![,]>,
     }
 }
 
@@ -987,12 +988,10 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureInvariants {
         fn parse(input: ParseStream) -> Result<Self> {
-            let opens_invariants = input.parse()?;
-            let set = input.parse()?;
-
             Ok(SignatureInvariants {
-                token: opens_invariants,
-                set,
+                token: input.parse()?,
+                set: input.parse()?,
+                comma: input.parse()?,
             })
         }
     }

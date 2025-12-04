@@ -4533,6 +4533,7 @@ where
 {
     skip!(node.token);
     v.visit_invariant_name_set(&node.set);
+    skip!(node.comma);
 }
 pub fn visit_signature_spec<'ast, V>(v: &mut V, node: &'ast crate::SignatureSpec)
 where

@@ -6414,6 +6414,11 @@
         },
         "set": {
           "syn": "InvariantNameSet"
+        },
+        "comma": {
+          "option": {
+            "token": "Comma"
+          }
         }
       }
     },

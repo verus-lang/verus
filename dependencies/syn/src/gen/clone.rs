@@ -2560,6 +2560,7 @@ impl Clone for crate::SignatureInvariants {
         crate::SignatureInvariants {
             token: self.token.clone(),
             set: self.set.clone(),
+            comma: self.comma.clone(),
         }
     }
 }

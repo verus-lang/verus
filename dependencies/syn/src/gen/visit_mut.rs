@@ -4338,6 +4338,7 @@ where
 {
     skip!(node.token);
     v.visit_invariant_name_set_mut(&mut node.set);
+    skip!(node.comma);
 }
 pub fn visit_signature_spec_mut<V>(v: &mut V, node: &mut crate::SignatureSpec)
 where

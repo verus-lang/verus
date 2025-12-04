@@ -2492,7 +2492,7 @@ impl Eq for crate::SignatureInvariants {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::SignatureInvariants {
     fn eq(&self, other: &Self) -> bool {
-        self.set == other.set
+        self.set == other.set && self.comma == other.comma
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

@@ -100,6 +100,7 @@ pub broadcast group group_vstd_default {
     function::group_function_axioms,
     laws_eq::group_laws_eq,
     laws_cmp::group_laws_cmp,
+    atomic::group_atomic_axioms,
     //
     // Rust types
     //

@@ -3173,6 +3173,7 @@ impl Hash for crate::SignatureInvariants {
         H: Hasher,
     {
         self.set.hash(state);
+        self.comma.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

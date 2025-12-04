@@ -8,34 +8,33 @@ use vstd::simple_pptr::*;
 
 verus! {
 
-pub fn increment_bad(patomic: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>)
+pub fn increment_bad(var: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64>)
     requires
-        old(perm)@.patomic == patomic.id(),
+        old(perm)@.patomic == var.id(),
     ensures
         perm@.patomic == old(perm)@.patomic,
         perm@.value == old(perm)@.value.wrapping_add(1),
 {
-    let val = patomic.load(Tracked(&*perm));
-    patomic.store(Tracked(perm), val.wrapping_add(1));
+    let val = var.load(Tracked(&*perm));
+    var.store(Tracked(perm), val.wrapping_add(1));
 }
 
-pub fn increment_good(patomic: &PAtomicU64)
+pub fn increment_good(var: &PAtomicU64)
     atomically (atomic_update) {
         (old_perm: PermissionU64) -> (new_perm: PermissionU64),
         requires
-            old_perm@.patomic == patomic.id(),
+            old_perm@.patomic == var.id(),
         ensures
             new_perm@.patomic == old_perm@.patomic,
             new_perm@.value == old_perm@.value.wrapping_add(1),
         outer_mask any,
-        inner_mask any,
     },
 {
     let tracked mut au = atomic_update;
 
     let mut curr;
     let wrapped_au = peek_atomic_update!(au, perm => {
-        curr = patomic.load(Tracked(&perm));
+        curr = var.load(Tracked(&perm));
         Tracked(perm)
     });
 
@@ -48,26 +47,18 @@ pub fn increment_good(patomic: &PAtomicU64)
         let maybe_au = try_open_atomic_update!(au, mut perm => {
             let ghost prev = perm;
 
-            res = patomic.compare_exchange_weak(Tracked(&mut perm), curr, next);
+            res = var.compare_exchange_weak(Tracked(&mut perm), curr, next);
 
-            Tracked(match res is Ok {
-                true => Ok(perm),
-                false => {
-                    assert(perm@ == prev@);
-                    assert(perm == prev) by {
-                        perm.view_bijective();
-                        prev.view_bijective();
-                    }
-
-                    Err(perm)
-                },
+            Tracked(match res {
+                Ok(_) => Ok(perm),
+                Err(_) => Err(perm),
             })
         });
 
         match res {
             Ok(_) => {
                 assert(atomic_update.resolves());
-                break
+                break;
             }
 
             Err(new) => {
