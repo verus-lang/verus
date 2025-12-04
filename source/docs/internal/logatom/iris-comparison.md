@@ -315,3 +315,89 @@ let res = try_open_atomic_update!(atomic_update, old_perm => {
 
 assert(res == Tracked(Err(atomic_update)));
 ```
+
+### Example: Atomic Increment
+
+Iris/Heaplang:
+
+$$
+\large
+\begin{align*}
+    \text{rec}~inc(x) =\ &\text{let}~v=\ !x \\
+    &\text{if}~\text{CAS}(x, v, v+1)~\text{then}~v \\
+    &\text{else}~inc(x)
+\end{align*}
+$$
+
+Rust:
+
+```rs
+fn increment(var: &AtomicU64) -> u64 {
+    let mut curr = var.load(SeqCst);
+
+    loop {
+        let res = var.compare_exchange_weak(curr, curr + 1, SeqCst, SeqCst);
+
+        match res {
+            Ok(_) => return curr,
+            Err(new) => curr = new,
+        }
+    }
+}
+```
+
+Verus:
+
+```rs
+pub fn increment(var: &PAtomicU64) -> (out: u64)
+    atomically (atomic_update) {
+        (old_perm: PermissionU64) -> (new_perm: PermissionU64),
+        requires
+            old_perm@.patomic == var.id(),
+        ensures
+            new_perm@.patomic == old_perm@.patomic,
+            new_perm@.value == old_perm@.value.wrapping_add(1),
+        outer_mask any,
+    },
+    ensures
+        out == old_perm@.value,
+{
+    let tracked mut au = atomic_update;
+
+    let mut curr;
+    let err_au = try_open_atomic_update!(au, perm => {
+        curr = var.load(Tracked(&perm));
+        Tracked(Err(perm))
+    });
+
+    proof { au = err_au.get().tracked_unwrap_err() };
+
+    loop invariant au == atomic_update {
+        let next = curr.wrapping_add(1);
+
+        let res;
+        let maybe_au = try_open_atomic_update!(au, mut perm => {
+            let ghost prev = perm;
+
+            res = var.compare_exchange_weak(Tracked(&mut perm), curr, next);
+
+            Tracked(match res {
+                Ok(_) => Ok(perm),
+                Err(_) => Err(perm),
+            })
+        });
+
+        match res {
+            Ok(_) => {
+                assert(atomic_update.resolves());
+                return curr;
+            }
+
+            Err(new) => {
+                proof { au = maybe_au.get().tracked_unwrap_err() };
+                curr = new;
+            },
+        }
+    }
+}
+```
