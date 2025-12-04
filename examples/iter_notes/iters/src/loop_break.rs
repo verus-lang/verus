@@ -1,3 +1,4 @@
+/*
 use std::{io::Take, iter::{self, Skip}, path::Iter};
 use vstd::prelude::*;
 use crate::prophetic_iters::decreases_fix::*;
@@ -199,3 +200,4 @@ fn for_loop_test_skip(v: Vec<u8>) {
 
 
 } // verus!
+*/

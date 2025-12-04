@@ -84,6 +84,11 @@ pub trait Iterator {
     #[verifier::prophetic]
     spec fn completes(&self) -> bool;
 
+    // Invariant relating the iterator to its initial value.
+    // When the analysis can infer a spec initial value, the analysis 
+    // places the value in init
+    spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
+
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             self.obeys_iter_laws() == old(self).obeys_iter_laws(),
@@ -144,6 +149,10 @@ pub struct VecIterator<'a, T> {
 }
 
 impl <'a, T> VecIterator<'a, T> {
+    pub closed spec fn new(v: &'a Vec<T>) -> Self {
+        VecIterator { v, i: 0, j: v.len() }
+    }
+
     pub closed spec fn front(self) -> usize {
         self.i
     }
@@ -163,6 +172,11 @@ impl <'a, T> VecIterator<'a, T> {
     }
 }
 
+pub open spec fn vec_iter_spec<'a, T>(v: &'a Vec<T>) -> VecIterator<'a, T> {
+    VecIterator::new(v)
+}
+
+#[verifier::when_used_as_spec(vec_iter_spec)]
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
         iter.seq() == v@.map(|i, v| &v),
@@ -187,6 +201,11 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     closed spec fn completes(&self) -> bool {
+        true
+    }
+
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        //init matches Some(v) ==> v.elts() == self.elts()
         true
     }
 
@@ -430,6 +449,11 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.seq().len() ==> self.prophs@.proph_elem(i).is_some())
     }
 
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        // TODO
+        true
+    }
+
     fn next(&mut self) -> (ret: Option<Self::Item>) 
     {
         assume(self.map_iterator_type_inv());
@@ -522,6 +546,11 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
         self.iter.completes() || self.iter.seq().len() >= self.count_remaining
     }
 
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        // TODO
+        true
+    }
+
     fn next(&mut self) -> (ret: Option<Self::Item>) 
     {
         assume(self.take_inv());
@@ -610,6 +639,11 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
     closed spec fn completes(&self) -> bool {
         self.iter.completes()
     }
+    
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        // TODO
+        true
+    }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
         assume(self.skip_inv());
@@ -674,6 +708,11 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
     #[verifier::prophetic]
     closed spec fn completes(&self) -> bool {
         self.iter.completes()
+    }
+
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        // TODO
+        true
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) {
@@ -745,18 +784,19 @@ impl <I: Iterator> VerusForLoopIterator<I> {
 
     /// These properties are needed for the client code to verify
     #[verifier::prophetic]
-    pub open spec fn wf(self, original_snapshot: I) -> bool {
+    pub open spec fn wf(self, original_snapshot: I, init: Option<&I>) -> bool {
         &&& self.snapshot == original_snapshot 
         &&& 0 <= self.index@ <= self.seq().len()
+        &&& self.snapshot@.initial_value_inv(init)
         &&& self.wf_inner(original_snapshot)
     }
 
-    pub fn new(iter: I) -> (s: Self)
+    pub fn new(iter: I, init: Ghost<Option<&I>>) -> (s: Self)
         ensures
             s.index == 0,
             s.snapshot == iter,
             s.iter == iter,
-            s.wf(s.snapshot@),
+            s.wf(s.snapshot@, init@),
     {
         VerusForLoopIterator {
             index: Ghost(0),
@@ -765,13 +805,13 @@ impl <I: Iterator> VerusForLoopIterator<I> {
         }
     }
 
-    pub fn next(&mut self, original_snapshot: Ghost<I>) -> (ret: Option<I::Item>)
+    pub fn next(&mut self, original_snapshot: Ghost<I>, init: Ghost<Option<&I>>) -> (ret: Option<I::Item>)
         requires 
-            old(self).wf(original_snapshot@),
+            old(self).wf(original_snapshot@, init@),
         ensures
             self.seq() == old(self).seq(),
             self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
-            self.iter.obeys_iter_laws() ==> self.wf(original_snapshot@),
+            self.iter.obeys_iter_laws() ==> self.wf(original_snapshot@, init@),
             self.iter.obeys_iter_laws() && ret is None ==>
                 self.snapshot@.completes() && self.index@ == self.seq().len(),
             self.iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
