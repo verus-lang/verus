@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "optin",
-    "optout",
-    "unset",
+    "member-optin",
+    "member-optout",
+    "member-unset",
 ]

@@ -1,8 +1,8 @@
 [package]
 publish = false
-name = "optin"
+name = "member-optout"
 version = "0.1.0"
 edition = "2021"
 
 [package.metadata.verus]
-verify = true
+verify = false
