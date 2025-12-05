@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -30,12 +29,15 @@ pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> anyhow::Result<(Output, 
     Ok((output, cargo_data))
 }
 
-pub fn clone_fixture(name: &str) -> PathBuf {
+pub fn clone_fixture(name: &str) -> anyhow::Result<PathBuf> {
     let fixture = Path::new(FIXTURES_DIR).join(name);
     let dest = temp_fixture_dir(name);
-    let _ = fs::remove_dir_all(&dest);
-    copy_dir(&fixture, &dest).expect("failed to copy fixture to temp dir");
-    dest
+    match fs::remove_dir_all(&dest) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }?;
+    copy_dir(&fixture, &dest)?;
+    Ok(dest)
 }
 
 fn temp_fixture_dir(name: &str) -> PathBuf {
@@ -44,7 +46,7 @@ fn temp_fixture_dir(name: &str) -> PathBuf {
     path
 }
 
-fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
+fn copy_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;

@@ -6,7 +6,7 @@ mod utils;
 
 #[test]
 fn verify_single_crate() -> anyhow::Result<()> {
-    let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
+    let project_dir = utils::clone_fixture(utils::SINGLE_CRATE)?;
 
     let (output, captured) = utils::run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -20,8 +20,7 @@ fn verify_single_crate() -> anyhow::Result<()> {
 
 #[test]
 fn verify_single_crate_explicit_manifest() -> anyhow::Result<()> {
-    let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
-
+    let project_dir = utils::clone_fixture(utils::SINGLE_CRATE)?;
     let manifest_path = project_dir.join("Cargo.toml");
 
     let (output, captured) = utils::run_cargo_verus(|cmd| {
