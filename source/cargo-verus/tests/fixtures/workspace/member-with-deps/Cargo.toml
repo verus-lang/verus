@@ -1,0 +1,11 @@
+[package]
+publish = false
+name = "member-with-deps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+member-optin = { path = "../member-optin" }
+
+[package.metadata.verus]
+verify = true

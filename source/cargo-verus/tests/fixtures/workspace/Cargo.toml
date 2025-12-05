@@ -3,4 +3,5 @@ members = [
     "member-optin",
     "member-optout",
     "member-unset",
+    "member-with-deps",
 ]
