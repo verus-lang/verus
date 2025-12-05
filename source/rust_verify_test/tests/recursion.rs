@@ -2221,3 +2221,39 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] recursive_lock_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        use vstd::simple_pptr::*;
+
+        struct Node{
+            x : usize,
+            child : Vec<LockNode>,
+        }
+        impl Node{
+            spec fn wf(self) -> bool{
+                forall |i:int| 0<=i < self.child.len() ==>
+                   #[trigger] self.child[i].wf()
+            }
+        }
+
+        struct LockNode{
+            ptr : PPtr<Node>,
+            inv : Tracked<AtomicInvariant<PPtr<Node>, PointsTo<Node>, LockInv>>,
+        }
+        impl LockNode{
+            spec fn wf(self) -> bool{
+                &&& self.inv@.constant() == self.ptr
+            }
+        }
+
+        struct LockInv{}
+        impl InvariantPredicate<PPtr<Node>, PointsTo<Node>> for LockInv {
+            closed spec fn inv(a:PPtr<Node>, b:PointsTo<Node>) -> bool{
+                b.value().wf()
+            }
+        }
+    } => Ok(())
+}

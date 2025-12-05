@@ -175,7 +175,7 @@ macro_rules! declare_invariant_impl {
 
         verus!{
 
-        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+        impl<K, V, Pred> $invariant<K, V, Pred> {
             /// The constant specified upon the initialization of this `
             #[doc = stringify!($invariant)]
             ///`.
@@ -184,7 +184,9 @@ macro_rules! declare_invariant_impl {
             /// Namespace the invariant was declared in.
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::namespace")]
             pub uninterp spec fn namespace(&self) -> int;
+        }
 
+        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
             /// Returns `true` if it is possible to store the value `v` into the `
             #[doc = stringify!($invariant)]
             ///`.
