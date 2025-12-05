@@ -10,22 +10,28 @@ struct CargoData {
 }
 
 fn main() {
-    let path = std::env::var_os("FAKE_CARGO_DATA_FILE").expect("read env var FAKE_CARGO_DATA_FILE");
-    let data = CargoData { args: std::env::args().collect(), env: std::env::vars().collect() };
-    write_data(Path::new(&path), &data);
+    let mut args = std::env::args().skip(1);
+    if let Some(command) = args.next() {
+        if command == "metadata" {
+            let status = std::process::Command::new("cargo")
+                .args(std::env::args().skip(1))
+                .status()
+                .expect("run real cargo");
 
-    let status = std::process::Command::new("cargo")
-        .args(std::env::args().skip(1))
-        .status()
-        .expect("run real cargo");
-
-    match status.code() {
-        Some(code) => std::process::exit(code),
-        None => {
-            // terminated by signal on Unix; pick a nonzero exit
-            std::process::exit(1);
+            match status.code() {
+                Some(code) => std::process::exit(code),
+                None => {
+                    // terminated by signal on Unix; pick a nonzero exit
+                    std::process::exit(1);
+                }
+            }
         }
     }
+
+    let path = std::env::var_os("FAKE_CARGO_DATA_FILE").expect("read env var FAKE_CARGO_DATA_FILE");
+    let data =
+        CargoData { args: std::env::args().skip(1).collect(), env: std::env::vars().collect() };
+    write_data(Path::new(&path), &data);
 }
 
 fn write_data(path: &Path, data: &CargoData) {
