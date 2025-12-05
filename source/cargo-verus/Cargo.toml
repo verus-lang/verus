@@ -20,7 +20,6 @@ colored = "3.0.0"
 rustc_tools_util = "0.3.0"
 
 [dev-dependencies]
-anyhow = "1.0.100"
 assert_cmd = "2.0"
 
 [[bin]]
