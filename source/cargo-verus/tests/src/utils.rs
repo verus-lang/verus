@@ -29,6 +29,23 @@ pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) 
     (status, cargo_data)
 }
 
+pub fn assert_verus_command_env(data: &CargoData) {
+    assert_eq!(
+        data.env.get("__CARGO_DEFAULT_LIB_METADATA").map(String::as_str),
+        Some("verus"),
+        "expected __CARGO_DEFAULT_LIB_METADATA to be set for verus builds"
+    );
+    assert_eq!(
+        data.env.get("__VERUS_DRIVER_VIA_CARGO__").map(String::as_str),
+        Some("1"),
+        "expected __VERUS_DRIVER_VIA_CARGO__=1"
+    );
+    assert!(
+        data.env.contains_key("RUSTC_WRAPPER"),
+        "RUSTC_WRAPPER should point to the verus driver"
+    );
+}
+
 pub fn clone_fixture(name: &str) -> PathBuf {
     let fixture = Path::new(FIXTURES_DIR).join(name);
     let dest = temp_fixture_dir(name);
