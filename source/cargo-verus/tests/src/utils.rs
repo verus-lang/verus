@@ -8,7 +8,7 @@ pub const SINGLE_CRATE: &str = "single-crate";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
-pub struct CargoConfig {
+pub struct CargoData {
     pub args: Vec<String>,
     pub env: BTreeMap<String, String>,
 }
