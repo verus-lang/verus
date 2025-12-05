@@ -89,3 +89,44 @@ fn manifest_single_optout() {
     data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
     data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
 }
+
+#[test]
+fn workdir_single_unset() {
+    let project_dir = clone_fixture(SINGLE_UNSET);
+
+    let (status, data) = run_cargo_verus(|cmd| {
+        cmd.current_dir(&project_dir).arg("verify");
+    });
+
+    assert!(status.success());
+
+    assert_eq!(data.args, vec!["build"]);
+
+    data.assert_env_has("RUSTC_WRAPPER");
+    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
+    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
+    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+}
+
+#[test]
+fn manifest_single_unset() {
+    let project_dir = clone_fixture(SINGLE_UNSET);
+    let manifest_path = project_dir.join("Cargo.toml");
+
+    let (status, data) = run_cargo_verus(|cmd| {
+        cmd.arg("verify");
+        cmd.arg("--manifest-path").arg(&manifest_path);
+    });
+
+    assert!(status.success());
+
+    assert_eq!(
+        data.args,
+        vec!["build", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
+    );
+
+    data.assert_env_has("RUSTC_WRAPPER");
+    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
+    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
+    data.assert_env_has_no_key_prefix("__VERUS_DRIVER_VERIFY_");
+}
