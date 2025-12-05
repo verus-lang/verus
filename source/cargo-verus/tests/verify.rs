@@ -7,9 +7,9 @@ mod utils;
 use utils::*;
 
 #[test]
-fn workdir_single_optin() {
-    let project_dir = clone_fixture(SINGLE_OPTIN);
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", SINGLE_OPTIN);
+fn crate_optin_workdir() {
+    let project_dir = clone_fixture(CRATE_OPTIN);
+    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", CRATE_OPTIN);
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -26,9 +26,9 @@ fn workdir_single_optin() {
 }
 
 #[test]
-fn manifest_single_optin() {
-    let project_dir = clone_fixture(SINGLE_OPTIN);
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", SINGLE_OPTIN);
+fn crate_optin_manifest() {
+    let project_dir = clone_fixture(CRATE_OPTIN);
+    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", CRATE_OPTIN);
     let manifest_path = project_dir.join("Cargo.toml");
 
     let (status, data) = run_cargo_verus(|cmd| {
@@ -50,8 +50,8 @@ fn manifest_single_optin() {
 }
 
 #[test]
-fn workdir_single_optout() {
-    let project_dir = clone_fixture(SINGLE_OPTOUT);
+fn crate_optout_workdir() {
+    let project_dir = clone_fixture(CRATE_OPTOUT);
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -68,8 +68,8 @@ fn workdir_single_optout() {
 }
 
 #[test]
-fn manifest_single_optout() {
-    let project_dir = clone_fixture(SINGLE_OPTOUT);
+fn crate_optout_manifest() {
+    let project_dir = clone_fixture(CRATE_OPTOUT);
     let manifest_path = project_dir.join("Cargo.toml");
 
     let (status, data) = run_cargo_verus(|cmd| {
@@ -91,8 +91,8 @@ fn manifest_single_optout() {
 }
 
 #[test]
-fn workdir_single_unset() {
-    let project_dir = clone_fixture(SINGLE_UNSET);
+fn crate_unset_workdir() {
+    let project_dir = clone_fixture(CRATE_UNSET);
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -109,8 +109,8 @@ fn workdir_single_unset() {
 }
 
 #[test]
-fn manifest_single_unset() {
-    let project_dir = clone_fixture(SINGLE_UNSET);
+fn crate_unset_manifest() {
+    let project_dir = clone_fixture(CRATE_UNSET);
     let manifest_path = project_dir.join("Cargo.toml");
 
     let (status, data) = run_cargo_verus(|cmd| {

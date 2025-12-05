@@ -1,6 +1,6 @@
 [package]
 publish = false
-name = "single-optout"
+name = "crate-optout"
 version = "0.1.0"
 edition = "2021"
 

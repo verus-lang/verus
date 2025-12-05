@@ -1,6 +1,6 @@
 [package]
 publish = false
-name = "single-unset"
+name = "crate-unset"
 version = "0.1.0"
 edition = "2021"
 
