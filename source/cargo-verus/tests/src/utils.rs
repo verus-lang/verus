@@ -9,6 +9,10 @@ pub const CRATE_OPTIN: &str = "crate-optin";
 pub const CRATE_OPTOUT: &str = "crate-optout";
 pub const CRATE_UNSET: &str = "crate-unset";
 
+pub const MEMBER_OPTIN: &str = "optin";
+pub const MEMBER_OPTOUT: &str = "optout";
+pub const MEMBER_UNSET: &str = "unset";
+
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
 #[derive(Debug, Deserialize)]

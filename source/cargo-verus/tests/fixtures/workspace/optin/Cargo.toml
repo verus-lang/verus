@@ -1,0 +1,8 @@
+[package]
+publish = false
+name = "optin"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.verus]
+verify = true
