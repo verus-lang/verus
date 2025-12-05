@@ -12,6 +12,7 @@ pub const CRATE_UNSET: &str = "crate-unset";
 pub const MEMBER_OPTIN: &str = "member-optin";
 pub const MEMBER_OPTOUT: &str = "member-optout";
 pub const MEMBER_UNSET: &str = "member-unset";
+pub const MEMBER_WITH_DEPS: &str = "member-with-deps";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
