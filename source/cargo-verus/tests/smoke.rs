@@ -1,24 +1,16 @@
-use std::env;
-use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 #[cfg(not(feature = "integration-tests"))]
 compile_error!("enable the `integration-tests` feature to run these tests");
 
-const FIXTURE_MANIFEST: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/foo/Cargo.toml");
+#[path = "src/utils.rs"]
+mod utils;
+
+const FIXTURE_NAME: &str = "foo";
 
 #[test]
 fn runs_cargo_verus_with_fake_cargo() {
-    let mut project_dir = env::temp_dir();
-    project_dir.push(format!("cargo-verus-tests-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&project_dir);
-    fs::create_dir_all(project_dir.join("src")).expect("failed to create temp project dir");
-    fs::copy(Path::new(FIXTURE_MANIFEST), project_dir.join("Cargo.toml"))
-        .expect("failed to copy fixture manifest");
-    fs::write(project_dir.join("src").join("main.rs"), "fn main() {}\n")
-        .expect("failed to write temp main.rs");
+    let project_dir = utils::clone_fixture(FIXTURE_NAME);
 
     let output = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"))
         .arg("verify")
