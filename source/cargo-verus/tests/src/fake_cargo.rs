@@ -10,35 +10,25 @@ struct CargoData {
 }
 
 fn main() {
-    let mut args_iter = std::env::args();
-    let _program = args_iter.next();
-    let args: Vec<String> = args_iter.collect();
+    let path = std::env::var_os("FAKE_CARGO_DATA_FILE").expect("read env var FAKE_CARGO_DATA_FILE");
+    let data = CargoData { args: std::env::args().collect(), env: std::env::vars().collect() };
+    write_data(Path::new(&path), &data);
 
-    if let Some(path) = std::env::var_os("FAKE_CARGO_DATA_FILE") {
-        let data = CargoData { args: args.clone(), env: std::env::vars().collect() };
-        if let Err(err) = write_data(Path::new(&path), &data) {
-            eprintln!("fake-cargo failed to write data: {err}");
+    let status = std::process::Command::new("cargo")
+        .args(std::env::args().skip(1))
+        .status()
+        .expect("run real cargo");
+
+    match status.code() {
+        Some(code) => std::process::exit(code),
+        None => {
+            // terminated by signal on Unix; pick a nonzero exit
             std::process::exit(1);
-        }
-    }
-
-    match args.split_first() {
-        Some((cmd, rest)) if cmd == "metadata" => {
-            let real_cargo = std::env::var("FAKE_CARGO_REAL").unwrap_or_else(|_| "cargo".into());
-            let status = std::process::Command::new(real_cargo)
-                .arg("metadata")
-                .args(rest)
-                .status()
-                .expect("failed to run real cargo metadata");
-            std::process::exit(status.code().unwrap_or(1));
-        }
-        _ => {
-            println!("FAKE-CARGO");
         }
     }
 }
 
-fn write_data(path: &Path, data: &CargoData) -> std::io::Result<()> {
-    let json = serde_json::to_vec(data).expect("failed to serialize CargoData");
-    std::fs::write(path, json)
+fn write_data(path: &Path, data: &CargoData) {
+    let json = serde_json::to_vec(data).expect("serialize CargoData to JSON");
+    std::fs::write(path, json).expect(&format!("write CargoData JSON to {:?}", path))
 }

@@ -15,29 +15,33 @@ pub struct CargoData {
     pub env: BTreeMap<String, String>,
 }
 
-pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> anyhow::Result<(Output, CargoData)> {
-    let data_file = temp_data_file()?;
+pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (Output, CargoData) {
+    let data_file = temp_data_file();
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
     setup(&mut cmd);
     cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
     cmd.env("FAKE_CARGO_DATA_FILE", &data_file);
-    let output = cmd.output()?;
+    let output = cmd.output().expect("run cargo-verus and get output");
 
-    let cargo_data = read_cargo_data(&data_file)?;
+    let cargo_data = read_cargo_data(&data_file);
 
-    Ok((output, cargo_data))
+    (output, cargo_data)
 }
 
-pub fn clone_fixture(name: &str) -> anyhow::Result<PathBuf> {
+pub fn clone_fixture(name: &str) -> PathBuf {
     let fixture = Path::new(FIXTURES_DIR).join(name);
     let dest = temp_fixture_dir(name);
+
     match fs::remove_dir_all(&dest) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
-    }?;
-    copy_dir(&fixture, &dest)?;
-    Ok(dest)
+    }
+    .expect("remove existing destination dir");
+
+    copy_dir(&fixture, &dest).expect("copy fixture to destination dir");
+
+    dest
 }
 
 fn temp_fixture_dir(name: &str) -> PathBuf {
@@ -61,15 +65,18 @@ fn copy_dir(src: &Path, dst: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn read_cargo_data(path: &Path) -> anyhow::Result<CargoData> {
-    let bytes = fs::read(path)?;
-    let data = serde_json::from_slice(&bytes)?;
-    Ok(data)
+fn read_cargo_data(path: &Path) -> CargoData {
+    let bytes = fs::read(path).expect(&format!("read CargoData bytes from {:?}", path));
+    let data = serde_json::from_slice(&bytes).expect(&format!("parse CargoData from {:?}", path));
+    data
 }
 
-fn temp_data_file() -> anyhow::Result<PathBuf> {
+fn temp_data_file() -> PathBuf {
     let mut path = std::env::temp_dir();
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("get duration since Unix Epoch")
+        .as_nanos();
     path.push(format!("cargo-verus-tests-data-{}-{nanos}.json", std::process::id()));
-    Ok(path)
+    path
 }
