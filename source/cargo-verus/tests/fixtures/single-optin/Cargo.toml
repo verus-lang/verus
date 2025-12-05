@@ -1,0 +1,10 @@
+[package]
+publish = false
+name = "single-optin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[package.metadata.verus]
+verify = true

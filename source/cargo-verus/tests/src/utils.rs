@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const SINGLE_CRATE: &str = "single-crate";
+pub const SINGLE_OPTIN: &str = "single-optin";
+pub const SINGLE_OPTOUT: &str = "single-optout";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
@@ -36,6 +37,14 @@ impl CargoData {
             "Cargo env MUST have entry with key prefix {}* = {}",
             key_prefix,
             value,
+        );
+    }
+
+    pub fn assert_env_has_no_key_prefix(&self, key_prefix: &str) {
+        assert!(
+            !self.env.iter().any(|(k, v)| k.starts_with(key_prefix)),
+            "Cargo env MUST NOT have a key with prefix {}*",
+            key_prefix,
         );
     }
 }
