@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -6,6 +7,17 @@ use std::process::Command;
 pub const SINGLE_CRATE: &str = "single-crate";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+
+pub struct CargoConfig {
+    pub args: Vec<String>,
+    pub env: BTreeMap<String, String>,
+}
+
+pub fn run_cargo_verus() -> Command {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
+    cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
+    cmd
+}
 
 pub fn clone_fixture(name: &str) -> PathBuf {
     let fixture = Path::new(FIXTURES_DIR).join(name);
@@ -34,10 +46,4 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-pub fn run_cargo_verus() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
-    cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
-    cmd
 }
