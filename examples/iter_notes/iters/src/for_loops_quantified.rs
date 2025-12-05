@@ -28,6 +28,8 @@ fn for_loop_test_vec() {
     //
     // Into:
     let init = Ghost(Some(&vec_iter_spec(&v)));
+// TODO
+assume(init@.get_Some_0().elts() == v@);
     let iter = VerusForLoopIterator::new(vec_iter(&v), init);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
@@ -37,7 +39,9 @@ fn for_loop_test_vec() {
                 invariant_except_break
                     y.iter.decrease() is Some,
                 invariant
-                    y.wf(VERUS_old_snap, init@),
+                    y.snapshot == VERUS_old_snap,
+                    y.init == init@,
+                    y.wf(),
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
@@ -64,7 +68,7 @@ fn for_loop_test_vec() {
                 let ghost old_y = y;
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                match y.next(Ghost(VERUS_old_snap), init) {
+                match y.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
@@ -76,6 +80,21 @@ fn for_loop_test_vec() {
                     assert(w.len() == y.index@ - 1);
                     w.push(*x);
                     count += 1;
+                };
+                assert forall|i| 0 <= i < w.len() implies w[i] == v[i] by {
+                    if i < w.len() - 1 {
+                        assert(w[i] == v[i]);
+                    } else {
+                        // assert(y.init@ matches Some(i) && i.elts() == y.snapshot@.elts());
+                        // assert(y.init@ matches Some(i) && i.elts()[y.index@ - 1] == y.snapshot@.elts()[y.index@ - 1]);
+
+                        assert(y.init@ matches Some(i) && i.elts() == v@);
+                        assert(y.init@ matches Some(i) && *x == i.elts()[y.index@ - 1]);
+                        assert(*x == y.snapshot@.elts()[y.index@ - 1]);
+                        assert(*x == y.seq()[y.index@ - 1]);
+                        assert(w[i] == *x);
+                        assert(w[i] == v[i]);
+                    }
                 };
             }
         }

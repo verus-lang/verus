@@ -205,8 +205,8 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
-        //init matches Some(v) ==> v.elts() == self.elts()
-        true
+        &&& self.elts() == self.seq().map_values(|v: &T| *v)
+        &&& init matches Some(v) && v.elts() == self.elts()
     }
 
     fn next(&mut self) -> (ret: Option<Self::Item>) 
@@ -762,12 +762,15 @@ pub fn collect_to_vec<Iter: Iterator>(iter: Iter) -> (s: Vec<Iter::Item>)
     }
 }
 
-pub struct VerusForLoopIterator<I: Iterator> {
+/// REVIEW: Despite the name, VerusForLoopIterator doesn't implement Iterator.
+///         What would be a better name?
+pub struct VerusForLoopIterator<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
+    pub init: Ghost<Option<&'a I>>,
     pub iter: I 
 }
-impl <I: Iterator> VerusForLoopIterator<I> {
+impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.seq()
@@ -776,7 +779,7 @@ impl <I: Iterator> VerusForLoopIterator<I> {
     /// These properties help maintain the properties in wf,
     /// but they don't need to be exposed to the client 
     #[verifier::prophetic]
-    pub closed spec fn wf_inner(self, original_snapshot: I) -> bool {
+    pub closed spec fn wf_inner(self) -> bool {
         &&& self.iter.seq().len() == self.seq().len() - self.index@
         &&& forall |i| 0 <= i < self.iter.seq().len() ==> #[trigger] self.iter.seq()[i] == self.seq()[self.index@ + i]
         &&& self.iter.completes() ==> self.snapshot@.completes()
@@ -784,34 +787,39 @@ impl <I: Iterator> VerusForLoopIterator<I> {
 
     /// These properties are needed for the client code to verify
     #[verifier::prophetic]
-    pub open spec fn wf(self, original_snapshot: I, init: Option<&I>) -> bool {
-        &&& self.snapshot == original_snapshot 
+    pub open spec fn wf(self) -> bool {
         &&& 0 <= self.index@ <= self.seq().len()
-        &&& self.snapshot@.initial_value_inv(init)
-        &&& self.wf_inner(original_snapshot)
+        &&& self.snapshot@.initial_value_inv(self.init@)
+        &&& self.wf_inner()
     }
 
-    pub fn new(iter: I, init: Ghost<Option<&I>>) -> (s: Self)
+    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
+        requires
+            iter.initial_value_inv(init@),
         ensures
             s.index == 0,
             s.snapshot == iter,
+            s.init == init,
             s.iter == iter,
-            s.wf(s.snapshot@, init@),
+            s.wf(),
     {
         VerusForLoopIterator {
             index: Ghost(0),
             snapshot: Ghost(iter),
+            init: init,
             iter,
         }
     }
 
-    pub fn next(&mut self, original_snapshot: Ghost<I>, init: Ghost<Option<&I>>) -> (ret: Option<I::Item>)
+    pub fn next(&mut self) -> (ret: Option<I::Item>)
         requires 
-            old(self).wf(original_snapshot@, init@),
+            old(self).wf(),
         ensures
             self.seq() == old(self).seq(),
             self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
-            self.iter.obeys_iter_laws() ==> self.wf(original_snapshot@, init@),
+            self.snapshot == old(self).snapshot,
+            self.init == old(self).init,
+            self.iter.obeys_iter_laws() ==> self.wf(),
             self.iter.obeys_iter_laws() && ret is None ==>
                 self.snapshot@.completes() && self.index@ == self.seq().len(),
             self.iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
