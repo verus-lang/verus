@@ -1,0 +1,5 @@
+[package]
+publish = false
+name = "member-unset"
+version = "0.1.0"
+edition = "2021"

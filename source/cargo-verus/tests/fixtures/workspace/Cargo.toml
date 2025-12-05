@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "member-hasdeps",
+    "member-optin",
+    "member-optout",
+    "member-unset",
+]
