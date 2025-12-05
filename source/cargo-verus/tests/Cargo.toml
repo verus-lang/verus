@@ -9,3 +9,4 @@ name = "fake-cargo"
 path = "src/fake_cargo.rs"
 
 [dev-dependencies]
+assert_cmd = "2.0"

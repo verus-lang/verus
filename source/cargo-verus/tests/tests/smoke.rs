@@ -3,13 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use assert_cmd::cargo::cargo_bin;
+
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf()
 }
 
 fn target_dir() -> PathBuf {
@@ -34,26 +31,13 @@ fn cargo_verus_bin() -> PathBuf {
 }
 
 fn fake_cargo_bin() -> PathBuf {
-    let status = Command::new("cargo")
-        .args(["build", "-p", "cargo-verus-tests", "--bin", "fake-cargo"])
-        .current_dir(workspace_root())
-        .status()
-        .expect("failed to build fake-cargo");
-    assert!(status.success(), "building fake-cargo failed");
-
-    let mut path = target_dir().join("debug").join("fake-cargo");
-    if cfg!(windows) {
-        path.set_extension("exe");
-    }
-    path
+    cargo_bin("fake-cargo")
 }
 
 #[test]
 fn runs_cargo_verus_with_fake_cargo() {
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join("foo")
-        .join("Cargo.toml");
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures").join("foo").join("Cargo.toml");
 
     let mut project_dir = env::temp_dir();
     project_dir.push(format!("cargo-verus-tests-{}", std::process::id()));
@@ -78,8 +62,5 @@ fn runs_cargo_verus_with_fake_cargo() {
         output.status.success(),
         "cargo-verus did not succeed\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
-        stdout.contains("FAKE-CARGO"),
-        "fake-cargo output missing in stdout:\n{stdout}"
-    );
+    assert!(stdout.contains("FAKE-CARGO"), "fake-cargo output missing in stdout:\n{stdout}");
 }
