@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SINGLE_OPTIN: &str = "single-optin";
 pub const SINGLE_OPTOUT: &str = "single-optout";
+pub const SINGLE_UNSET: &str = "single-unset";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 

@@ -1,0 +1,7 @@
+[package]
+publish = false
+name = "single-unset"
+version = "0.1.0"
+edition = "2021"
+
+# No package.metadata.verus settings
