@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SINGLE_CRATE: &str = "single-crate";
@@ -16,13 +16,18 @@ pub struct CargoData {
     pub env: BTreeMap<String, String>,
 }
 
-pub fn run_cargo_verus_with_data_file(setup: impl Fn(&mut Command)) -> (Command, PathBuf) {
-    let data_file = temp_data_file();
+pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> anyhow::Result<(Output, CargoData)> {
+    let data_file = temp_data_file()?;
+
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
     setup(&mut cmd);
     cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
     cmd.env("FAKE_CARGO_DATA_FILE", &data_file);
-    (cmd, data_file)
+    let output = cmd.output()?;
+
+    let cargo_data = read_cargo_data(&data_file)?;
+
+    Ok((output, cargo_data))
 }
 
 pub fn clone_fixture(name: &str) -> PathBuf {
@@ -54,15 +59,15 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn read_cargo_data(path: &Path) -> anyhow::Result<CargoData> {
+fn read_cargo_data(path: &Path) -> anyhow::Result<CargoData> {
     let bytes = fs::read(path)?;
     let data = serde_json::from_slice(&bytes)?;
     Ok(data)
 }
 
-fn temp_data_file() -> PathBuf {
+fn temp_data_file() -> anyhow::Result<PathBuf> {
     let mut path = std::env::temp_dir();
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     path.push(format!("cargo-verus-tests-data-{}-{nanos}.json", std::process::id()));
-    path
+    Ok(path)
 }

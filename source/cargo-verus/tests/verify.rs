@@ -8,15 +8,12 @@ mod utils;
 fn verify_single_crate() -> anyhow::Result<()> {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
-    let (mut cmd, data_file) = utils::run_cargo_verus_with_data_file(|cmd| {
+    let (output, captured) = utils::run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
-    });
-    let output = cmd.output()?;
-    let captured = utils::read_cargo_data(&data_file)?;
+    })?;
 
     assert!(output.status.success());
     assert_eq!(captured.args, vec!["build"]);
-    assert!(captured.env.contains_key("FAKE_CARGO_DATA_FILE"));
 
     Ok(())
 }
@@ -25,12 +22,12 @@ fn verify_single_crate() -> anyhow::Result<()> {
 fn verify_single_crate_explicit_manifest() -> anyhow::Result<()> {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
-    let (mut cmd, data_file) = utils::run_cargo_verus_with_data_file(|cmd| {
+    let manifest_path = project_dir.join("Cargo.toml");
+
+    let (output, captured) = utils::run_cargo_verus(|cmd| {
         cmd.arg("verify");
-        cmd.arg("--manifest-path").arg(project_dir.join("Cargo.toml"));
-    });
-    let output = cmd.output()?;
-    let captured = utils::read_cargo_data(&data_file)?;
+        cmd.arg("--manifest-path").arg(&manifest_path);
+    })?;
 
     assert!(output.status.success());
     assert_eq!(
@@ -38,7 +35,7 @@ fn verify_single_crate_explicit_manifest() -> anyhow::Result<()> {
         vec![
             "build".to_owned(),
             "--manifest-path".to_owned(),
-            project_dir.join("Cargo.toml").to_string_lossy().to_string(),
+            manifest_path.to_string_lossy().to_string(),
         ]
     );
 
