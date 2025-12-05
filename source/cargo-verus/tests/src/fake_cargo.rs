@@ -33,6 +33,7 @@ fn is_subcommand(name: &str) -> bool {
 }
 
 fn write_data(path: &Path, data: &CargoData) {
-    let json = serde_json::to_vec(data).expect("serialize CargoData to JSON");
+    let mut json = serde_json::to_vec(data).expect("serialize CargoData to JSON");
+    json.push(b'\n');
     std::fs::write(path, json).expect(&format!("write CargoData JSON to {:?}", path))
 }

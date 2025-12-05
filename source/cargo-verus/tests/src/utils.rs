@@ -16,17 +16,33 @@ pub struct CargoData {
 }
 
 impl CargoData {
-    pub fn has_env_key(&self, key: &str) -> bool {
-        self.env.contains_key(key)
+    pub fn assert_env_has(&self, key: &str) {
+        assert!(self.env.contains_key(key), "Cargo env MUST have key {}", key);
     }
 
-    pub fn has_env_entry(&self, key: &str, value: &str) -> bool {
-        self.env.get(key).map(String::as_str) == Some(value)
+    pub fn assert_env_sets(&self, key: &str, value: &str) {
+        assert_eq!(
+            self.env.get(key).map(String::as_str),
+            Some(value),
+            "Cargo env MUST have entry {} = {}",
+            key,
+            value,
+        );
+    }
+
+    pub fn assert_env_sets_key_prefix(&self, key_prefix: &str, value: &str) {
+        assert!(
+            self.env.iter().any(|(k, v)| k.starts_with(key_prefix) && v == value),
+            "Cargo env MUST have entry with key prefix {}* = {}",
+            key_prefix,
+            value,
+        );
     }
 }
 
 pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) {
     let data_file = temp_data_file();
+    println!("Capturing CargoData to {}", data_file.to_string_lossy());
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
     setup(&mut cmd);
@@ -37,12 +53,6 @@ pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) 
     let cargo_data = read_cargo_data(&data_file);
 
     (status, cargo_data)
-}
-
-pub fn assert_verus_command_env(data: &CargoData) {
-    assert!(data.has_env_entry("__CARGO_DEFAULT_LIB_METADATA", "verus"));
-    assert!(data.has_env_entry("__VERUS_DRIVER_VIA_CARGO__", "1"));
-    assert!(data.has_env_key("RUSTC_WRAPPER"));
 }
 
 pub fn clone_fixture(name: &str) -> PathBuf {
