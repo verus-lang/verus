@@ -1,6 +1,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub const SINGLE_CRATE: &str = "single-crate";
 
@@ -33,4 +34,14 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn run_cargo_verus_verify(manifest_path: &Path) -> std::process::Output {
+    Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"))
+        .arg("verify")
+        .arg("--manifest-path")
+        .arg(manifest_path)
+        .env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"))
+        .output()
+        .expect("failed to run cargo-verus")
 }
