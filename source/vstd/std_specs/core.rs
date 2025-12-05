@@ -103,6 +103,21 @@ pub trait ExMetaSized {
     type ExternalTraitSpecificationFor: core::marker::MetaSized;
 }
 
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(DefaultSpec via DefaultSpecImpl)]
+pub trait ExDefault: Sized {
+    type ExternalTraitSpecificationFor: core::default::Default;
+
+    spec fn obeys_default_spec() -> bool;
+
+    spec fn default_spec() -> Self;
+
+    fn default() -> (r: Self)
+        ensures
+            Self::obeys_default_spec() ==> r == Self::default_spec(),
+    ;
+}
+
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
@@ -211,3 +226,35 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 pub struct ExAssertParamIsClone<T: Clone + PointeeSized>(core::clone::AssertParamIsClone<T>);
+
+macro_rules! impl_default_spec {
+    ($t:ty, $default_value:expr) => {
+        verus_! {
+            pub assume_specification [ <$t as core::default::Default>::default ]() -> (r: $t);
+
+            impl DefaultSpecImpl for $t {
+                open spec fn obeys_default_spec() -> bool {
+                    true
+                }
+
+                open spec fn default_spec() -> Self {
+                    $default_value
+                }
+            }
+        }
+    };
+}
+
+impl_default_spec!(u8, 0u8);
+impl_default_spec!(u16, 0u16);
+impl_default_spec!(u32, 0u32);
+impl_default_spec!(u64, 0u64);
+impl_default_spec!(u128, 0u128);
+impl_default_spec!(usize, 0usize);
+impl_default_spec!(i8, 0i8);
+impl_default_spec!(i16, 0i16);
+impl_default_spec!(i32, 0i32);
+impl_default_spec!(i64, 0i64);
+impl_default_spec!(i128, 0i128);
+impl_default_spec!(isize, 0isize);
+impl_default_spec!(bool, false);
