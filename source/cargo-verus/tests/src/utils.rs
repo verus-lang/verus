@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, ExitStatus};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SINGLE_CRATE: &str = "single-crate";
@@ -15,18 +15,18 @@ pub struct CargoData {
     pub env: BTreeMap<String, String>,
 }
 
-pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (Output, CargoData) {
+pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) {
     let data_file = temp_data_file();
 
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
     setup(&mut cmd);
     cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
     cmd.env("FAKE_CARGO_DATA_FILE", &data_file);
-    let output = cmd.output().expect("run cargo-verus and get output");
+    let status = cmd.status().expect("run cargo-verus and get output");
 
     let cargo_data = read_cargo_data(&data_file);
 
-    (output, cargo_data)
+    (status, cargo_data)
 }
 
 pub fn clone_fixture(name: &str) -> PathBuf {
