@@ -804,6 +804,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| place_new(PlaceX::ModeUnwrap(R::get(p), *mode)))
             }
+            PlaceX::WithExpr(e, p) => {
+                let e = self.visit_expr(e)?;
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::WithExpr(R::get(e), R::get(p))))
+            }
         }
     }
 
