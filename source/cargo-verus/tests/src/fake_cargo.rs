@@ -16,13 +16,7 @@ fn main() {
             .status()
             .expect("run real cargo");
 
-        match status.code() {
-            Some(code) => std::process::exit(code),
-            None => {
-                // terminated by signal on Unix; pick a nonzero exit
-                std::process::exit(1);
-            }
-        }
+        std::process::exit(status.code().unwrap_or(1));
     }
 
     let path = std::env::var_os("FAKE_CARGO_DATA_FILE").expect("read env var FAKE_CARGO_DATA_FILE");
