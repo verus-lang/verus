@@ -9,7 +9,7 @@ use utils::*;
 #[test]
 fn crate_optin_workdir() {
     let project_dir = clone_fixture(CRATE_OPTIN);
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", CRATE_OPTIN);
+    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{CRATE_OPTIN}-0.1.0-");
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -28,7 +28,7 @@ fn crate_optin_workdir() {
 #[test]
 fn crate_optin_manifest() {
     let project_dir = clone_fixture(CRATE_OPTIN);
-    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", CRATE_OPTIN);
+    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{CRATE_OPTIN}-0.1.0-");
     let manifest_path = project_dir.join("Cargo.toml");
 
     let (status, data) = run_cargo_verus(|cmd| {
@@ -134,10 +134,10 @@ fn crate_unset_manifest() {
 #[test]
 fn workspace_workdir() {
     let project_dir = clone_fixture("workspace");
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_OPTIN);
-    let verify_with_deps_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_WITH_DEPS);
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_OPTOUT);
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_UNSET);
+    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_OPTIN}-0.1.0-");
+    let verify_with_deps_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_WITH_DEPS}-0.1.0-");
+    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_OPTOUT}-0.1.0-");
+    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_UNSET}-0.1.0-");
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
@@ -159,10 +159,10 @@ fn workspace_workdir() {
 fn workspace_manifest() {
     let project_dir = clone_fixture("workspace");
     let manifest_path = project_dir.join("Cargo.toml");
-    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_OPTIN);
-    let verify_with_deps_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_WITH_DEPS);
-    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_OPTOUT);
-    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{}-0.1.0-", MEMBER_UNSET);
+    let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_OPTIN}-0.1.0-");
+    let verify_with_deps_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_WITH_DEPS}-0.1.0-");
+    let verify_optout_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_OPTOUT}-0.1.0-");
+    let verify_unset_prefix = format!("__VERUS_DRIVER_VERIFY_{MEMBER_UNSET}-0.1.0-");
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.arg("verify");
