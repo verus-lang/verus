@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+integration-tests = []
+
 [[bin]]
 name = "fake-cargo"
 path = "src/fake_cargo.rs"
+required-features = ["integration-tests"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
