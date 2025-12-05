@@ -6,11 +6,9 @@ compile_error!("enable the `integration-tests` feature to run these tests");
 #[path = "src/utils.rs"]
 mod utils;
 
-const FIXTURE_NAME: &str = "foo";
-
 #[test]
 fn runs_cargo_verus_with_fake_cargo() {
-    let project_dir = utils::clone_fixture(FIXTURE_NAME);
+    let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
     let output = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"))
         .arg("verify")

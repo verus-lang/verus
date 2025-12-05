@@ -1,6 +1,9 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+pub const SINGLE_CRATE: &str = "single-crate";
+
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
 pub fn clone_fixture(name: &str) -> PathBuf {
