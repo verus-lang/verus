@@ -3,8 +3,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-use assert_cmd::cargo::cargo_bin;
-
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf()
 }
@@ -31,7 +29,7 @@ fn cargo_verus_bin() -> PathBuf {
 }
 
 fn fake_cargo_bin() -> PathBuf {
-    cargo_bin("fake-cargo")
+    assert_cmd::cargo::cargo_bin!("fake-cargo").to_path_buf()
 }
 
 #[test]
