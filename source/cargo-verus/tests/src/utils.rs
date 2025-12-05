@@ -36,12 +36,8 @@ fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn run_cargo_verus_verify(manifest_path: &Path) -> std::process::Output {
-    Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"))
-        .arg("verify")
-        .arg("--manifest-path")
-        .arg(manifest_path)
-        .env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"))
-        .output()
-        .expect("failed to run cargo-verus")
+pub fn run_cargo_verus() -> Command {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"));
+    cmd.env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"));
+    cmd
 }
