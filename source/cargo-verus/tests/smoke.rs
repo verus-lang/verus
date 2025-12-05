@@ -6,39 +6,17 @@ use std::process::Command;
 #[cfg(not(feature = "integration-tests"))]
 compile_error!("enable the `integration-tests` feature to run these tests");
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().to_path_buf()
-}
-
-fn target_dir() -> PathBuf {
-    env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| workspace_root().join("target"))
-}
-
-fn cargo_verus_bin() -> PathBuf {
-    let status = Command::new("cargo")
-        .args(["build", "-p", "cargo-verus"])
-        .current_dir(workspace_root())
-        .status()
-        .expect("failed to build cargo-verus");
-    assert!(status.success(), "building cargo-verus failed");
-
-    let mut path = target_dir().join("debug").join("cargo-verus");
-    if cfg!(windows) {
-        path.set_extension("exe");
-    }
-    path
-}
-
-fn fake_cargo_bin() -> PathBuf {
-    assert_cmd::cargo::cargo_bin!("fake-cargo").to_path_buf()
+fn fixture_manifest() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("foo")
+        .join("Cargo.toml")
 }
 
 #[test]
 fn runs_cargo_verus_with_fake_cargo() {
-    let fixture =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures").join("foo").join("Cargo.toml");
+    let fixture = fixture_manifest();
 
     let mut project_dir = env::temp_dir();
     project_dir.push(format!("cargo-verus-tests-{}", std::process::id()));
@@ -48,11 +26,11 @@ fn runs_cargo_verus_with_fake_cargo() {
     fs::write(project_dir.join("src").join("main.rs"), "fn main() {}\n")
         .expect("failed to write temp main.rs");
 
-    let output = Command::new(cargo_verus_bin())
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("cargo-verus"))
         .arg("verify")
         .arg("--manifest-path")
         .arg(project_dir.join("Cargo.toml"))
-        .env("CARGO", fake_cargo_bin())
+        .env("CARGO", assert_cmd::cargo::cargo_bin!("fake-cargo"))
         .output()
         .expect("failed to run cargo-verus");
 

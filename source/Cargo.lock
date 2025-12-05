@@ -251,6 +251,7 @@ name = "cargo-verus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "cargo_metadata",
  "colored",
  "hex",
@@ -258,13 +259,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
-]
-
-[[package]]
-name = "cargo-verus-tests"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
 ]
 
 [[package]]
