@@ -1,6 +1,6 @@
 [package]
 publish = false
-name = "member-with-deps"
+name = "member-hasdeps"
 version = "0.1.0"
 edition = "2021"
 
