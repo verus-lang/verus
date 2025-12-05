@@ -2,29 +2,35 @@
 
 ## Basic atomic operations
 
-There are many atomic types in the verus standard library (vstd), we are using the [`vstd::atomic::PAtomicU32`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PAtomicU32.html) (**P**ermission **Atomic** **U**nsigned **32**-bit integer) for this comparison.
+There are many atomic types in the verus standard library (vstd), we are using the [`vstd::atomic::PAtomicU64`](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/struct.PAtomicU64.html) (**P**ermission **Atomic** **U**nsigned **64**-bit integer) for this comparison.
 
 The most notable differences are:
 - Iris conflates atomic variables and pointers, whereas in Verus they're separate datatypes.
 - Verus treats resources and logical statements separately; Resources are part of the function signature and checked by the Rust borrow checker, and logical statements live in the `requires` and `ensures` clauses and are checked by the Z3 SMT solver.
+- Verus uses the "forward reasoning" rules, whereas Iris typically uses "backwards reasoning" rules.
 - Verus makes heavy use of borrowing when managing resources, which doesn't exist in Iris.
+    - If a resource appears in the input and output unchanged, we can borrow it immutably (see atomic load).
+    - If the resource it changed, we can borrow it mutably (see atomic store).
+    - Verus has an `old` function to refer to the previous value of a mutable reference.
 
 ### New atomic
 
 $$
+\text{Iris:}\quad
 \rhd(\forall l.\ l \mapsto v \mathop{-\!*} Q(l))\
 \vdash\text{wp}\ \text{new}(v)\
 \{\ w. Q(w)\ \}
 $$
 
 $$
+\text{Fwd. reason.:}\quad
 \{\,\top\,\}\
 l = \text{new}(v)\
 \{\,l \mapsto v\,\}
 $$
 
 ```rs
-fn new(v: u32) -> res : (PAtomicU32, Tracked<PermissionU32>)
+fn new(v: u32) -> res : (PAtomicU64, Tracked<PermissionU64>)
     ensures
         res.1.patomic == res.0.id(),
         res.1.value == v,
@@ -33,19 +39,21 @@ fn new(v: u32) -> res : (PAtomicU32, Tracked<PermissionU32>)
 ### Atomic load
 
 $$
+\text{Iris:}\quad
 l\mapsto v\ast\rhd(l\mapsto v \mathop{-\!*} Q(v))\
 \vdash\text{wp}\ !\,l\
 \{\ w. Q(w)\ \}
 $$
 
 $$
+\text{Fwd. reason.:}\quad
 \{\,l\mapsto v\,\}\
 v =\ !\,l\
 \{\,l\mapsto v\,\}
 $$
 
 ```rs
-fn load(&self, perm: Tracked<&PermissionU32>) -> ret : u32
+fn load(&self, perm: Tracked<&PermissionU64>) -> ret : u32
     requires
         self.id() == perm.patomic,
     ensures
@@ -55,19 +63,21 @@ fn load(&self, perm: Tracked<&PermissionU32>) -> ret : u32
 ### Atomic store
 
 $$
+\text{Iris:}\quad
 l\mapsto v\ast\rhd(l \mapsto w \mathop{-\!*} Q())\
 \vdash\text{wp}\ l\gets w\
 \{\ w. Q(w)\ \}
 $$
 
 $$
+\text{Fwd. reason.:}\quad
 \{\,l\mapsto v\,\}\
 l\gets w\
 \{\,l\mapsto w\,\}
 $$
 
 ```rs
-fn store(&self, perm: Tracked<&mut PermissionU32>, w: u32)
+fn store(&self, perm: Tracked<&mut PermissionU64>, w: u32)
     requires
         self.id() == old(perm).patomic,
     ensures
@@ -97,7 +107,7 @@ $$
 ```rs
 fn compare_exchange(
     &self,
-    perm: Tracked<&mut PermissionU32>,
+    perm: Tracked<&mut PermissionU64>,
     curr: u32,
     new: u32,
 ) -> ret : Result<u32, u32>
@@ -126,8 +136,13 @@ Atomic invariants are represented using the [`vstd::invariant::AtomicInvariant`]
 
 The type `AtomicInvariant<K, V, Pred>` has three type parameters:
 - `K` the constant part of the invariant
+    - This is set when the invariant is allocated and cannot change afterwards
+    - Only accessible through spec function, i.e. cannot meaningfully contain resources
 - `V` the value of the invariant
-- `Pred` the predicate
+    - You temporarily get full ownership of this value when opening an invariant
+    - This is where resources live in the invariant
+    - Value can change when invariant is opened if insufficiantly restricted by `inv` predicate
+- `Pred` the predicate type implements the trait `InvariantPredicate<K, V>` below
 
 ```rs
 pub trait InvariantPredicate<K, V> {
@@ -170,24 +185,28 @@ $$
 }
 $$
 
-```rs
-open_atomic_invariant!(&atom_inv => v => {
-    // assume atom_inv.inv(v)
-    ...
-    // assert atom_inv.inv(v)
-});
-```
-
-In proof mode, we do need to worry about the later modality:
+Opening an invariant requires later credits:
 
 ```rs
 let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
 
 proof {
     open_atomic_invariant_in_proof!(credit => &atom_inv => v => {
+        // assume atom_inv.inv(v)
         ...
+        // assert atom_inv.inv(v)
     });
 }
+```
+
+In `exec` mode, creating later credits is trivial, so the user is allowed to omit them:
+
+```rs
+open_atomic_invariant!(&atom_inv => v => {
+    // assume atom_inv.inv(v)
+    ...
+    // assert atom_inv.inv(v)
+});
 ```
 
 ## Logical Atomicity
@@ -197,8 +216,6 @@ pub struct AtomicUpdate<X, Y, Pred> { ... }
 
 impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     pub uninterp spec fn resolves(self) -> bool;
-    pub uninterp spec fn input(self) -> X;
-    pub uninterp spec fn output(self) -> Y;
 }
 
 pub trait UpdatePredicate<X, Y> {
@@ -213,9 +230,9 @@ pub trait UpdatePredicate<X, Y> {
 ### Atomic specification
 
 $$
-\lang P \rang \{ P' \}
+\langle P \rangle \{ P' \}
 \;e\;
-\lang Q \rang \{ Q' \}
+\langle Q \rangle \{ Q' \}
 ^{Eo}_{Ei}
 $$
 
@@ -247,7 +264,7 @@ fn function(px: Px) -> (py: Py)
 - `private_post_condition`: return value (`py: Py`)
 - each predicate can "see" all previous values/resources
 
-The masks `outer_mask` and `inner_mask` are copied 1:1 of $Eo$ and $Ei$ in Iris
+The masks `outer_mask` and `inner_mask` are 1:1 copies of $Eo$ and $Ei$ in Iris
 - `outer_mask` ($Eo$) restricts where the AU can be **constructed**
 - `inner_mask` ($Ei$) restricts where the AU can be **opened**
 - An atomic update with $Ei ⊈ Eo$ can not be constructed
@@ -272,6 +289,12 @@ We think of the atomic update as a function `Ax -> Ay`
     - when constructing the $AU$, you are given $P(x)$ and you produce either $P(x)$ or $Q(x, y)$
     - the abort case $(P(x)\mathop{-\!*}~^{Ei}{|\mskip-8mu\Rrightarrow}^{Eo}U)$ may defer the commit indefinitely due to greatest fixpoint ($\nu$)
     - the commit case $(\forall y.\ Q(x, y)\mathop{-\!*}~^{Ei}{|\mskip-8mu\Rrightarrow}^{Eo}\phi(y))$ resolves the atomic update
+
+In Iris, we are forced to resolve the atomic update eventually since we need the $\phi(y)$ to finish the proof of the weakest precondition.
+In Verus, we artificially force the user to resolve the AU using the `resolves` predicate.
+- `AtomicUpdate::resolves` is an uninterpreted spec function, from atomic updates to `bool`
+- It behaves like a prophesy variable, initially the value of the function is unknown, and we learn that the function evaluates to `true` when the atomic update is opened and resolved.
+- The user must prove that `au.resolves()` at the end of the logically atomic function.
 
 ### Atomic function call
 
@@ -323,9 +346,9 @@ Iris/Heaplang:
 $$
 \large
 \begin{align*}
-    \text{rec}~inc(x) =\ &\text{let}~v=\ !x \\
-    &\text{if}~\text{CAS}(x, v, v+1)~\text{then}~v \\
-    &\text{else}~inc(x)
+    \text{rec}\ inc(x) =\ &\text{let}\ v=\ !x \\
+    &\text{if}\ \text{CAS}(x, v, v+1)\ \text{then}\ v \\
+    &\text{else}\ inc(x)
 \end{align*}
 $$
 
