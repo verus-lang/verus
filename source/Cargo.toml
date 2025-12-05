@@ -5,6 +5,7 @@ members = [
   "builtin",
   "builtin_macros",
   "cargo-verus",
+  "cargo-verus/tests",
   "vir",
   "vir_macros",
   "rust_verify",

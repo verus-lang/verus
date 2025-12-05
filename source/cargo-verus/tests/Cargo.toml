@@ -1,0 +1,11 @@
+[package]
+name = "cargo-verus-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "fake-cargo"
+path = "src/fake_cargo.rs"
+
+[dev-dependencies]

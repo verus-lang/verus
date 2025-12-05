@@ -229,6 +229,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-verus-tests"
+version = "0.1.0"
+
+[[package]]
 name = "cargo_metadata"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
