@@ -15,6 +15,16 @@ pub struct CargoData {
     pub env: BTreeMap<String, String>,
 }
 
+impl CargoData {
+    pub fn has_env_key(&self, key: &str) -> bool {
+        self.env.contains_key(key)
+    }
+
+    pub fn has_env_entry(&self, key: &str, value: &str) -> bool {
+        self.env.get(key).map(String::as_str) == Some(value)
+    }
+}
+
 pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) {
     let data_file = temp_data_file();
 
@@ -30,20 +40,9 @@ pub fn run_cargo_verus(setup: impl Fn(&mut Command)) -> (ExitStatus, CargoData) 
 }
 
 pub fn assert_verus_command_env(data: &CargoData) {
-    assert_eq!(
-        data.env.get("__CARGO_DEFAULT_LIB_METADATA").map(String::as_str),
-        Some("verus"),
-        "expected __CARGO_DEFAULT_LIB_METADATA to be set for verus builds"
-    );
-    assert_eq!(
-        data.env.get("__VERUS_DRIVER_VIA_CARGO__").map(String::as_str),
-        Some("1"),
-        "expected __VERUS_DRIVER_VIA_CARGO__=1"
-    );
-    assert!(
-        data.env.contains_key("RUSTC_WRAPPER"),
-        "RUSTC_WRAPPER should point to the verus driver"
-    );
+    assert!(data.has_env_entry("__CARGO_DEFAULT_LIB_METADATA", "verus"));
+    assert!(data.has_env_entry("__VERUS_DRIVER_VIA_CARGO__", "1"));
+    assert!(data.has_env_key("RUSTC_WRAPPER"));
 }
 
 pub fn clone_fixture(name: &str) -> PathBuf {

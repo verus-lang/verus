@@ -1,5 +1,5 @@
 #[cfg(not(feature = "integration-tests"))]
-compile_error!("enable the `integration-tests` feature to run these tests");
+compile_error!("Enable the `integration-tests` feature to run these tests.");
 
 #[path = "src/utils.rs"]
 mod utils;
@@ -9,15 +9,15 @@ use utils::assert_verus_command_env;
 fn verify_single_crate() {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
-    let (status, captured) = utils::run_cargo_verus(|cmd| {
+    let (status, data) = utils::run_cargo_verus(|cmd| {
         cmd.current_dir(&project_dir).arg("verify");
     });
 
     assert!(status.success());
-    assert_eq!(captured.args, vec!["build"]);
-    assert_verus_command_env(&captured);
+    assert_eq!(data.args, vec!["build"]);
+    assert_verus_command_env(&data);
     assert!(
-        captured.env.keys().any(|k| k.starts_with("__VERUS_DRIVER_VERIFY_")),
+        data.env.keys().any(|k| k.starts_with("__VERUS_DRIVER_VERIFY_")),
         "expected a __VERUS_DRIVER_VERIFY_* flag for verifying the package"
     );
 }
