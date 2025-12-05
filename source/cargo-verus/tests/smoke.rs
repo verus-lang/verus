@@ -6,7 +6,8 @@ use std::process::Command;
 #[cfg(not(feature = "integration-tests"))]
 compile_error!("enable the `integration-tests` feature to run these tests");
 
-const FIXTURE_MANIFEST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/foo/Cargo.toml");
+const FIXTURE_MANIFEST: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/foo/Cargo.toml");
 
 #[test]
 fn runs_cargo_verus_with_fake_cargo() {
