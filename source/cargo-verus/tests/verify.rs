@@ -5,7 +5,7 @@ compile_error!("enable the `integration-tests` feature to run these tests");
 mod utils;
 
 #[test]
-fn runs_cargo_verus_with_fake_cargo() {
+fn verify_single_crate() {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
     let output = utils::run_cargo_verus()
