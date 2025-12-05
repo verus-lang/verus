@@ -28,8 +28,6 @@ fn for_loop_test_vec() {
     //
     // Into:
     let init = Ghost(Some(&vec_iter_spec(&v)));
-// TODO
-assume(init@.get_Some_0().elts() == v@);
     let iter = VerusForLoopIterator::new(vec_iter(&v), init);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
@@ -40,7 +38,7 @@ assume(init@.get_Some_0().elts() == v@);
                     y.iter.decrease() is Some,
                 invariant
                     y.snapshot == VERUS_old_snap,
-                    y.init == init@,
+                    y.init == Ghost(Some(&vec_iter_spec(&v))),
                     y.wf(),
                     ({ 
                       // Grab the next val for (possible) use in inv
@@ -85,6 +83,8 @@ assume(init@.get_Some_0().elts() == v@);
                     if i < w.len() - 1 {
                         assert(w[i] == v[i]);
                     } else {
+// TODO: Add a broadcast proof?  This would ideally be an ensures on vec_iter_spec
+assume(vec_iter_spec(&v).elts() == v@);
                         // assert(y.init@ matches Some(i) && i.elts() == y.snapshot@.elts());
                         // assert(y.init@ matches Some(i) && i.elts()[y.index@ - 1] == y.snapshot@.elts()[y.index@ - 1]);
 

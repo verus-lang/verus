@@ -185,8 +185,11 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
         iter.back() == v.len(),
         iter.elts() == v@,
         iter.decrease() is Some,
+        iter.initial_value_inv(Some(&vec_iter_spec(v))),
 {
-    VecIterator { v: v, i: 0, j: v.len() }
+    let i = VecIterator { v: v, i: 0, j: v.len() };
+    assert(i.elts() == i.seq().map_values(|v: &T| *v));     // OBSERVE
+    i
 }
 
 impl<'a, T> Iterator for VecIterator<'a, T> {
