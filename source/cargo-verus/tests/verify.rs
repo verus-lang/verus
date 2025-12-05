@@ -8,15 +8,15 @@ mod utils;
 fn verify_single_crate() -> anyhow::Result<()> {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
-    let output = utils::run_cargo_verus().current_dir(project_dir).arg("verify").output()?;
-    let stdout = String::from_utf8(output.stdout)?;
-    let stderr = String::from_utf8(output.stderr)?;
+    let (mut cmd, data_file) = utils::run_cargo_verus_with_data_file(|cmd| {
+        cmd.current_dir(&project_dir).arg("verify");
+    });
+    let output = cmd.output()?;
+    let captured = utils::read_cargo_data(&data_file)?;
 
-    assert!(
-        output.status.success(),
-        "cargo-verus did not succeed\nstdout:\n{stdout}\nstderr:\n{stderr}"
-    );
-    assert!(stdout.contains("FAKE-CARGO"), "fake-cargo output missing in stdout:\n{stdout}");
+    assert!(output.status.success());
+    assert_eq!(captured.args, vec!["build"]);
+    assert!(captured.env.contains_key("FAKE_CARGO_DATA_FILE"));
 
     Ok(())
 }
@@ -25,19 +25,22 @@ fn verify_single_crate() -> anyhow::Result<()> {
 fn verify_single_crate_explicit_manifest() -> anyhow::Result<()> {
     let project_dir = utils::clone_fixture(utils::SINGLE_CRATE);
 
-    let output = utils::run_cargo_verus()
-        .arg("verify")
-        .arg("--manifest-path")
-        .arg(project_dir.join("Cargo.toml"))
-        .output()?;
-    let stdout = String::from_utf8(output.stdout)?;
-    let stderr = String::from_utf8(output.stderr)?;
+    let (mut cmd, data_file) = utils::run_cargo_verus_with_data_file(|cmd| {
+        cmd.arg("verify");
+        cmd.arg("--manifest-path").arg(project_dir.join("Cargo.toml"));
+    });
+    let output = cmd.output()?;
+    let captured = utils::read_cargo_data(&data_file)?;
 
-    assert!(
-        output.status.success(),
-        "cargo-verus did not succeed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    assert!(output.status.success());
+    assert_eq!(
+        captured.args,
+        vec![
+            "build".to_owned(),
+            "--manifest-path".to_owned(),
+            project_dir.join("Cargo.toml").to_string_lossy().to_string(),
+        ]
     );
-    assert!(stdout.contains("FAKE-CARGO"), "fake-cargo output missing in stdout:\n{stdout}");
 
     Ok(())
 }
