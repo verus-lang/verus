@@ -42,7 +42,7 @@ impl CargoData {
 
     pub fn assert_env_has_no_key_prefix(&self, key_prefix: &str) {
         assert!(
-            !self.env.iter().any(|(k, v)| k.starts_with(key_prefix)),
+            !self.env.keys().any(|k| k.starts_with(key_prefix)),
             "Cargo env MUST NOT have a key with prefix {}*",
             key_prefix,
         );
