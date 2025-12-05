@@ -10,20 +10,17 @@ struct CargoData {
 }
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    if let Some(command) = args.next() {
-        if command == "metadata" {
-            let status = std::process::Command::new("cargo")
-                .args(std::env::args().skip(1))
-                .status()
-                .expect("run real cargo");
+    if is_subcommand("metadata") {
+        let status = std::process::Command::new("cargo")
+            .args(std::env::args().skip(1))
+            .status()
+            .expect("run real cargo");
 
-            match status.code() {
-                Some(code) => std::process::exit(code),
-                None => {
-                    // terminated by signal on Unix; pick a nonzero exit
-                    std::process::exit(1);
-                }
+        match status.code() {
+            Some(code) => std::process::exit(code),
+            None => {
+                // terminated by signal on Unix; pick a nonzero exit
+                std::process::exit(1);
             }
         }
     }
@@ -32,6 +29,13 @@ fn main() {
     let data =
         CargoData { args: std::env::args().skip(1).collect(), env: std::env::vars().collect() };
     write_data(Path::new(&path), &data);
+}
+
+fn is_subcommand(name: &str) -> bool {
+    match std::env::args().skip(1).next() {
+        Some(command) => command == name,
+        None => false,
+    }
 }
 
 fn write_data(path: &Path, data: &CargoData) {
