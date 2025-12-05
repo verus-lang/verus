@@ -317,6 +317,17 @@ pub broadcast axiom fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int
         #[trigger] s.push(a)[i] == s[i],
 ;
 
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        (#[trigger] s.push(a))[i] == #[trigger] s[i],
+{
+    broadcast use axiom_seq_push_index_different;
+
+}
+
 pub broadcast axiom fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
@@ -331,6 +342,18 @@ pub broadcast axiom fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
         #[trigger] s.update(i, a)[i] == a,
 ;
 
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
+    requires
+        0 <= i < s.len(),
+    ensures
+        #![trigger s.update(i, a), s[i]]
+        s.update(i, a)[i] == a,
+{
+    broadcast use axiom_seq_update_same;
+
+}
+
 pub broadcast axiom fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         0 <= i1 < s.len(),
@@ -339,6 +362,19 @@ pub broadcast axiom fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int
     ensures
         #[trigger] s.update(i2, a)[i1] == s[i1],
 ;
+
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_update_different_alt<A>(s: Seq<A>, i1: int, i2: int, a: A)
+    requires
+        0 <= i1 < s.len(),
+        0 <= i2 < s.len(),
+        i1 != i2,
+    ensures
+        (#[trigger] s.update(i2, a))[i1] == #[trigger] s[i1],
+{
+    broadcast use axiom_seq_update_different;
+
+}
 
 pub broadcast axiom fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
@@ -371,6 +407,32 @@ pub broadcast axiom fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
         #[trigger] s.subrange(j, k)[i] == s[i + j],
 ;
 
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_subrange_index_alt<A>(s: Seq<A>, j: int, k: int, i: int)
+    requires
+        0 <= j <= k <= s.len(),
+        0 <= i - j < k - j,
+    ensures
+        (#[trigger] s.subrange(j, k))[i - j] == #[trigger] s[i],
+{
+    broadcast use axiom_seq_subrange_index;
+
+}
+
+// Less expensive, more limited alternative to lemma_seq_subrange_index_alt
+pub broadcast proof fn lemma_seq_two_subranges_index<A>(s: Seq<A>, j: int, k1: int, k2: int, i: int)
+    requires
+        0 <= j <= k1 <= s.len(),
+        0 <= j <= k2 <= s.len(),
+        0 <= i < k1 - j,
+        0 <= i < k2 - j,
+    ensures
+        #[trigger] s.subrange(j, k1)[i] == (#[trigger] s.subrange(j, k2))[i],
+{
+    broadcast use axiom_seq_subrange_index;
+
+}
+
 pub broadcast axiom fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
@@ -390,6 +452,28 @@ pub broadcast axiom fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
         #[trigger] s1.add(s2)[i] == s2[i - s1.len()],
 ;
 
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_add_index1_alt<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+    requires
+        0 <= i < s1.len(),
+    ensures
+        (#[trigger] s1.add(s2))[i] == #[trigger] s1[i],
+{
+    broadcast use axiom_seq_add_index1;
+
+}
+
+// Expensive lemma; not in the default broadcast group
+pub broadcast proof fn lemma_seq_add_index2_alt<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+    requires
+        0 <= i < s2.len(),
+    ensures
+        (#[trigger] s1.add(s2))[i + s1.len()] == #[trigger] s2[i],
+{
+    broadcast use axiom_seq_add_index2;
+
+}
+
 pub broadcast group group_seq_axioms {
     axiom_seq_index_decreases,
     axiom_seq_subrange_decreases,
@@ -406,9 +490,20 @@ pub broadcast group group_seq_axioms {
     axiom_seq_ext_equal_deep,
     axiom_seq_subrange_len,
     axiom_seq_subrange_index,
+    lemma_seq_two_subranges_index,
     axiom_seq_add_len,
     axiom_seq_add_index1,
     axiom_seq_add_index2,
+}
+
+// Expensive lemmas not in the default group (may slow down verification)
+pub broadcast group group_seq_lemmas_expensive {
+    lemma_seq_push_index_different_alt,
+    lemma_seq_update_same_alt,
+    lemma_seq_update_different_alt,
+    lemma_seq_subrange_index_alt,
+    lemma_seq_add_index1_alt,
+    lemma_seq_add_index2_alt,
 }
 
 // ------------- Macros ---------------- //

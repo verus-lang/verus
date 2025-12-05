@@ -1569,3 +1569,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] loop_via_subrange verus_code! {
+        use vstd::prelude::*;
+        fn test_subrange(src: &Vec<u32>, dst: &mut Vec<u32>, lo: usize, hi: usize)
+            requires
+                lo <= hi,
+                hi <= src.len(),
+                hi <= old(dst).len(),
+            ensures
+                src@.subrange(lo as int, hi as int) == dst@.subrange(lo as int, hi as int),
+        {
+            for n in lo..hi
+                invariant
+                    lo <= hi,
+                    hi <= src.len(),
+                    hi <= dst.len(),
+                    src@.subrange(lo as int, n as int) =~= dst@.subrange(lo as int, n as int),
+            {
+                dst[n] = src[n];
+            }
+        }
+    } => Ok(())
+}
