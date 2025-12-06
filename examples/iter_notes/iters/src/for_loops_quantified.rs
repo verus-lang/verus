@@ -25,6 +25,8 @@ fn for_loop_test_vec() {
     //         // v2
     //         forall |i| 0 <= i < w.len() ==> w[i] == v[i],
     // {
+    //     assert(w.len() == y.index@);
+    //     assert(w@ == v@.take(y.index@));
     //     w.push(x);
     //     count += 1;
     // }
@@ -60,13 +62,13 @@ fn for_loop_test_vec() {
                     }),
                 ensures
                     // REVIEW: This works, but only if we don't allow `break`s inside a for loop.
-                    //         It appears that may be the case, although the error messages are confusing.
+                    //         See loop_break.rs for the proposed plan.
                     y.snapshot@.completes(),        // AUTO
                     y.index == y.seq().len(), // AUTO
                 decreases
                     y.iter.decrease(),
             {
-                let ghost old_y = y;
+                let ghost VERUS_OLD_y = y;
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
                 match y.next() {
@@ -76,9 +78,13 @@ fn for_loop_test_vec() {
                     }
                 }
                 let x = VERUS_loop_next;
+                // We only let the user-provided body access an immutable ghost version of the iterator
+                // We use the "old" version, so that the index lines up with the loop invariant
+                let ghost y = VERUS_OLD_y;
                 let () = {
                     // body
-                    assert(w.len() == y.index@ - 1);
+                    assert(w.len() == y.index@);
+                    assert(w@ == v@.take(y.index@));
                     w.push(*x);
                     count += 1;
                 };
