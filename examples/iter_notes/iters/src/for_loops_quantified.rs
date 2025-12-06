@@ -5,7 +5,7 @@ use crate::prophetic_iters::iterator_traits::*;
 
 verus!{
 
-broadcast use group_decrease_axioms;
+broadcast use {group_decrease_axioms, group_iterator_specs};
 
 fn for_loop_test_vec() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -18,9 +18,12 @@ fn for_loop_test_vec() {
     //
     // for x in y: v 
     //     invariant
-    //         w.len() == y.index,
-    //         forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
     //         count == w.len() <= u64::MAX,
+    //         w.len() == y.index,
+    //         // v1
+    //         forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+    //         // v2
+    //         forall |i| 0 <= i < w.len() ==> w[i] == v[i],
     // {
     //     w.push(x);
     //     count += 1;
@@ -45,8 +48,8 @@ fn for_loop_test_vec() {
                       let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
 
                       // User inv 1
-                      w.len() == y.index &&
-                      (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]) &&
+                    //   w.len() == y.index &&
+                    //   (forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i]) &&
 
                       // User inv 2
                       w.len() == y.index &&
@@ -78,23 +81,6 @@ fn for_loop_test_vec() {
                     assert(w.len() == y.index@ - 1);
                     w.push(*x);
                     count += 1;
-                };
-                assert forall|i| 0 <= i < w.len() implies w[i] == v[i] by {
-                    if i < w.len() - 1 {
-                        assert(w[i] == v[i]);
-                    } else {
-// TODO: Add a broadcast proof?  This would ideally be an ensures on vec_iter_spec
-assume(vec_iter_spec(&v).elts() == v@);
-                        // assert(y.init@ matches Some(i) && i.elts() == y.snapshot@.elts());
-                        // assert(y.init@ matches Some(i) && i.elts()[y.index@ - 1] == y.snapshot@.elts()[y.index@ - 1]);
-
-                        assert(y.init@ matches Some(i) && i.elts() == v@);
-                        assert(y.init@ matches Some(i) && *x == i.elts()[y.index@ - 1]);
-                        assert(*x == y.snapshot@.elts()[y.index@ - 1]);
-                        assert(*x == y.seq()[y.index@ - 1]);
-                        assert(w[i] == *x);
-                        assert(w[i] == v[i]);
-                    }
                 };
             }
         }

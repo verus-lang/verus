@@ -84,11 +84,6 @@ pub trait Iterator {
     #[verifier::prophetic]
     spec fn completes(&self) -> bool;
 
-    // Invariant relating the iterator to its initial value.
-    // When the analysis can infer a spec initial value, the analysis 
-    // places the value in init
-    spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
-
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             self.obeys_iter_laws() == old(self).obeys_iter_laws(),
@@ -116,6 +111,12 @@ pub trait Iterator {
     /// If there's no appropriate decrease, this can return None,
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<Self::Decrease>;
+    
+    // Invariant relating the iterator to its initial value.
+    // When the analysis can infer a spec initial value, the analysis 
+    // places the value in init
+    spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
+
 }
 
 pub trait DoubleEndedIterator : Iterator {
@@ -172,8 +173,23 @@ impl <'a, T> VecIterator<'a, T> {
     }
 }
 
+// REVIEW: We add a layer of indirection here because VecIterator's fields
+//         are not pub, which was a design decision intended to preserve
+//         OO-style encapsulation discipline and reduce SMT context clutter.
+//         A downside of this approach is that we then need broadcast lemmas
+//         to provide "ensures" for the output of this spec function.
+//         
+//         We need an "ensures", rather than (say) a postcondition on `vec_iter`,
+//         since we need to know properties about vec_iter_spec *inside*
+//         the loop invariant, not just before the loop starts.
 pub open spec fn vec_iter_spec<'a, T>(v: &'a Vec<T>) -> VecIterator<'a, T> {
     VecIterator::new(v)
+}
+
+pub broadcast proof fn vec_iter_spec_properties<'a, T>(v: &'a Vec<T>)
+    ensures
+        #[trigger] vec_iter_spec(v).elts() == v@,
+{
 }
 
 #[verifier::when_used_as_spec(vec_iter_spec)]
@@ -853,6 +869,11 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         }
         ret
     }
+}
+
+
+pub broadcast group group_iterator_specs {
+    vec_iter_spec_properties,
 }
 
 }
