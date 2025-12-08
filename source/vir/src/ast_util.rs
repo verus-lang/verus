@@ -1340,6 +1340,7 @@ impl PlaceX {
             PlaceX::Temporary(_) => true,
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1352,6 +1353,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
     }
 }
 
@@ -1378,6 +1380,10 @@ pub fn place_to_expr(place: &Place) -> Expr {
                 Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
                 Some(e2),
             )
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let e = place_to_expr(p);
+            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
