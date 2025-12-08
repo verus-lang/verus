@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
-use core::convert::{From, Into};
+use core::convert::{From, Into, TryFrom, TryInto};
 
 verus! {
 
@@ -57,7 +57,7 @@ pub struct ExTryFromIntError(core::num::TryFromIntError);
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(TryFromSpec via TryFromSpecImpl)]
 pub trait ExTryFrom<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::TryFrom<T>;
+    type ExternalTraitSpecificationFor: TryFrom<T>;
 
     type Error;
 
@@ -74,7 +74,7 @@ pub trait ExTryFrom<T>: Sized {
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(TryIntoSpec via TryIntoSpecImpl)]
 pub trait ExTryInto<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::TryInto<T>;
+    type ExternalTraitSpecificationFor: TryInto<T>;
 
     type Error;
 
@@ -105,6 +105,7 @@ pub assume_specification<T, U: TryFrom<T>>[ <T as TryInto<U>>::try_into ](a: T) 
     ensures
         call_ensures(U::try_from, (a,), ret),
 ;
+
 } // verus!
 macro_rules! impl_from_spec {
     ($from: ty => [$($to: ty)*]) => {
@@ -135,7 +136,7 @@ macro_rules! impl_int_try_from_spec {
     ($from:ty => [$($to:ty)*]) => {
         verus!{
         $(
-        pub assume_specification[ <$to as core::convert::TryFrom<$from>>::try_from ](a: $from) -> (ret: Result<$to, <$to as core::convert::TryFrom<$from>>::Error>);
+        pub assume_specification[ <$to as TryFrom<$from>>::try_from ](a: $from) -> (ret: Result<$to, <$to as TryFrom<$from>>::Error>);
 
         impl TryFromSpecImpl<$from> for $to {
             open spec fn obeys_try_from_spec() -> bool {
