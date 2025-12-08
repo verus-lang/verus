@@ -869,6 +869,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureRet => false,
             LocalDeclKind::Nondeterministic => false,
             LocalDeclKind::BorrowMut => false,
+            LocalDeclKind::MutableTemporary => true,
         }
     }
 }
