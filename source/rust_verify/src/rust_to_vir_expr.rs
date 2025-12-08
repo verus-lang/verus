@@ -53,12 +53,34 @@ use vir::ast_util::{
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
+/// Enum representing either an Expr (value expression) or a `Place` (place expression).
+///
+/// While converting HIR -> VIR, every HIR node is converting into one of these kinds
+/// of expressions. Place expressions include local variables, field accesses (`x.foo`)
+/// and dereferences (`*x`).
+///
+/// The Rust reference has more information on place expressions and "place expression contexts",
+/// i.e., contexts that expect place expressions.
+/// See: [https://doc.rust-lang.org/reference/expressions.html#place-expressions-and-value-expressions].
+///
+/// When constructing the VIR, we frequently need to convert between the two, so the `ExprOrPlace`
+/// has various utility methods to coerce to either an `Expr` or `Place` (if necessary). Thus,
+/// the recursive structure for lowering an expression to VIR has the following form:
+///  - `expr_to_vir` returns an `ExprOrPlace`, depending on whether the expression is a
+///    value expression or a place expression.
+///  - The caller decides whether to use the result as an `Expr` or a `Place` depending on
+///    the type of node it's creating and what that expects.
+///
+/// The easiest way to convert a `Place` to an `Expr` is to move or copy from it
+/// (which we here call "consume"). To convert from an `Expr` to a `Place`, we can create
+/// a "temporary" place.
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
     Place(Place),
 }
 
 impl ExprOrPlace {
+    /// If necessary, coerce the expression to a `Place` by creating a temporary.
     pub(crate) fn to_place(&self) -> Place {
         match self {
             ExprOrPlace::Expr(e) => {
@@ -68,6 +90,7 @@ impl ExprOrPlace {
         }
     }
 
+    /// Get the `Expr` out, fail if this is a `Place`.
     pub(crate) fn expect_expr<'tcx>(&self) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
@@ -123,7 +146,7 @@ impl ExprOrPlace {
         bctx.ctxt.spanned_typed_new_vir(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
     }
 
-    /// Take an immutable borrow from the given place
+    /// Evaluate the expression but leave the value unused.
     pub(crate) fn unused<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         // Try to avoid cluttering the VIR with Unused nodes when they aren't necessary
         if let ExprOrPlace::Expr(e) = self {
@@ -138,6 +161,11 @@ impl ExprOrPlace {
         bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
     }
 
+    /// Take a spec snapshot of the give place.
+    ///
+    /// We only use this in a few places where we are certain that the code has to be 'spec'.
+    /// When there's no way to tell (most of the time), always use consume, and mode-checking
+    /// will figure out which ones are spec-snapshots later.
     pub(crate) fn to_spec_expr<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
