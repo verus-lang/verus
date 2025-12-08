@@ -358,19 +358,21 @@ struct LoopEntry {
 #[derive(Clone, Debug)]
 enum ComputedPlaceTyped {
     /// Subfield of some local
-    OfLocal(FlattenedPlaceTyped),
-    /// Subfield of some local, at a *ghost place*
-    /// The place given here is the most-specific non-spec place, e.g., if the user writes
-    /// x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar` is spec-mode, then
-    /// Return the place `x.foo`. If the local var itself is spec-mode, then None.
-    /// (note: I think we will generalize this later for other cases where we are mutating
-    /// a place more specific than what we track in the analysis)
-    OfGhost(Option<FlattenedPlaceTyped>),
+    Exact(FlattenedPlaceTyped),
+    /// Subfield of some local, at a granularity that we don't track
+    /// e.g. a ghost place (ghost local or ghost field), or an index Place
+    /// The place given here is the most-specific non-spec place that we might do analysis over.
+    /// Examples:
+    ///   * If the user writes x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar`
+    ///     is spec-mode, then return the place `x.foo`.
+    ///   * If the local var itself is spec-mode, then None.
+    ///   * If the user writes `x.foo[i]` then return `x.foo`
+    Partial(Option<FlattenedPlaceTyped>),
 }
 
 enum ComputedPlace {
-    OfLocal(FlattenedPlace),
-    OfGhost(Option<FlattenedPlace>),
+    Exact(FlattenedPlace),
+    Partial(Option<FlattenedPlace>),
 }
 
 /// Compute the CFG for the given expression.
@@ -592,10 +594,13 @@ impl<'a> Builder<'a> {
 
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
                     if self.is_move(unfinal_read_kind) {
-                        if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                            // This case should be unreachable because we already checked the ReadKind
+                        if matches!(p, ComputedPlaceTyped::Partial(..)) {
+                            // TODO(new_mut_ref): we need careful handling here; this case
+                            // should be impossible if the source program is well-formed,
+                            // but the problem is we haven't run lifetime  checking yet.
+                            // So we might get `try to move from foo[i]` error here or something.
                             panic!(
-                                "Verus Internal State: inconsistent state, move out of ghost place"
+                                "Verus Internal State: inconsistent state, move out of ghost place or index"
                             )
                         }
                         if let Some(mut p) = p.clone().get_place_for_move() {
@@ -604,7 +609,7 @@ impl<'a> Builder<'a> {
                                 field_name,
                                 &self.locals.datatypes,
                             ));
-                            let p = self.locals.add_place(p, false);
+                            let p = self.locals.add_place(&p, false);
                             self.push_instruction(
                                 bb,
                                 AstPosition::After(place.span.id),
@@ -750,7 +755,7 @@ impl<'a> Builder<'a> {
                             typ: bound_var.typ,
                             projections: vec![],
                         };
-                        let fp = self.locals.add_place(fpt, false);
+                        let fp = self.locals.add_place(&fpt, false);
                         self.push_instruction(
                             arm_bb,
                             AstPosition::Before(arm.x.body.span.id),
@@ -896,7 +901,7 @@ impl<'a> Builder<'a> {
                 let (p, bb) = self.build_place_and_intern(place, bb)?;
                 let bb = self.build(rhs, bb)?;
                 match p {
-                    ComputedPlace::OfLocal(p) => {
+                    ComputedPlace::Exact(p) => {
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
@@ -907,14 +912,14 @@ impl<'a> Builder<'a> {
                             },
                         );
                     }
-                    ComputedPlace::OfGhost(Some(p)) => {
+                    ComputedPlace::Partial(Some(p)) => {
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::Mutate(p),
                         );
                     }
-                    ComputedPlace::OfGhost(None) => {}
+                    ComputedPlace::Partial(None) => {}
                 }
                 Ok(bb)
             }
@@ -937,12 +942,17 @@ impl<'a> Builder<'a> {
             ExprX::ReadPlace(p, unfinal_read_kind) => {
                 let (p, bb) = self.build_place_typed(p, bb)?;
                 if self.is_move(unfinal_read_kind) {
-                    if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                        // This case should be unreachable because we already checked the ReadKind
-                        panic!("Verus Internal State: inconsistent state, move out of ghost place")
+                    if matches!(p, ComputedPlaceTyped::Partial(..)) {
+                        // TODO(new_mut_ref): we need careful handling here; this case
+                        // should be impossible if the source program is well-formed,
+                        // but the problem is we haven't run lifetime  checking yet.
+                        // So we might get `try to move from foo[i]` error here or something.
+                        panic!(
+                            "Verus Internal State: inconsistent state, move out of ghost place or index"
+                        )
                     }
                     if let Some(p) = p.get_place_for_move() {
-                        let p = self.locals.add_place(p, false);
+                        let p = self.locals.add_place(&p, false);
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
@@ -993,7 +1003,7 @@ impl<'a> Builder<'a> {
                         typ: bound_var.typ,
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(fpt, false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         AstPosition::After(stmt.span.id),
@@ -1031,51 +1041,51 @@ impl<'a> Builder<'a> {
     ) -> Result<(ComputedPlaceTyped, BBIndex), ()> {
         match &place.x {
             PlaceX::Field(field_opr, p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
+                Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
                     let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
                     if mode == Mode::Spec {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
+                        Ok((ComputedPlaceTyped::Partial(Some(fpt)), bb))
                     } else {
                         fpt.projections.push(ProjectionTyped::StructField(
                             field_opr.clone(),
                             place.typ.clone(),
                         ));
-                        Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                        Ok((ComputedPlaceTyped::Exact(fpt), bb))
                     }
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
+                Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
+                    Ok((ComputedPlaceTyped::Partial(fpt), bb))
                 }
                 Err(()) => Err(()),
             },
             PlaceX::DerefMut(p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
+                Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
                     fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
+                Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
+                    Ok((ComputedPlaceTyped::Partial(fpt), bb))
                 }
                 Err(()) => Err(()),
             },
             PlaceX::Local(var) => {
                 let mode = self.locals.var_modes[var];
                 if mode == Mode::Spec {
-                    Ok((ComputedPlaceTyped::OfGhost(None), bb))
+                    Ok((ComputedPlaceTyped::Partial(None), bb))
                 } else {
                     let fpt = FlattenedPlaceTyped {
                         local: LocalName::Named(var.clone()),
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::Temporary(e) => {
                 let mode = self.locals.temporary_modes[&place.span.id];
                 if mode == Mode::Spec {
                     // TODO(new_mut_ref): should build here
-                    Ok((ComputedPlaceTyped::OfGhost(None), bb))
+                    Ok((ComputedPlaceTyped::Partial(None), bb))
                 } else {
                     let bb = self.build(e, bb)?;
                     let temp_name = self.locals.new_temp_name(place.span.id);
@@ -1085,14 +1095,14 @@ impl<'a> Builder<'a> {
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(fpt.clone(), false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         AstPosition::AfterTempAssignment(place.span.id),
                         InstructionKind::Overwrite(fp),
                     );
 
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => {
@@ -1100,19 +1110,16 @@ impl<'a> Builder<'a> {
                 self.build_place_typed(p, bb)
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Spec) => {
-                // wrap in OfGhost
-                match self.build_place_typed(p, bb) {
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
-                    }
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
-                    }
-                    Err(()) => Err(()),
-                }
+                let (cpt, bb) = self.build_place_typed(p, bb)?;
+                Ok((cpt.to_partial(), bb))
             }
             PlaceX::WithExpr(..) => {
                 panic!("Verus Internal Error: unexpected PlaceX::WithExpr");
+            }
+            PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
+                let (cpt, bb) = self.build_place_typed(p, bb)?;
+                let bb = self.build(idx, bb)?;
+                Ok((cpt.to_partial(), bb))
             }
         }
     }
@@ -1138,7 +1145,7 @@ impl<'a> Builder<'a> {
                     typ: bv.typ.clone(),
                     projections: vec![],
                 };
-                self.locals.add_place(fpt, false)
+                self.locals.add_place(&fpt, false)
             })
             .collect()
     }
@@ -1151,7 +1158,7 @@ impl<'a> Builder<'a> {
         position: AstPosition,
     ) {
         match cpt {
-            ComputedPlaceTyped::OfLocal(fpt) => {
+            ComputedPlaceTyped::Exact(fpt) => {
                 let places = moves_and_muts_for_place_being_matched(
                     pattern,
                     &fpt,
@@ -1159,7 +1166,7 @@ impl<'a> Builder<'a> {
                     &self.locals.var_modes,
                 );
                 for (fpt, by_ref) in places.into_iter() {
-                    let fp = self.locals.add_place(fpt, false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         position,
@@ -1171,7 +1178,14 @@ impl<'a> Builder<'a> {
                     );
                 }
             }
-            ComputedPlaceTyped::OfGhost(_fpt) => {
+            ComputedPlaceTyped::Partial(Some(fpt)) => {
+                if crate::patterns::pattern_has_mut(pattern) {
+                    let fp = self.locals.add_place(fpt, false);
+                    self.push_instruction(bb, position, InstructionKind::Mutate(fp));
+                }
+            }
+            ComputedPlaceTyped::Partial(None) => {
+                // TODO(new_mut_ref): this isn't correct any more
                 if crate::patterns::pattern_has_mut(pattern) {
                     // Mode-checking should disallow mutable references to ghost places
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
@@ -1402,7 +1416,7 @@ impl<'a> LocalCollection<'a> {
     fn add_param(&mut self, p: &Param) {
         if p.x.mode != Mode::Spec {
             self.add_place(
-                FlattenedPlaceTyped {
+                &FlattenedPlaceTyped {
                     local: LocalName::Named(p.x.name.clone()),
                     typ: p.x.typ.clone(),
                     projections: vec![],
@@ -1414,21 +1428,21 @@ impl<'a> LocalCollection<'a> {
 
     fn add_computed_place(&mut self, p: ComputedPlaceTyped) -> ComputedPlace {
         match p {
-            ComputedPlaceTyped::OfLocal(fpi) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfLocal(sp)
+            ComputedPlaceTyped::Exact(fpi) => {
+                let sp = self.add_place(&fpi, false);
+                ComputedPlace::Exact(sp)
             }
-            ComputedPlaceTyped::OfGhost(Some(fpi)) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfGhost(Some(sp))
+            ComputedPlaceTyped::Partial(Some(fpi)) => {
+                let sp = self.add_place(&fpi, false);
+                ComputedPlace::Partial(Some(sp))
             }
-            ComputedPlaceTyped::OfGhost(None) => ComputedPlace::OfGhost(None),
+            ComputedPlaceTyped::Partial(None) => ComputedPlace::Partial(None),
         }
     }
 
     /// Given a FlattenedPlaceTyped, we extend the tree if necessary so that it is deep enough
     /// to incorporate the given place. Returns a FlattenedPlace which indexes into the tree.
-    fn add_place(&mut self, p: FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
+    fn add_place(&mut self, p: &FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
             self.locals.push(Local {
                 name: p.local.clone(),
@@ -1736,8 +1750,8 @@ impl FlattenedPlace {
 impl ComputedPlace {
     fn get_place_for_mutation(self) -> Option<FlattenedPlace> {
         match self {
-            ComputedPlace::OfLocal(p) => Some(p),
-            ComputedPlace::OfGhost(p) => {
+            ComputedPlace::Exact(p) => Some(p),
+            ComputedPlace::Partial(p) => {
                 // When mutating a ghost place, we treat it as a mutation of whatever
                 // "real" place contains it
                 p
@@ -1747,10 +1761,17 @@ impl ComputedPlace {
 }
 
 impl ComputedPlaceTyped {
+    fn to_partial(self) -> ComputedPlaceTyped {
+        match self {
+            ComputedPlaceTyped::Exact(fpt) => ComputedPlaceTyped::Partial(Some(fpt)),
+            cpt @ ComputedPlaceTyped::Partial(_) => cpt,
+        }
+    }
+
     fn get_place_for_move(self) -> Option<FlattenedPlaceTyped> {
         match self {
-            ComputedPlaceTyped::OfLocal(p) => Some(p),
-            ComputedPlaceTyped::OfGhost(_p) => {
+            ComputedPlaceTyped::Exact(p) => Some(p),
+            ComputedPlaceTyped::Partial(_p) => {
                 // reading out of a ghost field is NOT a move
                 None
             }

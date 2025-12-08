@@ -55,7 +55,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::Not | UnaryOp::BitNot(_) | UnaryOp::Clip { .. } => exp.clone(),
             UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IntToReal => exp.clone(),
-            UnaryOp::StrLen | UnaryOp::StrIsAscii => exp.clone(),
+            UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
@@ -103,7 +103,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::RealArith(..)
             | BinaryOp::Bitwise(..)
             | BinaryOp::StrGetChar
-            | BinaryOp::ArrayIndex => exp.clone(),
+            | BinaryOp::Index(..) => exp.clone(),
         },
         ExpX::BinaryOpr(BinaryOpr::ExtEq(..), _, _) => exp.clone(),
         ExpX::If(e1, e2, e3) => {

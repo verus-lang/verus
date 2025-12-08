@@ -1,4 +1,4 @@
-use crate::ast::{Typ, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast::{BinaryOp, Typ, UnaryOp, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
@@ -25,6 +25,7 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
         ExpX::Unary(UnaryOp::MutRefCurrent, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var(x),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var(x),
+        ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var(x),
         ExpX::VarLoc(x) => x.clone(),
         _ => panic!("lhs {:?} unsupported", exp),
     }

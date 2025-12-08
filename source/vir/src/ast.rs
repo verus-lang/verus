@@ -361,6 +361,12 @@ pub enum NullaryOpr {
     NoInferSpecForLoopIter,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ArrayKind {
+    Array,
+    Slice,
+}
+
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -428,6 +434,8 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture,
+    /// Length of an array or slice
+    Length(ArrayKind),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -485,6 +493,14 @@ pub enum UnaryOpr {
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BoundsCheck {
+    /// No bounds check necessary. This is the only value allowed in SST.
+    Allow,
+    /// Perform a bounds check.
+    Error,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -620,8 +636,10 @@ pub enum BinaryOp {
     Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Used only for handling verus_builtin::array_index
-    ArrayIndex,
+    /// Index into an array or slice, no bounds-checking.
+    /// `verus_builtin::array_index` lowers to this.
+    /// In SST, this can also be used as a Loc.
+    Index(ArrayKind, BoundsCheck),
 }
 
 /// More complex binary operations (requires Clone rather than Copy)
@@ -1007,7 +1025,7 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume { is_assume: bool, expr: Expr },
+    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message> },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
     AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
@@ -1129,7 +1147,6 @@ pub enum ModeWrapperMode {
 /// A `Place` tree is always a sequence of modifiers that terminates in either a Local
 /// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
 /// a shared reference. These are implicit.
-// TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1140,6 +1157,9 @@ pub enum PlaceX {
     DerefMut(Place),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
+    /// Index into an array or slice (`place[expr]`)
+    /// The bool = needs bounds check
+    Index(Place, Expr, ArrayKind, BoundsCheck),
     /// Named local variable.
     Local(VarIdent),
     /// Evaluate the given expression and assign it to a fresh, unnamed temporary,

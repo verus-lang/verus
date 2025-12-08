@@ -41,11 +41,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, CallTarget, Constant,
-    Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange,
-    InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX,
-    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
+    Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp,
+    IntRange, InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive,
+    SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
+    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -2610,6 +2610,30 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Closure(Closure { fn_decl: _, .. }) => {
             Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)?))
         }
+        ExprKind::Index(tgt_expr, idx_expr, _span) if bctx.ctxt.cmd_line_args.new_mut_ref => {
+            if bctx.in_ghost {
+                crate::internal_err!(
+                    expr.span,
+                    "index operator [] in ghost code (note: usually the syntax macro would turn this into a call to `spec_index`"
+                )
+            }
+            if bctx.types.is_method_call(expr) {
+                crate::internal_err!(expr.span, "overloaded index new-mut-ref") // TODO(new_mut_ref)
+            } else {
+                let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
+                let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
+                let kind = match tgt_ty.kind() {
+                    TyKind::Array(..) => vir::ast::ArrayKind::Array,
+                    TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
+                    _ => unsupported_err!(expr.span, "Index operator for this type: {:}", tgt_ty),
+                };
+                let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?.to_place();
+                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
+                let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
+                let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
+                Ok(ExprOrPlace::Place(vir))
+            }
+        }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
             // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
@@ -3663,6 +3687,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         }
         PlaceX::WithExpr(..) => {
             panic!("Verus Internal Error: unexpected PlaceX::WithExpr")
+        }
+        PlaceX::Index(..) => {
+            panic!("Verus Internal Error: PlaceX::Index should not be created outside new-mut-ref")
         }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
