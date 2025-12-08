@@ -141,7 +141,7 @@ main part of the analysis, we treat these places just like any other places.
 After we compute the set of resolutions to add, we find all temporary nodes that
 are mentioned in the set. We then replace those temporaries with named Local nodes.
 
-Specifically, we can replace the place node `Temorary(expr)` with
+Specifically, we can replace the place node `Temporary(expr)` with
 `WithExpr({ tmp = expr; }, Local("tmp"))` for a fresh `tmp` variable.
 We place the declaration `let tmp;` at a larger scope.
 */
