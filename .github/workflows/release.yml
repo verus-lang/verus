@@ -2,7 +2,7 @@ name: release
 
 on:
   schedule:
-    - cron: '0 0 * * 1'
+    - cron: '0 0 * * 1'  # Runs on main by default every Monday
   workflow_dispatch:
 
 permissions:

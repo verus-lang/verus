@@ -6,5 +6,5 @@ date: 2025-10-18
 type: external 
 pdf: https://arxiv.org/pdf/2409.13082
 code: https://github.com/microsoft/verus-proof-synthesis
-
+award: Distinguished Artifact Award
 ---

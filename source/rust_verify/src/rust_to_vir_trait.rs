@@ -12,10 +12,9 @@ use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitId, TraitX, TypX,
-    VirErr, Visibility,
+    Fun, Function, FunctionKind, GenericBound, Ident, KrateX, TraitX, VirErr, Visibility,
 };
-use vir::def::{VERUS_SPEC, trait_self_type_param};
+use vir::def::VERUS_SPEC;
 
 pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
     ctxt: &Context<'tcx>,
@@ -143,33 +142,7 @@ pub(crate) fn translate_trait<'tcx>(
             None,
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?;
-        // Remove the Self: Trait bound introduced by rustc
-        Arc::make_mut(&mut typ_bounds).retain(|gb| {
-            match &**gb {
-                GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
-                    if bnd == &trait_path {
-                        let gp: Vec<_> = Some(trait_self_type_param())
-                            .into_iter()
-                            .chain(generics_params.iter().map(|(p, _)| p.clone()))
-                            .map(|p| Some(p))
-                            .collect();
-                        let tp: Vec<_> = tp
-                            .iter()
-                            .map(|p| match &**p {
-                                TypX::TypParam(p) => Some(p.clone()),
-                                _ => None,
-                            })
-                            .collect();
-                        assert_eq!(*tp, *gp);
-                        return false;
-                    }
-                }
-                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
-                GenericBoundX::TypEquality(..) => {}
-                GenericBoundX::ConstTyp(..) => {}
-            }
-            true
-        });
+        vir::traits::remove_self_is_itself_bound(&mut typ_bounds, &trait_path, &generics_params);
         (generics_params, typ_bounds)
     };
     let mut assoc_typs: Vec<Ident> = Vec::new();
