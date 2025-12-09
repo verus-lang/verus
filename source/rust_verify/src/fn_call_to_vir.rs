@@ -1753,30 +1753,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 format!("this builtin item should not appear in user code",),
             );
         }
-        VerusItem::Resolve | VerusItem::HasResolved | VerusItem::HasResolvedUnsized => {
+        VerusItem::HasResolved | VerusItem::HasResolvedUnsized => {
             if !bctx.ctxt.cmd_line_args.new_mut_ref {
                 unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
             }
-            if matches!(verus_item, VerusItem::Resolve) {
-                record_compilable_operator(bctx, expr, CompilableOperator::Resolve);
-            } else {
-                record_spec_fn_no_proof_args(bctx, expr);
-            }
+            record_spec_fn_no_proof_args(bctx, expr);
             if !bctx.in_ghost {
-                if matches!(verus_item, VerusItem::Resolve) {
-                    return err_span(expr.span, "resolve must be in a 'proof' block");
-                } else {
-                    return err_span(expr.span, "has_resolved must be in a 'proof' block");
-                }
+                return err_span(expr.span, "has_resolved must be in a 'proof' block");
             }
             let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
-            if matches!(verus_item, VerusItem::Resolve) {
-                mk_expr(ExprX::AssumeResolved(exp, t))
-            } else {
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
-            }
+            mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
             if !bctx.ctxt.cmd_line_args.new_mut_ref {

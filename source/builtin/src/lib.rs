@@ -1918,13 +1918,6 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::resolve"]
-#[verifier::spec]
-pub fn resolve<T>(_t: T) {
-    unimplemented!()
-}
-
-#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::has_resolved"]
 #[verifier::spec]
 pub fn has_resolved<T>(_t: T) -> bool {

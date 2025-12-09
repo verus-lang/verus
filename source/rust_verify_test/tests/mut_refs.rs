@@ -226,6 +226,10 @@ test_verify_one_file_with_options! {
     #[test] test_resolve_axioms_in_context ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
+        fn resolve<T>(t: T)
+            ensures has_resolved(t)
+        { }
+
         fn box_with_mut_ref() {
             let mut x: u64 = 0;
 
@@ -234,7 +238,11 @@ test_verify_one_file_with_options! {
 
             **x_ref_box = 13;
 
-            proof { resolve(x_ref_box); }
+            resolve(x_ref_box);
+
+            // TODO(new_mut_ref): without this line, Verus doesn't emit the axiom for
+            // has_resolved::<Box<_>>
+            assert(has_resolved(x_ref_box));
 
             assert(x == 13);
         }
@@ -245,12 +253,12 @@ test_verify_one_file_with_options! {
             let x_ref = &mut x;
             let x_ref_ref = &x_ref;
 
-            proof { resolve(x_ref_ref); }
+            resolve(x_ref_ref);
 
             assert(has_resolved(x_ref)); // FAILS
 
             *x_ref = 20;
-            proof { resolve(x_ref); }
+            resolve(x_ref);
         }
 
         fn mut_ref_with_mut_ref() {
@@ -261,12 +269,12 @@ test_verify_one_file_with_options! {
 
             **x_ref_ref = 20;
 
-            proof { resolve(x_ref_ref); }
+            resolve(x_ref_ref);
 
             assert(has_resolved(x_ref)); // FAILS
 
             *x_ref = 30;
-            proof { resolve(x_ref); }
+            resolve(x_ref);
         }
     } => Err(err) => assert_fails(err, 2)
 }
