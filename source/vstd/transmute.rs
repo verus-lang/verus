@@ -120,7 +120,7 @@ macro_rules! transmute_refl_unique_lemma {
             {
                 broadcast use group_transmute_axioms;
 
-                let bytes = <$typ as AbstractEncoding>::encoding_exists(x);
+                let bytes = <$typ as AbstractEncoding>::encoding_exists(&x);
             }
         }
     )+};
@@ -169,7 +169,7 @@ pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: Trac
 {
     broadcast use group_transmute_axioms;
 
-    let bytes = <*mut T as AbstractEncoding>::encoding_exists(x);
+    let bytes = <*mut T as AbstractEncoding>::encoding_exists(&x);
 }
 
 /// A value `x: *const T` for `T: Sized` can be transmuted to itself.
@@ -198,7 +198,7 @@ pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: 
 {
     broadcast use group_transmute_axioms;
 
-    let bytes = <*const T as AbstractEncoding>::encoding_exists(x);
+    let bytes = <*const T as AbstractEncoding>::encoding_exists(&x);
 }
 
 // we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
