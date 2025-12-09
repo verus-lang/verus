@@ -10,51 +10,56 @@ use core::mem::ManuallyDrop;
 use verus as verus_;
 verus_! {
 
-/// `PCell<V>` (which stands for "permissioned call") is the most primitive Verus `Cell` type.
-///
-/// Technically, it is a wrapper around
-/// `core::cell::UnsafeCell<V>`, and thus has the same runtime
-/// properties: there are no runtime checks (as there would be for Rust's traditional
-/// [`core::cell::RefCell`](https://doc.rust-lang.org/core/cell/struct.RefCell.html)).
-/// Its data may be uninitialized.
-///
-/// Furthermore (and unlike both
-/// [`core::cell::Cell`](https://doc.rust-lang.org/core/cell/struct.Cell.html) and
-/// [`core::cell::RefCell`](https://doc.rust-lang.org/core/cell/struct.RefCell.html)),
-/// a `PCell<V>` may be `Sync` (depending on `V`).
-/// Thanks to verification, Verus ensures that access to the cell is data-race-free.
-///
-/// `PCell` uses a _ghost permission token_ similar to [`simple_pptr::PPtr`](super::super::simple_pptr) -- see the [`simple_pptr::PPtr`](super::super::simple_pptr)
-/// documentation for the basics.
-/// For `PCell`, the associated type of the permission token is [`PointsTo`].
-///
-/// ### Differences from `PPtr`.
-///
-/// The key difference is that, whereas [`simple_pptr::PPtr`](super::super::simple_pptr) represents a fixed address in memory,
-/// a `PCell` has _no_ fixed address because a `PCell` might be moved.
-/// As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
-/// it is a unique identifier that is fixed for a given cell, even when it is moved.
-///
-/// The arbitrary ID given by [`pcell.id()`](PCell::id) is of type [`CellId`].
-/// Despite the fact that it is, in some ways, "like a pointer", note that
-/// `CellId` does not support any meangingful arithmetic,
-/// has no concept of a "null ID",
-/// and has no runtime representation.
-///
-/// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
-/// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
-/// to extract data from the cell.
-///
-/// If you want a cell that can be optionally initialized, see [`PCellUn`].
-///
-/// ### Example (TODO)
+/**
+`PCell<T>` (which stands for "permissioned cell") is the most primitive Verus `Cell` type.
+It can often be used as a replacement for Rust's [`UnsafeCell`], and it can serve
+as a basis for verifying many other interior-mutable types
+(e.g., [`InvCell`](super::invcell::InvCell),
+[`RefCell`](https://github.com/verus-lang/verus/blob/main/examples/state_machines/tutorial/ref_cell.rs)).
+
+`PCell` uses a _ghost permission token_ similar to [`simple_pptr::PPtr`](super::super::simple_pptr) -- see the [`simple_pptr::PPtr`](super::super::simple_pptr)
+documentation for the basics.
+For `PCell`, the associated type of the permission token is [`PointsTo`].
+
+If you want a cell that can be optionally initialized, see [`PCellUn`].
+
+### Differences from `PPtr`.
+
+Whereas [`simple_pptr::PPtr`](super::super::simple_pptr) represents a fixed address in memory,
+a `PCell` has _no_ fixed address because a `PCell` might be moved.
+As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
+it is a unique identifier that is fixed for a given cell, even when it is moved.
+
+The arbitrary ID given by [`pcell.id()`](PCell::id) is of type [`CellId`].
+Despite the fact that it is, in some ways, "like a pointer", note that
+`CellId` does not support any meangingful "pointer arithmetic,"
+has no concept of a "null ID",
+and has no runtime representation.
+
+### Differences from [`UnsafeCell`](core::cell::UnsafeCell).
+
+Those inspired by `UnsafeCell`, `PCell` is not quite the same thing.
+These differences include:
+
+ * `PCell<T>` **does not call the destructor of `T` when it goes out of scope**.
+   Technically speaking, `PCell<T>` is actually implemented via
+   `ManuallyDrop<UnsafeCell<T>>`. This is because dropping the contents is unsound
+   if the `PointsTo<T>` is not also reclaimed. To drop a `PCell<T>` without leaking,
+   call [`into_inner`](Self::into_inner) with the corresponding `PointsTo`.
+
+ * `PCell<T>` _always_ implements `Send` and `Sync`, regardless of the type `T`.
+   Instead, it is `PointsTo<T>` where the marker traits matter.
+   (It doesn't matter if you move the bytes to another thread if you can't access them.)
+
+### Example (TODO)
+*/
 
 #[verifier::external_body]
-#[verifier::accept_recursive_types(V)]
-pub struct PCell<V: ?Sized> {
+#[verifier::accept_recursive_types(T)]
+pub struct PCell<T: ?Sized> {
     // Unlike UnsafeCell, a PCell's drop should NOT drop the contents (since we do not have
     // the permissions to access the contents). To prevent this, we need to use ManuallyDrop
-    ucell: ManuallyDrop<UnsafeCell<V>>,
+    ucell: ManuallyDrop<UnsafeCell<T>>,
 }
 
 /// `PCell` is _always_ safe to `Send` or `Sync`. Rather, it is the [`PointsTo`] object where `Send` and `Sync` matter.
@@ -64,18 +69,18 @@ unsafe impl<T: ?Sized> Sync for PCell<T> { }
 #[verifier::external]
 unsafe impl<T: ?Sized> Send for PCell<T> { }
 
-/// Permission object associated with a [`PCell<V>`].
+/// Permission object associated with a [`PCell<T>`].
 ///
-/// See the documentation of [`PCell<V>`] for more information.
+/// See the documentation of [`PCell<T>`] for more information.
 #[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
-pub tracked struct PointsTo<V: ?Sized> {
+#[verifier::reject_recursive_types_in_ground_variants(T)]
+pub tracked struct PointsTo<T: ?Sized> {
     // Through PhantomData we inherit the Send/Sync marker traits
-    phantom: PhantomData<V>,
+    phantom: PhantomData<T>,
     no_copy: NoCopy,
 }
 
-impl<V: ?Sized> PointsTo<V> {
+impl<T: ?Sized> PointsTo<T> {
     /// The [`CellId`] of the [`PCell`] this permission is associated with.
     pub uninterp spec fn id(&self) -> CellId;
 
@@ -83,18 +88,18 @@ impl<V: ?Sized> PointsTo<V> {
     // This restriction is enforced by rust even in spec code.
 
     /// The contents of the cell.
-    pub uninterp spec fn value(&self) -> &V;
+    pub uninterp spec fn value(&self) -> &T;
 }
 
-impl<V: ?Sized> PCell<V> {
+impl<T: ?Sized> PCell<T> {
     /// A unique ID for the cell.
     pub uninterp spec fn id(&self) -> CellId;
 
     /// Construct a new `PCell` with a fresh [`id`](Self::id).
     #[inline(always)]
     #[verifier::external_body]
-    pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-        where V: Sized
+    pub const fn new(v: T) -> (pt: (PCell<T>, Tracked<PointsTo<T>>))
+        where T: Sized
         ensures
             pt.1@.id() == pt.0.id() && pt.1@.value() == v
         opens_invariants none
@@ -106,7 +111,7 @@ impl<V: ?Sized> PCell<V> {
 
     #[inline(always)]
     #[verifier::external_body]
-    pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<T>>) -> (v: &'a T)
         requires
             self.id() === perm.id(),
         ensures
@@ -121,8 +126,8 @@ impl<V: ?Sized> PCell<V> {
     // TODO: this should be replaced with borrow_mut
     #[inline(always)]
     #[verifier::external_body]
-    pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
-        where V: Sized
+    pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T) -> (out_v: T)
+        where T: Sized
         requires
             self.id() === old(perm).id(),
         ensures
@@ -142,8 +147,8 @@ impl<V: ?Sized> PCell<V> {
 
     #[inline(always)]
     #[verifier::external_body]
-    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
-        where V: Sized
+    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<T>>) -> (v: T)
+        where T: Sized
         requires
             self.id() === perm.id(),
         ensures
@@ -159,8 +164,8 @@ impl<V: ?Sized> PCell<V> {
     ////// Trusted core ends here
 
     #[inline(always)]
-    pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
-        where V: Sized
+    pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T)
+        where T: Sized
         requires
             self.id() === old(perm).id()
         ensures
@@ -173,8 +178,8 @@ impl<V: ?Sized> PCell<V> {
     }
 
     #[inline(always)]
-    pub fn read(&self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V)
-        where V: Copy + Sized
+    pub fn read(&self, Tracked(perm): Tracked<&PointsTo<T>>) -> (out_v: T)
+        where T: Copy + Sized
         requires
             self.id() === perm.id()
         returns

@@ -1,7 +1,6 @@
 use super::super::prelude::*;
 use super::super::raw_ptr::MemContents;
 use core::mem::MaybeUninit;
-use verus_builtin::*;
 
 use verus as verus_;
 verus_! {
