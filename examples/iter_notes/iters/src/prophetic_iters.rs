@@ -860,7 +860,6 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
             self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
                 does_decrease(old(self).iter.decrease(), self.iter.decrease()),
     {
-        assert(self.iter.seq().len() == self.seq().len() - self.index@);
         let ret = self.iter.next();
         proof {
             if ret.is_some() {
