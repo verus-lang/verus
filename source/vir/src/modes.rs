@@ -122,6 +122,7 @@ struct Ctxt {
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
     pub(crate) special_paths: SpecialPaths,
+    pub(crate) new_mut_ref: bool,
 }
 
 pub(crate) struct TypeInvInfo {
@@ -899,8 +900,11 @@ fn check_place_rec_inner(
         PlaceX::Local(var) => typing.get(var, &place.span),
         PlaceX::Temporary(e) => {
             let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
-            assert!(!record.temporary_modes.contains_key(&place.span.id));
-            record.temporary_modes.insert(place.span.id, mode);
+            if ctxt.new_mut_ref {
+                // TODO(new_mut_ref): make this error easier to localize
+                assert!(!record.temporary_modes.contains_key(&place.span.id));
+                record.temporary_modes.insert(place.span.id, mode);
+            }
             Ok(mode)
         }
         PlaceX::ModeUnwrap(p, wrapper_mode) => {
@@ -2324,6 +2328,7 @@ pub fn check_crate(
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
         special_paths,
+        new_mut_ref,
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
