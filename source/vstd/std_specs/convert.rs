@@ -106,6 +106,15 @@ pub assume_specification<T, U: TryFrom<T>>[ <T as TryInto<U>>::try_into ](a: T) 
         call_ensures(U::try_from, (a,), ret),
 ;
 
+pub assume_specification<T, U: Into<T>>[ <T as TryFrom<U>>::try_from ](a: U) -> (ret: Result<
+    T,
+    <T as TryFrom<U>>::Error,
+>)
+    ensures
+        ret.is_ok(),
+        call_ensures(U::into, (a,), ret.unwrap()),
+;
+
 } // verus!
 macro_rules! impl_from_spec {
     ($from: ty => [$($to: ty)*]) => {
