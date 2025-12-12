@@ -605,6 +605,48 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
+        fn test_assign_op_1() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            x[{a = 10*a + 2; 0}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 5);
+            assert(a == 23);
+        }
+
+        fn fail_assign_op_1() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            x[{a = 10*a + 2; 0}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 5);
+            assert(a == 23);
+            assert(false); // FAILS
+        }
+
+        fn test_assign_op_2() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            ({a = 10*a + 1; x})[{a = 10*a + 2; 0}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 0);
+            assert(a == 123);
+        }
+
+        fn fail_assign_op_2() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            ({a = 10*a + 1; x})[{a = 10*a + 2; 0}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 0);
+            assert(a == 123);
+            assert(false); // FAILS
+        }
+
         fn test_match_1() {
             let mut a = 0;
             let mut x: [[(u64, u64); 2]; 2] = [[(0, 1), (2, 3)], [(4, 5), (6, 7)]];
@@ -708,14 +750,14 @@ test_verify_one_file_with_options! {
             assert(a == 123);
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 8)
+    } => Err(err) => assert_fails(err, 10)
 }
 
 test_verify_one_file_with_options! {
     #[test] control_flow_ordering2 ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
-        fn test_mut_ref_2() {
+        fn test_mut_ref() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -726,7 +768,7 @@ test_verify_one_file_with_options! {
             assert(a == 123);
         }
 
-        fn fail_mut_ref_2() {
+        fn fail_mut_ref() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -738,7 +780,7 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
-        fn test_assign_2() {
+        fn test_assign() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -748,7 +790,7 @@ test_verify_one_file_with_options! {
             assert(a == 123);
         }
 
-        fn fail_assign_2() {
+        fn fail_assign() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -759,7 +801,28 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
-        fn test_match_2() {
+        fn test_assign_op() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            ({a = 10*a + 1; x})[{a = 10*a + 2; a-12}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 0);
+            assert(a == 123);
+        }
+
+        fn fail_assign_op() {
+            let mut a = 0;
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+
+            ({a = 10*a + 1; x})[{a = 10*a + 2; a-12}][{a = 10*a + 3; 0}] += 5;
+
+            assert(x[0][0] == 0);
+            assert(a == 123);
+            assert(false); // FAILS
+        }
+
+        fn test_match() {
             let mut a = 0;
             let mut x: [[(u64, u64); 2]; 2] = [[(0, 1), (2, 3)], [(4, 5), (6, 7)]];
 
@@ -774,7 +837,7 @@ test_verify_one_file_with_options! {
             assert(a == 123);
         }
 
-        fn fail_match_2() {
+        fn fail_match() {
             let mut a = 0;
             let mut x: [[(u64, u64); 2]; 2] = [[(0, 1), (2, 3)], [(4, 5), (6, 7)]];
 
@@ -790,7 +853,7 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
 
-        fn test_read_2() {
+        fn test_read() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -800,7 +863,7 @@ test_verify_one_file_with_options! {
             assert(a == 123);
         }
 
-        fn fail_read_2() {
+        fn fail_read() {
             let mut a = 0;
             let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
 
@@ -810,7 +873,43 @@ test_verify_one_file_with_options! {
             assert(a == 123);
             assert(false); // FAILS
         }
-    } => Err(err) => assert_fails(err, 4)
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file_with_options! {
+    #[test] control_flow_ordering3 ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] = ({ a = a + 1; 5 });
+            assert(x[0][0] == 5 && x[0][1] == 1 && x[1][0] == 2 && x[1][1] == 3);
+        }
+
+        fn fails() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] = ({ a = a + 1; 5 });
+            assert(x[0][0] == 5 && x[0][1] == 1 && x[1][0] == 2 && x[1][1] == 3);
+            assert(false); // FAILS
+        }
+
+        fn test_assign_op() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] += ({ a = a + 1; 5 });
+            assert(x[0][0] == 5 && x[0][1] == 1 && x[1][0] == 2 && x[1][1] == 3);
+        }
+
+        fn fails_assign_op() {
+            let mut x: [[u64; 2]; 2] = [[0, 1], [2, 3]];
+            let mut a = 0;
+            x[0][a] += ({ a = a + 1; 5 });
+            assert(x[0][0] == 5 && x[0][1] == 1 && x[1][0] == 2 && x[1][1] == 3);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file_with_options! {
@@ -827,7 +926,7 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-// TOOD(new_mut_ref): resolving for arrays/slices
+// TODO(new_mut_ref): resolving for arrays/slices
 test_verify_one_file_with_options! {
     #[ignore] #[test] array_of_mut_refs ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;

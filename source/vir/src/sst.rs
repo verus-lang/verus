@@ -79,6 +79,11 @@ pub enum ExpX {
     /// Variable value at a specific program point (e.g., `old(x)` in postconditions)
     VarAt(UniqueIdent, VarAt),
     /// L-value derived from an expression (e.g., `(*p)` or `a[i]`)
+    /// Allowed nodes inside a Loc are:
+    ///  - `VarLoc`
+    ///  - `Field` (unary op)
+    ///  - `DerefMut` (unary op)
+    ///  - `Index` (binary op) (the index argument must be a non-mutable Var)
     Loc(Exp),
     /// Snapshot reference for generating AIR Old expressions; only used during sst_to_air
     Old(Ident, UniqueIdent),
