@@ -1,4 +1,3 @@
-/*
 use std::{io::Take, iter::{self, Skip}, path::Iter};
 use vstd::prelude::*;
 use crate::prophetic_iters::decreases_fix::*;
@@ -32,7 +31,8 @@ fn for_loop_test_vec() {
     // }
     //
     // Into:
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
+    let init = Ghost(Some(&vec_iter_spec(&v)));
+    let iter = VerusForLoopIterator::new(vec_iter(&v), init);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     let VERUS_loop_result = match iter {
@@ -42,7 +42,9 @@ fn for_loop_test_vec() {
                 // invariant_except_break
                 //     y.iter.decrease() is Some,
                 invariant
-                    y.wf(VERUS_old_snap),
+                    y.snapshot == VERUS_old_snap,
+                    y.init == Ghost(Some(&vec_iter_spec(&v))),
+                    y.wf(),
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
@@ -62,7 +64,7 @@ fn for_loop_test_vec() {
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                match y.next(Ghost(VERUS_old_snap)) {
+                match y.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
@@ -85,5 +87,3 @@ fn for_loop_test_vec() {
 
 
 } // verus!
-
-*/
