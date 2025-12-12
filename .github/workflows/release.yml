@@ -26,7 +26,7 @@ jobs:
           echo release_assets="""$(echo $release_info | jq -cr '.assets')""" >> $GITHUB_ENV
 
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.release_tag }}
 
