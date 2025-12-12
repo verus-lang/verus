@@ -2,12 +2,15 @@
 name = "cargo-verus"
 version = "0.1.0"
 edition = "2021"
+description = "A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow."
 
 [features]
 integration-tests = []
 
 [dependencies]
 cargo_metadata = "0.18.1"
+clap = { version = "4.5.53", features = ["derive"] }
+clap-cargo = "0.18.3"
 rustc_tools_util = "0.3.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
