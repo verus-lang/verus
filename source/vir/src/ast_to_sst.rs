@@ -1,14 +1,12 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, ByRef, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternBinding, PatternX, Place, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, ByRef,
+    CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function, Ident,
+    IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding,
+    PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{
-    QUANT_FORALL, place_to_expr, place_to_expr_loc, types_equal, undecorate_typ, unit_typ,
-};
+use crate::ast_util::{QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -388,17 +386,6 @@ impl<'a> State<'a> {
             }
         }
         false
-    }
-
-    fn checking_bounds_for_mode(&self, ctx: &Ctx, mode: Mode) -> bool {
-        if self.view_as_spec {
-            return false;
-        }
-
-        match mode {
-            Mode::Spec => self.checking_recommends(ctx),
-            Mode::Proof | Mode::Exec => !self.checking_spec_preconditions(ctx),
-        }
     }
 
     pub fn next_assert_id(&mut self) -> Option<air::ast::AssertId> {
@@ -1237,14 +1224,46 @@ pub(crate) fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::AssignToPlace { place, rhs, op } => {
-            let loc = place_to_expr_loc(place);
-            let expr = SpannedTyped::new(
-                &expr.span,
-                &expr.typ,
-                ExprX::Assign { init_not_mut: false, lhs: loc, rhs: rhs.clone(), op: *op },
-            );
-            expr_to_stm_opt(ctx, state, &expr)
+        ExprX::AssignToPlace { place, rhs, op: Some(binary_op) } => {
+            // No support for short-circuit ops here
+            assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
+
+            let (stms1, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
+
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
+
+            let mut sequr = Sequencer::new();
+            maybe_return_never!(sequr.push(
+                stms1,
+                ReturnValue::Some(e1),
+                LocalDeclKind::TempViaAssign
+            ));
+            maybe_return_never!(sequr.push(stms2, e2, LocalDeclKind::TempViaAssign));
+
+            let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+            let (mut stms3, bin) =
+                binary_op_exp(ctx, state, &expr.span, &place.typ, *binary_op, &e1, &e2);
+            stms.append(&mut stms3);
+
+            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: bin };
+            stms.push(Spanned::new(expr.span.clone(), assign));
+
+            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::AssignToPlace { place, rhs, op: None } => {
+            let (mut stms1, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, _e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
+
+            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
+            stms1.append(&mut stms2);
+
+            let e2 = unwrap_or_return_never!(e2, stms1);
+
+            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e2 };
+            stms1.push(Spanned::new(expr.span.clone(), assign));
+
+            Ok((stms1, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
@@ -1584,90 +1603,9 @@ pub(crate) fn expr_to_stm_opt(
                     maybe_return_never!(sequr.push(stms2, e2, LocalDeclKind::TempViaAssign));
                     let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
 
-                    let bin = mk_exp(ExpX::Binary(*op, e1.clone(), e2.clone()));
-
-                    if let BinaryOp::Arith(arith, arith_mode) = op {
-                        // Insert bounds check
-
-                        match (
-                            arith_mode,
-                            state.checking_bounds_for_mode(ctx, *arith_mode),
-                            &*undecorate_typ(&expr.typ),
-                        ) {
-                            (_, false, _) => {}
-                            (Mode::Exec, true, TypX::Int(ir)) if ir.is_bounded() => {
-                                let (assert_exp, msg) = match arith {
-                                    ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
-                                        let unary = UnaryOpr::HasType(expr.typ.clone());
-                                        let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                                        let has_type = SpannedTyped::new(
-                                            &expr.span,
-                                            &Arc::new(TypX::Bool),
-                                            has_type,
-                                        );
-                                        (has_type, "possible arithmetic underflow/overflow")
-                                    }
-                                    ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
-                                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                                        let ne =
-                                            ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                                        let ne = SpannedTyped::new(
-                                            &expr.span,
-                                            &Arc::new(TypX::Bool),
-                                            ne,
-                                        );
-                                        (ne, "possible division by zero")
-                                    }
-                                };
-                                let error = error(&expr.span, msg);
-                                let assert =
-                                    StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
-                                let assert = Spanned::new(expr.span.clone(), assert);
-                                stms.push(assert);
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    // Add overflow checks for bit shifts
-                    // For a shift `a << b` or `a >> b`, Rust requires that
-                    //    0 <= b < (bitsize of a)
-                    // However, for spec code, this is extended in the obvious way to
-                    // integers outside the range (at least, for b >= 0).
-                    // So we don't need to do a check for here spec code.
-
-                    if let BinaryOp::Bitwise(bitwise, mode) = op {
-                        match (*mode, state.checking_bounds_for_mode(ctx, *mode), bitwise) {
-                            (_, false, _) => {}
-                            (Mode::Exec, true, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
-                                let zero = sst_int_literal(&expr.span, 0);
-                                let bitwidth = sst_bitwidth(&expr.span, w, &ctx.global.arch);
-
-                                let assert_exp = sst_conjoin(
-                                    &expr.span,
-                                    &vec![
-                                        sst_le(&expr.span, &zero, &e2),
-                                        sst_lt(&expr.span, &e2, &bitwidth),
-                                    ],
-                                );
-
-                                let msg = "possible bit shift underflow/overflow";
-                                let error = error(&expr.span, msg);
-                                let assert =
-                                    StmX::Assert(state.next_assert_id(), Some(error), assert_exp);
-                                let assert = Spanned::new(expr.span.clone(), assert);
-                                stms.push(assert);
-                            }
-                            (
-                                Mode::Proof | Mode::Spec,
-                                true,
-                                BitwiseOp::Shr(..) | BitwiseOp::Shl(..),
-                            ) => {}
-                            (_, true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
-                                // no overflow check needed
-                            }
-                        }
-                    }
+                    let (mut stms3, bin) =
+                        binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
+                    stms.append(&mut stms3);
 
                     Ok((stms, ReturnValue::Some(bin)))
                 }
@@ -2620,6 +2558,129 @@ pub(crate) fn expr_to_stm_opt(
     }
 }
 
+/// Translate the given binary op given its two arguments as Exps.
+/// This handles overflow-checking semantics, but it does NOT handle short-circuiting,
+/// that must be handled by the caller.
+fn binary_op_exp(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    typ: &Typ,
+    op: BinaryOp,
+    e1: &Exp,
+    e2: &Exp,
+) -> (Vec<Stm>, Exp) {
+    let pure_op = match op {
+        BinaryOp::Arith(ArithOp::Add(_)) => BinaryOp::Arith(ArithOp::Add(OverflowBehavior::Allow)),
+        BinaryOp::Arith(ArithOp::Sub(_)) => BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
+        BinaryOp::Arith(ArithOp::Mul(_)) => BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Allow)),
+        BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
+            BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
+        }
+        BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
+            BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
+        }
+        op => op,
+    };
+    let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
+
+    // Insert bounds check
+    let check = match op {
+        _ if state.view_as_spec => None,
+        BinaryOp::Arith(arith) => match arith {
+            ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
+                OverflowBehavior::Allow => None,
+                OverflowBehavior::Truncate(_) => None,
+                OverflowBehavior::Error(range) => {
+                    let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
+                    let has_type = ExpX::UnaryOpr(unary, bin.clone());
+                    let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
+                    Some((has_type, "possible arithmetic underflow/overflow"))
+                }
+            },
+            ArithOp::EuclideanDiv(d0b) | ArithOp::EuclideanMod(d0b) => match d0b {
+                Div0Behavior::Allow => None,
+                Div0Behavior::Error => {
+                    let zero = ExpX::Const(Constant::Int(BigInt::zero()));
+                    let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                    let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
+                    Some((ne, "possible division by zero"))
+                }
+            },
+        },
+        BinaryOp::Bitwise(bitwise, mode) => {
+            match (mode, bitwise) {
+                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                    // Add overflow checks for bit shifts
+                    // For a shift `a << b` or `a >> b`, Rust requires that
+                    //    0 <= b < (bitsize of a)
+                    // However, for spec code, this is extended in the obvious way to
+                    // integers outside the range (at least, for b >= 0).
+                    // So we don't need to do a check for here spec code.
+
+                    let zero = sst_int_literal(span, 0);
+                    let bitwidth = sst_bitwidth(span, &w, &ctx.global.arch);
+
+                    let assert_exp = sst_conjoin(
+                        span,
+                        &vec![sst_le(span, &zero, &e2), sst_lt(span, &e2, &bitwidth)],
+                    );
+
+                    let msg = "possible bit shift underflow/overflow";
+                    Some((assert_exp, msg))
+                }
+                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
+                    // no overflow check needed
+                    None
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let mut stms = vec![];
+
+    if let Some((assert_exp, msg)) = check {
+        if !state.checking_spec_preconditions(ctx) {
+            let error = error(span, msg);
+            let assert = StmX::Assert(state.next_assert_id(), Some(error), assert_exp.clone());
+            let assert = Spanned::new(span.clone(), assert);
+            stms.push(assert);
+        }
+
+        let assume = StmX::Assume(assert_exp);
+        let assume = Spanned::new(span.clone(), assume);
+        stms.push(assume);
+    }
+
+    // Add truncation if necessary
+
+    let trunc = if let BinaryOp::Arith(arith) = op {
+        match arith {
+            ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
+                OverflowBehavior::Allow => None,
+                OverflowBehavior::Truncate(range) => Some(range),
+                OverflowBehavior::Error(range) => Some(range),
+            },
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    let bin = match trunc {
+        Some(IntRange::Int) => bin,
+        Some(range) => {
+            let unary_op = UnaryOp::Clip { truncate: true, range };
+            SpannedTyped::new(span, typ, ExpX::Unary(unary_op, bin))
+        }
+        None => bin,
+    };
+
+    (stms, bin)
+}
+
 /// Stms and Exps needed to execute a 2-phase borrow.
 struct BorrowMutSst {
     /// Stms to execute "phase 1".
@@ -2659,7 +2720,8 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
         _ => panic!("borrow_mut_to_sst must be called for BorrowMut or TwoPhaseBorrowMut"),
     };
 
-    let place_exp = place_to_exp(ctx, state, place)?;
+    let (stms, exps) = place_to_exp_pair(ctx, state, place)?;
+    let (lhs_exp, normal_exp) = exps.unwrap(); // TODO(new_mut_ref): fix this
 
     // phase 1
     let (var_ident, mut_ref_exp) =
@@ -2667,10 +2729,12 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
     let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
 
     let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
-    let equal = sst_equal(&expr.span, &cur_exp, &place_exp);
+    let equal = sst_equal(&expr.span, &cur_exp, &normal_exp);
     let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
 
-    let phase1_stms = vec![has_typ_stm, assume_stm];
+    let mut phase1_stms = stms;
+    phase1_stms.push(has_typ_stm);
+    phase1_stms.push(assume_stm);
 
     // phase 2
 
@@ -2681,24 +2745,96 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
     };
     let future_exp = SpannedTyped::new(&expr.span, &t, future_expx);
 
-    let loc_expr = place_to_expr_loc(place);
-    let (lhs_stms, lhs_exp) = expr_to_stm_opt(ctx, state, &loc_expr)?;
-    assert!(lhs_stms.len() == 0);
-    let lhs_exp = lhs_exp.expect_value();
-
     let assignx = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: future_exp };
     let assign = Spanned::new(expr.span.clone(), assignx);
 
     Ok(BorrowMutSst { phase1_stms, phase2_stm: assign, mut_ref_exp })
 }
 
-fn place_to_exp(ctx: &Ctx, state: &mut State, place: &Place) -> Result<Exp, VirErr> {
-    let expr = place_to_expr(place);
-    let (stms, exp) = expr_to_stm_opt(ctx, state, &expr)?;
-    assert!(stms.len() == 0);
-    match exp {
-        ReturnValue::Some(e) => Ok(e),
-        _ => panic!("place_to_exp expected exp"),
+/// Use this when you need to both read and write to a given place
+///
+/// Returns two expressions:
+/// (i) the place as sst "loc" (l-value) which MUST NOT depend on any mutable vars.
+/// (ii) the evaluation of the place (by definition, this is dependent
+/// on the mutable var in question)
+fn place_to_exp_pair(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Option<(Exp, Exp)>), VirErr> {
+    let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
+    let (stms, exps) = place_to_exp_pair_rec(ctx, state, place)?;
+    let exps = match exps {
+        None => None,
+        Some((e1, e2)) => {
+            let e1 = mk_exp(ExpX::Loc(e1));
+            Some((e1, e2))
+        }
+    };
+    Ok((stms, exps))
+}
+
+fn place_to_exp_pair_rec(
+    ctx: &Ctx,
+    state: &mut State,
+    place: &Place,
+) -> Result<(Vec<Stm>, Option<(Exp, Exp)>), VirErr> {
+    let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
+    match &place.x {
+        PlaceX::Field(field_opr, p) => {
+            let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            // TODO(new_mut_ref): VariantCheck here?
+            let exps = match exps {
+                None => None,
+                Some((e1, e2)) => {
+                    let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
+                    let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e2));
+                    Some((e1, e2))
+                }
+            };
+            Ok((stms, exps))
+        }
+        PlaceX::DerefMut(p) => {
+            let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            let exps = match exps {
+                None => None,
+                Some((e1, e2)) => {
+                    let e1 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e1));
+                    let e2 = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e2));
+                    Some((e1, e2))
+                }
+            };
+            Ok((stms, exps))
+        }
+        PlaceX::Local(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            let e_l = mk_exp(ExpX::VarLoc(unique_id.clone()));
+            let e_r = mk_exp(ExpX::Var(unique_id));
+            let e_r = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_r));
+            Ok((vec![], Some((e_l, e_r))))
+        }
+        PlaceX::Temporary(e) => {
+            let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let exp = v.to_value().unwrap(); // TODO(new_mut_ref) fix this
+
+            let (temp_id, temp_var) =
+                state.declare_temp_var_stm(&exp.span, &exp.typ, LocalDeclKind::MutableTemporary);
+            stms.push(init_var(&exp.span, &temp_id, &exp));
+
+            let e_l = mk_exp(ExpX::VarLoc(temp_id.clone()));
+
+            Ok((stms, Some((e_l, temp_var))))
+        }
+        PlaceX::WithExpr(e, p) => {
+            let (mut stms, v) = expr_to_stm_opt(ctx, state, e)?;
+            let _e = v.to_value().unwrap(); // TODO(new_mut_ref) fix this
+
+            let (mut stms2, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            stms.append(&mut stms2);
+
+            Ok((stms, exps))
+        }
+        PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
     }
 }
 

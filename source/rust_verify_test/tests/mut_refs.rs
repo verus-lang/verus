@@ -226,6 +226,10 @@ test_verify_one_file_with_options! {
     #[test] test_resolve_axioms_in_context ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
+        fn resolve<T>(t: T)
+            ensures has_resolved(t)
+        { }
+
         fn box_with_mut_ref() {
             let mut x: u64 = 0;
 
@@ -234,7 +238,11 @@ test_verify_one_file_with_options! {
 
             **x_ref_box = 13;
 
-            proof { resolve(x_ref_box); }
+            resolve(x_ref_box);
+
+            // TODO(new_mut_ref): without this line, Verus doesn't emit the axiom for
+            // has_resolved::<Box<_>>
+            assert(has_resolved(x_ref_box));
 
             assert(x == 13);
         }
@@ -245,12 +253,12 @@ test_verify_one_file_with_options! {
             let x_ref = &mut x;
             let x_ref_ref = &x_ref;
 
-            proof { resolve(x_ref_ref); }
+            resolve(x_ref_ref);
 
             assert(has_resolved(x_ref)); // FAILS
 
             *x_ref = 20;
-            proof { resolve(x_ref); }
+            resolve(x_ref);
         }
 
         fn mut_ref_with_mut_ref() {
@@ -261,12 +269,12 @@ test_verify_one_file_with_options! {
 
             **x_ref_ref = 20;
 
-            proof { resolve(x_ref_ref); }
+            resolve(x_ref_ref);
 
             assert(has_resolved(x_ref)); // FAILS
 
             *x_ref = 30;
-            proof { resolve(x_ref); }
+            resolve(x_ref);
         }
     } => Err(err) => assert_fails(err, 2)
 }
@@ -1203,382 +1211,6 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_loops ["new-mut-ref"] => verus_code! {
-        fn some_bool() -> bool { true }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop1() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            assert(has_resolved(x_ref));
-            assert(x == 20);
-
-            loop {
-                if some_bool() { break; }
-
-                assert(has_resolved(x_ref));
-            }
-
-            assert(has_resolved(x_ref));
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop2() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            assert(has_resolved(x_ref)); // FAILS
-
-            loop {
-                if some_bool() { break; }
-
-                assert(has_resolved(x_ref)); // FAILS
-            }
-
-            *x_ref = 20;
-
-            assert(has_resolved(x_ref));
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop3() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            assert(has_resolved(x_ref)); // FAILS
-
-            loop {
-                if some_bool() { break; }
-
-                *x_ref = 20;
-
-                assert(has_resolved(x_ref)); // FAILS
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop4() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            loop {
-                if some_bool() {
-                    assert(has_resolved(x_ref));
-                    //assert(x == 20); // TODO(new_mut_ref): presently no way to specify the invariant we need
-                    break;
-                }
-
-                *x_ref = 20;
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop5() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            loop {
-                if some_bool() {
-                    assert(has_resolved(x_ref)); // FAILS
-                    continue;
-                }
-
-                *x_ref = 20;
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop6() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            *x_ref = 20;
-
-            loop {
-                if some_bool() {
-                    assert(has_resolved(x_ref)); // FAILS
-                    break;
-                }
-            }
-
-            *x_ref = 20;
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop7() {
-            loop {
-                if some_bool() {
-                    break;
-                }
-
-                let mut x = 0;
-                let mut x_ref = &mut x;
-
-                *x_ref = 20;
-
-                assert(has_resolved(x_ref));
-                assert(x == 20);
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn loop8() {
-            loop {
-                if some_bool() {
-                    break;
-                }
-
-                let mut x = 0;
-                let mut x_ref = &mut x;
-
-                *x_ref = 20;
-
-                assert(has_resolved(x_ref));
-                assert(x == 20);
-
-                continue;
-            }
-        }
-    } => Err(err) => assert_fails(err, 6)
-}
-
-test_verify_one_file_with_options! {
-    #[test] control_flow_loops_nested ["new-mut-ref"] => verus_code! {
-        fn some_bool() -> bool { true }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            loop {
-                if some_bool() { break; }
-
-                loop {
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref)); // FAILS
-                            break;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested2() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            'a: loop {
-                if some_bool() { break; }
-
-                loop {
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref));
-                            break 'a;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested3() {
-            let mut x = 0;
-            let mut x_ref = &mut x;
-
-            loop {
-                if some_bool() { break; }
-
-                'b: loop {
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref)); // FAILS
-                            break 'b;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested4() {
-            loop {
-                if some_bool() { break; }
-
-                loop {
-                    let mut x = 0;
-                    let mut x_ref = &mut x;
-
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref)); // FAILS
-                            continue;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested5() {
-            'a: loop {
-                if some_bool() { break; }
-
-                loop {
-                    let mut x = 0;
-                    let mut x_ref = &mut x;
-
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref));
-                            continue 'a;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested6() {
-            let mut x = 0;
-            let mut y = 0;
-            let mut x_ref = &mut x;
-
-            loop {
-                if some_bool() { break; }
-
-                loop {
-                    x_ref = &mut y;
-
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref)); // FAILS
-                            continue;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested7() {
-            let mut x = 0;
-            let mut y = 0;
-            let mut x_ref = &mut x;
-
-            loop {
-                if some_bool() { break; }
-
-                loop {
-                    x_ref = &mut y;
-
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref));
-                            break;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested8() {
-            let mut x = 0;
-            let mut y = 0;
-            let mut x_ref = &mut x;
-
-            loop {
-                if some_bool() { break; }
-
-                'b: loop {
-                    x_ref = &mut y;
-
-                    if some_bool() { break; }
-
-                    loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref));
-                            continue 'b;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-
-        #[verifier::exec_allows_no_decreases_clause]
-        fn nested9() {
-            let mut x = 0;
-            let mut y = 0;
-            let mut x_ref = &mut x;
-
-            'a: loop {
-                if some_bool() { break; }
-
-                'b: loop {
-                    x_ref = &mut y;
-
-                    if some_bool() { break; }
-
-                    'c: loop {
-                        if some_bool() {
-                            assert(has_resolved(x_ref));
-                            continue 'a;
-                        }
-
-                        *x_ref = 20;
-                    }
-                }
-            }
-        }
-    } => Err(err) => assert_fails(err, 4)
-}
-
-test_verify_one_file_with_options! {
     #[test] uninitialized ["new-mut-ref"] => verus_code! {
         fn test_uninit(b: bool) {
             let mut x = 0;
@@ -1823,8 +1455,11 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref) un-ignore this when temporaries are supported
-    #[ignore] #[test] temporaries_with_semantically_trivial_ops ["new-mut-ref"] => verus_code! {
+    #[test] temporaries_with_semantically_trivial_ops ["new-mut-ref"] => verus_code! {
+        use std::sync::Arc;
+        use std::rc::Rc;
+        use vstd::prelude::*;
+
         // the goal of this test is to make sure these are all properly temporaries
         // and that we aren't modifying the original local variable
         fn test_temp_shared_ref() {
@@ -1878,7 +1513,7 @@ test_verify_one_file_with_options! {
 
             *(&mut (x as *const u64)) = p2;
 
-            assert(x == p1); // FAILS
+            assert(x == p2); // FAILS
         }
 
         fn test_ptr_conversion_mut_to_const() {
@@ -1889,7 +1524,7 @@ test_verify_one_file_with_options! {
 
             *(&mut (x as *mut u64)) = p1;
 
-            assert(x == p2); // FAILS
+            assert(x == p1); // FAILS
         }
 
         fn test_int_casting() {
@@ -2192,8 +1827,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // TODO(new_mut_ref): currently fails because let-decls don't account for copies
-    #[ignore] #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized ["new-mut-ref"] => verus_code! {
+    #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized ["new-mut-ref"] => verus_code! {
         fn id<A>(a: A) -> A { a }
 
         fn test() {
@@ -2840,4 +2474,231 @@ test_verify_one_file_with_options! {
             assert(has_resolved(y.x.b));
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] assign_op_to_mut_ref ["new-mut-ref"] => verus_code! {
+        fn test_add_assign(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+
+            assert(x == 20 + i);
+        }
+
+        fn test_add_assign_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+
+            assert(x == 20 + i);
+            assert(false); // FAILS
+        }
+
+        fn test_add_assign_fields(i: u64)
+            requires i < 1000
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i;
+
+            assert(x.0 == 20 + i);
+            assert(x.1 == 30);
+        }
+
+        fn test_add_assign_fields_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i;
+
+            assert(x.0 == 20 + i);
+            assert(x.1 == 30);
+            assert(false); // FAILS
+        }
+
+        fn test_add_assign_overflow(i: u64)
+        {
+            let mut x = (20, 30);
+            let x_ref = &mut x;
+
+            x_ref.0 += i; // FAILS
+        }
+
+        fn test_add_assign_twice(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+            *x_ref += i;
+
+            assert(x == 20 + 2*i);
+        }
+
+        fn test_add_assign_twice_fail(i: u64)
+            requires i < 1000
+        {
+            let mut x = 20;
+            let x_ref = &mut x;
+
+            *x_ref += i;
+            *x_ref += i;
+
+            assert(x == 20 + 2*i);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] ctor_with_update_tail ["new-mut-ref"] => verus_code! {
+        tracked struct TTPair<A, B> {
+            tracked a: A,
+            tracked b: B,
+        }
+
+        fn test1() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            assert(has_resolved(p.b)); // FAILS
+
+            proof {
+                *p2.b.borrow_mut() = 4;
+            }
+        }
+
+        fn test2() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            // ok, p.a was not moved
+            assert(has_resolved(p.a));
+
+            proof {
+                *p2.b.borrow_mut() = 4;
+            }
+        }
+
+        fn test3() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked p2 = TTPair {
+                a: &mut g3,
+                .. p
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p2.a.borrow_mut() = 5;
+                *p2.b.borrow_mut() = 6;
+            }
+
+            assert(g1@ == 4);
+            assert(g3@ == 5);
+            assert(g2@ == 6);
+
+            assert(false); // FAILS
+        }
+
+        spec fn id<A>(a: A) -> A { a }
+
+        fn test4() {
+            let mut g1: Ghost<int> = Ghost(1);
+            let mut g2: Ghost<int> = Ghost(2);
+            let mut g3: Ghost<int> = Ghost(3);
+
+            let tracked p = TTPair {
+                a: &mut g1,
+                b: &mut g2,
+            };
+
+            proof {
+                *p.a.borrow_mut() = 4;
+                *p.b.borrow_mut() = 5;
+            }
+
+            let tracked ref_g3 = &mut g3;
+            // this doesn't do any moves because it's ghost mode:
+            let ghost p2 = TTPair {
+                a: id(ref_g3),
+                .. p
+            };
+
+            assert(has_resolved(p.b));
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] shr_bor_of_pair_of_mut_bor ["new-mut-ref"] => verus_code! {
+        enum BigEnum<'a, 'b> {
+            A(&'a (u64, &'b mut u64)),
+        }
+
+        fn test_fails() {
+            let mut pair = 2;
+            let mut big_pair = (4, &mut pair);
+            let mut big = BigEnum::A(&big_pair);
+
+            *big_pair.1 = 10;
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

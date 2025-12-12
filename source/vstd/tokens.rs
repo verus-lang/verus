@@ -5,6 +5,7 @@ use core::marker::PhantomData;
 pub mod frac;
 pub mod map;
 pub mod seq;
+pub mod set;
 
 use verus as verus_;
 verus_! {

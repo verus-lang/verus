@@ -45,7 +45,7 @@ jobs:
       
       - name: Update Cargo.lock, if needed
         run: |
-          cargo update vstd verus_builtin_macros verus_prettyplease verus_state_machines_macros verus_syn
+          pushd source; cargo update verus_builtin verus_builtin_macros verus_prettyplease verus_state_machines_macros verus_syn; popd
 
       - name: Commit and push updated lock file 
         run: |

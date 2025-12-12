@@ -197,7 +197,7 @@ pub(crate) fn check_item_struct<'tcx>(
         mode,
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
-        sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+        sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
         destructor: adt_def.destructor(ctxt.tcx).is_some(),
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
@@ -287,7 +287,7 @@ pub(crate) fn check_item_enum<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
             destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
@@ -388,7 +388,7 @@ pub(crate) fn check_item_union<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
             destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
@@ -399,6 +399,7 @@ fn get_sized_constraint<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
     adt_def: &AdtDef<'tcx>,
+    substs: Option<GenericArgsRef<'tcx>>,
 ) -> Result<Option<vir::ast::Typ>, VirErr> {
     // This is where we get the 'sized_constraint', the type that is used to determine if
     // a given type is sized. This is an optional value -- None means "always sized"
@@ -451,7 +452,11 @@ fn get_sized_constraint<'tcx>(
     let Some(sized_constraint) = sized_constraint_opt else {
         return Ok(None);
     };
-    let mut sized_constraint = sized_constraint.skip_binder();
+    let mut sized_constraint = if let Some(substs) = substs {
+        sized_constraint.instantiate(tcx, substs)
+    } else {
+        sized_constraint.skip_binder()
+    };
 
     let mut idx = 0;
     loop {
@@ -669,7 +674,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
             destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
@@ -707,7 +712,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
             destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
@@ -758,7 +763,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
             destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));

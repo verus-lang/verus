@@ -94,6 +94,7 @@ impl Printer {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
+            TypX::Real => str_to_node("Real"),
             TypX::Fun if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Fun => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
@@ -123,6 +124,7 @@ impl Printer {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
+            ExprX::Const(Constant::Real(n)) => Node::Atom((**n).clone()),
             ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, *width),
             ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
@@ -154,6 +156,7 @@ impl Printer {
                     UnaryOp::BitExtract(_, _) => "extract",
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",
+                    UnaryOp::ToReal => "to_real",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {
@@ -203,6 +206,7 @@ impl Printer {
                     BinaryOp::Gt => str_to_node(">"),
                     BinaryOp::EuclideanDiv => str_to_node("div"),
                     BinaryOp::EuclideanMod => str_to_node("mod"),
+                    BinaryOp::RealDiv => str_to_node("/"),
                     BinaryOp::Relation(..) => unreachable!(),
                     BinaryOp::BitXor => str_to_node("bvxor"),
                     BinaryOp::BitAnd => str_to_node("bvand"),

@@ -139,7 +139,7 @@ jobs:
           ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
-        if: matrix.features == ''
+        if: matrix.features == '' && github.repository == 'verus-lang/verus'
         with:
             name: verus-arm64-macos
             path: verus-arm64-macos.zip
@@ -151,7 +151,7 @@ jobs:
           ./tools/docs.sh
       - name: upload verusdoc artifact
         uses: actions/upload-artifact@v4
-        if: matrix.features == ''
+        if: matrix.features == '' && github.repository == 'verus-lang/verus'
         with:
           name: verusdoc
           path: source/doc
@@ -201,6 +201,7 @@ jobs:
           ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
+        if: github.repository == 'verus-lang/verus'
         with:
             name: verus-x86-macos
             path: verus-x86-macos.zip
@@ -245,6 +246,7 @@ jobs:
         shell: powershell
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
+        if: github.repository == 'verus-lang/verus'
         with:
             name: verus-x86-win
             path: verus-x86-win.zip
@@ -289,6 +291,7 @@ jobs:
           ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
+        if: github.repository == 'verus-lang/verus'
         with:
             name: verus-x86-linux
             path: verus-x86-linux.zip
@@ -318,7 +321,7 @@ jobs:
 
   release:
     needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos, smoke-test-and-release-macos-x86, docs]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
     runs-on: ubuntu-latest
     steps:
       - name: download all artifacts
