@@ -1172,6 +1172,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
+                        | ToDyn
                         | StrLen
                         | StrIsAscii
                         | MutRefCurrent
@@ -1289,6 +1290,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | FloatToBits
                         | IntToReal
                         | CoerceMode { .. }
+                        | ToDyn
                         | StrLen
                         | StrIsAscii
                         | MutRefCurrent

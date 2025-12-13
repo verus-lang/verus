@@ -102,6 +102,7 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             UnaryOp::Trigger(_)
             | UnaryOp::HeightTrigger
             | UnaryOp::CoerceMode { .. }
+            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated => {
                 // recurse inside coercions
@@ -259,6 +260,7 @@ fn check_trigger_expr(
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
+                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),

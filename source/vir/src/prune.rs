@@ -108,6 +108,7 @@ struct State {
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
     mono_abstract_datatypes: Option<HashSet<MonoTyp>>,
     spec_fn_types: HashSet<usize>,
+    dyn_traits: HashSet<Path>,
     uses_array: bool,
     uses_pointee_metadata: bool,
     fndef_types: HashSet<Fun>,
@@ -127,6 +128,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::SpecFn(ts, _) => ReachedType::SpecFn(ts.len()),
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(dt, _, _) => ReachedType::Datatype(dt.clone()),
+        TypX::Dyn(..) => ReachedType::None,
         TypX::FnDef(..) => ReachedType::None,
         TypX::Decorate(_, _, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
@@ -286,6 +288,11 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         | TypX::Primitive(..)
         | TypX::PointeeMetadata(_) => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
+        }
+        TypX::Dyn(trait_path, _, _) => {
+            reach_type(ctxt, state, &typ_to_reached_type(typ));
+            reach_bound_trait(ctxt, state, trait_path);
+            state.dyn_traits.insert(trait_path.clone());
         }
         TypX::Opaque { def_path, .. } => {
             reach_opaque_type(ctxt, state, def_path);
@@ -777,6 +784,15 @@ pub struct UsedBuiltins {
 //  - collect_monotyps: if true, return a Vec<MonoTyp>; otherwise, return None
 //    this should only be done post-simplification
 
+pub struct PruneInfo {
+    pub mono_abstract_datatypes: Option<Vec<MonoTyp>>,
+    pub spec_fn_types: Vec<usize>,
+    pub used_builtins: UsedBuiltins,
+    pub fndef_types: Vec<Fun>,
+    pub resolved_typs: Option<Vec<ResolvableType>>,
+    pub dyn_traits: HashSet<Path>,
+}
+
 pub fn prune_krate_for_module_or_krate(
     krate: &Krate,
     crate_name: &Ident,
@@ -785,8 +801,7 @@ pub fn prune_krate_for_module_or_krate(
     fun: Option<&Fun>,
     collect_monotyps: bool,
     collect_resolve_typs: bool,
-) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, UsedBuiltins, Vec<Fun>, Option<Vec<ResolvableType>>)
-{
+) -> (Krate, PruneInfo) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -1243,5 +1258,13 @@ pub fn prune_krate_for_module_or_krate(
         uses_array: state.uses_array,
         uses_pointee_metadata: state.uses_pointee_metadata,
     };
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, used_builtins, fndef_types, res_typs)
+    let prune_info = PruneInfo {
+        mono_abstract_datatypes,
+        spec_fn_types,
+        used_builtins,
+        fndef_types,
+        resolved_typs: res_typs,
+        dyn_traits: state.dyn_traits,
+    };
+    (Arc::new(kratex), prune_info)
 }

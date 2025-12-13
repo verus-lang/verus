@@ -435,10 +435,20 @@ pub(crate) fn expand_call_graph(
     // See recursive_types::check_traits for more documentation
     let f_node = Node::Fun(function.x.name.clone());
 
+    // Add f -> T nodes for any dyn T in f
+    use crate::ast_visitor::{AstVisitor, WalkTypVisitorEnv};
+    let ft = &|call_graph: &mut GraphBuilder<Node>, t: &Typ| {
+        crate::recursive_types::add_trait_type_edges(call_graph, &f_node, t);
+        Ok(())
+    };
+    let mut visitor = WalkTypVisitorEnv { env: call_graph, ft };
+    visitor.visit_function(function).unwrap();
+
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+        // T --> ...typs...
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T

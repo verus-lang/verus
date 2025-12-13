@@ -116,6 +116,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let decoration = str_to_node(DECORATION);
     let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
+    let decorate_nil_dyn = str_to_node(DECORATE_NIL_DYN);
     let decorate_ref = str_to_node(DECORATE_REF);
     let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
@@ -203,6 +204,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil_sized] [decoration])
         (declare-const [decorate_nil_slice] [decoration])
+        (declare-const [decorate_nil_dyn] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
         (declare-fun [decorate_mut_ref] ([decoration]) [decoration])

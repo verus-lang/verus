@@ -818,7 +818,17 @@ pub fn func_axioms_to_air(
                 }
             }
 
-            if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+            if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
+                let orig_trait =
+                    ctx.global.extension_to_trait.get(trait_path).unwrap_or(trait_path);
+                if ctx.reached_dyn_traits.contains(orig_trait) {
+                    crate::traits::dyn_spec_fn_axiom(
+                        ctx,
+                        &mut decl_commands,
+                        orig_trait,
+                        &function,
+                    );
+                }
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
                 return Ok((Arc::new(decl_commands), check_commands));

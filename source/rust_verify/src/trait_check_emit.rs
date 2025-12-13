@@ -85,6 +85,13 @@ impl ToString for TypX {
             TypX::Datatype(path, lifetimes, args) => {
                 typ_args_to_string(Some(path), lifetimes, args, &None)
             }
+            TypX::Dyn(path, args) => {
+                format!("dyn {}", typ_args_to_string(Some(path), &vec![], args, &None))
+            }
+            TypX::Slice(elem) => {
+                format!("[{}]", elem.to_string())
+            }
+            TypX::StrSlice => "str".to_string(),
             TypX::Projection { self_typ, trait_as_datatype: tr, name, assoc_typ_args } => {
                 format!(
                     "<{} as {}>::{}",

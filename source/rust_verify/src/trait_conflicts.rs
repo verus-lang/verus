@@ -40,8 +40,6 @@ use vir::ast::{
 #[derive(Copy, Clone)]
 enum TypNum {
     SpecFn,
-    Slice,
-    StrSlice,
     Ptr,
     Ref,
     MutRef,
@@ -104,6 +102,10 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Datatype(Dt::Path(path), typs, _) => {
             Box::new(TypX::Datatype(state.datatype_name(path), vec![], gen_typs(state, typs)))
         }
+        vir::ast::TypX::Dyn(path, typs, _) => {
+            let id = state.trait_name(path);
+            Box::new(TypX::Dyn(id, gen_typs(state, typs)))
+        }
         vir::ast::TypX::Primitive(Primitive::Array, ts) => {
             assert!(ts.len() == 2);
             Box::new(TypX::Datatype(
@@ -112,11 +114,20 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 gen_typs(state, ts),
             ))
         }
+        // Handle Slice and StrSlice specially to preserve unsizedness
+        vir::ast::TypX::Primitive(Primitive::Slice, ts) => {
+            assert!(ts.len() == 1);
+            Box::new(TypX::Slice(gen_typ(state, &ts[0])))
+        }
+        vir::ast::TypX::Primitive(Primitive::StrSlice, ts) => {
+            assert!(ts.len() == 0);
+            Box::new(TypX::StrSlice)
+        }
         vir::ast::TypX::Primitive(prim, ts) => {
             let n = match prim {
                 Primitive::Array => unreachable!(),
-                Primitive::Slice => TypNum::Slice,
-                Primitive::StrSlice => TypNum::StrSlice,
+                Primitive::Slice => unreachable!(),
+                Primitive::StrSlice => unreachable!(),
                 Primitive::Ptr => TypNum::Ptr,
                 Primitive::Global => TypNum::Global,
             };
@@ -168,7 +179,10 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
-        vir::ast::TypX::MutRef(_) => todo!(),
+        vir::ast::TypX::MutRef(t) => {
+            let ts = vec![t.clone()];
+            gen_num_typ(TypNum::MutRef, gen_typs(state, &ts))
+        }
     }
 }
 
@@ -322,6 +336,14 @@ pub(crate) fn gen_check_trait_impl_conflicts(
                 fields.push(Box::new(TypX::Datatype(box_name, Vec::new(), vec![t])));
             }
         }
+        if d.x.variants.len() == 1 {
+            let variant = &d.x.variants[0];
+            if let Some(field) = variant.fields.last() {
+                // For structs, we need to preserve the last field so Rust can
+                // determine the sizedness of the struct
+                fields.push(gen_typ(state, &field.a.0));
+            }
+        }
         let decl = DatatypeDecl {
             name: state.datatype_name(path),
             span: spans.from_air_span(&d.span, None),
@@ -410,5 +432,65 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             is_clone: false,
         };
         state.trait_impls.push(decl);
+    }
+
+    // For each trait T<A: TA, ...> { type X: TX; ... } for which there is a dyn T,
+    // declare an impl modeling dyn T's blanket impl:
+    //   impl<A: TA, ...X: TX, ...> T<A, ...> for Dyn<n_T, (Box<A>, ..., Box<X>, ...)> { type X = X; ... }
+    // This works around https://github.com/rust-lang/rust/issues/57893 .
+    // This (and vir::traits::get_dyn_traits) can be removed when that issue is fixed.
+    let dyn_traits: HashSet<Path> = vir::traits::get_dyn_traits(vir_crate);
+    let mut n_trait: usize = 0;
+    for t in &vir_crate.traits {
+        if !dyn_traits.contains(&t.x.name) {
+            continue;
+        }
+        let name = state.trait_name(&t.x.name);
+        let span = spans.from_air_span(&t.span, None);
+        let (mut generic_params, mut generic_bounds) = gen_generics(
+            state,
+            &t.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
+            &t.x.typ_bounds,
+            None,
+        );
+        let t_args =
+            generic_params.iter().map(|p| Box::new(TypX::TypParam(p.name.clone()))).collect();
+        let (a_params, a_bounds) =
+            gen_generics(state, &t.x.assoc_typs, &t.x.assoc_typs_bounds, None);
+        let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
+        for x in &a_params {
+            // TODO: test associated types once we support "dyn with more than one trait"
+            generic_params.push(x.clone());
+            assoc_typs.push((x.name.clone(), vec![], Box::new(TypX::TypParam(x.name.clone()))));
+        }
+        generic_bounds.extend(a_bounds);
+
+        let t1 = Box::new(TypX::Primitive(n_trait.to_string()));
+        let box_name = Id::new(IdKind::Builtin, 0, "Box".to_owned());
+        let ts = generic_params
+            .iter()
+            .map(|x| Box::new(TypX::TypParam(x.name.clone())))
+            .map(|t| Box::new(TypX::Datatype(box_name.clone(), Vec::new(), vec![t])))
+            .collect();
+        let t2 = Box::new(TypX::Tuple(ts));
+        let self_typ = Box::new(TypX::Datatype(
+            Id::new(IdKind::Builtin, 0, "Dyn".to_owned()),
+            vec![],
+            vec![t1, t2],
+        ));
+        let trait_as_datatype = Box::new(TypX::Datatype(name, Vec::new(), t_args));
+        let trait_polarity = rustc_middle::ty::ImplPolarity::Positive;
+        let decl = TraitImpl {
+            span,
+            self_typ,
+            generic_params,
+            generic_bounds,
+            trait_as_datatype,
+            assoc_typs,
+            trait_polarity,
+            is_clone: false,
+        };
+        state.trait_impls.push(decl);
+        n_trait += 1;
     }
 }
