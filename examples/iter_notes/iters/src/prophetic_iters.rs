@@ -3,67 +3,9 @@ use vstd::prelude::*;
 
 verus!{
 
-pub mod decreases_fix {
-
-use vstd::prelude::*;
-
-pub uninterp spec fn does_decrease<A>(from: A, to: A) -> bool;
-
-pub broadcast axiom fn does_decrease_decreases<A>(from: A, to: A)
-    ensures
-        #[trigger] does_decrease(from, to) <==> decreases_to!(from => to);
-
-pub broadcast axiom fn does_decrease_option<T>(from: Option<T>, to: Option<T>)
-    ensures
-        #[trigger] does_decrease(from, to) <==>
-            (from matches Some(f) && (to is None || (to matches Some(t) && does_decrease(f, t))))
-;
-
-pub broadcast axiom fn does_decrease_int(from: int, to: int)
-    ensures
-        #[trigger] does_decrease(from, to) <==> 0 <= to < from,
-;
-
-pub broadcast axiom fn does_decrease_nat(from: nat, to: nat)
-    ensures
-        #[trigger] does_decrease(from, to) <==> 0 <= to < from,
-;
-
-pub broadcast axiom fn does_decrease_u32(from: u32, to: u32)
-    ensures
-        #[trigger] does_decrease(from, to) <==> 0 <= to < from,
-;
-
-pub broadcast axiom fn does_decrease_u64(from: u64, to: u64)
-    ensures
-        #[trigger] does_decrease(from, to) <==> 0 <= to < from,
-;
-
-pub broadcast axiom fn does_decrease_usize(from: usize, to: usize)
-    ensures
-        #[trigger] does_decrease(from, to) <==> 0 <= to < from,
-;
-
-pub broadcast group group_decrease_axioms {
-    does_decrease_decreases,
-    does_decrease_option,
-    does_decrease_int,
-    does_decrease_nat,
-    does_decrease_u32,
-    does_decrease_u64,
-    does_decrease_usize,
-}
-
-}
-
-
 pub mod iterator_traits {
 
 use vstd::prelude::*;
-use super::decreases_fix::*;
-
-broadcast use group_decrease_axioms;
-
 
 // PAPER CUT: When a proof fails, you can't mention prophetic functions 
 //            as part of proof debugging.  E.g., you can't write:
@@ -99,7 +41,7 @@ pub trait Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                does_decrease(old(self).decrease(), self.decrease()),
+                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -136,7 +78,7 @@ pub trait DoubleEndedIterator : Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                does_decrease(old(self).decrease(), self.decrease()),
+                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
 }
@@ -858,7 +800,7 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
                 }
             }),
             self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
-                does_decrease(old(self).iter.decrease(), self.iter.decrease()),
+                decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
         let ret = self.iter.next();
         proof {
@@ -881,9 +823,7 @@ pub broadcast group group_iterator_specs {
 mod examples {
 
 use vstd::prelude::*;
-use super::decreases_fix::*;
 use super::iterator_traits::*;
-broadcast use group_decrease_axioms;
 
 
 fn test() {

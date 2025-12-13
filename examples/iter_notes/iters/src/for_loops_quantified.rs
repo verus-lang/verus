@@ -1,11 +1,10 @@
 use std::{io::Take, iter::{self, Skip}, path::Iter};
 use vstd::prelude::*;
-use crate::prophetic_iters::decreases_fix::*;
 use crate::prophetic_iters::iterator_traits::*;
 
 verus!{
 
-broadcast use {group_decrease_axioms, group_iterator_specs};
+broadcast use group_iterator_specs;
 
 fn for_loop_test_vec() {
     let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
@@ -66,7 +65,7 @@ fn for_loop_test_vec() {
                     y.snapshot@.completes(),        // AUTO
                     y.index == y.seq().len(), // AUTO
                 decreases
-                    y.iter.decrease(),
+                    y.iter.decrease().unwrap_or(arbitrary()),
             {
                 let ghost VERUS_OLD_y = y;
                 #[allow(non_snake_case)]

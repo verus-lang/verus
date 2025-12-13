@@ -1,12 +1,8 @@
-/*
 use std::{io::Take, iter::{self, Skip}, path::Iter};
 use vstd::prelude::*;
-use crate::prophetic_iters::decreases_fix::*;
 use crate::prophetic_iters::iterator_traits::*;
 
 verus!{
-
-broadcast use group_decrease_axioms;
 
 spec fn sum_u8(s: Seq<&u8>) -> nat 
     decreases s.len(),
@@ -125,9 +121,8 @@ fn for_loop_test_skip(v: Vec<u8>) {
     // }
     //
     // Into:
-    let iter = VerusForLoopIterator::new(vec_iter(&v));
-    assert(iter.seq().len() == v.len());
-    assert(iter.seq().map_values(|e: &u8| *e) == v@);
+    let init = Ghost(Some(&vec_iter_spec(&v)));
+    let iter = VerusForLoopIterator::new(vec_iter(&v), init);
     let Ghost(VERUS_old_snap) = iter.snapshot;
     #[allow(non_snake_case)]
     let VERUS_loop_result = match iter {
@@ -138,7 +133,9 @@ fn for_loop_test_skip(v: Vec<u8>) {
                     // User invariant_except_break
                     sum == sum_u8(y.seq().take(y.index@))
                 invariant
-                    y.wf(VERUS_old_snap),
+                    y.snapshot == VERUS_old_snap,
+                    y.init == Ghost(Some(&vec_iter_spec(&v))),
+                    y.wf(),
                     ({ 
                       // Grab the next val for (possible) use in inv
                       let x = if y.index@ < y.seq().len() { y.seq()[y.index@] } else { arbitrary() };
@@ -155,11 +152,11 @@ fn for_loop_test_skip(v: Vec<u8>) {
                     (y.index@ == y.seq().len() && sum == sum_u8(y.seq().take(y.index@))) || 
                         (sum == u8::MAX && sum_u8(y.seq().take(y.index@)) > u8::MAX),
                 decreases
-                    y.iter.decrease(),
+                    y.iter.decrease().unwrap_or(arbitrary()),
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
-                match y.next(Ghost(VERUS_old_snap)) {
+                match y.next() {
                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
                     None => {
                         break
@@ -200,4 +197,3 @@ fn for_loop_test_skip(v: Vec<u8>) {
 
 
 } // verus!
-*/

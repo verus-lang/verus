@@ -5,7 +5,7 @@ use verus as verus_;
 use core::iter::Iterator;
 
 verus_! {
-
+/*
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
 pub trait ExIterator {
@@ -63,7 +63,6 @@ pub trait ExIterator {
     /// annotation), the analysis places the value in init.
     spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
 }
-
 
 
 /// REVIEW: Despite the name, VerusForLoopIterator doesn't implement Iterator.
@@ -158,6 +157,7 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         ret
     }
 }
+*/
 
 
 } // verus!

@@ -1,11 +1,8 @@
 use std::{io::Take, iter::{self, Skip}, path::Iter};
 use vstd::prelude::*;
-use crate::prophetic_iters::decreases_fix::*;
 use crate::prophetic_iters::iterator_traits::*;
 
 verus!{
-
-broadcast use group_decrease_axioms;
 
 /// Example of what our desugaring will look like when the user
 /// has added #[verifier::exec_allows_no_decreases_clause]
@@ -60,7 +57,7 @@ fn for_loop_test_vec() {
                     y.index == y.seq().len(), // AUTO
                 // Removed when the user adds #[verifier::exec_allows_no_decreases_clause]
                 // decreases
-                //     y.iter.decrease(),
+                //   y.iter.decrease().unwrap_or(arbitrary()),
             {
                 #[allow(non_snake_case)]
                 let mut VERUS_loop_next;
