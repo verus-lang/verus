@@ -1121,6 +1121,30 @@ pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     }
 }
 
+/// Two sets are disjoint iff their intersection is empty
+pub proof fn lemma_disjoint_iff_empty_intersection<T>(a: Set<T>, b: Set<T>)
+    ensures
+        a.disjoint(b) <==> a.intersect(b).is_empty(),
+{
+    broadcast use group_set_properties;
+
+    if a.disjoint(b) {
+        assert(b.disjoint(a));
+        assert(forall|x: T| a.contains(x) ==> !(a.contains(x) && b.contains(x)));
+        assert(forall|x: T| b.contains(x) ==> !(a.contains(x) && b.contains(x)));
+        assert(forall|x: T| !a.intersect(b).contains(x));
+    }
+    if a.intersect(b).is_empty() {
+        assert(forall|x: T| !a.intersect(b).contains(x));
+        if !a.disjoint(b) {
+            assert(exists|x: T| a.contains(x) && b.contains(x));
+            let x = choose|x: T| a.contains(x) && b.contains(x);
+            assert(a.intersect(b).contains(x));
+            assert(!a.intersect(b).is_empty());
+        }
+    }
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.

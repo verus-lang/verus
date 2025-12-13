@@ -20,7 +20,7 @@
  - [`trigger`](#trigger)
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
- - `when_used_as_spec`
+ - [`when_used_as_spec`](#verifierwhen_used_as_spec)
  - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
  - [`assume_termination`](#verifierassume_termination)
 

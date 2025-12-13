@@ -1,15 +1,14 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
-    Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind, FunctionX,
-    GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr, Param,
-    ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    TraitImpl, TraitImplX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
+    FunctionX, GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr,
+    Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt,
+    StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::util::vec_map_result;
-use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
@@ -121,12 +120,19 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     fn visit_exprs_vec(&mut self, exprs: &Vec<Exprs>) -> Result<R::Vec<Exprs>, Err> {
         R::map_vec(exprs, &mut |es| {
             let es = self.visit_exprs(es)?;
-            R::ret(|| Arc::new(R::get_vec(es)))
+            R::ret(|| R::get_vec_a(es))
         })
     }
 
     fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
         R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
+    }
+
+    fn visit_opt_exprs(&mut self, exprs_opt: &Option<Exprs>) -> Result<R::Opt<Exprs>, Err> {
+        R::map_opt(exprs_opt, &mut |es| {
+            let es = self.visit_exprs(es)?;
+            R::ret(|| R::get_vec_a(es))
+        })
     }
 
     fn visit_opt_place(&mut self, place_opt: &Option<Place>) -> Result<R::Opt<Place>, Err> {
@@ -309,9 +315,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let oe = self.visit_opt_expr(opt_e)?;
                 R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es), R::get_opt(oe))))
             }
-            ExprX::Ctor(dt, id, binders, opt_e) => {
+            ExprX::Ctor(dt, id, binders, opt_tail) => {
                 let bs = self.visit_binders_expr(binders)?;
-                let oe = self.visit_opt_place(opt_e)?;
+                let oe = R::map_opt(opt_tail, &mut |p| self.visit_ctor_update_tail(p))?;
                 R::ret(|| {
                     expr_new(ExprX::Ctor(dt.clone(), id.clone(), R::get_vec_a(bs), R::get_opt(oe)))
                 })
@@ -644,6 +650,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         }
     }
 
+    fn visit_ctor_update_tail(
+        &mut self,
+        tail: &CtorUpdateTail,
+    ) -> Result<R::Ret<CtorUpdateTail>, Err> {
+        let CtorUpdateTail { place, taken_fields } = tail;
+        let place = self.visit_place(place)?;
+        R::ret(|| CtorUpdateTail { place: R::get(place), taken_fields: taken_fields.clone() })
+    }
+
     fn visit_arms(&mut self, arms: &Arms) -> Result<R::Vec<Arm>, Err> {
         R::map_vec(arms, &mut |e| self.visit_arm(e))
     }
@@ -785,6 +800,15 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| place_new(PlaceX::Temporary(R::get(e))))
             }
+            PlaceX::ModeUnwrap(p, mode) => {
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::ModeUnwrap(R::get(p), *mode)))
+            }
+            PlaceX::WithExpr(e, p) => {
+                let e = self.visit_expr(e)?;
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::WithExpr(R::get(e), R::get(p))))
+            }
         }
     }
 
@@ -796,6 +820,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &**typ {
             TypX::Bool => R::ret(|| typ.clone()),
             TypX::Int(_) => R::ret(|| typ.clone()),
+            TypX::Real => R::ret(|| typ.clone()),
             TypX::Float(_) => R::ret(|| typ.clone()),
             TypX::TypParam(_) => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),
@@ -866,6 +891,369 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             }
         }
     }
+
+    fn visit_generic_bound(&mut self, b: &GenericBound) -> Result<R::Ret<GenericBound>, Err> {
+        match &**b {
+            GenericBoundX::Trait(trait_id, typs) => {
+                let ts = self.visit_typs(typs)?;
+                R::ret(|| Arc::new(GenericBoundX::Trait(trait_id.clone(), R::get_vec_a(ts))))
+            }
+            GenericBoundX::TypEquality(path, typs, id, typ) => {
+                let ts = self.visit_typs(typs)?;
+                let t = self.visit_typ(typ)?;
+                R::ret(|| {
+                    Arc::new(GenericBoundX::TypEquality(
+                        path.clone(),
+                        R::get_vec_a(ts),
+                        id.clone(),
+                        R::get(t),
+                    ))
+                })
+            }
+            GenericBoundX::ConstTyp(t1, t2) => {
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| Arc::new(GenericBoundX::ConstTyp(R::get(t1), R::get(t2))))
+            }
+        }
+    }
+
+    fn visit_generic_bounds(
+        &mut self,
+        bs: &Vec<GenericBound>,
+    ) -> Result<R::Vec<GenericBound>, Err> {
+        R::map_vec(bs, &mut |b| self.visit_generic_bound(b))
+    }
+
+    fn visit_param(&mut self, param: &Param) -> Result<R::Ret<Param>, Err> {
+        let ParamX { name, typ, mode, is_mut, unwrapped_info } = &param.x;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| {
+            param.new_x(ParamX {
+                name: name.clone(),
+                typ: R::get(typ),
+                mode: *mode,
+                is_mut: *is_mut,
+                unwrapped_info: unwrapped_info.clone(),
+            })
+        })
+    }
+
+    fn visit_params(&mut self, params: &Vec<Param>) -> Result<R::Vec<Param>, Err> {
+        R::map_vec(params, &mut |p| self.visit_param(p))
+    }
+
+    fn visit_mask_spec(&mut self, ms: &MaskSpec) -> Result<R::Ret<MaskSpec>, Err> {
+        match ms {
+            MaskSpec::InvariantOpens(span, exprs) => {
+                let exprs = self.visit_exprs(exprs)?;
+                R::ret(|| MaskSpec::InvariantOpens(span.clone(), R::get_vec_a(exprs)))
+            }
+            MaskSpec::InvariantOpensExcept(span, exprs) => {
+                let exprs = self.visit_exprs(exprs)?;
+                R::ret(|| MaskSpec::InvariantOpensExcept(span.clone(), R::get_vec_a(exprs)))
+            }
+            MaskSpec::InvariantOpensSet(expr) => {
+                let e = self.visit_expr(expr)?;
+                R::ret(|| MaskSpec::InvariantOpensSet(R::get(e)))
+            }
+        }
+    }
+
+    fn visit_unwind_spec(&mut self, us: &UnwindSpec) -> Result<R::Ret<UnwindSpec>, Err> {
+        match us {
+            UnwindSpec::NoUnwind => R::ret(|| UnwindSpec::NoUnwind),
+            UnwindSpec::NoUnwindWhen(expr) => {
+                let e = self.visit_expr(expr)?;
+                R::ret(|| UnwindSpec::NoUnwindWhen(R::get(e)))
+            }
+            UnwindSpec::MayUnwind => R::ret(|| UnwindSpec::MayUnwind),
+        }
+    }
+
+    fn visit_function_kind(&mut self, kind: &FunctionKind) -> Result<R::Ret<FunctionKind>, Err> {
+        match kind {
+            FunctionKind::Static => R::ret(|| kind.clone()),
+            FunctionKind::TraitMethodDecl { trait_path: _, has_default: _ } => {
+                R::ret(|| kind.clone())
+            }
+            FunctionKind::TraitMethodImpl {
+                method,
+                impl_path,
+                trait_path,
+                trait_typ_args,
+                inherit_body_from,
+            } => {
+                let trait_typ_args = self.visit_typs(trait_typ_args)?;
+                R::ret(|| FunctionKind::TraitMethodImpl {
+                    method: method.clone(),
+                    impl_path: impl_path.clone(),
+                    trait_path: trait_path.clone(),
+                    trait_typ_args: R::get_vec_a(trait_typ_args),
+                    inherit_body_from: inherit_body_from.clone(),
+                })
+            }
+            FunctionKind::ForeignTraitMethodImpl {
+                method,
+                impl_path,
+                trait_path,
+                trait_typ_args,
+            } => {
+                let trait_typ_args = self.visit_typs(trait_typ_args)?;
+                R::ret(|| FunctionKind::ForeignTraitMethodImpl {
+                    method: method.clone(),
+                    impl_path: impl_path.clone(),
+                    trait_path: trait_path.clone(),
+                    trait_typ_args: R::get_vec_a(trait_typ_args),
+                })
+            }
+        }
+    }
+
+    fn visit_function(&mut self, function: &Function) -> Result<R::Ret<Function>, Err> {
+        let FunctionX {
+            name,
+            proxy,
+            kind,
+            visibility,
+            body_visibility,
+            opaqueness,
+            owning_module,
+            mode,
+            typ_params,
+            typ_bounds,
+            params: ps,
+            ret: rt,
+            ens_has_return,
+            require,
+            ensure: (ensure0, ensure1),
+            returns,
+            decrease,
+            decrease_when,
+            decrease_by,
+            fndef_axioms,
+            mask_spec,
+            unwind_spec,
+            item_kind,
+            attrs,
+            body,
+            extra_dependencies,
+        } = &function.x;
+        let kind = self.visit_function_kind(kind)?;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        self.push_scope();
+        let params = self.visit_params(ps)?;
+        for p in R::get_vec_or(&params, ps).iter() {
+            let _ = self.insert_binding(
+                &p.x.name.clone(),
+                ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true),
+            );
+        }
+        let ret = self.visit_param(rt)?;
+        let require = self.visit_exprs(require)?;
+
+        self.push_scope();
+        if function.x.ens_has_return {
+            let r = R::get_or(&ret, rt);
+            let _ = self.insert_binding(
+                &r.x.name.clone(),
+                ScopeEntry::new_outer_param_ret(&r.x.typ, false, true),
+            );
+        }
+        let ensure0 = self.visit_exprs(ensure0)?;
+        let ensure1 = self.visit_exprs(ensure1)?;
+        self.pop_scope();
+
+        let returns = self.visit_opt_expr(returns)?;
+        let decrease = self.visit_exprs(decrease)?;
+        let decrease_when = self.visit_opt_expr(decrease_when)?;
+        let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
+        let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
+        let body = self.visit_opt_expr(body)?;
+        self.pop_scope();
+
+        let fndef_axioms = self.visit_opt_exprs(fndef_axioms)?;
+        R::ret(|| {
+            function.new_x(FunctionX {
+                name: name.clone(),
+                proxy: proxy.clone(),
+                kind: R::get(kind),
+                visibility: visibility.clone(),
+                body_visibility: body_visibility.clone(),
+                opaqueness: opaqueness.clone(),
+                owning_module: owning_module.clone(),
+                mode: *mode,
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                params: R::get_vec_a(params),
+                ret: R::get(ret),
+                ens_has_return: *ens_has_return,
+                require: R::get_vec_a(require),
+                ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),
+                returns: R::get_opt(returns),
+                decrease: R::get_vec_a(decrease),
+                decrease_when: R::get_opt(decrease_when),
+                decrease_by: decrease_by.clone(),
+                fndef_axioms: R::get_opt(fndef_axioms),
+                mask_spec: R::get_opt(mask_spec),
+                unwind_spec: R::get_opt(unwind_spec),
+                item_kind: item_kind.clone(),
+                attrs: attrs.clone(),
+                body: R::get_opt(body),
+                extra_dependencies: extra_dependencies.clone(),
+            })
+        })
+    }
+
+    fn visit_field(&mut self, field: &Field) -> Result<R::Ret<Field>, Err> {
+        let (typ, mode, visibility) = &field.a;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| field.new_a((R::get(typ), *mode, visibility.clone())))
+    }
+
+    fn visit_fields(&mut self, fields: &Vec<Field>) -> Result<R::Vec<Field>, Err> {
+        R::map_vec(fields, &mut |b| self.visit_field(b))
+    }
+
+    fn visit_variant(&mut self, variant: &Variant) -> Result<R::Ret<Variant>, Err> {
+        let fields = self.visit_fields(&variant.fields)?;
+        R::ret(|| Variant {
+            name: variant.name.clone(),
+            fields: R::get_vec_a(fields),
+            ctor_style: variant.ctor_style.clone(),
+        })
+    }
+
+    fn visit_variants(&mut self, variants: &Vec<Variant>) -> Result<R::Vec<Variant>, Err> {
+        R::map_vec(variants, &mut |v| self.visit_variant(v))
+    }
+
+    fn visit_datatype(&mut self, datatype: &Datatype) -> Result<R::Ret<Datatype>, Err> {
+        let DatatypeX {
+            name,
+            proxy,
+            owning_module,
+            visibility,
+            transparency,
+            typ_params,
+            typ_bounds,
+            variants,
+            mode,
+            ext_equal,
+            user_defined_invariant_fn,
+            sized_constraint,
+            destructor,
+        } = &datatype.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let variants = self.visit_variants(variants)?;
+        let sized_constraint = R::map_opt(sized_constraint, &mut |t| self.visit_typ(t))?;
+        R::ret(|| {
+            datatype.new_x(DatatypeX {
+                name: name.clone(),
+                proxy: proxy.clone(),
+                owning_module: owning_module.clone(),
+                visibility: visibility.clone(),
+                transparency: transparency.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                variants: R::get_vec_a(variants),
+                mode: *mode,
+                ext_equal: *ext_equal,
+                user_defined_invariant_fn: user_defined_invariant_fn.clone(),
+                sized_constraint: R::get_opt(sized_constraint),
+                destructor: *destructor,
+            })
+        })
+    }
+
+    #[allow(dead_code)]
+    fn visit_trait(&mut self, tr: &Trait) -> Result<R::Ret<Trait>, Err> {
+        let TraitX {
+            name,
+            proxy,
+            visibility,
+            typ_params,
+            typ_bounds,
+            assoc_typs,
+            assoc_typs_bounds,
+            methods,
+            is_unsafe,
+            external_trait_extension,
+        } = &tr.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let assoc_typs_bounds = self.visit_generic_bounds(assoc_typs_bounds)?;
+        R::ret(|| {
+            tr.new_x(TraitX {
+                name: name.clone(),
+                proxy: proxy.clone(),
+                visibility: visibility.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                assoc_typs: assoc_typs.clone(),
+                assoc_typs_bounds: R::get_vec_a(assoc_typs_bounds),
+                methods: methods.clone(),
+                is_unsafe: *is_unsafe,
+                external_trait_extension: external_trait_extension.clone(),
+            })
+        })
+    }
+
+    fn visit_assoc_type_impl(&mut self, imp: &AssocTypeImpl) -> Result<R::Ret<AssocTypeImpl>, Err> {
+        let AssocTypeImplX {
+            name,
+            impl_path,
+            typ_params,
+            typ_bounds,
+            trait_path,
+            trait_typ_args,
+            typ,
+            impl_paths,
+        } = &imp.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let trait_typ_args = self.visit_typs(trait_typ_args)?;
+        let typ = self.visit_typ(typ)?;
+        R::ret(|| {
+            imp.new_x(AssocTypeImplX {
+                name: name.clone(),
+                impl_path: impl_path.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                trait_path: trait_path.clone(),
+                trait_typ_args: R::get_vec_a(trait_typ_args),
+                typ: R::get(typ),
+                impl_paths: impl_paths.clone(),
+            })
+        })
+    }
+
+    fn visit_trait_impl(&mut self, imp: &TraitImpl) -> Result<R::Ret<TraitImpl>, Err> {
+        let TraitImplX {
+            impl_path,
+            typ_params,
+            typ_bounds,
+            trait_path,
+            trait_typ_args,
+            trait_typ_arg_impls,
+            owning_module,
+            auto_imported,
+            external_trait_blanket,
+        } = &imp.x;
+        let type_bounds = self.visit_generic_bounds(typ_bounds)?;
+        let trait_typ_args = self.visit_typs(trait_typ_args)?;
+        R::ret(|| {
+            imp.new_x(TraitImplX {
+                impl_path: impl_path.clone(),
+                typ_params: typ_params.clone(),
+                typ_bounds: R::get_vec_a(type_bounds),
+                trait_path: trait_path.clone(),
+                trait_typ_args: R::get_vec_a(trait_typ_args),
+                trait_typ_arg_impls: trait_typ_arg_impls.clone(),
+                owning_module: owning_module.clone(),
+                auto_imported: *auto_imported,
+                external_trait_blanket: *external_trait_blanket,
+            })
+        })
+    }
 }
 
 pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
@@ -931,6 +1319,7 @@ where
     visitor.visit_typ(typ)
 }
 
+#[allow(dead_code)]
 pub(crate) fn map_typs_visitor_env<E, FT>(typs: &Typs, env: &mut E, ft: &FT) -> Result<Typs, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
@@ -1241,96 +1630,11 @@ pub(crate) fn function_visitor_dfs<T, MF>(
 where
     MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
-    let FunctionX {
-        name: _,
-        proxy: _,
-        kind: _,
-        visibility: _,
-        body_visibility: _,
-        opaqueness: _,
-        owning_module: _,
-        mode: _,
-        typ_params: _,
-        typ_bounds: _,
-        params,
-        ret,
-        require,
-        ensure,
-        ens_has_return: _,
-        returns,
-        decrease,
-        decrease_when,
-        decrease_by: _,
-        fndef_axioms,
-        mask_spec,
-        unwind_spec,
-        item_kind: _,
-        attrs: _,
-        body,
-        extra_dependencies: _,
-    } = &function.x;
-
-    map.push_scope(true);
-    for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
+    let mut vis = WalkExprVisitor { mf, map };
+    match vis.visit_function(function) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(t) => VisitorControlFlow::Stop(t),
     }
-    for e in require.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-
-    map.push_scope(true);
-    if function.x.ens_has_return {
-        let _ = map
-            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
-    }
-    for e in ensure.0.iter().chain(ensure.1.iter()) {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-    map.pop_scope();
-
-    if let Some(e) = returns {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-
-    for e in decrease.iter() {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-    if let Some(e) = decrease_when {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-    match mask_spec {
-        None => {}
-        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
-            for e in es.iter() {
-                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-            }
-        }
-        Some(MaskSpec::InvariantOpensSet(e)) => {
-            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
-        }
-    }
-    match unwind_spec {
-        None => {}
-        Some(UnwindSpec::MayUnwind) => {}
-        Some(UnwindSpec::NoUnwind) => {}
-        Some(UnwindSpec::NoUnwindWhen(e)) => {
-            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-        }
-    }
-
-    if let Some(e) = body {
-        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-    }
-    map.pop_scope();
-
-    if let Some(es) = fndef_axioms {
-        for e in es.iter() {
-            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-        }
-    }
-
-    VisitorControlFlow::Recurse
 }
 
 pub(crate) fn function_visitor_check<E, MF>(function: &Function, mf: &mut MF) -> Result<(), E>
@@ -1453,15 +1757,8 @@ pub(crate) fn map_param_visitor<E, FT>(param: &Param, env: &mut E, ft: &FT) -> R
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let typ = map_typ_visitor_env(&param.x.typ, env, ft)?;
-    let paramx = ParamX {
-        name: param.x.name.clone(),
-        typ,
-        mode: param.x.mode,
-        is_mut: param.x.is_mut,
-        unwrapped_info: param.x.unwrapped_info.clone(),
-    };
-    Ok(Spanned::new(param.span.clone(), paramx))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_param(param)
 }
 
 pub(crate) fn map_params_visitor<E, FT>(
@@ -1483,22 +1780,8 @@ pub(crate) fn map_generic_bound_visitor<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    match &**bound {
-        GenericBoundX::Trait(trait_path, ts) => {
-            let ts = map_typs_visitor_env(ts, env, ft)?;
-            Ok(Arc::new(GenericBoundX::Trait(trait_path.clone(), ts)))
-        }
-        GenericBoundX::TypEquality(trait_path, ts, name, t) => {
-            let ts = map_typs_visitor_env(ts, env, ft)?;
-            let t = map_typ_visitor_env(t, env, ft)?;
-            Ok(Arc::new(GenericBoundX::TypEquality(trait_path.clone(), ts, name.clone(), t)))
-        }
-        GenericBoundX::ConstTyp(t, s) => {
-            let t = map_typ_visitor_env(t, env, ft)?;
-            let s = map_typ_visitor_env(s, env, ft)?;
-            Ok(Arc::new(GenericBoundX::ConstTyp(t, s)))
-        }
-    }
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_generic_bound(bound)
 }
 
 pub(crate) fn map_generic_bounds_visitor<E, FT>(
@@ -1527,171 +1810,8 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
-    let FunctionX {
-        name,
-        proxy,
-        kind,
-        visibility,
-        body_visibility,
-        opaqueness,
-        owning_module,
-        mode,
-        typ_params,
-        typ_bounds,
-        params,
-        ret,
-        ens_has_return,
-        require,
-        ensure: (ensure0, ensure1),
-        returns,
-        decrease,
-        decrease_when,
-        decrease_by,
-        fndef_axioms,
-        mask_spec,
-        unwind_spec,
-        item_kind,
-        attrs,
-        body,
-        extra_dependencies,
-    } = &function.x;
-    let name = name.clone();
-    let proxy = proxy.clone();
-    let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _, has_default: _ } => {
-            kind.clone()
-        }
-        FunctionKind::TraitMethodImpl {
-            method,
-            impl_path,
-            trait_path,
-            trait_typ_args,
-            inherit_body_from,
-        } => FunctionKind::TraitMethodImpl {
-            method: method.clone(),
-            impl_path: impl_path.clone(),
-            trait_path: trait_path.clone(),
-            trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-            inherit_body_from: inherit_body_from.clone(),
-        },
-        FunctionKind::ForeignTraitMethodImpl { method, impl_path, trait_path, trait_typ_args } => {
-            FunctionKind::ForeignTraitMethodImpl {
-                method: method.clone(),
-                impl_path: impl_path.clone(),
-                trait_path: trait_path.clone(),
-                trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-            }
-        }
-    };
-    let visibility = visibility.clone();
-    let body_visibility = body_visibility.clone();
-    let opaqueness = opaqueness.clone();
-    let owning_module = owning_module.clone();
-    let mode = *mode;
-    let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
-    map.push_scope(true);
-    let params = map_params_visitor(params, env, ft)?;
-    for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
-    }
-    let ret = map_param_visitor(ret, env, ft)?;
-    let require =
-        Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
-
-    map.push_scope(true);
-    if function.x.ens_has_return {
-        let _ = map
-            .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
-    }
-    let ensure0 =
-        Arc::new(vec_map_result(ensure0, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
-    let ensure1 =
-        Arc::new(vec_map_result(ensure1, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
-    map.pop_scope();
-
-    let returns = match returns {
-        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?),
-        None => None,
-    };
-
-    let decrease =
-        Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?);
-    let decrease_when = decrease_when
-        .as_ref()
-        .map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))
-        .transpose()?;
-    let decrease_by = decrease_by.clone();
-
-    let mask_spec = match mask_spec {
-        None => None,
-        Some(MaskSpec::InvariantOpens(span, es)) => Some(MaskSpec::InvariantOpens(
-            span.clone(),
-            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?),
-        )),
-        Some(MaskSpec::InvariantOpensExcept(span, es)) => Some(MaskSpec::InvariantOpensExcept(
-            span.clone(),
-            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl))?),
-        )),
-        Some(MaskSpec::InvariantOpensSet(e)) => {
-            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?))
-        }
-    };
-    let unwind_spec = match unwind_spec {
-        None => None,
-        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
-        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
-        Some(UnwindSpec::NoUnwindWhen(e)) => {
-            Some(UnwindSpec::NoUnwindWhen(map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?))
-        }
-    };
-    let attrs = attrs.clone();
-    let extra_dependencies = extra_dependencies.clone();
-    let item_kind = *item_kind;
-    let body =
-        body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)).transpose()?;
-    map.pop_scope();
-
-    let fndef_axioms = if let Some(es) = fndef_axioms {
-        let mut es2 = vec![];
-        for e in es.iter() {
-            let e2 = map_expr_visitor_env(e, map, env, fe, fs, ft, fpl)?;
-            es2.push(e2);
-        }
-        Some(Arc::new(es2))
-    } else {
-        None
-    };
-
-    let functionx = FunctionX {
-        name,
-        proxy,
-        kind,
-        visibility,
-        body_visibility,
-        opaqueness,
-        owning_module,
-        mode,
-        typ_params: typ_params.clone(),
-        typ_bounds,
-        params,
-        ret,
-        ens_has_return: *ens_has_return,
-        require,
-        ensure: (ensure0, ensure1),
-        returns,
-        decrease,
-        decrease_when,
-        decrease_by,
-        fndef_axioms,
-        mask_spec,
-        unwind_spec,
-        item_kind,
-        attrs,
-        body,
-        extra_dependencies,
-    };
-    Ok(Spanned::new(function.span.clone(), functionx))
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
+    vis.visit_function(function)
 }
 
 pub(crate) fn map_datatype_visitor_env<E, FT>(
@@ -1702,21 +1822,8 @@ pub(crate) fn map_datatype_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let datatypex = datatype.x.clone();
-    let typ_bounds = map_generic_bounds_visitor(&datatypex.typ_bounds, env, ft)?;
-    let mut variants: Vec<Variant> = Vec::new();
-    for variant in datatypex.variants.iter() {
-        let mut fields: Vec<Field> = Vec::new();
-        for field in variant.fields.iter() {
-            let (typ, mode, vis) = &field.a;
-            let typ = map_typ_visitor_env(typ, env, ft)?;
-            fields.push(field.new_a((typ, *mode, vis.clone())));
-        }
-        let variant = Variant { fields: Arc::new(fields), ..variant.clone() };
-        variants.push(variant);
-    }
-    let variants = Arc::new(variants);
-    Ok(Spanned::new(datatype.span.clone(), DatatypeX { variants, typ_bounds, ..datatypex }))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_datatype(datatype)
 }
 
 pub(crate) fn map_trait_impl_visitor_env<E, FT>(
@@ -1727,29 +1834,8 @@ pub(crate) fn map_trait_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let TraitImplX {
-        impl_path,
-        typ_params,
-        typ_bounds,
-        trait_path,
-        trait_typ_args,
-        trait_typ_arg_impls,
-        owning_module,
-        auto_imported,
-        external_trait_blanket,
-    } = &imp.x;
-    let impx = TraitImplX {
-        impl_path: impl_path.clone(),
-        typ_params: typ_params.clone(),
-        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
-        trait_path: trait_path.clone(),
-        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-        trait_typ_arg_impls: trait_typ_arg_impls.clone(),
-        owning_module: owning_module.clone(),
-        auto_imported: *auto_imported,
-        external_trait_blanket: *external_trait_blanket,
-    };
-    Ok(Spanned::new(imp.span.clone(), impx))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_trait_impl(imp)
 }
 
 pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
@@ -1760,26 +1846,6 @@ pub(crate) fn map_assoc_type_impl_visitor_env<E, FT>(
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
-    let AssocTypeImplX {
-        name,
-        impl_path,
-        typ_params,
-        typ_bounds,
-        trait_path,
-        trait_typ_args,
-        typ,
-        impl_paths,
-    } = &assoc.x;
-    let typ = map_typ_visitor_env(typ, env, ft)?;
-    let assocx = AssocTypeImplX {
-        name: name.clone(),
-        impl_path: impl_path.clone(),
-        typ_params: typ_params.clone(),
-        typ_bounds: map_generic_bounds_visitor(typ_bounds, env, ft)?,
-        trait_path: trait_path.clone(),
-        trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
-        typ,
-        impl_paths: impl_paths.clone(),
-    };
-    Ok(Spanned::new(assoc.span.clone(), assocx))
+    let mut visitor = MapTypVisitorEnv { env, ft };
+    visitor.visit_assoc_type_impl(assoc)
 }

@@ -2390,16 +2390,17 @@ test_verify_one_file_with_options! {
             let Tracked(r) = t;
         }
         // TODO(new_mut_ref): needs better error msg
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode proof, expected mode exec")
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of a mutable reference")
 }
 
 test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_unwrap ["new-mut-ref"] => verus_code! {
         fn test<T>(t: &mut Ghost<T>) {
             let Ghost(r) = t;
+            assert(r == (*t));
         }
-        // TODO(new_mut_ref): needs better error msg
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+        // TODO(new_mut_ref): is this the desired behavior?
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -2418,6 +2419,38 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden_ghost_type ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+        struct X { a: u64 }
+
+        fn test() {
+            let x = Ghost(Opt::Some(X { a: 5 }));
+            match x.borrow_mut() {
+                Opt::Some(X { a: a }) => {
+                }
+                Opt::None => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_ghost_binder_forbidden_trk_type ["new-mut-ref"] => verus_code! {
+        enum Opt<T> { Some(T), None }
+        struct X { a: u64 }
+
+        fn test(Tracked(x): Tracked<X>) {
+            let x = Tracked(Opt::Some(x));
+            match x.borrow_mut() {
+                Opt::Some(X { a: a }) => {
+                }
+                Opt::None => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -2528,4 +2561,167 @@ test_verify_one_file_with_options! {
         }
 
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_refs_with_if_let ["new-mut-ref"] => verus_code! {
+        enum Option<T> { Some(T), None }
+        use crate::Option::Some;
+        use crate::Option::None;
+
+        fn test_opt(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            if let Some(i) = o_ref {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+        }
+
+        fn test_opt_fails1(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            let mut o_ref = &mut o;
+            if let Some(i) = o_ref {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+
+            assert(o is Some); // FAILS
+            assert(o is None); // FAILS
+        }
+
+        fn test_explicit_ref_mut(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            if let Some(ref mut i) = o {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+        }
+
+        fn test_explicit_ref_mut_fails(o: Option<u64>, orig: Option<u64>) {
+            assume(orig == o);
+
+            let mut o = o;
+            if let Some(ref mut i) = o {
+                assert(orig == Some(*i));
+
+                *i = 20;
+            }
+
+            assert(orig is None ==> o is None);
+            assert(orig is Some ==> o === Some(20));
+
+            assert(o is Some); // FAILS
+            assert(o is None); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] side_effects_in_match_arg ["new-mut-ref"] => verus_code! {
+        enum Blah {
+            A(bool),
+            B(bool, bool),
+            C,
+        }
+
+        fn add1(b: &mut u64) -> (ret: (Blah, Blah))
+            requires mut_ref_current(b) < 100
+            ensures mut_ref_future(b) == mut_ref_current(b) + 1
+        {
+            *b = *b + 1;
+            (Blah::C, Blah::C)
+        }
+
+        fn test1() {
+            let mut i = 0;
+
+            match add1(&mut i) {
+                (Blah::A(t), _) => { }
+                (Blah::B(t, u), _) => { }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test2() {
+            let mut i = 0;
+
+            match add1(&mut i).0 {
+                Blah::A(t) => { }
+                Blah::B(t, u) => { }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test1_fails() {
+            let mut i = 0;
+
+            match add1(&mut i) {
+                (Blah::A(t), _) => {
+                    assert(false); // FAILS
+                }
+                (Blah::B(t, u), _) => {
+                    assert(false); // FAILS
+                }
+                _ => { }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test2_fails() {
+            let mut i = 0;
+
+            match add1(&mut i).0 {
+                Blah::A(t) => {
+                    assert(false); // FAILS
+                }
+                Blah::B(t, u) => { }
+                _ => {
+                    assert(false); // FAILS
+                }
+            }
+
+            assert(i == 1);
+        }
+
+        fn test3() {
+            let mut i = 0;
+
+            let (r, t) = add1(&mut i);
+
+            assert(i == 1);
+        }
+
+        fn test3_fails() {
+            let mut i = 0;
+
+            let (r, t) = add1(&mut i);
+
+            assert(i == 1);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
 }

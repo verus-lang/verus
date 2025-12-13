@@ -20,7 +20,7 @@ impl Id {
         Id { kind, rename_count, raw_id }
     }
     pub(crate) fn to_string(&self) -> String {
-        crate::lifetime_emit::encode_id(self.kind, self.rename_count, &self.raw_id)
+        crate::trait_check_emit::encode_id(self.kind, self.rename_count, &self.raw_id)
     }
     pub(crate) fn is_typ_param(&self) -> bool {
         self.kind == IdKind::TypParam
