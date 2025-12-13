@@ -70,25 +70,6 @@ pub trait ExPtrPointee: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExIterator {
-    type ExternalTraitSpecificationFor: core::iter::Iterator;
-
-    type Item;
-
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
     type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
 }

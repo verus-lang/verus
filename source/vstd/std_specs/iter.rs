@@ -5,10 +5,33 @@ use verus as verus_;
 use core::iter::Iterator;
 
 verus_! {
+
+#[verifier::external_trait_specification]
+pub trait ExIntoIterator {
+    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterStep: Clone + PartialOrd + Sized {
+    type ExternalTraitSpecificationFor: core::iter::Step;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterator {
+    type ExternalTraitSpecificationFor: core::iter::Iterator;
+
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
+}
+
 /*
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
 pub trait ExIterator {
+    // REVIEW: Should I have to add this here when it already exists in the original trait?
+    //         (without it, the mentions of Self::Item below cause errors)
+    type Item;
 
     /// This iterator obeys the specifications below on `next`
     spec fn obeys_iter_laws(&self) -> bool;
@@ -27,11 +50,11 @@ pub trait ExIterator {
     /// Advances the iterator and returns the next value.
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            /// The iterator consistently obeys, completes, and decreases throughout its lifetime
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
             self.obeys_iter_laws() == old(self).obeys_iter_laws(),
             self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
             self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            /// `next` pops the head of the prophesized seq(), or returns None
+            // `next` pops the head of the prophesized seq(), or returns None
             self.obeys_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
@@ -41,9 +64,9 @@ pub trait ExIterator {
                     self.seq() === old(self).seq() && ret === None && self.completes()
                 }
             }),
-            /// If the iterator isn't done yet, then it successfully decreases its metric (if any)
+            // If the iterator isn't done yet, then it successfully decreases its metric (if any)
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                does_decrease(old(self).decrease(), self.decrease()),
+                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
@@ -64,7 +87,6 @@ pub trait ExIterator {
     spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
 }
 
-
 /// REVIEW: Despite the name, VerusForLoopIterator doesn't implement Iterator.
 ///         What would be a better name?
 pub struct VerusForLoopIterator<'a, I: Iterator> {
@@ -77,7 +99,7 @@ pub struct VerusForLoopIterator<'a, I: Iterator> {
 impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
-        self.snapshot@.seq()
+        <I as IteratorSpec>::seq(self.snapshot@)
     }
 
     /// These properties help maintain the properties in wf,
@@ -146,7 +168,7 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
                 }
             }),
             self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
-                does_decrease(old(self).iter.decrease(), self.iter.decrease()),
+                decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
         let ret = self.iter.next();
         proof {
@@ -157,7 +179,6 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         ret
     }
 }
+
 */
-
-
 } // verus!
