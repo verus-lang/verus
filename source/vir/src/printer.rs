@@ -228,6 +228,7 @@ impl ToDebugSNode for air::ast::TypX {
         match self {
             TypX::Bool => Node::Atom("Bool".to_string()),
             TypX::Int => Node::Atom("Int".to_string()),
+            TypX::Real => Node::Atom("Real".to_string()),
             TypX::Fun => Node::Atom("Fun".to_string()),
             TypX::Named(ident) => {
                 Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
@@ -386,6 +387,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
 
     let KrateX {
         datatypes,
+        opaque_types: _,
         functions,
         reveal_groups,
         traits,
@@ -464,6 +466,7 @@ pub fn write_krate_sst(
     let crate::sst::KrateSstX {
         functions,
         datatypes,
+        opaque_types: _,
         traits,
         trait_impls,
         assoc_type_impls,

@@ -1,3 +1,4 @@
+use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
@@ -1404,6 +1405,17 @@ impl Verifier {
             &("Associated-Type-Impls".to_string()),
         );
 
+        // Declare opaque type defs
+        let opaque_type_impl_commands =
+            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &opaque_type_impl_commands,
+            &("Opaque-Type-Constructors".to_string()),
+        );
+
         let mut function_decl_commands = vec![];
 
         // Declare the function symbols
@@ -2059,6 +2071,9 @@ impl Verifier {
             false,
             self.args.check_api_safety,
             self.args.axiom_usage_info,
+            self.args.new_mut_ref,
+            self.args.no_bv_simplify,
+            self.args.report_long_running,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2487,7 +2502,7 @@ impl Verifier {
                 }
             }
 
-            // join with all worker threads, theys should all have exited by now.
+            // join with all worker threads, they should all have exited by now.
             // merge the verifier and global contexts
             for worker in workers {
                 let res = worker.join().unwrap();
@@ -2700,6 +2715,8 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
+            name_def_id_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
+            next_read_kind_id: std::rc::Rc::new(std::cell::Cell::new(0)),
         });
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
@@ -2707,6 +2724,9 @@ impl Verifier {
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
         let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+
+        check_no_opaque_types_in_trait(&ctxt, &crate_items).map_err(map_err_diagnostics)?;
+
         if !self.args.no_lifetime {
             crate::erase::setup_verus_aware_ids(&crate_items);
         }
@@ -2725,6 +2745,16 @@ impl Verifier {
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
+
+        let other_vir_crates = if self.args.new_mut_ref {
+            other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::migrate_mut_ref_krate(krate))
+                .collect()
+        } else {
+            other_vir_crates
+        };
+
         let vir_crate =
             crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
@@ -2812,9 +2842,44 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-
+        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
+            Some(e)
+        } else if let Err(e) = check_crate_result {
+            Some(e)
+        } else {
+            None
+        };
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
+                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
+                    // This diagnostic message may be a verification boundary violation.
+                    // In that case, we want to try to construct a suggestion to deal with the problem.
+
+                    let err = match maybe_p {
+                        Some(p) => {
+                            // Try to build a DefId, then check if the corresponding Def is an Adt or Fun-like
+                            // let did = vir_path_to_def_id(tcx, &ctxt.verus_items, &p);
+                            let map = ctxt.name_def_id_map.borrow();
+                            let did = map.get(&p);
+                            match did {
+                                Some(did) => match build_boundary_suggestion(&ctxt, *did, &p) {
+                                    Ok(s) => err.help(format!(
+                                        "The following declaration may resolve this error:\n{}",
+                                        s
+                                    )),
+                                    Err(_) => err,
+                                },
+                                None => err,
+                            }
+                        }
+                        None => err,
+                    };
+                    if first_error.is_none() {
+                        first_error = Some(err.clone().into())
+                    } else {
+                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+                    }
+                }
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2823,11 +2888,14 @@ impl Verifier {
                 }
             }
         }
-        check_crate_result1.map_err(|e| (e, Vec::new()))?;
-        check_crate_result.map_err(|e| (e, Vec::new()))?;
+        if let Some(first_error) = first_error {
+            return Err((first_error, Vec::new()));
+        }
+
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (vir_crate, erasure_modes, _read_kind_finals) =
+            vir::modes::check_crate(&vir_crate, self.args.new_mut_ref)
+                .map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
@@ -2864,8 +2932,8 @@ impl Verifier {
 
         // These can invoke mir_borrowck when opaque types are involved.
         // Thus, we can only run these after initializing erasure_hints
-        tcx.ensure_ok().check_private_in_public(());
         tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_private_in_public(module);
             tcx.ensure_ok().check_mod_privacy(module);
         });
 
@@ -2911,6 +2979,39 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
     })
 }
 
+/// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.  
+/// We disallow opaque types in trait for now.
+fn check_no_opaque_types_in_trait<'tcx>(
+    ctxt: &Arc<ContextX<'tcx>>,
+    crate_items: &crate::external::CrateItems,
+) -> Result<(), VirErr> {
+    for item in crate_items.items.iter() {
+        if matches!(item.verif, VerifOrExternal::External { .. }) {
+            continue;
+        }
+        match item.id {
+            crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
+                match ctxt.tcx.hir_trait_item(trait_item_id).kind {
+                    rustc_hir::TraitItemKind::Fn(sig, _) => {
+                        if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
+                            if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
+                                crate::unsupported_err!(
+                                    ty.span,
+                                    "Verus does not yet support Opaque types in trait def"
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 // TODO: move the callbacks into a different file, like driver.rs
 pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) verifier: Verifier,
@@ -2919,9 +3020,9 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// time when entered the `after_expansion` callback
     pub(crate) rust_end_time: Option<Instant>,
     /// start time of lifetime analysys
-    pub(crate) lifetime_start_time: Option<Instant>,
+    pub(crate) tc_start_time: Option<Instant>,
     /// end time of lifetime analysys
-    pub(crate) lifetime_end_time: Option<Instant>,
+    pub(crate) tc_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
     pub(crate) verus_externs: Option<VerusExterns>,
     pub(crate) spans: Option<SpanContext>,
@@ -3086,6 +3187,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
                         }
+                        vir::ast::VirErrAs::NonBlockingError(err, _) => {
+                            reporter.report_as(&err.to_any(), MessageLevel::Error)
+                        }
                     }
                 }
                 return rustc_driver::Compilation::Stop;
@@ -3094,15 +3198,16 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 self.verifier.encountered_error = true;
                 return rustc_driver::Compilation::Stop;
             }
-            self.lifetime_start_time = Some(Instant::now());
+            self.tc_start_time = Some(Instant::now());
             let status = if self.verifier.args.no_lifetime {
                 Ok(vec![])
             } else {
-                let log_lifetime =
-                    self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
-                let lifetime_log_file = if log_lifetime {
-                    let file =
-                        self.verifier.create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
+                let log_trait_conflicts =
+                    self.verifier.args.log_all || self.verifier.args.log_args.log_trait_conflicts;
+                let tc_log_file = if log_trait_conflicts {
+                    let file = self
+                        .verifier
+                        .create_log_file(None, crate::config::TRAIT_CONFLICT_FILE_SUFFIX);
                     match file {
                         Err(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error);
@@ -3114,15 +3219,13 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 } else {
                     None
                 };
-                // TODO the "lifetime" subsystem is misnamed now, as its only role is
-                // trait conflict checking
-                crate::lifetime::check_tracked_lifetimes(
+                crate::trait_check::check_trait_conflicts(
                     &spans,
                     self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
-                    lifetime_log_file,
+                    tc_log_file,
                 )
             };
-            self.lifetime_end_time = Some(Instant::now());
+            self.tc_end_time = Some(Instant::now());
             match status {
                 Ok(msgs) => {
                     if msgs.len() > 0 {

@@ -1,8 +1,7 @@
 use crate::attributes::{VerifierAttrs, get_mode};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
-    mk_visibility_from_vis,
+    check_generics_bounds_with_polarity, mk_visibility, mk_visibility_from_vis,
 };
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
@@ -10,7 +9,7 @@ use crate::util::err_span;
 use air::ast_util::str_ident;
 use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind, TypingEnv, TypingMode};
+use rustc_middle::ty::{AdtDef, GenericArgsRef, TyKind, TypingEnv, TypingMode};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -83,14 +82,7 @@ where
 
         let ident = field_ident_from_rust(&field_def_ident.as_str());
 
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            item_id.owner_id.to_def_id(),
-            span,
-            &field_ty,
-            false,
-        )?;
+        let typ = ctxt.mid_ty_to_vir(item_id.owner_id.to_def_id(), span, &field_ty, false)?;
         let mode = match hir_field_def_opt {
             Some(hir_field_def) => get_mode(Mode::Exec, ctxt.tcx.hir_attrs(hir_field_def.hir_id)),
             None => Mode::Exec,
@@ -167,7 +159,7 @@ pub(crate) fn check_item_struct<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+    let path = ctxt.def_id_to_vir_path(def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
     let variant_name = name.clone();
@@ -205,7 +197,8 @@ pub(crate) fn check_item_struct<'tcx>(
         mode,
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
-        sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+        sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
+        destructor: adt_def.destructor(ctxt.tcx).is_some(),
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -255,7 +248,7 @@ pub(crate) fn check_item_enum<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+    let path = ctxt.def_id_to_vir_path(def_id);
     let mut total_vis = visibility.clone();
     let mut variants: Vec<_> = vec![];
     for variant in enum_def.variants.iter() {
@@ -294,7 +287,8 @@ pub(crate) fn check_item_enum<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
+            destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
     Ok(())
@@ -345,7 +339,7 @@ pub(crate) fn check_item_union<'tcx>(
         Some(&vattrs),
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+    let path = ctxt.def_id_to_vir_path(def_id);
 
     let (variants, transparency) = if vattrs.external_body {
         let name = path.segments.last().expect("unexpected struct path");
@@ -368,7 +362,7 @@ pub(crate) fn check_item_union<'tcx>(
             total_vis = total_vis.join(&vis);
 
             let field_ty = ctxt.tcx.type_of(field_def.did).skip_binder();
-            let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, def_id, span, &field_ty, false)?;
+            let typ = ctxt.mid_ty_to_vir(def_id, span, &field_ty, false)?;
 
             let field = (typ, Mode::Exec, vis);
             let variant = Variant {
@@ -394,7 +388,8 @@ pub(crate) fn check_item_union<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def, None)?,
+            destructor: adt_def.destructor(ctxt.tcx).is_some(),
         },
     ));
     Ok(())
@@ -404,6 +399,7 @@ fn get_sized_constraint<'tcx>(
     span: Span,
     ctxt: &Context<'tcx>,
     adt_def: &AdtDef<'tcx>,
+    substs: Option<GenericArgsRef<'tcx>>,
 ) -> Result<Option<vir::ast::Typ>, VirErr> {
     // This is where we get the 'sized_constraint', the type that is used to determine if
     // a given type is sized. This is an optional value -- None means "always sized"
@@ -443,6 +439,7 @@ fn get_sized_constraint<'tcx>(
 
     use crate::rustc_infer::infer::TyCtxtInferExt;
     use crate::rustc_trait_selection::traits::NormalizeExt;
+    use rustc_middle::ty::SizedTraitKind;
     let tcx = ctxt.tcx;
 
     let param_env = tcx.param_env(adt_def.did());
@@ -451,11 +448,15 @@ fn get_sized_constraint<'tcx>(
         return Ok(None);
     }
 
-    let sized_constraint_opt = adt_def.sized_constraint(tcx);
+    let sized_constraint_opt = adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
     let Some(sized_constraint) = sized_constraint_opt else {
         return Ok(None);
     };
-    let mut sized_constraint = sized_constraint.skip_binder();
+    let mut sized_constraint = if let Some(substs) = substs {
+        sized_constraint.instantiate(tcx, substs)
+    } else {
+        sized_constraint.skip_binder()
+    };
 
     let mut idx = 0;
     loop {
@@ -477,7 +478,7 @@ fn get_sized_constraint<'tcx>(
         let norm = at.normalize(*ty);
         if norm.value != *ty {
             for arg in norm.value.walk().into_iter() {
-                if let GenericArgKind::Type(t) = arg.unpack() {
+                if let Some(t) = arg.as_type() {
                     assert!(!matches!(t.kind(), TyKind::Infer(..)));
                 }
             }
@@ -489,7 +490,7 @@ fn get_sized_constraint<'tcx>(
 
         let sc3 = match sc2.kind() {
             TyKind::Adt(other_adt_def, args) => {
-                let opt = other_adt_def.sized_constraint(tcx);
+                let opt = other_adt_def.sizedness_constraint(tcx, SizedTraitKind::Sized);
                 let Some(sc3) = opt else {
                     return Ok(None);
                 };
@@ -507,14 +508,7 @@ fn get_sized_constraint<'tcx>(
         sized_constraint = sc3;
     }
 
-    Ok(Some(mid_ty_to_vir(
-        ctxt.tcx,
-        &ctxt.verus_items,
-        adt_def.did(),
-        span,
-        &sized_constraint,
-        false,
-    )?))
+    Ok(Some(ctxt.mid_ty_to_vir(adt_def.did(), span, &sized_constraint, false)?))
 }
 
 pub(crate) fn check_item_external<'tcx>(
@@ -591,7 +585,7 @@ pub(crate) fn check_item_external<'tcx>(
     // Check that the type args match.
 
     crate::rust_to_vir_base::check_item_external_generics(
-        None, generics, false, substs_ref, false, span,
+        ctxt.tcx, None, generics, false, substs_ref, false, span,
     )?;
 
     // Check that the trait bounds match.
@@ -639,7 +633,7 @@ pub(crate) fn check_item_external<'tcx>(
     )?;
     let mode = Mode::Exec;
 
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_def_id);
+    let path = ctxt.def_id_to_vir_path(external_def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
     let is_builtin_external = matches!(
@@ -653,7 +647,7 @@ pub(crate) fn check_item_external<'tcx>(
         );
     }
 
-    let proxy_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, proxy_adt_def.did());
+    let proxy_path = ctxt.def_id_to_vir_path(proxy_adt_def.did());
     let proxy = ctxt.spanned_new(span, proxy_path);
     let proxy = Some((*proxy).clone());
     let owning_module = Some(module_path.clone());
@@ -680,7 +674,8 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -717,7 +712,8 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -767,7 +763,8 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
-            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def, Some(substs_ref))?,
+            destructor: external_adt_def.destructor(ctxt.tcx).is_some(),
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }

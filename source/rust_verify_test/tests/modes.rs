@@ -240,7 +240,7 @@ test_verify_one_file! {
         fn set_exec() {
             let a: Set<u64> = Set { dummy: 3 }; // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file! {
@@ -253,7 +253,7 @@ test_verify_one_file! {
         fn set_exec() {
             let e: E = E::A; // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -1193,7 +1193,7 @@ test_verify_one_file! {
         fn test1(Tracked(g): Ghost<&mut int>, Tracked(t): Tracked<&mut S>)
         {
         }
-    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `verus_builtin::Ghost` in the current scope")
+    } => Err(err) => assert_rust_error_msg(err, "no method named `get` found for struct `verus_builtin::Ghost<A>` in the current scope")
 }
 
 test_verify_one_file! {
@@ -1526,4 +1526,38 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::foo` with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] fine_grained_checking_for_ctor_with_update verus_code! {
+        #[verifier::external_body]
+        tracked struct X { }
+
+        tracked struct Foo {
+            tracked tr: X,
+            ghost gh: X,
+        }
+
+        proof fn test(foo: Foo, tracked x: X) {
+            // This is ok because we only need the ghost field off of foo
+            let tracked foo2 = Foo { tr: x, .. foo };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fine_grained_checking_for_ctor_with_update2 verus_code! {
+        #[verifier::external_body]
+        tracked struct X { }
+
+        tracked struct Foo {
+            tracked tr: X,
+            ghost gh: X,
+        }
+
+        proof fn test(foo: Foo, tracked x: X) {
+            // not ok, needs a tracked field of foo
+            let tracked foo2 = Foo { gh: x, .. foo };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }

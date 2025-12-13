@@ -1414,8 +1414,8 @@ impl<A> Seq<A> {
 
     /// When appending an element `x` to a sequence:
     /// - If `x` is in `self + seen`, removing duplicates equals removing duplicates from self
-    /// - If x is not in (self + seen), removing duplicates equals removing duplicates from self,
-    ///   concatenated with [x]
+    /// - If `x` is not in (self + seen), removing duplicates equals removing duplicates from self,
+    ///   concatenated with `[x]`
     ///
     /// ## Example
     /// ```rust
@@ -1967,7 +1967,7 @@ impl<A> Seq<A> {
     }
 
     /// If two sequences have the same length and `i` is a valid index,
-    /// then the pair (a[i], b[i]) is contained in their zip.
+    /// then the pair `(a[i], b[i])` is contained in their zip.
     ///
     /// ## Example
     /// ```rust

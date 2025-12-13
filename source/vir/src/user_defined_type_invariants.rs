@@ -56,7 +56,7 @@ pub(crate) fn annotate_user_defined_invariants(
                         Ok(expr.clone())
                     }
                 }
-                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args) => {
+                ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args, _post_args) => {
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
@@ -149,11 +149,7 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
         );
 
         let decl = StmtX::Decl {
-            pattern: SpannedTyped::new(
-                &expr.span,
-                &expr.typ,
-                PatternX::Var { name: ident.clone(), mutable: false },
-            ),
+            pattern: PatternX::simple_var(ident.clone(), false, &expr.span, &expr.typ),
             mode: None,
             init: Some(PlaceX::temporary(expr.clone())),
             els: None,

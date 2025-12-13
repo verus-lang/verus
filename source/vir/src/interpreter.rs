@@ -6,9 +6,10 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
-    SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt, Fun, FunX,
+    Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
+    OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent,
+    VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -31,10 +32,21 @@ use std::iter::FromIterator;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 use vir_macros::ToDebugSNode;
 
 // An approximation of how many interpreter invocations we can do in 1 second (in release mode)
 const RLIMIT_MULTIPLIER: u64 = 400_000;
+
+// Depth limit multiplier: max recursion depth as a multiplier of rlimit.
+//
+// This is set to be generous enough for legitimate use cases (like complex mathematical
+// computations) while still preventing stack overflow. Stack overflow typically occurs
+// around 50,000+ recursion levels, so this gives us good protection.
+const DEPTH_LIMIT_MULTIPLIER: u64 = 500;
+
+// Time-based warning interval in seconds
+const WARNING_INTERVAL_SECS: u64 = 2;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 type TypeEnv = ScopeMap<Ident, Typ>;
@@ -98,7 +110,7 @@ impl<T> PtrSet<T> {
 
 /// Mutable interpreter state
 struct State {
-    /// Depth of our current recursion; used for formatting log output
+    /// Depth of our current recursion; used for formatting log output and recursion control
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
@@ -127,6 +139,10 @@ struct State {
     ptr_misses: u64,
     /// Number of calls for each function
     fun_calls: HashMap<Fun, u64>,
+
+    /// Time tracking for warnings
+    start_time: Instant,
+    last_warning_time: Instant,
 }
 
 // Define the function-call cache's API
@@ -134,6 +150,25 @@ impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp, memoize: bool) {
         if self.enable_cache && memoize {
             self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        }
+    }
+
+    /// Check time-based warnings and emit warning if enough time has passed.  Do so only in debug mode.
+    fn check_time_warning(&mut self, ctx: &Ctx) {
+        if !cfg!(debug_assertions) {
+            return;
+        }
+        if !ctx.report_long_running {
+            return;
+        }
+        let now = Instant::now();
+        if now.duration_since(self.last_warning_time).as_secs() >= WARNING_INTERVAL_SECS {
+            let total_time = now.duration_since(self.start_time).as_secs();
+            eprintln!(
+                "note: assert_by_compute has been running for {} seconds (depth: {}, iterations: {})",
+                total_time, self.depth, self.iterations
+            );
+            self.last_warning_time = now;
         }
     }
 
@@ -163,8 +198,11 @@ struct Ctx<'a> {
     fun_ssts: &'a HashMap<Fun, FunctionSst>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
+    /// Maximum recursion depth to prevent stack overflow
+    max_depth: usize,
     arch: ArchWordBits,
     global: &'a GlobalCtx,
+    report_long_running: bool,
 }
 
 /// Interpreter-internal expressions
@@ -1057,6 +1095,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.iterations > ctx.max_iterations {
         return Err(error(&exp.span, "assert_by_compute timed out"));
     }
+    if state.depth > ctx.max_depth {
+        return Err(error(&exp.span, "assert_by_compute exceeded maximum recursion depth"));
+    }
+    state.check_time_warning(ctx);
+
     state.log(format!(
         "{}Evaluating {:}",
         "\t".repeat(state.depth),
@@ -1125,6 +1168,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         BitNot(..)
                         | Clip { .. }
                         | FloatToBits
+                        | IntToReal
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
@@ -1243,6 +1287,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | HeightTrigger
                         | Trigger(_)
                         | FloatToBits
+                        | IntToReal
                         | CoerceMode { .. }
                         | StrLen
                         | StrIsAscii
@@ -1409,7 +1454,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok_e2(e2),
                     }
                 }
-                Arith(op, _mode) => {
+                Arith(op) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     use ArithOp::*;
                     match (&e1.x, &e2.x) {
@@ -1417,52 +1462,83 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use ArithOp::*;
                             match op {
-                                Add => int_new(i1 + i2),
-                                Sub => int_new(i1 - i2),
-                                Mul => int_new(i1 * i2),
-                                EuclideanDiv => {
+                                Add(OverflowBehavior::Allow) => int_new(i1 + i2),
+                                Sub(OverflowBehavior::Allow) => int_new(i1 - i2),
+                                Mul(OverflowBehavior::Allow) => int_new(i1 * i2),
+                                EuclideanDiv(Div0Behavior::Allow) => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.div_euclid(i2))
                                     }
                                 }
-                                EuclideanMod => {
+                                EuclideanMod(Div0Behavior::Allow) => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.rem_euclid(i2))
                                     }
                                 }
+                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
+                                    panic!("complex overflow behavior not expected in exps");
+                                }
                             }
                         }
                         // Special cases for certain concrete values
-                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Add) => Ok(e2.clone()),
-                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Mul) => zero,
-                        (Const(Int(i1)), _) if i1.is_one() && matches!(op, Mul) => Ok(e2.clone()),
+                        (Const(Int(i1)), _)
+                            if i1.is_zero() && matches!(op, Add(OverflowBehavior::Allow)) =>
+                        {
+                            Ok(e2.clone())
+                        }
+                        (Const(Int(i1)), _)
+                            if i1.is_zero() && matches!(op, Mul(OverflowBehavior::Allow)) =>
+                        {
+                            zero
+                        }
+                        (Const(Int(i1)), _)
+                            if i1.is_one() && matches!(op, Mul(OverflowBehavior::Allow)) =>
+                        {
+                            Ok(e2.clone())
+                        }
                         (_, Const(Int(i2))) if i2.is_zero() => {
                             use ArithOp::*;
                             match op {
-                                Add | Sub => Ok(e1.clone()),
-                                Mul => zero,
-                                EuclideanDiv => {
+                                Add(OverflowBehavior::Allow) | Sub(OverflowBehavior::Allow) => {
+                                    Ok(e1.clone())
+                                }
+                                Mul(OverflowBehavior::Allow) => zero,
+                                EuclideanDiv(Div0Behavior::Allow) => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
-                                EuclideanMod => {
+                                EuclideanMod(Div0Behavior::Allow) => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
+                                }
+                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
+                                    panic!("complex overflow behavior not expected in exps");
                                 }
                             }
                         }
-                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, EuclideanMod) => {
+                        (_, Const(Int(i2)))
+                            if i2.is_one() && matches!(op, EuclideanMod(Div0Behavior::Allow)) =>
+                        {
                             int_new(BigInt::zero())
                         }
-                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, Mul | EuclideanDiv) => {
+                        (_, Const(Int(i2)))
+                            if i2.is_one()
+                                && matches!(
+                                    op,
+                                    Mul(OverflowBehavior::Allow)
+                                        | EuclideanDiv(Div0Behavior::Allow)
+                                ) =>
+                        {
                             Ok(e1.clone())
                         }
                         _ => {
                             match op {
                                 // X - X => 0
-                                ArithOp::Sub if e1.definitely_eq(&e2) => zero,
+                                ArithOp::Sub(OverflowBehavior::Allow) if e1.definitely_eq(&e2) => {
+                                    zero
+                                }
                                 _ => ok_e2(e2),
                             }
                         }
@@ -1536,7 +1612,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(state, exp, &e1, &e2)
                 }
-                HeightCompare { .. } | StrGetChar => ok_e2(e2.clone()),
+                HeightCompare { .. } | StrGetChar | RealArith(..) => ok_e2(e2.clone()),
             }
         }
         BinaryOpr(op, e1, e2) => {
@@ -1712,6 +1788,23 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 env.extend(state.env.map().iter().map(|(k, v)| (k.clone(), v.clone())));
                 exp_new(Interp(InterpExp::Closure(exp.clone(), env)))
             }
+            BndX::Quant(_quant_type, bnds, _triggers, _by_locals) => {
+                state.env.push_scope(true);
+                for b in bnds.iter() {
+                    let id = b.name.clone();
+                    let val = SpannedTyped::new(&e.span, &b.a, ExpX::Var(id.clone()));
+                    state.env.insert(id, val).unwrap();
+                }
+                let e = eval_expr_internal(ctx, state, e)?;
+                state.env.pop_scope();
+                if let ExpX::Const(Constant::Bool(_)) = e.x {
+                    // We simplified the body so far that we can eliminate the quantifier too
+                    Ok(e)
+                } else {
+                    // Restore the quantifier with a (hopefully) simpler body
+                    exp_new(Bind(bnd.clone(), e))
+                }
+            }
             _ => ok,
         },
         Ctor(path, id, bnds) => {
@@ -1738,8 +1831,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             InterpExp::Closure(_, _) => ok,
             InterpExp::Array(_) => ok,
         },
+        WithTriggers(triggers, body) => {
+            let body = eval_expr_internal(ctx, state, body)?;
+            exp_new(WithTriggers(triggers.clone(), body))
+        }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | StaticVar(..) => ok,
         ExecFnByName(_) => ok,
         FuelConst(_) => ok,
     };
@@ -1854,12 +1951,14 @@ fn eval_expr_launch(
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
+    quiet: bool,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
     let type_env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
     let msgs = Vec::new();
+    let now = Instant::now();
     let mut state = State {
         depth: 0,
         env,
@@ -1877,10 +1976,21 @@ fn eval_expr_launch(
         ptr_hits: 0,
         ptr_misses: 0,
         fun_calls: HashMap::new(),
+        start_time: now,
+        last_warning_time: now,
     };
     // Don't run for too long
     let max_iterations = (rlimit as f64 * RLIMIT_MULTIPLIER as f64) as u64;
-    let ctx = Ctx { fun_ssts: &fun_ssts, max_iterations, arch, global };
+    // Calculate max recursion depth as a fraction of rlimit
+    let max_depth = (rlimit as f64 * DEPTH_LIMIT_MULTIPLIER as f64) as usize;
+    let ctx = Ctx {
+        fun_ssts: &fun_ssts,
+        max_iterations,
+        max_depth,
+        arch,
+        global,
+        report_long_running: global.report_long_running,
+    };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
     if state.log.is_some() {
@@ -1892,17 +2002,25 @@ fn eval_expr_launch(
             return Ok((crate::sst_util::sst_bool(&exp.span, true), state.msgs));
         }
         SimplificationResult::False(None) => {
-            return Err(error(&exp.span, "expression simplifies to false"));
+            if quiet {
+                return Ok((crate::sst_util::sst_bool(&exp.span, false), state.msgs));
+            } else {
+                return Err(error(&exp.span, "expression simplifies to false"));
+            }
         }
         SimplificationResult::False(Some(small_exp)) => {
             let small_exp = cleanup_exp(&small_exp)?;
-            return Err(error(
-                &exp.span,
-                format!(
-                    "expression simplifies to `{}`, which evaluates to false",
-                    small_exp.x.to_user_string(&ctx.global)
-                ),
-            ));
+            if quiet {
+                return Ok((crate::sst_util::sst_bool(&exp.span, false), state.msgs));
+            } else {
+                return Err(error(
+                    &exp.span,
+                    format!(
+                        "expression simplifies to `{}`, which evaluates to false",
+                        small_exp.x.to_user_string(&ctx.global)
+                    ),
+                ));
+            }
         }
         SimplificationResult::Complex(res) => match mode {
             ComputeMode::Z3 => {
@@ -1934,22 +2052,26 @@ fn eval_expr_launch(
 }
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
-pub fn eval_expr(
+pub fn eval_expr<D>(
     global: &GlobalCtx,
     exp: &Exp,
-    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
+    diagnostics: Option<&D>,
     fun_ssts: SstMap,
     rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
     log: &mut Option<File>,
-) -> Result<Exp, VirErr> {
+) -> Result<Exp, VirErr>
+where
+    D: air::messages::Diagnostics + ?Sized,
+{
     // Make a new global so we can move it into the new thread
     let global = global.from_self_with_log(global.interpreter_log.clone());
 
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let mut taken_log = log.take();
+    let quiet = diagnostics.is_none();
     let (taken_log, res) = {
         let handler = {
             // Create local versions that we own and hence can pass to the closure
@@ -1964,6 +2086,7 @@ pub fn eval_expr(
                         arch,
                         mode,
                         &mut taken_log,
+                        quiet,
                     );
                     (taken_log, res)
                 })
@@ -1973,6 +2096,8 @@ pub fn eval_expr(
     };
     *log = taken_log;
     let (e, msgs) = res?;
-    msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
+    if let Some(diagnostics) = diagnostics {
+        msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));
+    }
     Ok(e)
 }

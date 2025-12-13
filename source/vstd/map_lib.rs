@@ -4,6 +4,8 @@ use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+#[allow(unused_imports)]
+use super::relations::*;
 use super::set::*;
 #[cfg(verus_keep_ghost)]
 use super::set_lib::*;
@@ -413,6 +415,85 @@ impl<K, V> Map<K, V> {
         };
         assert(lhs == rhs);
     }
+
+    /// Inserting a value in a map means it contains the value that was inserted.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let a = map![1int => 2int];
+    ///     assert(a.contains_value(2));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_insert_contains_value(self, k: K, v: V)
+        ensures
+            #[trigger] self.insert(k, v).contains_value(v),
+    {
+        assert(self.insert(k, v).contains_key(k));
+    }
+
+    /// Inserting a value in a map where that key is already present ensures
+    /// The contains value sees (only) the updated value;
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let a = map![1int => 2int].insert(1int, 3int);
+    ///     assert(!a.contains_value(2));
+    ///     assert(a.contains_value(3));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_insert_invariant_contains(self, old_v: V, k: K, v: V)
+        requires
+            self.contains_key(k) ==> self[k] != old_v,
+            old_v != v,
+        ensures
+            #[trigger] self.insert(k, v).contains_value(old_v) == self.contains_value(old_v),
+    {
+        if self.contains_value(old_v) {
+            let old_k = choose|key: K| #[trigger] self.dom().contains(key) && self[key] == old_v;
+            assert(self.insert(k, v).contains_key(old_k));
+        }
+    }
+
+    pub proof fn lemma_injective_values_len(self)
+        requires
+            self.dom().finite(),
+            self.is_injective(),
+        ensures
+            self.values().finite(),
+            self.values().len() == self.dom().len(),
+    {
+        let f = |k: K|
+            if self.contains_key(k) {
+                self[k]
+            } else {
+                Set::<V>::full().difference(self.values()).choose()
+            };
+        assert(forall|a1: K, a2: K|
+            self.dom().contains(a1) && self.dom().contains(a2) && #[trigger] f(a1) == #[trigger] f(
+                a2,
+            ) ==> a1 == a2);
+        assert(self.dom().map(f) == self.values());
+        lemma_map_size(self.dom(), self.values(), f);
+    }
+
+    pub proof fn lemma_values_len(self)
+        requires
+            self.dom().finite(),
+        ensures
+            self.values().finite(),
+            self.values().len() <= self.dom().len(),
+    {
+        let f = |k: K|
+            if self.contains_key(k) {
+                self[k]
+            } else {
+                Set::<V>::full().difference(self.values()).choose()
+            };
+        assert(self.dom().map(f) == self.values());
+        lemma_map_size_bound(self.dom(), self.values(), f);
+    }
 }
 
 impl<K, V> Map<Seq<K>, V> {
@@ -717,6 +798,8 @@ pub broadcast group group_map_properties {
 pub broadcast group group_map_extra {
     Map::lemma_map_remove_keys_insert,
     Map::lemma_filter_keys_insert,
+    Map::lemma_insert_contains_value,
+    Map::lemma_insert_invariant_contains,
     Map::lemma_prefixed_entries_get,
     Map::lemma_prefixed_entries_contains,
     Map::lemma_prefixed_entries_insert,

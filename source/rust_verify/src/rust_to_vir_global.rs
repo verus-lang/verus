@@ -25,7 +25,7 @@ pub(crate) fn process_const_early<'tcx>(
     let vattrs = ctxt.get_verifier_attrs_no_check(attrs)?;
     if vattrs.size_of_global {
         let err = || crate::util::err_span(item.span, "invalid global size_of");
-        let ItemKind::Const(_ident, _ty, generics, body_id) = item.kind else {
+        let ItemKind::Const(_ident, generics, _ty, body_id) = item.kind else {
             return err();
         };
         unsupported_err_unless!(
@@ -67,14 +67,7 @@ pub(crate) fn process_const_early<'tcx>(
             return err();
         };
         let ty = types.node_type(ty.hir_id);
-        let ty = crate::rust_to_vir_base::mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            def_id,
-            item.span,
-            &ty,
-            true,
-        )?;
+        let ty = ctxt.mid_ty_to_vir(def_id, item.span, &ty, true)?;
         let rustc_hir::ExprKind::Lit(lit) = args[0].kind else {
             return err();
         };

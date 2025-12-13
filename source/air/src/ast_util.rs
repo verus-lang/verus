@@ -11,6 +11,7 @@ impl Debug for Constant {
         match self {
             Constant::Bool(b) => write!(f, "{}", b),
             Constant::Nat(n) => write!(f, "{}", n),
+            Constant::Real(n) => write!(f, "{}", n),
             Constant::BitVec(n, width) => write!(f, "{}(bv{})", n, width),
         }
     }
@@ -297,7 +298,24 @@ pub fn mk_bitvector_option(solver: &SmtSolver) -> Vec<Command> {
 }
 
 pub fn mk_nat<S: ToString>(n: S) -> Expr {
-    Arc::new(ExprX::Const(Constant::Nat(Arc::new(n.to_string()))))
+    let s = n.to_string();
+    assert!(s.len() > 0);
+    assert!(s.chars().all(|c| c.is_ascii_digit()));
+    Arc::new(ExprX::Const(Constant::Nat(Arc::new(s))))
+}
+
+pub fn is_valid_real<S: ToString>(n: S) -> bool {
+    let s = n.to_string();
+    s.chars().all(|c| c.is_ascii_digit() || c == '.')
+        && s.chars().filter(|c| *c == '.').count() == 1
+        && !s.starts_with(".")
+        && !s.ends_with(".")
+}
+
+pub fn mk_real<S: ToString>(n: S) -> Expr {
+    let s = n.to_string();
+    assert!(is_valid_real(&s));
+    Arc::new(ExprX::Const(Constant::Real(Arc::new(s))))
 }
 
 pub fn mk_neg(e: &Expr) -> Expr {
@@ -310,4 +328,16 @@ pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
 
 pub fn mk_unnamed_axiom(expr: Expr) -> Decl {
     Arc::new(DeclX::Axiom(Axiom { named: None, expr: expr.clone() }))
+}
+
+pub fn mk_bit_vec<S: ToString>(n: S, w: u32) -> Expr {
+    Arc::new(ExprX::Const(Constant::BitVec(Arc::new(n.to_string()), w)))
+}
+
+pub fn mk_bit_vec_zero(w: u32) -> Expr {
+    mk_bit_vec("0", w)
+}
+
+pub fn mk_bit_vec_one(w: u32) -> Expr {
+    mk_bit_vec("1", w)
 }

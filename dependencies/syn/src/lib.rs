@@ -249,8 +249,8 @@
 //!   dynamic library libproc_macro from rustc toolchain.
 
 // Syn types in rustdoc of other crates get linked to here.
-#![doc(html_root_url = "https://docs.rs/syn/2.0.96")]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc(html_root_url = "https://docs.rs/syn/2.0.109")]
+#![cfg_attr(docsrs, feature(doc_cfg), doc(auto_cfg = false))]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(non_camel_case_types)]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
@@ -264,6 +264,7 @@
     clippy::derivable_impls,
     clippy::diverging_sub_expression,
     clippy::doc_markdown,
+    clippy::elidable_lifetime_names,
     clippy::enum_glob_use,
     clippy::expl_impl_clone_on_copy,
     clippy::explicit_auto_deref,
@@ -278,7 +279,6 @@
     clippy::manual_let_else,
     clippy::manual_map,
     clippy::match_like_matches_macro,
-    clippy::match_on_vec_items,
     clippy::match_same_arms,
     clippy::match_wildcard_for_single_variants, // clippy bug: https://github.com/rust-lang/rust-clippy/issues/6984
     clippy::missing_errors_doc,
@@ -308,6 +308,7 @@
     clippy::used_underscore_binding,
     clippy::wildcard_imports,
 )]
+#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
 extern crate self as syn;
 
@@ -383,8 +384,6 @@ pub use crate::expr::{
     ExprWhile, ExprYield,
 };
 
-#[cfg(feature = "parsing")]
-#[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
 pub mod ext;
 
 #[cfg(feature = "full")]
@@ -1023,4 +1022,125 @@ pub fn parse_file(mut content: &str) -> Result<File> {
     let mut file: File = parse_str(content)?;
     file.shebang = shebang;
     Ok(file)
+}
+
+pub fn rejoin_tokens(stream: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    use proc_macro2::{Group, Punct, Spacing::*, Span, TokenTree};
+    let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let pun = |t: &TokenTree| match t {
+        TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
+        _ => None,
+    };
+    let ident = |t: &TokenTree| match t {
+        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
+        _ => None,
+    };
+    let adjacent = |s1: Span, s2: Span| {
+        let l1 = s1.end();
+        let l2 = s2.start();
+        s1.local_file() == s2.local_file() && l1.eq(&l2)
+    };
+    fn mk_joint_punct(t: Option<(char, proc_macro2::Spacing, Span)>) -> TokenTree {
+        let (op, _, span) = t.unwrap();
+        let mut punct = Punct::new(op, Joint);
+        punct.set_span(span);
+        TokenTree::Punct(punct)
+    }
+    let mut i = 0;
+    let mut till = if tokens.len() >= 2 {
+        tokens.len() - 2
+    } else {
+        0
+    };
+    while i < till {
+        let t0 = pun(&tokens[i]);
+        let t1_ident = ident(&tokens[i + 1]);
+        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
+            (Some(('!', Alone, s1)), Some(("is", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro2::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro2::Ident::new("hasnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let t1_pun = pun(&tokens[i + 1]);
+        let t2 = pun(&tokens[i + 2]);
+        let t3 = if i + 3 < tokens.len() {
+            pun(&tokens[i + 3])
+        } else {
+            None
+        };
+        match (t0, t1_pun, t2, t3) {
+            (
+                Some(('<', Joint, _)),
+                Some(('=', Alone, s1)),
+                Some(('=', Joint, s2)),
+                Some(('>', Alone, _)),
+            )
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('>', Alone, s2)), _)
+            | (Some(('<', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
+            | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                }
+            }
+            (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                }
+            }
+            (
+                Some(('=', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            )
+            | (
+                Some(('!', Alone, _)),
+                Some(('~', Alone, _)),
+                Some(('~', Alone, s2)),
+                Some(('=', Alone, s3)),
+            ) => {
+                if adjacent(s2, s3) {
+                    tokens[i] = mk_joint_punct(t0);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
+                    tokens[i + 2] = mk_joint_punct(t2);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    for tt in &mut tokens {
+        match tt {
+            TokenTree::Group(group) => {
+                let mut new_group = Group::new(group.delimiter(), rejoin_tokens(group.stream()));
+                new_group.set_span(group.span());
+                *group = new_group;
+            }
+            _ => {}
+        }
+    }
+    use std::iter::FromIterator;
+    proc_macro2::TokenStream::from_iter(tokens.into_iter())
 }

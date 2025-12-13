@@ -183,11 +183,23 @@ macro_rules! parse_quote_spanned_builtin {
     }
 }
 
-macro_rules! quote_spanned_builtin_vstd {
-    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+macro_rules! quote_spanned_builtin_builtin_macros {
+    ($b:ident, $m:ident, $span:expr => $($tt:tt)*) => {
         {
             let sp = $span;
             let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
             let $v = crate::syntax::Vstd(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
         }
@@ -830,7 +842,28 @@ impl Visitor {
                 }
                 match std::mem::take(ret_opt) {
                     None => None,
-                    Some(ret) => Some((ret.1.clone(), ty.clone())),
+                    Some(ret) => {
+                        let original_pattern = ret.1.clone();
+                        let mut pattern = ret.1.clone();
+                        // Check if the pattern name conflicts with the function name
+                        let was_renamed = if let Pat::Ident(pat_ident) = &pattern {
+                            if pat_ident.ident.to_string() == sig.ident.to_string() {
+                                pattern = Pat::Verbatim(
+                                    quote_spanned! {pattern.span() => __verus_tmp_ret},
+                                );
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        Some((
+                            pattern,
+                            ty.clone(),
+                            if was_renamed { Some(original_pattern) } else { None },
+                        ))
+                    }
                 }
             }
         };
@@ -976,7 +1009,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
 
-        if let Some((p, _)) = &ret_pat {
+        if let Some((p, _, _)) = &ret_pat {
             if let Some(err_stmt) = check_verus_return_ident(p, &sig.inputs) {
                 stmts.push(err_stmt);
             }
@@ -984,8 +1017,8 @@ impl Visitor {
 
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
-            ret_pat,
-            None,
+            ret_pat.as_ref().map(|(pat, ty, _)| (pat.clone(), ty.clone())),
+            ret_pat.as_ref().and_then(|(_, _, original_pat)| original_pat.clone()),
             sig_span,
             is_impl_fn,
             false,
@@ -1352,6 +1385,7 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        crate::contrib::contrib_preprocess_items(items);
         self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
@@ -1517,7 +1551,7 @@ impl Visitor {
                             };
 
                             *item = Item::Verbatim(
-                                quote_spanned_builtin_vstd! { verus_builtin, vstd, span =>
+                                quote_spanned_builtin_builtin_macros_vstd! { verus_builtin, verus_builtin_macros, vstd, span =>
                                 #[verus::internal(size_of)] const _: () = {
                                     #verus_builtin::global_size_of::<#type_>(#size_lit);
 
@@ -1525,7 +1559,7 @@ impl Visitor {
                                     #static_assert_align
                                 };
 
-                                ::verus_builtin_macros::verus! {
+                                #verus_builtin_macros::verus! {
                                     #[verus::internal(size_of_broadcast_proof)]
                                     #[verifier::external_body]
                                     #[allow(non_snake_case)]
@@ -1607,7 +1641,6 @@ impl Visitor {
             bracket_token: _,
             qself,
             path,
-            paren_token,
             inputs,
             output,
             requires,
@@ -1620,6 +1653,11 @@ impl Visitor {
         } = assume_specification.clone();
         let ex_ident = get_ex_ident_mangle_path(&qself, &path);
 
+        let (is_const, paren_token, inputs) = match inputs {
+            None => (true, token::Paren { span: into_spans(span) }, Punctuated::new()),
+            Some((paren_token, inputs)) => (false, paren_token, inputs),
+        };
+
         let sig = Signature {
             publish: Publish::Default,
             constness: None,
@@ -1631,7 +1669,7 @@ impl Visitor {
             fn_token: token::Fn { span },
             ident: ex_ident,
             generics: generics,
-            paren_token: paren_token,
+            paren_token,
             inputs: inputs,
             variadic: None,
             output: output,
@@ -1726,9 +1764,13 @@ impl Visitor {
             verus_syn::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
         // We wrap the function call in an 'unsafe' block, since the user might be applying
         // a specification to an unsafe function.
-        let e = Expr::Verbatim(quote! {
-            unsafe { #callee(#(#args),*) }
-        });
+        let e = if is_const {
+            Expr::Verbatim(quote!(unsafe { #callee }))
+        } else {
+            Expr::Verbatim(quote! {
+                unsafe { #callee(#(#args),*) }
+            })
+        };
         stmts.push(Stmt::Expr(e, None));
 
         item_fn.block.stmts = stmts;
@@ -1826,6 +1868,7 @@ impl Visitor {
     }
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
+        crate::contrib::contrib_preprocess_impl_items(items);
         self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
@@ -2527,7 +2570,8 @@ impl Visitor {
                 }
                 BinOp::Div(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
+                    *expr =
+                        quote_verbatim!(span, attrs => #left.spec_euclidean_or_real_div(#right));
                 }
                 BinOp::Rem(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
@@ -2583,7 +2627,11 @@ impl Visitor {
             let src = cast.expr;
             let attrs = cast.attrs;
             let ty = cast.ty;
-            *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            if is_probably_real_type(&ty) {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_real(#src));
+            } else {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            }
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
@@ -2596,7 +2644,7 @@ impl Visitor {
     }
 
     /// Handle integer literals.
-    fn handle_lit(&mut self, expr: &mut Expr) -> bool {
+    fn handle_lit_int(&mut self, expr: &mut Expr) -> bool {
         let Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) = expr else {
             return false;
         };
@@ -2628,11 +2676,34 @@ impl Visitor {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
             } else if lit.suffix() == "nat" {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+            } else if lit.suffix() == "real" {
+                // For convenience, allow literals like 5real in addition to 5.0real
+                let n = n + ".0";
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
             } else {
                 // Has a native Rust integer suffix, so leave it as a native Rust literal
             }
         }
 
+        true
+    }
+
+    /// Handle float/real literals.
+    fn handle_lit_float(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
+            return false;
+        };
+        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+            let span = lit.span();
+            let n = lit.base10_digits().to_string();
+            if lit.suffix() == "" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal(#n));
+            } else if lit.suffix() == "real" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
+            } else {
+                // Has a native Rust integer suffix, so leave it as a native Rust literal
+            }
+        }
         true
     }
 
@@ -3027,9 +3098,14 @@ impl Visitor {
             self.inside_ghost += 1;
             if self.erase_ghost.keep() {
                 stmts.push(stmt_with_semi!(builtin, clos.span() =>
-                    #builtin::dummy_capture_consume(_verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it)
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
                 ));
             }
+            let span = clos.span();
+            let output = match &clos.output {
+                ReturnType::Default => Type::Verbatim(quote_spanned!(span => _)),
+                ReturnType::Type(_, _, _, t) => (**t).clone(),
+            };
             if let Some(t) = &opts.req_ens {
                 let mut elems = Punctuated::new();
                 for input in &clos.inputs {
@@ -3042,10 +3118,10 @@ impl Visitor {
                 let paren_token = Paren { span: into_spans(clos.span()) };
                 let args = Expr::Tuple(ExprTuple { attrs: vec![], paren_token, elems });
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
+                    #verus_builtin::requires([<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::req(#args)])
                 ));
                 stmts.push(stmt_with_semi!(verus_builtin, clos.span() =>
-                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
+                    #verus_builtin::ensures(|ret| [<#t as #verus_builtin::ProofFnReqEnsDef<_, #output>>::ens(#args, ret)])
                 ));
             }
             if let Some(Requires { token, mut exprs }) = requires {
@@ -3087,7 +3163,6 @@ impl Visitor {
                     })
                 }
             }
-            let span = clos.span();
             let inputs = clos.inputs.clone();
             clos.proof_fn = None;
             clos.options = None;
@@ -3101,17 +3176,17 @@ impl Visitor {
                     proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
                 let ret_mode = proof_fn_track_to_type(span, ret_tracked);
                 new_expr = Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
-                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
+                    #verus_builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, #output, _>(#new_expr)
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, _>(#new_expr)
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, #output>(#new_expr)
                     ));
                 }
             }
             *expr = if self.erase_ghost.keep() {
                 Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                    { let _verus_if_you_see_this_identifier_it_is_a_Verus_bug_please_report_it = #builtin::dummy_capture_new(); #new_expr }
+                    { let _verus_internal_identifier_for_closures = #builtin::dummy_capture_new(); #new_expr }
                 ))
             } else {
                 new_expr
@@ -3344,7 +3419,7 @@ impl Visitor {
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                verus_builtin::infer_spec_for_loop_iter(
+                #vstd::prelude::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(VERUS_iter)),
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
@@ -3890,7 +3965,8 @@ impl VisitMut for Visitor {
             || self.handle_reveal_hide(expr)
             || self.handle_mode_blocks(expr)
             || self.handle_cast(expr)
-            || self.handle_lit(expr)
+            || self.handle_lit_int(expr)
+            || self.handle_lit_float(expr)
             || self.handle_closures(expr)
             || self.handle_unary_ops(expr)
             || self.handle_big_and_big_or(expr)
@@ -5288,116 +5364,7 @@ pub(crate) fn for_loop_spec_attr(
 // Try to put the original tokens back together here.
 #[cfg(verus_keep_ghost)]
 pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
-    let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
-    let pun = |t: &TokenTree| match t {
-        TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
-        _ => None,
-    };
-    let ident = |t: &TokenTree| match t {
-        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
-        _ => None,
-    };
-    let adjacent = |s1: Span, s2: Span| {
-        let l1 = s1.end();
-        let l2 = s2.start();
-        s1.source().file() == s2.source().file() && l1.eq(&l2)
-    };
-    fn mk_joint_punct(t: Option<(char, proc_macro::Spacing, Span)>) -> TokenTree {
-        let (op, _, span) = t.unwrap();
-        let mut punct = Punct::new(op, Joint);
-        punct.set_span(span);
-        TokenTree::Punct(punct)
-    }
-    let mut i = 0;
-    let mut till = if tokens.len() >= 2 { tokens.len() - 2 } else { 0 };
-    while i < till {
-        let t0 = pun(&tokens[i]);
-        let t1_ident = ident(&tokens[i + 1]);
-        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
-            (Some(('!', Alone, s1)), Some(("is", s2))) => {
-                if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
-                    tokens.remove(i + 1);
-                    i += 1;
-                    till -= 1;
-                    continue;
-                }
-            }
-            (Some(('!', Alone, s1)), Some(("has", s2))) => {
-                if adjacent(s1, s2) {
-                    tokens[i] =
-                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
-                    tokens.remove(i + 1);
-                    i += 1;
-                    till -= 1;
-                    continue;
-                }
-            }
-            _ => {}
-        }
-        let t1_pun = pun(&tokens[i + 1]);
-        let t2 = pun(&tokens[i + 2]);
-        let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
-        match (t0, t1_pun, t2, t3) {
-            (
-                Some(('<', Joint, _)),
-                Some(('=', Alone, s1)),
-                Some(('=', Joint, s2)),
-                Some(('>', Alone, _)),
-            )
-            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('!', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('>', Alone, s2)), _)
-            | (Some(('<', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
-            | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
-                if adjacent(s1, s2) {
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                }
-            }
-            (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
-            | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
-                if adjacent(s1, s2) {
-                    tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                }
-            }
-            (
-                Some(('=', Alone, _)),
-                Some(('~', Alone, _)),
-                Some(('~', Alone, s2)),
-                Some(('=', Alone, s3)),
-            )
-            | (
-                Some(('!', Alone, _)),
-                Some(('~', Alone, _)),
-                Some(('~', Alone, s2)),
-                Some(('=', Alone, s3)),
-            ) => {
-                if adjacent(s2, s3) {
-                    tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1_pun);
-                    tokens[i + 2] = mk_joint_punct(t2);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    for tt in &mut tokens {
-        match tt {
-            TokenTree::Group(group) => {
-                let mut new_group = Group::new(group.delimiter(), rejoin_tokens(group.stream()));
-                new_group.set_span(group.span());
-                *group = new_group;
-            }
-            _ => {}
-        }
-    }
-    use std::iter::FromIterator;
-    proc_macro::TokenStream::from_iter(tokens.into_iter())
+    verus_syn::rejoin_tokens(stream.into()).into()
 }
 
 #[cfg(not(verus_keep_ghost))]
@@ -5682,6 +5649,16 @@ fn is_probably_nat_or_int_type(typ: &Type) -> bool {
     }
 }
 
+fn is_probably_real_type(typ: &Type) -> bool {
+    match typ {
+        Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+            None => false,
+            Some(ident) => ident.to_string() == "real",
+        },
+        _ => false,
+    }
+}
+
 pub(crate) struct Builtin(pub Span);
 
 impl ToTokens for Builtin {
@@ -5692,6 +5669,21 @@ impl ToTokens for Builtin {
             VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
             VstdKind::IsCore => quote_spanned! { self.0 => crate::verus_builtin },
             VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin },
+        };
+        tokens.extend(toks);
+    }
+}
+
+pub(crate) struct BuiltinMacros(pub Span);
+
+impl ToTokens for BuiltinMacros {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let toks = match vstd_kind() {
+            VstdKind::IsVstd => quote_spanned! { self.0 => crate::prelude },
+            VstdKind::NoVstd => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::Imported => quote_spanned! { self.0 => ::vstd::prelude },
+            VstdKind::IsCore => quote_spanned! { self.0 => ::verus_builtin_macros },
+            VstdKind::ImportedViaCore => quote_spanned! { self.0 => ::core::verus_builtin_macros },
         };
         tokens.extend(toks);
     }

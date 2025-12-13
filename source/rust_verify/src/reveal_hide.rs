@@ -4,9 +4,7 @@ use std::sync::Arc;
 use rustc_hir::{Expr, ExprKind, QPath, def::Res};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
-use crate::{
-    rust_to_vir_base::def_id_to_vir_path, unsupported_err, unsupported_err_unless, util::err_span,
-};
+use crate::{unsupported_err, unsupported_err_unless, util::err_span};
 
 pub(crate) enum RevealHideResult {
     Expr(vir::ast::Expr),
@@ -53,7 +51,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                     // `ty_res` has the def_id of the type, or is a primitive type
                     // we need to find the impl that contains the non-blanket
                     // implementation of the function for the type
-                    let trait_ = tcx.trait_of_item(res.def_id()).expect("trait of function");
+                    let trait_ = tcx.trait_of_assoc(res.def_id()).expect("trait of function");
                     let ty_ = match ty_res {
                         Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
                         Res::PrimTy(prim_ty) => crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty),
@@ -117,7 +115,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
             }
         }
     };
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let path = ctxt.def_id_to_vir_path(id);
 
     let ExprKind::Lit(fuel_lit) = args[1].kind else {
         unsupported_err!(expr.span, "invalid reveal", &args);

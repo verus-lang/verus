@@ -506,6 +506,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let typ = match c {
                 Constant::Bool(_) => Arc::new(TypX::Bool),
                 Constant::Nat(_) => Arc::new(TypX::Int),
+                Constant::Real(_) => Arc::new(TypX::Real),
                 Constant::BitVec(_, width) => Arc::new(TypX::BitVec(*width)),
             };
             (typ, expr.clone(), None)
@@ -545,11 +546,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let typ = match op {
                 UnaryOp::Not => Arc::new(TypX::Bool),
                 UnaryOp::BitExtract(high, lo) => Arc::new(TypX::BitVec(high + 1 - lo)),
-                UnaryOp::BitNot => ts[0].0.clone(),
+                UnaryOp::BitNot | UnaryOp::BitNeg => ts[0].0.clone(),
                 UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => match &*ts[0].0 {
                     TypX::BitVec(n) => Arc::new(TypX::BitVec(n + w)),
                     _ => panic!("internal error during processing bit extend"),
                 },
+                UnaryOp::ToReal => Arc::new(TypX::Real),
             };
             let (es, t) = enclose(state, App::Unary(*op), es, ts);
             (typ, Arc::new(ExprX::Unary(*op, es[0].clone())), t)
@@ -560,6 +562,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::Implies | BinaryOp::Eq | BinaryOp::Relation(..) => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
+                BinaryOp::RealDiv => Arc::new(TypX::Real),
                 BinaryOp::BitUGt | BinaryOp::BitULt | BinaryOp::BitUGe | BinaryOp::BitULe => {
                     Arc::new(TypX::Bool)
                 }
@@ -573,10 +576,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 | BinaryOp::BitSub
                 | BinaryOp::BitMul
                 | BinaryOp::BitUDiv
+                | BinaryOp::BitSDiv
+                | BinaryOp::BitSRem
                 | BinaryOp::LShr
                 | BinaryOp::AShr
                 | BinaryOp::Shl
-                | BinaryOp::BitUMod => {
+                | BinaryOp::BitURem => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }
@@ -590,12 +595,18 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             (typ, Arc::new(ExprX::Binary(op.clone(), es[0].clone(), es[1].clone())), t)
         }
         ExprX::Multi(op, es) => {
+            let (es, ts) = simplify_exprs(ctxt, state, &es);
             let typ = match op {
                 MultiOp::And | MultiOp::Or | MultiOp::Xor => Arc::new(TypX::Bool),
-                MultiOp::Add | MultiOp::Sub | MultiOp::Mul => Arc::new(TypX::Int),
+                MultiOp::Add | MultiOp::Sub | MultiOp::Mul => {
+                    if let Some((typ, _)) = &ts.first() {
+                        typ.clone()
+                    } else {
+                        Arc::new(TypX::Int)
+                    }
+                }
                 MultiOp::Distinct => Arc::new(TypX::Bool),
             };
-            let (es, ts) = simplify_exprs(ctxt, state, &es);
             let (es, t) = enclose(state, App::Multi(*op), es, ts);
             (typ, Arc::new(ExprX::Multi(*op, Arc::new(es))), t)
         }

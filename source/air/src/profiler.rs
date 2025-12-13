@@ -95,7 +95,7 @@ impl Profiler {
         let instantiation_graph =
             compute_instantiation_graph.then(|| Self::make_instantiation_graph(&model));
 
-        // Analyze the quantifer costs
+        // Analyze the quantifier costs
         let quant_costs = model.quant_costs();
         let mut user_quant_costs = quant_costs
             .into_iter()

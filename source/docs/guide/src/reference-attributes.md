@@ -20,7 +20,7 @@
  - [`trigger`](#trigger)
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
- - `when_used_as_spec`
+ - [`when_used_as_spec`](#verifierwhen_used_as_spec)
  - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
  - [`assume_termination`](#verifierassume_termination)
 
@@ -159,6 +159,17 @@ already elided if the enclosing function body has no legitimate verification err
 ## `#[verifier::type_invariant]`
 
 Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariants.md).
+
+## `#[verifier::when_used_as_spec]`
+
+It can be convenient to use the name of an exec function in a specification
+context.  For example, if a function takes `v: Vec<u64>` as an argument, it's
+convenient to use `v.len()` in the pre-/post-conditions, even though `v.len()`
+is an exec function.  To add such a shortcut to your code, add a
+`#[verifier::when_used_as_spec(your_spec_fn_name)]` attribute to your
+executable function.  For this to work, the supplied spec function (e.g., named
+`your_spec_fn_name` in the example above) must take the same number and type of
+arguments and return the same return type as the exec function.
 
 ## `#[verifier::exec_allows_no_decreases_clause]`
 

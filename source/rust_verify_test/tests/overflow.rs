@@ -94,7 +94,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
-    } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
+    } => Err(err) => assert_rust_error_msg(err, "attempt to compute `0_u8 - 1_u8`, which would overflow")
 }
 
 test_verify_one_file! {
@@ -327,6 +327,15 @@ test_verify_one_file! {
 
         proof fn test_mod_by_0(a: u32, b: u32) {
             assert((a as int % 0 as int) < 0); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] arith_bounds_asserted_and_assumed verus_code!{
+        fn test(a: u64, b: u64) {
+            let z = a + b; // FAILS
+            let y = a + b;
         }
     } => Err(e) => assert_one_fails(e)
 }

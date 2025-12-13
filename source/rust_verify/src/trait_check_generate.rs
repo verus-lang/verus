@@ -1,4 +1,4 @@
-use crate::lifetime_ast::*;
+use crate::trait_check_ast::*;
 use std::collections::HashMap;
 use vir::ast::Path;
 

@@ -175,7 +175,7 @@ macro_rules! declare_invariant_impl {
 
         verus!{
 
-        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+        impl<K, V, Pred> $invariant<K, V, Pred> {
             /// The constant specified upon the initialization of this `
             #[doc = stringify!($invariant)]
             ///`.
@@ -184,7 +184,9 @@ macro_rules! declare_invariant_impl {
             /// Namespace the invariant was declared in.
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::namespace")]
             pub uninterp spec fn namespace(&self) -> int;
+        }
 
+        impl<K, V, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
             /// Returns `true` if it is possible to store the value `v` into the `
             #[doc = stringify!($invariant)]
             ///`.
@@ -397,7 +399,7 @@ macro_rules! open_atomic_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::vstd::invariant::create_open_invariant_credit();
-        ::verus_builtin_macros::verus_exec_inv_macro_exprs!(
+        $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
             $crate::vstd::invariant::open_atomic_invariant_internal!(credit => $($tail)*)
         )
     };
@@ -406,7 +408,7 @@ macro_rules! open_atomic_invariant {
 #[macro_export]
 macro_rules! open_atomic_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
+        $crate::vstd::prelude::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_atomic_invariant_in_proof_internal!($($tail)*))
     };
 }
 
@@ -547,7 +549,7 @@ macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         #[cfg(verus_keep_ghost_body)]
         let credit = $crate::vstd::invariant::create_open_invariant_credit();
-        ::verus_builtin_macros::verus_exec_inv_macro_exprs!(
+        $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
             $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
     };
 }
@@ -555,7 +557,7 @@ macro_rules! open_local_invariant {
 #[macro_export]
 macro_rules! open_local_invariant_in_proof {
     [$($tail:tt)*] => {
-        ::verus_builtin_macros::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_local_invariant_in_proof_internal!($($tail)*))
+        $crate::vstd::prelude::verus_ghost_inv_macro_exprs!($crate::vstd::invariant::open_local_invariant_in_proof_internal!($($tail)*))
     };
 }
 

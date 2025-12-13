@@ -2,6 +2,11 @@
 
 set -e
 
+RUSTDOC=""
+if [ "x$1" = "x--strict" ]; then
+    RUSTDOC="-D warnings"
+fi
+
 case $(uname -m) in
   x86_64)
     ARCH=x86_64
@@ -26,7 +31,7 @@ vargo build -p verusdoc
 vargo build --vstd-no-verify
 
 echo "Running rustdoc..."
-RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
+RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
   --extern verus_builtin=target-verus/debug/libverus_builtin.rlib \
   --extern verus_builtin_macros=target-verus/debug/libverus_builtin_macros.$DYN_LIB_EXT \
   --extern verus_state_machines_macros=target-verus/debug/libverus_state_machines_macros.$DYN_LIB_EXT \
@@ -46,6 +51,7 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3" r
   -Zcrate-attr=allow\\\(internal_features\\\) \
   -Zcrate-attr=allow\\\(unused_braces\\\) \
   -Zproc-macro-backtrace \
+  $RUSTDOC \
   vstd/vstd.rs""
 
 echo "Running post-processor..."

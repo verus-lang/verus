@@ -382,8 +382,7 @@ ast_struct! {
         pub bracket_token: token::Bracket,
         pub qself: Option<QSelf>,
         pub path: Path,
-        pub paren_token: token::Paren,
-        pub inputs: Punctuated<FnArg, Token![,]>,
+        pub inputs: Option<(token::Paren, Punctuated<FnArg, Token![,]>)>,
         pub output: ReturnType,
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
@@ -1414,11 +1413,16 @@ pub mod parsing {
             let (qself, path) = path::parsing::qpath(&content, true)?;
 
             let content;
-            let paren_token = parenthesized!(content in input);
-            let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
-            if variadic.is_some() {
-                return Err(content.error("variadic parameters not allowed"));
-            }
+            let inputs = if input.peek(token::Paren) {
+                let paren_token = parenthesized!(content in input);
+                let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
+                if variadic.is_some() {
+                    return Err(content.error("variadic parameters not allowed"));
+                }
+                Some((paren_token, inputs))
+            } else {
+                None
+            };
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
@@ -1440,7 +1444,6 @@ pub mod parsing {
                 generics,
                 qself,
                 path,
-                paren_token,
                 inputs,
                 output,
                 requires,
@@ -2168,9 +2171,11 @@ mod printing {
                 path::printing::print_qpath(tokens, &self.qself, &self.path, PathStyle::Mod)
             });
 
-            self.paren_token.surround(tokens, |tokens| {
-                self.inputs.to_tokens(tokens);
-            });
+            if let Some((paren_token, inputs)) = &self.inputs {
+                paren_token.surround(tokens, |tokens| {
+                    inputs.to_tokens(tokens);
+                });
+            }
 
             self.output.to_tokens(tokens);
             self.generics.where_clause.to_tokens(tokens);
@@ -2437,29 +2442,54 @@ impl parse::Parse for WithSpecOnFn {
     fn parse(input: ParseStream) -> Result<Self> {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
-        while !input.peek(Token![->]) {
+
+        // Helper function to check if we're at next spec keyword
+        let is_next_spec_keyword = |input: ParseStream| -> bool {
+            input.peek(Token![requires])
+                || input.peek(Token![invariant_except_break])
+                || input.peek(Token![invariant])
+                || input.peek(Token![invariant_ensures])
+                || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
+                || input.peek(Token![returns])
+                || input.peek(Token![decreases])
+                || input.peek(Token![via])
+                || input.peek(Token![when])
+                || input.peek(Token![no_unwind])
+                || input.peek(Token![opens_invariants])
+        };
+
+        // Parse inputs
+        while !input.peek(Token![->]) && !input.is_empty() && !is_next_spec_keyword(input) {
             let expr = input.parse()?;
             inputs.push(expr);
+
             if !input.peek(Token![,]) {
                 break;
             }
+
             let _comma: Token![,] = input.parse()?;
         }
+
         let outputs = if input.peek(Token![->]) {
             let token = input.parse()?;
             let mut outs = Punctuated::new();
-            loop {
+
+            while !input.is_empty() && !is_next_spec_keyword(input) {
                 let expr = input.parse()?;
                 outs.push(expr);
+
                 if !input.peek(Token![,]) {
                     break;
                 }
+
                 let _comma: Token![,] = input.parse()?;
             }
             Some((token, outs))
         } else {
             None
         };
+
         Ok(WithSpecOnFn {
             with,
             inputs,
@@ -2479,7 +2509,13 @@ impl parse::Parse for WithSpecOnExpr {
             if !input.peek(Token![,]) {
                 break;
             }
+            let fork = input.fork();
+            let _comma: Token![,] = fork.parse()?;
+            let has_next_input = fork.parse::<Expr>().is_ok();
             let _comma: Token![,] = input.parse()?;
+            if !has_next_input {
+                break;
+            }
         }
         let outputs = if input.peek(Token![=>]) {
             let token = input.parse()?;

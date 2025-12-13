@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use crate::messages::{Message, Span};
+use crate::messages::{Message, MessageAs, Span};
 pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
@@ -15,11 +15,7 @@ use vir_macros::{ToDebugSNode, to_node_impl};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
 pub type VirErr = Message;
-
-pub enum VirErrAs {
-    Warning(VirErr),
-    Note(VirErr),
-}
+pub type VirErrAs = MessageAs;
 
 /// A non-qualified name, such as a local variable name or type parameter name
 pub type Ident = Arc<String>;
@@ -73,6 +69,7 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     UserDefinedTypeInvariantPass(u64),
+    ResInfTemp(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -157,6 +154,34 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
+///
+/// A `TypDecoration` can be applied to a type (via `TypX::Decorate`) to represent
+/// a different type that has the same encoding at the SMT level.
+/// For example, `u64` is represented in VIR as `Int(IntRange::U(64))`
+/// while `Box<u64>` is represented in VIR as `Decorate(Box, Int(IntRange::U(64)))`.
+/// Since the VIR types differ only in the "decoration", we know they are represented
+/// by the same SMT sort (air's Int type, in this case).
+/// Many functions (e.g., HasType) that depend on a type can be written
+/// to only depend on the "base type" (i.e., the type minus the decoration).
+///
+/// Furthermore, many functions can be elided entirely because they are simply the identity
+/// operation, e.g., `Box::new` takes a `T` to a `Box<T>`; but since these types are
+/// equivalent up to decoration, they are represented the same in SMT, and it happens the
+/// function is the identity function.
+///
+/// However, decorations are not totally irrelevant. They are still significant for resolving
+/// traits (e.g., `u64` and `Box<u64>` might implement the same trait in different ways).
+///
+/// In some places, the decoration of a Typ cannot be considered meaningful due to these
+/// implicit 'identity' coercions:
+///   - `expr.typ`
+///   - `place.typ`
+///   - `pattern.typ`
+///   - `exp.typ` (SST nodes)
+/// But in other places, types must be exactly correct, *including* decoration:
+///   - type arguments for a Call
+///   - `pattern_binding.typ` (type of a local variable declaration)
+///   - Most places where `Typ` is given as an explicit field of a node
 #[derive(
     Debug,
     Serialize,
@@ -174,8 +199,10 @@ pub enum TypDecoration {
     /// &T
     Ref,
     /// &mut T
+    /// For new-mut-ref, don't use this; use TypX::MutRef instead
     MutRef,
     /// Box<T>
+    /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,
     /// Rc<T>
     Rc,
@@ -231,7 +258,10 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
+    /// Integer type: int, nat, i8, ..., i128, u8, ..., u128, isize, usize, char
     Int(IntRange),
+    /// SMT solver's real number (ghost code only)
+    Real,
     /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
     Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
@@ -249,6 +279,15 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    /// When an opaque type is defined (e.g., by a function return), Rustc creates
+    /// an unique opaque type constructor for it.
+    /// This opaque type is just an instantiation of the opaque type constructor with args
+    Opaque {
+        // path of the opaque type constructor.
+        def_path: Path,
+        // args of the instantiation. e.g., let x = foo<args>(); if foo returns an opaque type.
+        args: Typs,
+    },
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -343,6 +382,8 @@ pub enum UnaryOp {
         range: IntRange,
         truncate: bool,
     },
+    /// Convert integer type to real type (SMT to_real operation)
+    IntToReal,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
@@ -442,19 +483,60 @@ pub enum UnaryOpr {
     HasResolved(Typ),
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum OverflowBehavior {
+    /// Return an int. This is the only value allowed in SST.
+    Allow,
+    /// Truncate to the given range
+    Truncate(IntRange),
+    /// Error if the result is outside the given range
+    Error(IntRange),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum Div0Behavior {
+    /// Return the (unspecified) result of divide- or mod-by-0.
+    /// This is the only value allowed in SST.
+    Allow,
+    /// Error if the dividend is 0.
+    Error,
+}
+
+/// Behavior for the bounds check of the RHS applied to either Shl (<<) or Shr (>>).
+/// (This doesn't mean anything for the other BitwiseOp kinds)
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BitshiftBehavior {
+    /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
+    Allow,
+    /// Error if the right-hand side of the bit-shift is outside the allowed range
+    Error,
+}
+
 /// Arithmetic operation that might fail (overflow or divide by zero)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum ArithOp {
     /// IntRange::Int +
-    Add,
+    Add(OverflowBehavior),
     /// IntRange::Int -
-    Sub,
+    Sub(OverflowBehavior),
     /// IntRange::Int *
-    Mul,
+    Mul(OverflowBehavior),
     /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
-    EuclideanDiv,
+    EuclideanDiv(Div0Behavior),
     /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
-    EuclideanMod,
+    EuclideanMod(Div0Behavior),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum RealArithOp {
+    /// Real number add (spec mode only)
+    Add,
+    /// Real number subtract (spec mode only)
+    Sub,
+    /// Real number multiply (spec mode only)
+    Mul,
+    /// Real number divide (spec mode only)
+    Div,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -471,14 +553,15 @@ pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    // Shift right. The bitwidth argument is only needed to do a bounds-check;
-    // the actual result, when computed on unbounded integers, is independent
-    // of the bitwidth.
+    /// Shift right. The bitwidth argument is only needed to do a bounds-check
+    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
+    /// is independent of the bitwidth.
+    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
     Shr(IntegerTypeBitwidth),
-    // Shift left up to w bits, ignoring everything to the left of w.
-    // To interpret the result as an unbounded int,
-    // either zero-extend or sign-extend, depending on the bool argument.
-    // (True = sign-extend, False = zero-extend)
+    /// Shift left up to w bits, ignoring everything to the left of w.
+    /// To interpret the result as an unbounded int,
+    /// either zero-extend or sign-extend, depending on the bool argument.
+    /// (True = sign-extend, False = zero-extend)
     Shl(IntegerTypeBitwidth, bool),
 }
 
@@ -526,10 +609,11 @@ pub enum BinaryOp {
     /// arithmetic inequality
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
-    Arith(ArithOp, Mode),
+    Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
     /// Bit Vector Operators
-    /// mode=Exec means we need overflow-checking
-    Bitwise(BitwiseOp, Mode),
+    Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
     /// Used only for handling verus_builtin::array_index
@@ -615,6 +699,8 @@ pub enum Constant {
     Bool(bool),
     /// integer of arbitrary size
     Int(BigInt),
+    /// String is >= 1 decimal digits, then one decimal point, then >= 1 decimal digits
+    Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
     // Hold unicode values here
@@ -632,6 +718,24 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum ByRef {
+    No,
+    ImmutRef,
+    MutRef,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
+pub struct PatternBinding {
+    pub name: VarIdent,
+    pub by_ref: ByRef,
+    pub typ: Typ,
+    pub mutable: bool,
+    /// True if the type of this variable is copy.
+    /// This is used by resolution analysis; it is meaningless post-simplification.
+    pub copy: bool,
+}
+
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
@@ -640,18 +744,26 @@ pub enum PatternX {
     /// _
     /// True if this is implicitly added from a ..
     Wildcard(bool),
-    /// x or mut x
-    Var {
-        name: VarIdent,
-        mutable: bool,
-    },
+    /// Be careful: when binding a variable, the *type of the variable* is found in the
+    /// PatternBinding struct. This can be different than the &pattern.typ which is the
+    /// *type of the value being matched against*.
+    ///
+    /// The specific relation depends on the ByRef:
+    ///
+    /// | ByRef    | pattern.typ | binding.typ |
+    /// |----------|-------------|-------------|
+    /// | No       | T           | T           |
+    /// | ImmutRef | T           | &T          |
+    /// | MutRef   | T           | &mut T      |
+    Var(PatternBinding),
+    /// `x @ subpat`
     Binding {
-        name: VarIdent,
-        mutable: bool,
+        binding: PatternBinding,
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
@@ -664,6 +776,14 @@ pub enum PatternX {
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
+    /// References, which are often automatically inserted due to "match ergonomics".
+    /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern
+    /// `Some(x)`. In this case it gets elaborated to the VIR pattern:
+    /// `MutRef(Constructor("Some", Var("x")))`.
+    /// The variable "x" will have binding mode ByRef::Mut,
+    /// and ultimately x will have type `&mut T`.
+    MutRef(Pattern),
+    ImmutRef(Pattern),
 }
 
 /// Arms of match expressions
@@ -787,6 +907,17 @@ pub enum AutospecUsage {
     Final,
 }
 
+/// Represents the expression after the '..' in a "ctor update"
+/// like the `foo` in `{ a: e1, b: e2, .. foo }`.
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CtorUpdateTail {
+    pub place: Place,
+    /// This list needs to contain all the fields that are NOT explicitly listed.
+    /// i.e., this is all the fields that are moved or copied out of the input struct.
+    /// This information is needed by resolution analysis.
+    pub taken_fields: Arc<Vec<(Ident, UnfinalizedReadKind)>>,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -805,15 +936,19 @@ pub enum ExprX {
     ConstVar(Fun, AutospecUsage),
     /// Use of a static variable.
     StaticVar(Fun),
-    /// Mutable reference (location)
+    /// Location ("l-value") used for mutable references and assignments.
+    /// Not used when new-mut-refs is enabled.
     Loc(Expr),
     /// Call to a function passing some expression arguments
-    Call(CallTarget, Exprs),
+    /// The optional expression is to be executed *after* the arguments but *before* the call.
+    /// This is used for two-phase borrows.
+    Call(CallTarget, Exprs, Option<Expr>),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Dt, Ident, Binders<Expr>, Option<Place>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<CtorUpdateTail>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -849,30 +984,16 @@ pub enum ExprX {
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose {
-        params: VarBinders<Typ>,
-        cond: Expr,
-        body: Expr,
-    },
+    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
-    WithTriggers {
-        triggers: Arc<Vec<Exprs>>,
-        body: Expr,
-    },
+    WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
-    Assign {
-        init_not_mut: bool,
-        lhs: Expr,
-        rhs: Expr,
-        op: Option<BinaryOp>,
-    },
-    AssignToPlace {
-        place: Place,
-        rhs: Expr,
-        op: Option<BinaryOp>,
-    },
+    /// Not used when new-mut-refs is enabled.
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    /// Used only when new-mut-refs is enabled.
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -882,31 +1003,14 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume {
-        is_assume: bool,
-        expr: Expr,
-    },
+    AssertAssume { is_assume: bool, expr: Expr },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
-    AssertAssumeUserDefinedTypeInvariant {
-        is_assume: bool,
-        expr: Expr,
-        fun: Fun,
-    },
+    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
     /// Assert-forall or assert-by statement
-    AssertBy {
-        vars: VarBinders<Typ>,
-        require: Expr,
-        ensure: Expr,
-        proof: Expr,
-    },
+    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery {
-        requires: Exprs,
-        ensures: Exprs,
-        proof: Expr,
-        mode: AssertQueryMode,
-    },
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
     AssertCompute(Expr, ComputeMode),
     /// If-else
@@ -928,20 +1032,13 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue {
-        label: Option<String>,
-        is_break: bool,
-    },
+    BreakOrContinue { label: Option<String>, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost {
-        alloc_wrapper: bool,
-        tracked: bool,
-        expr: Expr,
-    },
+    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Enter a proof block from inside spec-mode code
     ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
@@ -952,41 +1049,104 @@ pub enum ExprX {
     NeverToAny(Expr),
     /// nondeterministic choice
     Nondeterministic,
-    /// BorrowMut performs BorrowMutPhaseOne and BorrowMutPhaseTwo together.
-    /// However, the two phases can be split up to do a 2-phase borrow.
+    /// Creates a mutable borrow from the given place
+    /// Used only when new-mut-refs is enabled.
     BorrowMut(Place),
-    /// Phase 1: Create the mut_ref value with the prophetic future value
-    BorrowMutPhaseOne(Place),
-    /// Phase 2: Update the original place to be equal to the prophecized value.
-    /// The Expr argument here is the expression returned by the PhaseOne (of type &mut T)
-    BorrowMutPhaseTwo(Place, Expr),
+    /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
+    /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
+    ///
+    /// This node can only appear as an argument to a Call or to a Ctor;
+    /// the semantics of a TwoPhaseBorrowMut node are contextual.
+    /// It is the structure of the parent node that determines where the "second phase"
+    /// of the borrow is.
+    ///
+    /// Used only when new-mut-refs is enabled.
+    TwoPhaseBorrowMut(Place),
+    /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
+    /// (resolution_inference.rs)
+    /// Used only when new-mut-refs is enabled.
     AssumeResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
     /// We don't know for sure if something is a "real" move or copy until mode-checking.
-    ReadPlace(Place, ReadKind),
+    ReadPlace(Place, UnfinalizedReadKind),
+    /// Evaluate both in sequence and return the left value.
+    /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
+    /// vars that would clutter everything up.
+    UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub struct UnfinalizedReadKind {
+    pub preliminary_kind: ReadKind,
+    pub id: u64,
+}
+
+/// What kind of read (i.e., nonmutating access to a place) is this?
+///
+/// For the most part, we only care if something is a "move" or not, information
+/// which is used by resolution analysis.
+/// Further subdivision of kinds is only for additional clarity.
+/// However, the `Spec` kind is somewhat special because we don't know if something is
+/// Spec until mode-checking, whereas the other kinds are distinguished in rust_to_vir.
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
 pub enum ReadKind {
+    /// A move.
     Move,
+    /// A copy. (Not a move.)
     Copy,
+    /// Take a shared borrow (&). (Not a move.)
     ImmutBor,
+    /// For an expression that goes unused, e.g., in the statement `foo(x, y);` the return
+    /// value of `foo` goes unused. Even though this is technically a move, we can ignore
+    /// it for the purposes of resolution analysis.
+    Unused,
+    /// Spec snapshot. (Not a move.)
     Spec,
 }
 
-// TODO(mut_refs): add ArrayIndex
-// TODO(mut_refs): add Tracked coercions
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
+pub enum ModeWrapperMode {
+    /// For Ghost wrapper
+    Spec,
+    /// For Tracked wrapper
+    Proof,
+}
+
+/// `Place` is the replacement for `Loc` used for new-mut-refs.
+/// (Actually, `Place` is already used sometimes even when
+/// new-mut-refs is disabled, but only for reading.)
+///
+/// A `Place` represents (the computation of) a place that can be read from,
+/// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
+/// can have arbitrary side-effects.
+///
+/// A `Place` tree is always a sequence of modifiers that terminates in either a Local
+/// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
+/// a shared reference. These are implicit.
+// TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
+    /// TODO(new_mut_ref): Decide: is this only for single-variant structs? What about unions?
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
+    /// Unwrap a Ghost or a Tracked
+    ModeUnwrap(Place, ModeWrapperMode),
+    /// Named local variable.
     Local(VarIdent),
+    /// Evaluate the given expression and assign it to a fresh, unnamed temporary,
+    /// and return the place of the temporary.
+    /// The resolution_inference pass replaces many of these with named locals.
     Temporary(Expr),
+    /// Evaluate expr then return the place
+    /// This is useful when expanding temporaries, e.g., `Temporary(expr)` expands to
+    /// `WithExpr({ tmp = expr; }, Local(tmp))`.
+    /// Without this node, such a transformation would be significantly more complicated.
+    WithExpr(Expr, Place),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -1019,15 +1179,26 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+/// Represents different levels of sizedness introduced by
+/// https://github.com/rust-lang/rfcs/pull/3729.  For now we treat MetaSized and
+/// PointeeSized identically (like ?Sized previously), but we distinguish them
+/// here since we may need to make this handling more precise going forward.
+#[derive(Copy, Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum Sizedness {
+    Sized,
+    MetaSized,
+    PointeeSized,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
 pub enum TraitId {
     Path(Path),
-    Sized,
+    Sizedness(Sizedness),
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
@@ -1361,9 +1532,23 @@ pub struct DatatypeX {
     /// For structs, this is usually the last field of the struct, or is derived from it.
     /// For enums, this is always None.
     pub sized_constraint: Option<Typ>,
+    /// Does this type have a Drop impl?
+    pub destructor: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
+
+/// Opaque type constructors
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct OpaqueTypeX {
+    pub def_fun: Fun,
+    pub name: Path,
+    pub typ_params: Typs,
+    pub typ_bounds: GenericBounds,
+}
+
+pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
+pub type OpaqueTypes = Vec<OpaqueType>;
 
 pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1469,4 +1654,6 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
+    /// All opaque type constructors
+    pub opaque_types: OpaqueTypes,
 }

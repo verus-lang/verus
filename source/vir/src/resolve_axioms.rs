@@ -1,5 +1,5 @@
 use crate::ast::{
-    Datatype, Dt, FieldOpr, Krate, Path, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
+    Datatype, Dt, FieldOpr, Krate, Mode, Path, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
     UnaryOpr, VarBinder, VarBinderX, VarIdentDisambiguate,
 };
 use crate::ast_util::QUANT_FORALL;
@@ -92,6 +92,7 @@ impl ResolvedTypeCollection {
             }
             TypX::Bool
             | TypX::Int(_)
+            | TypX::Real
             | TypX::Float(_)
             | TypX::SpecFn(..)
             | TypX::AnonymousClosure(..)
@@ -103,7 +104,8 @@ impl ResolvedTypeCollection {
             | TypX::TypeId
             | TypX::ConstInt(_)
             | TypX::ConstBool(_)
-            | TypX::Air(_) => {
+            | TypX::Air(_)
+            | TypX::Opaque { .. } => {
                 // trivial resolve
             }
         }
@@ -219,6 +221,9 @@ fn resolve_datatype_axiom(ctx: &Ctx, dt: &Dt) -> Vec<Command> {
     if !crate::ast_util::is_transparent_to(&datatype.x.transparency, &ctx.module.x.path) {
         return vec![];
     }
+    if datatype.x.destructor {
+        return vec![];
+    }
 
     let span = &datatype.span;
 
@@ -226,6 +231,10 @@ fn resolve_datatype_axiom(ctx: &Ctx, dt: &Dt) -> Vec<Command> {
 
     for variant in datatype.x.variants.iter() {
         for field in variant.fields.iter() {
+            if matches!(&field.a.1, Mode::Spec) {
+                continue;
+            }
+
             // forall |typ_args..., x: Dt<typ_args...>|
             //        has_resolved(x, Dt<typ_args>)
             //          && is_variant(x, variant)

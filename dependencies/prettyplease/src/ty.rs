@@ -195,7 +195,6 @@ impl Printer {
             AnonUnion(AnonUnion),
             DynStar(DynStar),
             MutSelf(MutSelf),
-            NotType(NotType),
         }
 
         struct AnonStruct {
@@ -212,10 +211,6 @@ impl Printer {
 
         struct MutSelf {
             ty: Option<Type>,
-        }
-
-        struct NotType {
-            inner: Type,
         }
 
         impl Parse for TypeVerbatim {
@@ -245,10 +240,6 @@ impl Printer {
                         Some(ty)
                     };
                     Ok(TypeVerbatim::MutSelf(MutSelf { ty }))
-                } else if lookahead.peek(Token![!]) {
-                    input.parse::<Token![!]>()?;
-                    let inner: Type = input.parse()?;
-                    Ok(TypeVerbatim::NotType(NotType { inner }))
                 } else if lookahead.peek(Token![...]) {
                     input.parse::<Token![...]>()?;
                     Ok(TypeVerbatim::Ellipsis)
@@ -308,10 +299,6 @@ impl Printer {
                     self.word(": ");
                     self.ty(ty);
                 }
-            }
-            TypeVerbatim::NotType(ty) => {
-                self.word("!");
-                self.ty(&ty.inner);
             }
         }
     }

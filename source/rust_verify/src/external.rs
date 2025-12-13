@@ -39,7 +39,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::Context;
-use crate::rust_to_vir_base::{def_id_to_vir_path, def_id_to_vir_path_option};
+use crate::rust_to_vir_base::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -64,6 +64,12 @@ pub struct CrateItems {
 #[derive(Debug)]
 pub struct CrateItem {
     pub id: GeneralItemId,
+    pub verif: VerifOrExternal,
+}
+
+#[derive(Debug)]
+pub struct OpaqueDef {
+    pub id: rustc_hir::def_id::LocalDefId,
     pub verif: VerifOrExternal,
 }
 
@@ -138,7 +144,7 @@ pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<C
         items: vec![],
         ctxt: ctxt,
         state: default_state,
-        module_path: root_module_path,
+        module_path: Some(root_module_path),
         errors: vec![],
         in_impl: None,
     };
@@ -184,7 +190,7 @@ struct VisitMod<'a, 'tcx> {
     errors: Vec<VirErr>,
 
     state: VerifState,
-    module_path: Path,
+    module_path: Option<Path>,
     in_impl: Option<InsideImpl>,
 }
 
@@ -324,10 +330,18 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         // Append this item to the items
 
         let verif = if state_for_this_item == VerifState::Verify {
-            VerifOrExternal::VerusAware {
-                module_path: self.module_path.clone(),
-                const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
-                external_body: my_eattrs.external_body,
+            if let Some(module_path) = self.module_path.clone() {
+                VerifOrExternal::VerusAware {
+                    module_path: module_path,
+                    const_directive: eattrs.size_of_global || eattrs.item_broadcast_use,
+                    external_body: my_eattrs.external_body,
+                }
+            } else {
+                self.errors.push(crate::util::err_span_bare(
+                    span,
+                    "Verus is unable to compute the path of the module this item is in",
+                ));
+                return;
             }
         } else {
             let path_opt =
@@ -374,8 +388,11 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         match general_item {
             GeneralItem::Item(item) => match item.kind {
                 ItemKind::Mod(_ident, _module) => {
-                    self.module_path =
-                        def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
+                    self.module_path = def_id_to_vir_path_option(
+                        self.ctxt.tcx,
+                        Some(&self.ctxt.verus_items),
+                        def_id,
+                    );
                 }
                 ItemKind::Impl(impll) => {
                     self.in_impl = Some(InsideImpl {
@@ -419,13 +436,20 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if in_impl.is_trait {
                     self.errors.push(crate::util::err_span_bare(
                         span,
-                        "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
+                    "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
                     ));
                 } else {
-                    self.items[this_item_idx].verif = VerifOrExternal::VerusAware {
-                        module_path: self.module_path.clone(),
-                        const_directive: false,
-                        external_body: false,
+                    if let Some(module_path) = self.module_path.clone() {
+                        self.items[this_item_idx].verif = VerifOrExternal::VerusAware {
+                            module_path,
+                            const_directive: false,
+                            external_body: false,
+                        }
+                    } else {
+                        self.errors.push(crate::util::err_span_bare(
+                            span,
+                            "Verus is unable to compute the path of the module this item is in",
+                        ));
                     }
                 }
             }
@@ -651,7 +675,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         crate::attributes::AutoDerivesAttr::Regular => false,
                         crate::attributes::AutoDerivesAttr::AllExternal => true,
                         crate::attributes::AutoDerivesAttr::SomeExternal(names) => {
-                            let def_path = ctxt.tcx.def_path(of_trait.path.res.def_id());
+                            let def_path = ctxt.tcx.def_path(of_trait.trait_ref.path.res.def_id());
                             def_path
                                 .data
                                 .last()
@@ -675,7 +699,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                     }
 
                     if opts_in_to_verus(&type_eattrs) {
-                        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+                        let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
                         match action {

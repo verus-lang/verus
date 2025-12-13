@@ -229,49 +229,49 @@ fn func_body_to_sst(
     let proof_body_stm = check_state.finalize_stm(ctx, &proof_body_stm)?;
     check_state.finalize();
 
-    let termination_check =
-        if crate::recursion::fun_is_recursive(ctx, function) && verifying_owning_bucket {
-            let (mut termination_decls, termination_inits, termination_stm) =
-                crate::recursion::check_termination_stm(
-                    ctx,
-                    diagnostics,
-                    function,
-                    Some(proof_body_stm),
-                    &check_body_stm,
-                    false,
-                )?;
-            termination_decls.splice(0..0, check_state.local_decls.into_iter());
+    let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
+    let termination_check = if is_recursive && verifying_owning_bucket {
+        let (mut termination_decls, termination_inits, termination_stm) =
+            crate::recursion::check_termination_stm(
+                ctx,
+                diagnostics,
+                function,
+                Some(proof_body_stm),
+                &check_body_stm,
+                false,
+            )?;
+        termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
-            let termination_check = FuncCheckSst {
-                post_condition: Arc::new(crate::sst::PostConditionSst {
-                    dest: None,
-                    kind: if function.x.decrease_by.is_some() {
-                        PostConditionKind::DecreasesBy
-                    } else {
-                        PostConditionKind::DecreasesImplicitLemma
-                    },
-                    ens_exps: Arc::new(vec![]),
-                    ens_spec_precondition_stms: Arc::new(vec![]),
-                }),
-                body: termination_stm,
-                local_decls: Arc::new(termination_decls),
-                local_decls_decreases_init: termination_inits,
-                statics: Arc::new(vec![]),
-                reqs: Arc::new(vec![]),
-                unwind: UnwindSst::NoUnwind,
-            };
-            Some(termination_check)
-        } else {
-            if function.x.decrease.len() > 0 {
-                let msg = "proof blocks inside spec code is currently supported only for recursion";
-                // TODO: remove this restriction when we generalize ProofInSpec beyond termination
-                ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
-                    ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
-                    _ => Ok(()),
-                })?;
-            }
-            None
+        let termination_check = FuncCheckSst {
+            post_condition: Arc::new(crate::sst::PostConditionSst {
+                dest: None,
+                kind: if function.x.decrease_by.is_some() {
+                    PostConditionKind::DecreasesBy
+                } else {
+                    PostConditionKind::DecreasesImplicitLemma
+                },
+                ens_exps: Arc::new(vec![]),
+                ens_spec_precondition_stms: Arc::new(vec![]),
+            }),
+            body: termination_stm,
+            local_decls: Arc::new(termination_decls),
+            local_decls_decreases_init: termination_inits,
+            statics: Arc::new(vec![]),
+            reqs: Arc::new(vec![]),
+            unwind: UnwindSst::NoUnwind,
         };
+        Some(termination_check)
+    } else {
+        if function.x.decrease.len() > 0 && !is_recursive {
+            let msg = "proof blocks inside spec code is currently supported only for recursion";
+            // TODO: remove this restriction when we generalize ProofInSpec beyond termination
+            ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
+                ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
+                _ => Ok(()),
+            })?;
+        }
+        None
+    };
 
     Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
 }

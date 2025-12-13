@@ -63,7 +63,7 @@ pub fn verify_files(
     verify_files_vstd(name, files, entry_file, false, options)
 }
 
-use std::cell::RefCell;
+use std::{cell::RefCell, path};
 thread_local! {
     pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
 }
@@ -301,6 +301,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-report-long-running" {
+            verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
@@ -319,6 +321,9 @@ pub fn run_verus(
         } else if *option == "new-mut-ref" {
             verus_args.push("-V".to_string());
             verus_args.push("new-mut-ref".to_string());
+        } else if *option == "no-bv-simplify" {
+            verus_args.push("-V".to_string());
+            verus_args.push("no-bv-simplify".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -409,6 +414,91 @@ pub fn run_verus(
         .spawn()
         .expect("could not execute test rustc process");
     let run = child.wait_with_output().expect("lifetime rustc wait failed");
+    run
+}
+
+pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    let exe = "";
+
+    #[cfg(target_os = "windows")]
+    let exe = ".exe";
+
+    // Compute the path to the cargo-verus executable,
+    // following the pattern from run_verus
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
+        .join("target-verus")
+        .join(profile);
+    let bin = verus_target_path.join(format!("cargo-verus{exe}"));
+
+    let mut child = std::process::Command::new(bin);
+    child.current_dir(dir);
+
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            (if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p })
+                .into_os_string()
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::ffi::OsString::from("..\\z3.exe")
+            } else {
+                std::ffi::OsString::from("../z3")
+            }
+        });
+    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
+    child.env("VERUS_Z3_PATH", z3);
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo-verus process");
+    let run = child.wait_with_output().expect("cargo-verus wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
+    run
+}
+
+// Assumes normal `cargo` is in the caller's path
+pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    // if std::env::var("VERUS_IN_VARGO").is_err() {
+    //     panic!("not running in vargo, read the README for instructions");
+    // }
+    let mut child = std::process::Command::new("cargo");
+    child.current_dir(dir);
+
+    // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
+    // verus_builtin and vstd to require unstable features not available on stable Rust
+    child.env_remove("RUSTFLAGS");
+
+    let child = child
+        .args(&args[..])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute cargo process");
+    let run = child.wait_with_output().expect("cargo wait failed");
+    if !run.status.success() {
+        let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+        eprintln!("Failed with output:\n{}", rust_output);
+    }
     run
 }
 
@@ -514,6 +604,76 @@ macro_rules! test_verify_one_file {
     };
 }
 
+// We run the bit-vector tests twice; once with interpreter-based simplification on
+// (to mirror what the end-user sees) and once with it off (to check that our SMT encoding
+// of bit-vector operations is correct).
+#[macro_export]
+macro_rules! test_verify_one_bv_file_with_options {
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat => $assertions:expr ) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+    ($(#[$attrs:meta])* $name:ident $options:expr => $body:expr => $result:pat) => {
+        $(#[$attrs])*
+        fn $name() {
+            let result = verify_one_file(::std::stringify!($name), $body, &$options);
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result");
+            }
+
+            // Run a second time with simplification off
+            let mut opts = Vec::new();
+            opts.extend_from_slice(&$options);
+            opts.push("no-bv-simplify");
+            let result = verify_one_file(::std::stringify!($name), $body, opts.as_slice());
+            let result_unit = result.as_ref().map(|_| ());
+            #[allow(irrefutable_let_patterns)]
+            if let $result = result_unit {
+                if let Ok(err) = result {
+                    assert_eq!(err.warnings.len(), 0);
+                }
+            } else {
+                assert!(false, "Err(_) does not match $result, with bit-vector simplification disabled");
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! test_verify_one_bv_file {
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result => $assertions);
+    };
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+        test_verify_one_bv_file_with_options!($(#[$attrs])* $name [] => $body => $result);
+    };
+}
+
 pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     if let Some(e) = err.iter().find(|e| e.label == Some("at this exit".to_string())) {
         return e;
@@ -603,6 +763,20 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     assert!(
         err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
             && x.rendered.contains(expected_msg))
+    );
+}
+
+#[allow(dead_code)]
+pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
+    assert!(
+        expected_msgs
+            .iter()
+            .all(|expected_msg| err.errors.iter().any(|x| x.rendered.contains(expected_msg)))
     );
 }
 

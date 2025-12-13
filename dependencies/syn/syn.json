@@ -1,5 +1,5 @@
 {
-  "version": "2.0.96",
+  "version": "0.0.0-2025-11-09-0048",
   "types": [
     {
       "ident": "Abi",
@@ -313,15 +313,21 @@
         "path": {
           "syn": "Path"
         },
-        "paren_token": {
-          "group": "Paren"
-        },
         "inputs": {
-          "punctuated": {
-            "element": {
-              "syn": "FnArg"
-            },
-            "punct": "Comma"
+          "option": {
+            "tuple": [
+              {
+                "group": "Paren"
+              },
+              {
+                "punctuated": {
+                  "element": {
+                    "syn": "FnArg"
+                  },
+                  "punct": "Comma"
+                }
+              }
+            ]
           }
         },
         "output": {

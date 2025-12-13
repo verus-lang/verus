@@ -26,7 +26,7 @@ pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const VIR_SST_FILE_SUFFIX: &str = "-sst.vir";
-pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
+pub const TRAIT_CONFLICT_FILE_SUFFIX: &str = "-trait-conflicts.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
@@ -47,7 +47,7 @@ pub struct LogArgs {
     pub log_vir_poly: bool,
     pub log_vir_sst: bool,
     pub vir_log_option: VirLogOption,
-    pub log_lifetime: bool,
+    pub log_trait_conflicts: bool,
     pub log_interpreter: bool,
     pub log_air_initial: bool,
     pub log_air_final: bool,
@@ -116,6 +116,7 @@ pub struct ArgsX {
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub new_mut_ref: bool,
+    pub no_bv_simplify: bool,
 }
 
 impl ArgsX {
@@ -163,6 +164,7 @@ impl ArgsX {
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             new_mut_ref: Default::default(),
+            no_bv_simplify: Default::default(),
         }
     }
 }
@@ -324,7 +326,7 @@ pub fn parse_args_with_imports(
     const LOG_VIR_POLY: &str = "vir-poly";
     const LOG_VIR_SST: &str = "vir-sst";
     const LOG_VIR_OPTION: &str = "vir-option";
-    const LOG_LIFETIME: &str = "lifetime";
+    const LOG_TRAIT_CONFLICTS: &str = "trait-conflits";
     const LOG_INTERPRETER: &str = "interpreter";
     const LOG_AIR: &str = "air";
     const LOG_AIR_FINAL: &str = "air-final";
@@ -342,7 +344,7 @@ pub fn parse_args_with_imports(
             LOG_VIR_OPTION,
             "Set VIR logging option (e.g. `--log vir-option=no_span+no_type`. Available options: `compact` `no_span` `no_type` `no_encoding` `no_fn_details`) (default: verbose)",
         ),
-        (LOG_LIFETIME, "Log lifetime checking for --erasure macro"),
+        (LOG_TRAIT_CONFLICTS, "Log trait-conflict-checking for --erasure macro"),
         (LOG_INTERPRETER, "Log assert_by_compute's interpreter progress"),
         (LOG_AIR, "Log AIR queries in initial form"),
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
@@ -400,6 +402,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NEW_MUT_REF: &str = "new-mut-ref";
+    const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -428,6 +431,10 @@ pub fn parse_args_with_imports(
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
         (EXTENDED_NEW_MUT_REF, "incomplete feature for developers only; do not use"),
+        (
+            EXTENDED_NO_BV_SIMPLIFY,
+            "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -735,7 +742,7 @@ pub fn parse_args_with_imports(
                     Default::default()
                 }
             },
-            log_lifetime: log.get(LOG_LIFETIME).is_some(),
+            log_trait_conflicts: log.get(LOG_TRAIT_CONFLICTS).is_some(),
             log_interpreter: log.get(LOG_INTERPRETER).is_some(),
             log_air_initial: log.get(LOG_AIR).is_some(),
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
@@ -819,6 +826,7 @@ pub fn parse_args_with_imports(
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
         new_mut_ref: extended.get(EXTENDED_NEW_MUT_REF).is_some(),
+        no_bv_simplify: extended.get(EXTENDED_NO_BV_SIMPLIFY).is_some(),
     };
 
     if args.new_mut_ref {

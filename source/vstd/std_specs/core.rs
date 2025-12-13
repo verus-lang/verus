@@ -1,11 +1,12 @@
 use super::super::prelude::*;
+use core::marker::PointeeSized;
 
 use verus as verus_;
 
 verus_! {
 
 #[verifier::external_trait_specification]
-pub trait ExDeref {
+pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
     type Target: ?Sized;
@@ -41,46 +42,27 @@ pub trait ExAllocator {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFreeze {
+pub trait ExFreeze: PointeeSized {
     type ExternalTraitSpecificationFor: core::marker::Freeze;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDebug {
+pub trait ExDebug: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDisplay {
+pub trait ExDisplay: PointeeSized {
     type ExternalTraitSpecificationFor: core::fmt::Display;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExFrom<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::From<T>;
-
-    fn from(v: T) -> (ret: Self);
-}
-
-#[verifier::external_trait_specification]
-pub trait ExInto<T>: Sized {
-    type ExternalTraitSpecificationFor: core::convert::Into<T>;
-
-    fn into(self) -> (ret: T);
-}
-
-pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
-    ensures
-        call_ensures(U::from, (a,), ret),
-;
-
-#[verifier::external_trait_specification]
-pub trait ExHash {
+pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
 
 #[verifier::external_trait_specification]
-pub trait ExPtrPointee {
+pub trait ExPtrPointee: PointeeSized {
     type ExternalTraitSpecificationFor: core::ptr::Pointee;
 
     type Metadata:
@@ -116,6 +98,11 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExMetaSized {
+    type ExternalTraitSpecificationFor: core::marker::MetaSized;
+}
+
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
@@ -142,7 +129,7 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 }
 
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
     ensures
         r == i,
 ;
@@ -157,7 +144,7 @@ pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
-pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
+pub struct ExPhantomData<V: PointeeSized>(core::marker::PhantomData<V>);
 
 pub assume_specification[ core::intrinsics::likely ](b: bool) -> (c: bool)
     ensures
@@ -219,25 +206,8 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
 }
 
 } // verus!
-macro_rules! impl_from_spec {
-    ($from: ty => [$($to: ty)*]) => {
-        verus!{
-        $(
-        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to)
-            ensures
-                ret == a as $to,
-        ;
-        )*
-        }
-    };
-}
-
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct ExAssertParamIsClone<T: Clone + ?Sized>(core::clone::AssertParamIsClone<T>);
+pub struct ExAssertParamIsClone<T: Clone + PointeeSized>(core::clone::AssertParamIsClone<T>);

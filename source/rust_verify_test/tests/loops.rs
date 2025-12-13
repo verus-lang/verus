@@ -1526,13 +1526,13 @@ test_verify_one_file! {
             if x == 0 {
                 return;
             }
-            let mut i:usize = 0;
+            let mut i: usize = 0;
             while i < 10
                 invariant x >= 1,
                 decreases 10 - i,
             {
                 test1(x - 1);
-                let mut j:usize = 0;
+                let mut j: usize = 0;
                 while j * 2 < 5
                     invariant x >= 1, j <= 4,
                     decreases 4 - j,
@@ -1548,55 +1548,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] recursive_call_in_loop3 verus_code! {
-        #[verifier::loop_isolation(false)]
-        fn test1 (x:usize)
-            decreases x,
+    #[test] recursive_call_in_loop_mut_ref verus_code! {
+        fn test1(x: &mut usize)
+            ensures *x <= *old(x),
+            decreases old(x),
         {
-            if x == 0 {
+            if *x == 0 {
                 return;
             }
-            let mut i:usize = 0;
-            while i < 10
-                decreases 10 - i,
+            let mut i: usize = 0;
+            *x -= 1;
+            while i <10
+                invariant
+                    *x < *old(x),
+                decreases 10 - i
             {
-                test1(x - 1);
-                let mut j:usize = 0;
-                while j * 2 < 5
-                    invariant j <= 4,
-                    decreases 4 - j,
-                {
-                    test1(x - 1);
-                    j = j + 1;
-                }
-                i = i + 1;
+                test1(x);
+                i += 1;
             }
         }
     } => Ok(())
-}
-
-test_verify_one_file_with_options! {
-    #[test] recursive_call_in_loop4 ["exec_allows_no_decreases_clause"] => verus_code! {
-        #[verifier::loop_isolation(false)]
-        fn test1 (x:usize)
-            decreases x,
-        {
-            if x == 0 {
-                return;
-            }
-            let mut i:usize = 0;
-            while i < 10
-            {
-                test1(x - 1);
-                let mut j:usize = 0;
-                while j * 2 < 5
-                    invariant j <= 4,
-                {
-                    test1(x - 1);
-                    j = j + 1;
-                }
-                i = i + 1;
-            }
-        }
-    } => Ok(_err) => {/* allow decreases checks warnings */ }
 }

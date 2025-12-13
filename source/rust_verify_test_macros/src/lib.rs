@@ -1,5 +1,4 @@
 #![feature(proc_macro_span)]
-#![feature(path_file_prefix)]
 
 mod examples;
 mod rust_code;
@@ -36,4 +35,9 @@ pub fn verus_code_str(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn examples_in_dir(input: TokenStream) -> TokenStream {
     examples::examples_in_dir(input)
+}
+
+#[proc_macro]
+pub fn cargo_examples(input: TokenStream) -> TokenStream {
+    examples::cargo_examples(input)
 }

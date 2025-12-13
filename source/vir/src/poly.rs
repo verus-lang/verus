@@ -100,6 +100,7 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
+    Real,
     Float(u32),
     Datatype(Dt, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
@@ -113,6 +114,8 @@ struct State {
     temp_types: HashMap<VarIdent, Typ>,
     is_trait: bool,
     in_exec_closure: bool,
+    // is the function return type an opaque type?
+    is_ret_opaque: bool,
 }
 
 fn monotyps_as_mono(typs: &Typs) -> Option<Vec<MonoTyp>> {
@@ -131,6 +134,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Real => Some(Arc::new(MonoTypX::Real)),
         TypX::Float(range) => Some(Arc::new(MonoTypX::Float(*range))),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -158,6 +162,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::Projection { .. } => None,
         TypX::PointeeMetadata(_) => None,
         TypX::MutRef(_) => None,
+        TypX::Opaque { .. } => None,
     }
 }
 
@@ -165,6 +170,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Real => Arc::new(TypX::Real),
         MonoTypX::Float(range) => Arc::new(TypX::Float(*range)),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
@@ -186,7 +192,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => false,
         TypX::SpecFn(..) | TypX::FnDef(..) => false,
         TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
@@ -212,13 +218,14 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::MutRef(_) => true,
+        TypX::Opaque { .. } => true,
     }
 }
 
 /// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => typ.clone(),
         TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
@@ -252,12 +259,14 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::MutRef(_) => typ.clone(),
+        TypX::Opaque { .. } => typ.clone(),
     }
 }
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Bool | TypX::Int(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Real | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -274,6 +283,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::MutRef(_) => typ.clone(),
+        TypX::Opaque { .. } => typ.clone(),
     }
 }
 
@@ -281,6 +291,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Real
         | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
@@ -305,6 +316,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         | TypX::Projection { .. }
         | TypX::PointeeMetadata(_)
         | TypX::MutRef(_) => exp.clone(),
+        TypX::Opaque { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
@@ -535,6 +547,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -632,6 +645,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Implies | BinaryOp::Inequality(_) => (true, false),
                 BinaryOp::HeightCompare { .. } => (false, true),
                 BinaryOp::Arith(..) => (true, false),
+                BinaryOp::RealArith(..) => (true, false),
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
@@ -758,6 +772,7 @@ pub(crate) fn visit_exp_native_for_pure_exp(ctx: &Ctx, exp: &Exp) -> Exp {
         temp_types: HashMap::new(),
         is_trait: false,
         in_exec_closure: false,
+        is_ret_opaque: false,
     };
     visit_exp_native(ctx, &mut state, exp)
 }
@@ -888,10 +903,17 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 } else {
                     visit_exp_native(ctx, state, e1)
                 };
-                Some(e1)
+
+                // opaque type has to be poly
+                if state.is_ret_opaque {
+                    Some(crate::poly::coerce_exp_to_poly(ctx, &e1))
+                } else {
+                    Some(e1)
+                }
             } else {
                 None
             };
+
             mk_stm(StmX::Return {
                 assert_id: assert_id.clone(),
                 base_error: base_error.clone(),
@@ -1087,10 +1109,10 @@ fn visit_func_check_sst(
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
-            | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
-            (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
-                l.typ.clone()
-            }
+            | (LocalDeclKind::ExecClosureRet, _, _)
+            | (LocalDeclKind::Decreases, _, _)
+            | (LocalDeclKind::MutableTemporary, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            (LocalDeclKind::TempViaAssign, _, _) => l.typ.clone(),
         };
         match l.kind {
             LocalDeclKind::TempViaAssign => {
@@ -1123,6 +1145,7 @@ fn visit_func_check_sst(
     state.types.pop_scope();
 
     let body = visit_stm(ctx, state, body);
+
     let local_decls_decreases_init = visit_stms(ctx, state, local_decls_decreases_init);
 
     update_temp_locals(state, &mut locals, &mut updated_temps);
@@ -1183,6 +1206,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         is_trait,
         in_exec_closure: false,
         remaining_temps: HashSet::new(),
+        is_ret_opaque: matches!(*ret.x.typ, TypX::Opaque { .. }),
     };
 
     let decl = Arc::new(visit_func_decl_sst(ctx, &mut state, &poly_pars, decl));
@@ -1292,11 +1316,19 @@ fn visit_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
-    let KrateSstX { functions, datatypes, traits, trait_impls, assoc_type_impls, reveal_groups } =
-        &**krate;
+    let KrateSstX {
+        functions,
+        datatypes,
+        opaque_types,
+        traits,
+        trait_impls,
+        assoc_type_impls,
+        reveal_groups,
+    } = &**krate;
     let kratex = KrateSstX {
         functions: functions.iter().map(|f| visit_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| visit_datatype(ctx, d)).collect(),
+        opaque_types: opaque_types.clone(),
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| visit_assoc_type_impl(ctx, a)).collect(),

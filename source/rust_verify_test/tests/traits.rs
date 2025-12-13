@@ -242,7 +242,7 @@ test_verify_one_file! {
         fn test<A: T>(a: &A) {
             a.VERUS_SPEC__f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`crate::T::VERUS_SPEC__f` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "T::VERUS_SPEC__f`")
 }
 
 test_verify_one_file! {
@@ -499,9 +499,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -564,9 +563,8 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => {
-        assert_eq!(err.errors.len(), 2);
+        assert_eq!(err.errors.len(), 1);
         assert!(relevant_error_span(&err.errors[0].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
-        assert!(relevant_error_span(&err.errors[1].spans).text.iter().find(|x| x.text.contains("FAILS")).is_some());
     }
 }
 
@@ -2680,6 +2678,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
     // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+// This test should fail due to conflicting trait implementations, but currently
+// fails due to extern types not being supported by verus. Once extern type are
+// supported, the expected error should be updated here.
+test_verify_one_file_with_options! {
+    #[test] test_conflicting_sizedness_constraints ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(extern_types))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+
+        use vstd::prelude::*;
+
+        verus! {
+        extern "C" {
+            type E;
+        }
+
+        trait T: core::marker::PointeeSized {
+            spec fn f() -> int;
+        }
+
+        impl<A: core::marker::MetaSized> T for A {
+            spec fn f() -> int { 3 }
+        }
+
+        impl T for E {
+            spec fn f() -> int { 4 }
+        }
+
+        proof fn f() {
+            assert(<E as T>::f() == 3);
+            assert(<E as T>::f() == 4);
+            assert(false);
+        }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: foreign types")
 }
 
 test_verify_one_file! {

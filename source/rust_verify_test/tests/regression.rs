@@ -1458,7 +1458,8 @@ test_verify_one_file_with_options! {
         // declare a foreign type that is unlikely to be supported in future Verus versions:
         extern "C" { type T; }
 
-        impl Clone for Box<T> { fn clone(&self) -> Self { todo!() } }
+        trait ToBool { fn to_bool(&self) -> bool; }
+        impl ToBool for Box<T> where { fn to_bool(&self) -> bool { todo!() } }
     } => Ok(())
 }
 
@@ -1524,4 +1525,32 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "disallowed: pattern constructor for an opaque datatype")
+}
+
+test_verify_one_file! {
+    #[test] test_modules_nested_in_items_external_code code! {
+        async fn test() {
+            let x = || {
+                mod m {
+                    fn foo() {
+                    }
+                }
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] overlapping_labels_between_block_and_loop verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            'a: loop
+            {
+                'a: {
+                    break 'a;
+                }
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: block with label")
 }
