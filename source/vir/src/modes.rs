@@ -901,8 +901,12 @@ fn check_place_rec_inner(
         PlaceX::Temporary(e) => {
             let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
             if ctxt.new_mut_ref {
-                // TODO(new_mut_ref): make this error easier to localize
-                assert!(!record.temporary_modes.contains_key(&place.span.id));
+                if record.temporary_modes.contains_key(&place.span.id) {
+                    return Err(error(
+                        &place.span,
+                        &format!("Verus Internal Error: duplicate PlaceX::Temporary ID"),
+                    ));
+                }
                 record.temporary_modes.insert(place.span.id, mode);
             }
             Ok(mode)
@@ -2084,6 +2088,7 @@ fn check_function(
     record.type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
     record.var_modes = HashMap::new();
+    record.temporary_modes = HashMap::new();
 
     let mut fun_typing0 = typing.push_var_scope();
 

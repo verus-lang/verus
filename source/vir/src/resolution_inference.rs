@@ -2132,18 +2132,14 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
 struct InitializationPossibilities {
     /// Is it possible to reach the given program point when the given place uninitialized?
     can_be_uninit: bool,
-    /// Is it possible to reach the given program point when the given place initialized?
-    can_be_init: bool,
 }
 
 impl DataflowState for InitializationPossibilities {
     type Const = FlattenedPlace;
 
     fn join(&mut self, b: &Self) {
-        *self = InitializationPossibilities {
-            can_be_uninit: self.can_be_uninit || b.can_be_uninit,
-            can_be_init: self.can_be_init || b.can_be_init,
-        };
+        *self =
+            InitializationPossibilities { can_be_uninit: self.can_be_uninit || b.can_be_uninit };
     }
 
     // forward transfer
@@ -2151,20 +2147,14 @@ impl DataflowState for InitializationPossibilities {
         match &instr.kind {
             InstructionKind::MoveFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
             }
             InstructionKind::Overwrite(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: false,
-                        can_be_init: self.can_be_init || self.can_be_uninit,
-                    }
+                    InitializationPossibilities { can_be_uninit: false }
                 } else {
                     *self
                 }
@@ -2172,10 +2162,7 @@ impl DataflowState for InitializationPossibilities {
             InstructionKind::Mutate(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
@@ -2186,12 +2173,12 @@ impl DataflowState for InitializationPossibilities {
 
 impl InitializationPossibilities {
     fn empty() -> Self {
-        InitializationPossibilities { can_be_uninit: false, can_be_init: false }
+        InitializationPossibilities { can_be_uninit: false }
     }
 
     fn entry(local: &Local) -> Self {
         // Params are initialized at the start, nothing else is
-        InitializationPossibilities { can_be_uninit: !local.is_param, can_be_init: local.is_param }
+        InitializationPossibilities { can_be_uninit: !local.is_param }
     }
 }
 
