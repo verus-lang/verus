@@ -304,6 +304,7 @@ jobs:
           vargo build --release
 
       - name: create archive
+        working-directory: ./source
         run: |
           ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
           cp -R ./target-verus/release ../${{ matrix.release_name }}
