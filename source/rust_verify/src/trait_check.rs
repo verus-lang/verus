@@ -118,6 +118,7 @@ impl<A: Copy> Clone for Tracked<A> { fn clone(&self) -> Self { panic!() } }
 impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
+#[derive(Clone, Copy)] struct real;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
 struct InvariantBlockGuard;
 fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }

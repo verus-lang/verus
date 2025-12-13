@@ -84,6 +84,7 @@ const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
 const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
@@ -145,6 +146,10 @@ pub const SUB: &str = "Sub";
 pub const MUL: &str = "Mul";
 pub const EUC_DIV: &str = "EucDiv";
 pub const EUC_MOD: &str = "EucMod";
+pub const RADD: &str = "RAdd";
+pub const RSUB: &str = "RSub";
+pub const RMUL: &str = "RMul";
+pub const RDIV: &str = "RDiv";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
@@ -152,12 +157,15 @@ pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_REAL: &str = "R";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_REAL: &str = "%R";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
+pub const TYPE_ID_REAL: &str = "REAL";
 pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_CHAR: &str = "CHAR";
@@ -1040,6 +1048,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
             out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::ResInfTemp(id) => {
+            out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

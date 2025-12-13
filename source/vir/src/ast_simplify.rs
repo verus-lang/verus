@@ -8,11 +8,11 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, ByRef, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
-    KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped,
-    Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr,
-    Visibility,
+    Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange,
+    ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck,
+    VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
@@ -99,10 +99,10 @@ fn is_small_expr(expr: &Expr) -> bool {
 /// Create a temporary and return:
 ///  - A Stmt that assigns the given `expr` to the temporary
 ///  - The name of the temporary
-fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
+fn temp_var(state: &mut State, expr: &Expr, mutable: bool) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
-    let pattern = PatternX::simple_var(name, false, &expr.span, &expr.typ);
+    let pattern = PatternX::simple_var(name, mutable, &expr.span, &expr.typ);
     let decl = StmtX::Decl {
         pattern,
         mode: Some(Mode::Exec),
@@ -114,7 +114,7 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
 }
 
 fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
-    let (temp_decl, var_ident) = temp_var(state, expr);
+    let (temp_decl, var_ident) = temp_var(state, expr, false);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(var_ident)))
 }
 
@@ -346,6 +346,8 @@ fn simplify_one_place(
     }
 }
 
+/// Returns a "pure place", i.e., a Place with no-side effects, and which is rooted
+/// at a Local (rather than a Temporary).
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
@@ -369,9 +371,15 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
         }
         PlaceX::Local(_l) => (vec![], place.clone()),
         PlaceX::Temporary(expr) => {
-            let (ts, var_ident) = temp_var(state, expr);
+            // TODO(new_mut_ref): this doens't always need to be mutable
+            let (ts, var_ident) = temp_var(state, expr, true);
             let p = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(var_ident));
             (vec![ts], p)
+        }
+        PlaceX::WithExpr(expr, p) => {
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            stmts.insert(0, Spanned::new(place.span.clone(), StmtX::Expr(expr.clone())));
+            (stmts, p1)
         }
     }
 }
@@ -471,7 +479,8 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
-            let (temp_decl, update) = small_or_temp(state, &place_to_expr(update));
+            let CtorUpdateTail { place, taken_fields: _ } = update;
+            let (temp_decl, update) = small_or_temp(state, &place_to_expr(place));
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
             if temp_decl.len() == 0 {

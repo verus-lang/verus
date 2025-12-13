@@ -2570,7 +2570,8 @@ impl Visitor {
                 }
                 BinOp::Div(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
-                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
+                    *expr =
+                        quote_verbatim!(span, attrs => #left.spec_euclidean_or_real_div(#right));
                 }
                 BinOp::Rem(..) => {
                     let left = quote_spanned! { left.span() => (#left) };
@@ -2626,7 +2627,11 @@ impl Visitor {
             let src = cast.expr;
             let attrs = cast.attrs;
             let ty = cast.ty;
-            *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            if is_probably_real_type(&ty) {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_real(#src));
+            } else {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_cast_integer::<_, #ty>(#src));
+            }
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
@@ -2639,7 +2644,7 @@ impl Visitor {
     }
 
     /// Handle integer literals.
-    fn handle_lit(&mut self, expr: &mut Expr) -> bool {
+    fn handle_lit_int(&mut self, expr: &mut Expr) -> bool {
         let Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) = expr else {
             return false;
         };
@@ -2671,11 +2676,34 @@ impl Visitor {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
             } else if lit.suffix() == "nat" {
                 *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+            } else if lit.suffix() == "real" {
+                // For convenience, allow literals like 5real in addition to 5.0real
+                let n = n + ".0";
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
             } else {
                 // Has a native Rust integer suffix, so leave it as a native Rust literal
             }
         }
 
+        true
+    }
+
+    /// Handle float/real literals.
+    fn handle_lit_float(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
+            return false;
+        };
+        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+            let span = lit.span();
+            let n = lit.base10_digits().to_string();
+            if lit.suffix() == "" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal(#n));
+            } else if lit.suffix() == "real" {
+                *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_decimal::<#verus_builtin::real>(#n));
+            } else {
+                // Has a native Rust integer suffix, so leave it as a native Rust literal
+            }
+        }
         true
     }
 
@@ -3618,7 +3646,8 @@ impl VisitMut for Visitor {
             || self.handle_reveal_hide(expr)
             || self.handle_mode_blocks(expr)
             || self.handle_cast(expr)
-            || self.handle_lit(expr)
+            || self.handle_lit_int(expr)
+            || self.handle_lit_float(expr)
             || self.handle_closures(expr)
             || self.handle_unary_ops(expr)
             || self.handle_big_and_big_or(expr)
@@ -5296,6 +5325,16 @@ fn is_probably_nat_or_int_type(typ: &Type) -> bool {
                 let t = ident.to_string();
                 t == "int" || t == "nat"
             }
+        },
+        _ => false,
+    }
+}
+
+fn is_probably_real_type(typ: &Type) -> bool {
+    match typ {
+        Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+            None => false,
+            Some(ident) => ident.to_string() == "real",
         },
         _ => false,
     }

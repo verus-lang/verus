@@ -69,6 +69,7 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     UserDefinedTypeInvariantPass(u64),
+    ResInfTemp(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -153,6 +154,34 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
+///
+/// A `TypDecoration` can be applied to a type (via `TypX::Decorate`) to represent
+/// a different type that has the same encoding at the SMT level.
+/// For example, `u64` is represented in VIR as `Int(IntRange::U(64))`
+/// while `Box<u64>` is represented in VIR as `Decorate(Box, Int(IntRange::U(64)))`.
+/// Since the VIR types differ only in the "decoration", we know they are represented
+/// by the same SMT sort (air's Int type, in this case).
+/// Many functions (e.g., HasType) that depend on a type can be written
+/// to only depend on the "base type" (i.e., the type minus the decoration).
+///
+/// Furthermore, many functions can be elided entirely because they are simply the identity
+/// operation, e.g., `Box::new` takes a `T` to a `Box<T>`; but since these types are
+/// equivalent up to decoration, they are represented the same in SMT, and it happens the
+/// function is the identity function.
+///
+/// However, decorations are not totally irrelevant. They are still significant for resolving
+/// traits (e.g., `u64` and `Box<u64>` might implement the same trait in different ways).
+///
+/// In some places, the decoration of a Typ cannot be considered meaningful due to these
+/// implicit 'identity' coercions:
+///   - `expr.typ`
+///   - `place.typ`
+///   - `pattern.typ`
+///   - `exp.typ` (SST nodes)
+/// But in other places, types must be exactly correct, *including* decoration:
+///   - type arguments for a Call
+///   - `pattern_binding.typ` (type of a local variable declaration)
+///   - Most places where `Typ` is given as an explicit field of a node
 #[derive(
     Debug,
     Serialize,
@@ -170,8 +199,10 @@ pub enum TypDecoration {
     /// &T
     Ref,
     /// &mut T
+    /// For new-mut-ref, don't use this; use TypX::MutRef instead
     MutRef,
     /// Box<T>
+    /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,
     /// Rc<T>
     Rc,
@@ -227,7 +258,10 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
+    /// Integer type: int, nat, i8, ..., i128, u8, ..., u128, isize, usize, char
     Int(IntRange),
+    /// SMT solver's real number (ghost code only)
+    Real,
     /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
     Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
@@ -350,6 +384,8 @@ pub enum UnaryOp {
         range: IntRange,
         truncate: bool,
     },
+    /// Convert integer type to real type (SMT to_real operation)
+    IntToReal,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
@@ -496,6 +532,18 @@ pub enum ArithOp {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum RealArithOp {
+    /// Real number add (spec mode only)
+    Add,
+    /// Real number subtract (spec mode only)
+    Sub,
+    /// Real number multiply (spec mode only)
+    Mul,
+    /// Real number divide (spec mode only)
+    Div,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IntegerTypeBitwidth {
     /// Exact number of bits (e.g. 8 for u8/i8)
     Width(u32),
@@ -566,6 +614,8 @@ pub enum BinaryOp {
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
     Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
@@ -653,6 +703,8 @@ pub enum Constant {
     Bool(bool),
     /// integer of arbitrary size
     Int(BigInt),
+    /// String is >= 1 decimal digits, then one decimal point, then >= 1 decimal digits
+    Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
     // Hold unicode values here
@@ -714,7 +766,8 @@ pub enum PatternX {
         sub_pat: Pattern,
     },
     /// Match constructor of datatype Path, variant Ident
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
@@ -858,6 +911,17 @@ pub enum AutospecUsage {
     Final,
 }
 
+/// Represents the expression after the '..' in a "ctor update"
+/// like the `foo` in `{ a: e1, b: e2, .. foo }`.
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct CtorUpdateTail {
+    pub place: Place,
+    /// This list needs to contain all the fields that are NOT explicitly listed.
+    /// i.e., this is all the fields that are moved or copied out of the input struct.
+    /// This information is needed by resolution analysis.
+    pub taken_fields: Arc<Vec<(Ident, UnfinalizedReadKind)>>,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -885,9 +949,10 @@ pub enum ExprX {
     Call(CallTarget, Exprs, Option<Expr>),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the fields are named "_0", "_1", etc.
+    /// For tuple-style variants, the fields are named "0", "1", etc.
+    /// (See [`crate::def::positional_field_ident`])
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Dt, Ident, Binders<Expr>, Option<Place>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<CtorUpdateTail>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -1022,11 +1087,26 @@ pub struct UnfinalizedReadKind {
     pub id: u64,
 }
 
+/// What kind of read (i.e., nonmutating access to a place) is this?
+///
+/// For the most part, we only care if something is a "move" or not, information
+/// which is used by resolution analysis.
+/// Further subdivision of kinds is only for additional clarity.
+/// However, the `Spec` kind is somewhat special because we don't know if something is
+/// Spec until mode-checking, whereas the other kinds are distinguished in rust_to_vir.
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
 pub enum ReadKind {
+    /// A move.
     Move,
+    /// A copy. (Not a move.)
     Copy,
+    /// Take a shared borrow (&). (Not a move.)
     ImmutBor,
+    /// For an expression that goes unused, e.g., in the statement `foo(x, y);` the return
+    /// value of `foo` goes unused. Even though this is technically a move, we can ignore
+    /// it for the purposes of resolution analysis.
+    Unused,
+    /// Spec snapshot. (Not a move.)
     Spec,
 }
 
@@ -1039,9 +1119,16 @@ pub enum ModeWrapperMode {
 }
 
 /// `Place` is the replacement for `Loc` used for new-mut-refs.
-/// It represents a place that can be read from, moved from, or mutated.
 /// (Actually, `Place` is already used sometimes even when
 /// new-mut-refs is disabled, but only for reading.)
+///
+/// A `Place` represents (the computation of) a place that can be read from,
+/// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
+/// can have arbitrary side-effects.
+///
+/// A `Place` tree is always a sequence of modifiers that terminates in either a Local
+/// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
+/// a shared reference. These are implicit.
 // TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
@@ -1051,9 +1138,19 @@ pub enum PlaceX {
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
-    Local(VarIdent),
-    Temporary(Expr),
+    /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
+    /// Named local variable.
+    Local(VarIdent),
+    /// Evaluate the given expression and assign it to a fresh, unnamed temporary,
+    /// and return the place of the temporary.
+    /// The resolution_inference pass replaces many of these with named locals.
+    Temporary(Expr),
+    /// Evaluate expr then return the place
+    /// This is useful when expanding temporaries, e.g., `Temporary(expr)` expands to
+    /// `WithExpr({ tmp = expr; }, Local(tmp))`.
+    /// Without this node, such a transformation would be significantly more complicated.
+    WithExpr(Expr, Place),
 }
 
 /// Statement, similar to rustc_hir::Stmt

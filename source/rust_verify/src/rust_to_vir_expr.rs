@@ -53,6 +53,27 @@ use vir::ast_util::{
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
+/// Enum representing either an Expr (value expression) or a `Place` (place expression).
+///
+/// While converting HIR -> VIR, every HIR node is converting into one of these kinds
+/// of expressions. Place expressions include local variables, field accesses (`x.foo`)
+/// and dereferences (`*x`).
+///
+/// The Rust reference has more information on place expressions and "place expression contexts",
+/// i.e., contexts that expect place expressions.
+/// See: [https://doc.rust-lang.org/reference/expressions.html#place-expressions-and-value-expressions].
+///
+/// When constructing the VIR, we frequently need to convert between the two, so the `ExprOrPlace`
+/// has various utility methods to coerce to either an `Expr` or `Place` (if necessary). Thus,
+/// the recursive structure for lowering an expression to VIR has the following form:
+///  - `expr_to_vir` returns an `ExprOrPlace`, depending on whether the expression is a
+///    value expression or a place expression.
+///  - The caller decides whether to use the result as an `Expr` or a `Place` depending on
+///    the type of node it's creating and what that expects.
+///
+/// The easiest way to convert a `Place` to an `Expr` is to move or copy from it
+/// (which we here call "consume"). To convert from an `Expr` to a `Place`, we can create
+/// a "temporary" place.
 #[derive(Clone, Debug)]
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
@@ -60,6 +81,7 @@ pub(crate) enum ExprOrPlace {
 }
 
 impl ExprOrPlace {
+    /// If necessary, coerce the expression to a `Place` by creating a temporary.
     pub(crate) fn to_place(&self) -> Place {
         match self {
             ExprOrPlace::Expr(e) => {
@@ -69,6 +91,7 @@ impl ExprOrPlace {
         }
     }
 
+    /// Get the `Expr` out, fail if this is a `Place`.
     pub(crate) fn expect_expr<'tcx>(&self) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
@@ -78,13 +101,20 @@ impl ExprOrPlace {
         }
     }
 
+    /// Move or copy from the given place, depending on whether the type is `Copy` or not
     pub(crate) fn consume<'tcx>(
         &self,
         bctx: &BodyCtxt<'tcx>,
         ty: rustc_middle::ty::Ty<'tcx>,
     ) -> vir::ast::Expr {
         match self {
-            ExprOrPlace::Expr(e) => e.clone(),
+            ExprOrPlace::Expr(e) => {
+                // We don't need to create a Temporary for the expression, since either:
+                // (i) the expression is Copy, in which case 'resolution' is trivial
+                // (ii) the expression is moved immediately, in which case we can't possibly
+                //      resolve it.
+                e.clone()
+            }
             ExprOrPlace::Place(p) => {
                 let rk = if bctx.is_copy(ty) {
                     vir::ast::ReadKind::Copy
@@ -95,27 +125,48 @@ impl ExprOrPlace {
                     preliminary_kind: rk,
                     id: bctx.ctxt.unique_read_kind_id(),
                 };
-                SpannedTyped::new(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
+                bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
             }
         }
     }
 
+    /// Take an immutable borrow from the given place
     pub(crate) fn immut_bor<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
-        match self {
-            ExprOrPlace::Expr(e) => add_vir_ref_decoration(e.clone()),
-            ExprOrPlace::Place(p) => {
-                let rk = vir::ast::ReadKind::ImmutBor;
-                let rk = UnfinalizedReadKind {
-                    preliminary_kind: rk,
-                    id: bctx.ctxt.unique_read_kind_id(),
-                };
-                let typ =
-                    Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
-                SpannedTyped::new(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
+        if let ExprOrPlace::Expr(e) = self {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                return add_vir_ref_decoration(e.clone());
             }
         }
+
+        // We always need to create a Temporary here,
+        // since the expression might require resolution.
+        let p = self.to_place();
+        let rk = vir::ast::ReadKind::ImmutBor;
+        let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
+        let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
+        bctx.ctxt.spanned_typed_new_vir(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk))
     }
 
+    /// Evaluate the expression but leave the value unused.
+    pub(crate) fn unused<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
+        // Try to avoid cluttering the VIR with Unused nodes when they aren't necessary
+        if let ExprOrPlace::Expr(e) = self {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref || vir::ast_util::is_unit(&e.typ) {
+                return e.clone();
+            }
+        }
+
+        let p = self.to_place();
+        let rk = vir::ast::ReadKind::Unused;
+        let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
+        bctx.ctxt.spanned_typed_new_vir(&p.span, &p.typ, ExprX::ReadPlace(p.clone(), rk))
+    }
+
+    /// Take a spec snapshot of the give place.
+    ///
+    /// We only use this in a few places where we are certain that the code has to be 'spec'.
+    /// When there's no way to tell (most of the time), always use consume, and mode-checking
+    /// will figure out which ones are spec-snapshots later.
     pub(crate) fn to_spec_expr<'tcx>(&self, bctx: &BodyCtxt<'tcx>) -> vir::ast::Expr {
         match self {
             ExprOrPlace::Expr(e) => e.clone(),
@@ -508,7 +559,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
 ) -> Result<vir::ast::Pattern, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let mut pat_typ = typ_of_node(bctx, pat.span, &pat.hir_id, false)?;
-    unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
+    unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard(false),
         PatKind::Binding(_binding_mode, canonical, x, subpat) => {
@@ -1147,12 +1198,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustment_idx - 1,
             )?;
             let inner_ty = get_inner_ty();
-            if bctx.ctxt.cmd_line_args.new_mut_ref
-                && matches!(inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
-            {
-                let inner_place = inner_expr.to_place();
-                let place = deref_mut(bctx, expr.span, &inner_place);
-                Ok(ExprOrPlace::Place(place))
+            if bctx.ctxt.cmd_line_args.new_mut_ref {
+                if matches!(inner_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut)) {
+                    let inner_place = inner_expr.to_place();
+                    let place = deref_mut(bctx, expr.span, &inner_place);
+                    Ok(ExprOrPlace::Place(place))
+                } else {
+                    // TODO(new_mut_ref): should check types here
+                    let inner_place = inner_expr.to_place();
+                    Ok(ExprOrPlace::Place(inner_place))
+                }
             } else {
                 Ok(strip_vir_ref_decoration(inner_expr))
             }
@@ -2493,7 +2548,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?.to_place()),
+                StructTailExpr::Base(tail_expr) => {
+                    let place = expr_to_vir(bctx, tail_expr, modifier)?.to_place();
+                    let tf = ctor_tail_get_taken_fields(bctx, expr)?;
+                    Some(vir::ast::CtorUpdateTail { place: place, taken_fields: tf })
+                }
                 StructTailExpr::DefaultFields(..) => {
                     unsupported_err!(
                         expr.span,
@@ -3177,8 +3236,17 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 return Ok(vec![]);
             }
 
-            // Just writing `x;` does in fact count as a move of a `x`
-            let vir_expr = expr_to_vir_consume(bctx, expr, ExprModifier::REGULAR)?;
+            let ep = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let vir_expr = match &ep {
+                ExprOrPlace::Expr(expr) if matches!(&expr.x, ExprX::Header(..)) => expr.clone(),
+                _ => {
+                    // Just writing `x;` technically counts as a move of a `x`
+                    // but for the sake of resolution analysis, we don't want to treat
+                    // it as a move (since it will just get dropped) so it gets the special
+                    // 'Unused' kind
+                    ep.unused(bctx)
+                }
+            };
             Ok(vec![bctx.spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Item(item_id) => {
@@ -3513,12 +3581,16 @@ fn deref_expr_to_vir<'tcx>(
     let inner_expr = expr_to_vir_inner(bctx, arg, modifier)?;
 
     if !bctx.types.is_method_call(expr) || auto_deref_supported_for_ty(bctx.ctxt.tcx, &arg_ty) {
-        if bctx.ctxt.cmd_line_args.new_mut_ref
-            && matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut))
-        {
-            let place = inner_expr.to_place();
-            let place = deref_mut(bctx, expr.span, &place);
-            Ok(ExprOrPlace::Place(place))
+        if bctx.ctxt.cmd_line_args.new_mut_ref {
+            if matches!(arg_ty.kind(), TyKind::Ref(_, _, rustc_ast::Mutability::Mut)) {
+                let place = inner_expr.to_place();
+                let place = deref_mut(bctx, expr.span, &place);
+                Ok(ExprOrPlace::Place(place))
+            } else {
+                // TODO(new_mut_ref): should check types here
+                let place = inner_expr.to_place();
+                Ok(ExprOrPlace::Place(place))
+            }
         } else {
             // Normal dereference, just strip the inner expression.
             Ok(strip_vir_ref_decoration(inner_expr))
@@ -3589,6 +3661,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::Temporary(expr) => {
             return expr_to_loc_coerce_modes(expr);
         }
+        PlaceX::WithExpr(..) => {
+            panic!("Verus Internal Error: unexpected PlaceX::WithExpr")
+        }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }
@@ -3641,7 +3716,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
         _ => {}
     }
 
-    let t = match &*place.typ {
+    let t = match &*undecorate_typ(&place.typ) {
         TypX::MutRef(t) => t.clone(),
         _ => panic!("expected mut ref"),
     };
@@ -3697,7 +3772,7 @@ pub(crate) fn borrow_mut_vir(
 
     let x = match allow_two_phase {
         AllowTwoPhase::Yes => {
-            if place.x.uses_temporary() {
+            if place.x.uses_unnamed_temporary() {
                 ExprX::BorrowMut(place.clone())
             } else {
                 ExprX::TwoPhaseBorrowMut(place.clone())
@@ -3707,4 +3782,45 @@ pub(crate) fn borrow_mut_vir(
     };
     let typ = Arc::new(TypX::MutRef(place.typ.clone()));
     bctx.spanned_typed_new(span, &typ, x)
+}
+
+fn ctor_tail_get_taken_fields<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<Arc<Vec<(vir::ast::Ident, UnfinalizedReadKind)>>, VirErr> {
+    let ExprKind::Struct(_, fields, _) = &expr.kind else {
+        crate::internal_err!(
+            expr.span,
+            "ctor_tail_get_taken_fields should only be called for ExprKind::Struct"
+        );
+    };
+
+    let ty = bctx.types.node_type(expr.hir_id);
+    let TyKind::Adt(adt_def, args) = ty.kind() else {
+        crate::internal_err!(expr.span, "Expected TyKind::Adt for struct expression");
+    };
+
+    if !adt_def.is_struct() {
+        crate::internal_err!(expr.span, "Expected struct for struct expression with tail");
+    }
+    let variant_def = adt_def.non_enum_variant();
+
+    let mut taken_fields = vec![];
+    // Iterate over all fields that are NOT present in the given struct expression.
+    for field_def in variant_def.fields.iter() {
+        if fields.iter().any(|f| f.ident.name == field_def.name) {
+            continue;
+        }
+        let ty = field_def.ty(bctx.ctxt.tcx, args);
+        let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
+        let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
+        let ident = field_ident_from_rust(field_def.name.as_str());
+        taken_fields.push((ident, rk));
+    }
+
+    if fields.len() + taken_fields.len() != variant_def.fields.len() {
+        crate::internal_err!(expr.span, "ctor_tail_get_taken_fields: field counts are wrong");
+    }
+
+    Ok(Arc::new(taken_fields))
 }

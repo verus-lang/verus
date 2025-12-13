@@ -110,7 +110,8 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
-            | UnaryOp::FloatToBits { .. }
+            | UnaryOp::FloatToBits
+            | UnaryOp::IntToReal
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
@@ -252,7 +253,7 @@ fn check_trigger_expr(
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } | UnaryOp::FloatToBits => {
+                UnaryOp::Clip { .. } | UnaryOp::FloatToBits | UnaryOp::IntToReal => {
                     check_trigger_expr_arg(state, false, arg);
                     Ok(())
                 }
@@ -306,7 +307,7 @@ fn check_trigger_expr(
                         check_trigger_expr_arg(state, true, arg2);
                         Ok(())
                     }
-                    Arith(..) => {
+                    Arith(..) | RealArith(..) => {
                         check_trigger_expr_arg(state, false, arg1);
                         check_trigger_expr_arg(state, false, arg2);
                         Ok(())

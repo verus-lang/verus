@@ -840,3 +840,85 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] dont_resolve_ghost_field ["new-mut-ref"] => verus_code! {
+        broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>)
+            ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
+        {
+        }
+
+        spec fn id<A>(a: A) -> A { a }
+
+        tracked struct TGPair<A, B> {
+            tracked t: A,
+            ghost g: B,
+        }
+
+        fn test1() {
+            let mut a: u64 = 0;
+            let mut b: u64 = 0;
+
+            let a_ref = &mut a;
+            let b_ref = &mut b;
+
+            // We have to be careful here that resolving tmp.t
+            // does not also resolve tmp.g (which is a ghost place)
+
+            proof {
+                let tracked tg = TGPair { g: id(a_ref), t: b_ref };
+                match tg {
+                    TGPair { g: _, t } => {
+                    }
+                }
+            }
+
+            broadcast use stronger_resolver_axiom;
+
+            assert(has_resolved(a_ref)); // FAILS
+
+            *a_ref = 20;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] dont_resolve_ghost_field2 ["new-mut-ref"] => verus_code! {
+        broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>)
+            ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
+        {
+        }
+
+        spec fn id<A>(a: A) -> A { a }
+
+        tracked struct TGPair<A, B> {
+            ghost g: B,
+            tracked t: A,
+        }
+
+        fn test1() {
+            let mut a: u64 = 0;
+            let mut b: u64 = 0;
+
+            let a_ref = &mut a;
+            let b_ref = &mut b;
+
+            // We have to be careful here that resolving tmp.t
+            // does not also resolve tmp.g (which is a ghost place)
+
+            proof {
+                let tracked tg = TGPair { g: id(a_ref), t: b_ref };
+                match tg {
+                    TGPair { g: _, t } => {
+                    }
+                }
+            }
+
+            broadcast use stronger_resolver_axiom;
+
+            assert(has_resolved(a_ref)); // FAILS
+
+            *a_ref = 20;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

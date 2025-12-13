@@ -16,29 +16,29 @@ and publishing for the Verus project.
 
 **Jobs:**
 
-1. **`fmt`** (macOS ARM64)
+1. **`fmt`** (linux)
    - Validates Rust code formatting with `rustfmt`
    - Validates `vstd` formatting with `verusfmt`
 
-2. **`test-and-release-macos`** (macOS ARM64)
-   - Runs full test suite across multiple feature configurations:
-     - Default features (full test suite)
-     - `record-history` (limited tests)
-     - `no-std` and `no-alloc` (vstd variants)
-     - `singular` (computer algebra system integration)
-     - `cvc5` (alternate SMT solver)
-   - Builds release binary for ARM64 macOS
-   - Generates vstd API documentation
-   - Uploads `verus-arm64-macos.zip` artifact
+2. **`full-test`** (macOS ARM64)
+   - Runs full test suite.
+
+3. **`basic-test`** (macOs x64, Windows x64, and Linux x64)
+   - Runs basic tests only
+
+3. **`smoke-test`** (macOs ARM64)
+   - Checks that `verus` builds with esoteric configurations
+   - Runs minimal tests relevant to the configuration
+
+4. **`build-docs`** (linux)
+   - Builds the `verusdoc` artifact
    - Uploads `verusdoc` artifact for documentation deployment
 
-3. **`smoke-test-and-release-...`**
-    - Jobs of each of macOS x86, Windows x64, and Linux x64
-   - Runs basic smoke tests only
-   - Builds a release binary for the target
-   - Uploads the `verus-....zip` artifact
+5. **`build-release`** (macOS ARM64, macOs x64, Windows x64, and Linux x64)
+   - Builds release binary artifacts for every supported platform
+   - Uploads `verus-<arch>-<os>.zip` artifacts
 
-4. **`release`** (Ubuntu)
+6. **`release`** (linux)
    - **Only runs on push to `main`** (not PRs)
    - Downloads all platform artifacts
    - Extracts version information from `version.txt`
@@ -48,9 +48,6 @@ and publishing for the Verus project.
    - Uploads all platform binaries to the rolling release
    - Deletes old rolling release tags and assets
    - Publishes the updated rolling release
-
-5. **`docs`** (macOS ARM64)
-   - Validates documentation by running `rustdoc` and `verusdoc` disallowing warnings
 
 **Output:**
 - Continuous binary distribution via the Rolling Release
@@ -134,7 +131,7 @@ and publishing for the Verus project.
 
 **Jobs:**
 
-1. **`build`** (Ubuntu)
+1. **`build`** (Linux)
    - Sets up mdbook for building documentation
    - Builds user guide: `source/docs/guide` → `/_site/guide`
    - Builds state machines guide: `source/docs/state_machines` → `/_site/state_machines`
@@ -143,7 +140,7 @@ and publishing for the Verus project.
    - Builds Verus landing page using Jekyll
    - Uploads combined site artifact
 
-2. **`deploy`** (Ubuntu)
+2. **`deploy`** (Linux)
    - Deploys the built site to GitHub Pages
    - Makes documentation available at the GitHub Pages URL
 
@@ -170,7 +167,7 @@ and publishing for the Verus project.
 
 **Jobs:**
 
-1. **`bump-crate-versions`** (Ubuntu)
+1. **`bump-crate-versions`** (linux)
    - Runs version bump tool: `source/tools/bump_crate_versions` with update command
    - Commits version changes if needed
    - Pushes changes to `main`
@@ -200,8 +197,8 @@ crate-updates.yml (weekly/manual) → Updates crate versions → Publishes to cr
 ## Platform Support
 
 All workflows build and test Verus on:
-- **Linux**: `x86_64` (Ubuntu 22.04)
-- **macOS**: ARM64 (macOS 14) and `x86_64` (macOS 15)
+- **Linux**: `x86_64` (ubuntu-latest)
+- **macOS**: ARM64 (macOS latest) and `x86_64` (macOS 15)
 - **Windows**: `x86_64` (latest)
 
 ARM64 macOS receives full testing; other platforms run smoke tests for efficiency.
