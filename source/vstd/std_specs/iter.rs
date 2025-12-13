@@ -181,4 +181,49 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
 }
 
 */
+
+
+pub struct VerusForLoopIterator<'a, I: Iterator> {
+    pub index: Ghost<int>,
+    pub snapshot: Ghost<I>,
+    pub init: Ghost<Option<&'a I>>,
+    pub iter: I 
+}
+
+impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
+    pub open spec fn seq(self) -> Seq<I::Item> {
+        Seq::empty()
+    }
+
+    /// These properties help maintain the properties in wf,
+    /// but they don't need to be exposed to the client 
+    #[verifier::prophetic]
+    pub closed spec fn wf_inner(self) -> bool {
+        true
+    }
+
+    /// These properties are needed for the client code to verify
+    #[verifier::prophetic]
+    pub open spec fn wf(self) -> bool {
+        true
+    }
+
+    /// Bundle the real iterator with its ghost state and loop invariants
+    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
+    {
+        VerusForLoopIterator {
+            index: Ghost(0),
+            snapshot: Ghost(iter),
+            init: init,
+            iter,
+        }
+    }
+
+    /// Advance the underlying (real) iterator and prove
+    /// that the loop invariants are preserved.
+    pub fn next(&mut self) -> (ret: Option<I::Item>)
+    {
+        None
+    }
+}
 } // verus!

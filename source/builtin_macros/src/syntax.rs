@@ -3630,6 +3630,7 @@ impl Visitor {
                 && attr.path().segments[0].ident.to_string() == "verifier"
                 && attr.path().segments[1].ident.to_string() == "no_loop_invariant"
         });
+        dbg!(no_loop_invariant);
         if let Some(i) = no_loop_invariant {
             attrs.remove(i);
         }
@@ -3644,7 +3645,6 @@ impl Visitor {
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
         }
-
         if !self.erase_ghost.keep() || self.inside_external_code > 0 {
             return Expr::ForLoop(verus_syn::ExprForLoop {
                 attrs,
@@ -3659,6 +3659,7 @@ impl Visitor {
                 body,
             });
         }
+        dbg!(no_auto_loop_invariant);
         // TODO: This should be part of ExprForLoop 
         let mut inv_except_break: Option<InvariantExceptBreak> = None;
 
@@ -3694,6 +3695,7 @@ impl Visitor {
         // Name that "remembers" the initial iterator at the start of the loop body 
         let x_iter_body_old = Ident::new("VERUS_old_iter", span);
 
+        dbg!("names done");
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
         //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
@@ -3716,7 +3718,7 @@ impl Visitor {
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
             #x_iter_name.init ==
-            #vstd::prelude::Ghost(
+            #vstd::prelude::Ghost::new(
                 verus_builtin::infer_spec_for_loop_iter(
                     &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(#x_verus_iter_init)),
@@ -3728,8 +3730,9 @@ impl Visitor {
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             #[verus::internal(auto_decreases)]
-            #x_iter_name.iter.decrease() is Some,
+            #x_iter_name.iter.decrease() is Some
         ));
+        dbg!("invs created");
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
@@ -3756,7 +3759,9 @@ impl Visitor {
         } else {
             None
         };
+        dbg!("invariant created");
         let inv_except_break = if let Some(mut invariant) = inv_except_break {
+            dbg!("inv_except_break 1");
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = if #x_iter_name.index@ < #x_iter_name.seq().len() {
@@ -3772,10 +3777,15 @@ impl Visitor {
             }
             Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant.exprs })
         } else if no_loop_invariant.is_none() {
+            dbg!("inv_except_break 2");
+            //Some(parse_quote_spanned!(span => invariant #some_inv,))
+            //Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
             Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
         } else {
+            dbg!("inv_except_break 3");
             None
         };
+        dbg!("inv_except_break created");
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
@@ -3795,6 +3805,7 @@ impl Visitor {
                     .unwrap_or(#vstd::pervasive::arbitrary()),
             ))
         }
+        dbg!("decreases created");
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
@@ -3809,7 +3820,9 @@ impl Visitor {
         } else {
             None
         };
+        dbg!("about to call add_loop_specs");
         self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
+        dbg!("about to create body_exec");
         let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             let ghost #x_iter_body_old = #x_iter_name;
             #[allow(non_snake_case)]
@@ -3827,10 +3840,12 @@ impl Visitor {
         let mut body: Block = parse_quote_spanned!(span => { #body_exec });
         body.stmts.splice(0..0, stmts);
 
-        let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
+        dbg!("about to create loop_expr");
+        let mut loop_expr: ExprLoop = parse_quote_spanned_vstd!(vstd, span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
-        Expr::Verbatim(quote_spanned!(span => {
+        dbg!("about to create final expression");
+        let f = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[allow(non_snake_case)]
             let #x_verus_iter_init = #expr;
             #[allow(non_snake_case)]
@@ -3838,18 +3853,20 @@ impl Visitor {
                 // Real iterator
                 ::core::iter::IntoIterator::into_iter(#x_verus_iter_init), 
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-                Ghost(Some(::core::iter::IntoIterator::into_iter(#x_verus_iter_init))),
+                #vstd::prelude::Ghost::new(Some(::core::iter::IntoIterator::into_iter(#x_verus_iter_init))),
             ); 
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
             #[allow(non_snake_case)]
-            let Ghost(#x_snapshot) = #x_wrapped_iter.snapshot;
+            let #vstd::prelude::Ghost(#x_snapshot) = #x_wrapped_iter.snapshot;
             #[allow(non_snake_case)]
             let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
                 mut #x_iter_name => #loop_expr
             };
             VERUS_loop_result
-        }))
+        }));
+        //eprintln!("{}", verus_prettyplease::unparse_expr(&f));
+        f
     }
 
     fn extract_quant_triggers(
@@ -4027,7 +4044,7 @@ impl VisitMut for Visitor {
         if do_replace && self.inside_type == 0 {
             match take_expr(expr) {
                 Expr::ForLoop(for_loop) => {
-                    *expr = self.desugar_for_loop(for_loop);
+                    *expr = self.desugar_for_loop2(for_loop);
                 }
                 _ => panic!("expected to replace expression"),
             }
@@ -5355,7 +5372,7 @@ pub(crate) fn for_loop_spec_attr(
             stmts: vec![Stmt::Expr(Expr::Verbatim(quote_spanned! {body.span() => #body}), None)],
         },
     };
-    visitor.desugar_for_loop(verus_forloop)
+    visitor.desugar_for_loop2(verus_forloop)
 }
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
