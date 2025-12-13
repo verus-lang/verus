@@ -313,6 +313,7 @@ jobs:
             7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
           else
             zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
+          fi
 
       - name: upload release artifact
         uses: actions/upload-artifact@v4
