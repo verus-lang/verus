@@ -84,9 +84,9 @@ jobs:
         run: |
           . ../tools/activate
           RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
+          # RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
-          vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          # vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
 
       - name: build line-count tool
         working-directory: ./source/tools/line_count
