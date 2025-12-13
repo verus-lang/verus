@@ -67,6 +67,7 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
 }
 
 ////// Len (with autospec)
+#[cfg_attr(all(verus_keep_ghost, not(verus_verify_core)), rustc_diagnostic_item = "verus::vstd::slice::spec_slice_len")]
 pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
@@ -132,10 +133,31 @@ pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
             0 <= i < a1.len() ==> a1[i] == a2[i]),
 ;
 
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::spec_slice_update")]
+pub uninterp spec fn spec_slice_update<T>(slice: &[T], i: int, t: T) -> &[T];
+
+pub broadcast axiom fn axiom_spec_slice_update<T>(slice: &[T], i: int, t: T)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> (#[trigger] spec_slice_update(slice, i, t)@)
+            == slice@.update(i, t),
+;
+
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::spec_slice_index")]
+pub uninterp spec fn spec_slice_index<T>(slice: &[T], i: int) -> T;
+
+pub broadcast axiom fn axiom_spec_slice_index<T>(slice: &[T], i: int)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> (#[trigger] spec_slice_index(slice, i)) == slice@[i],
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
     axiom_slice_ext_equal,
+    axiom_spec_slice_update,
+    axiom_spec_slice_index,
 }
 
 } // verus!

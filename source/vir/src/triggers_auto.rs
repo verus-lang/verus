@@ -394,7 +394,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
-                | UnaryOp::CastToInteger => 0,
+                | UnaryOp::CastToInteger
+                | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::FloatToBits => 1,
@@ -450,7 +451,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
-                ArrayIndex => 1,
+                Index(..) => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
