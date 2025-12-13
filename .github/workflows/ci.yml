@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     branches:
-      - 'main'
+      - 'ci-test'
 
   workflow_dispatch:
 
@@ -247,7 +247,7 @@ jobs:
           ./tools/docs.sh --strict # strict will complain if there are warnings
 
       - name: upload verusdoc artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ci-test' && github.repository == 'verus-lang/verus'
         uses: actions/upload-artifact@v4
         with:
           name: verusdoc
@@ -256,7 +256,7 @@ jobs:
   # build the release artifacts
   build-release:
     needs: [basic-test, smoke-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ci-test' && github.repository == 'verus-lang/verus'
 
     strategy:
       matrix:
@@ -322,7 +322,7 @@ jobs:
   # upload the release artifacts
   release:
     needs: [build-docs, build-release, full-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/ci-test' && github.repository == 'verus-lang/verus'
     runs-on: ubuntu-latest
     steps:
       - name: download all artifacts
