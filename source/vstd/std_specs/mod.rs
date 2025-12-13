@@ -8,6 +8,7 @@ pub mod clone;
 pub mod cmp;
 pub mod control_flow;
 pub mod core;
+pub mod iter;
 pub mod ops;
 
 #[cfg(all(feature = "alloc", feature = "std"))]
