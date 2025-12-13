@@ -345,6 +345,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_cycle4 verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> S;
+        }
+        struct S(Box<dyn T>);
+
+        proof fn p(s: &S)
+            ensures
+                false,
+            decreases s
+        {
+            p(&(s.0).f())
+        }
+
+        proof fn test()
+            ensures
+                false,
+        {
+            p(&arbitrary());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] dyn_cycle5 verus_code! {
+        use vstd::prelude::*;
+        trait T<A> {
+            spec fn f(&self) -> A;
+        }
+        struct S(Box<dyn T<S>>);
+
+        proof fn p(s: &S)
+            ensures
+                false,
+            decreases s
+        {
+            p(&(s.0).f())
+        }
+
+        proof fn test()
+            ensures
+                false,
+        {
+            p(&arbitrary());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "non-positive position")
+}
+
+test_verify_one_file! {
     #[test] dyn_unsupported1 verus_code! {
         trait T {}
         fn test(d: &(dyn T + Send)) {
