@@ -110,27 +110,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mul_distrib_forall_fail1 verus_code! {
-        spec fn f(n: nat) -> nat { 0 }
-        #[verifier(nonlinear)]
-        proof fn mul_distributive_auto()
-            ensures
-                forall|a: nat, b: nat, c: nat| #[trigger] ((a + b + f(c)) * c) == a * c + b * c
-        {
+    #[test] test_arith_function_trigger verus_code! {
+        uninterp spec fn f(i: int) -> bool;
+        proof fn test(x: int) {
+            assume(forall|i: int| #[trigger] f(i) ==> #[trigger] (i + 1) >= 7);
+            assume(f(x));
+            assert(x + 1 >= 7);
+            assert(x + 2 >= 8);
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `c` in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_mul_distrib_forall_fail2 verus_code! {
-        spec fn t(n: nat) -> bool { true }
-        #[verifier(nonlinear)]
-        proof fn mul_distributive_auto()
-            ensures
-                forall|a: nat, b: nat, c: nat| #[trigger] t(c) ==> #[trigger] ((a + b) * c) == a * c + b * c
-        {
+    #[test] test_arith_function_trigger_fail verus_code! {
+        uninterp spec fn f(i: int) -> bool;
+        proof fn test(x: int) {
+            assume(forall|i: int| #[trigger] f(i) ==> #[trigger] (i + 1) >= 7);
+            assume(f(x));
+            assert(x + 2 >= 8); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `c` in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
