@@ -158,6 +158,50 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_arith_auto1 verus_code! {
+        uninterp spec fn f(i: int) -> bool;
+
+        proof fn test(x: int) {
+            assume(forall|i: int| f(i / 2) == f(i / 2));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+}
+
+test_verify_one_file! {
+    #[test] test_arith_auto2 verus_code! {
+        uninterp spec fn f(i: int) -> bool;
+
+        proof fn test(x: int) {
+            assume(forall|i: int| #[trigger] f(i / 2) == f(i / 2));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_arith_auto3 verus_code! {
+        proof fn test(x: int) {
+            assume(forall|i: u32| i >> 1 == i >> 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_arith_auto4 verus_code! {
+        proof fn test(x: int) {
+            assume(forall|i: u32| ((i / 2) >> 1) == (i / 2) >> 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers")
+}
+
+test_verify_one_file! {
+    #[test] test_arith_auto5 verus_code! {
+        proof fn test(x: int) {
+            assume(forall|i: u32| #[trigger] ((i / 2) >> 1) == (i / 2) >> 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_arith_assert_by verus_code! {
         proof fn assoc()
             ensures
