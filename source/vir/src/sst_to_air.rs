@@ -867,7 +867,6 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
-    let exp_typ = &exp.typ;
 
     let result = match &exp.x {
         ExpX::Const(c) => {
@@ -1060,15 +1059,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 panic!("internal error: CoerceMode should have been removed before here")
             }
             UnaryOp::ToDyn => {
-                let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(exp_typ) else {
-                    panic!("ToDyn should have type TypX::Dyn: {:?}", exp_typ)
+                let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(&exp.typ) else {
+                    panic!("ToDyn should have type TypX::Dyn: {:?}", exp.typ)
                 };
-                let inner_self_typ = undecorate_typ(&exp.typ); // strip off any Box, etc.
+                let inner_self_typ = undecorate_typ(&e.typ); // strip off any Box, etc.
                 let mut args: Vec<Expr> = typ_to_ids(&inner_self_typ);
                 for t in typ_args.iter() {
                     args.extend(typ_to_ids(t));
                 }
-                args.push(exp_to_expr(ctx, exp, expr_ctxt)?);
+                args.push(exp_to_expr(ctx, e, expr_ctxt)?);
                 ident_apply(&crate::def::to_dyn(trait_path), &args)
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
