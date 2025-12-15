@@ -675,7 +675,7 @@ impl<T> MapPointsTo<T> {
         ensures
             out_map.points_to() == Map::new(
                 |i: usize| 0 <= i < len,
-                |i: usize| old(self).points_to()[(i+begin) as usize],
+                |i: usize| old(self).points_to()[(i + begin) as usize],
             ),
             self.points_to() == old(self).points_to().remove_keys(
                 Set::new(|i: usize| begin <= i < begin + len),
@@ -690,10 +690,11 @@ impl<T> MapPointsTo<T> {
             self.ptr() == old(self).ptr(),
     {
         broadcast use crate::vstd::group_vstd_default;
+
         use_type_invariant(&*self);
 
-        // Since `begin + len - 1` is in `self.dom()`, 
-        // and `self.dom()` only over `usize` values, 
+        // Since `begin + len - 1` is in `self.dom()`,
+        // and `self.dom()` only over `usize` values,
         // we should get `begin + len - 1 <= usize::MAX`.
         // assert(Set::new(|i: usize| begin <= i < begin + len).subset_of(old(self).dom()));
         // assert(forall|i| begin <= i < begin + len ==> self.dom().contains(i));
@@ -714,7 +715,7 @@ impl<T> MapPointsTo<T> {
         // assert(self.ptr()@.provenance == out_ptr@.provenance);
         // assert(forall|i|
         //     begin <= i < begin + len ==> self[i].ptr()@.provenance == out_ptr@.provenance);
-        
+
         // assert(forall|i|
         //     begin <= i < begin + len ==> self[i].ptr()@.addr == self.ptr()@.addr + i);
         let tracked mut submap = self.points_to.tracked_remove_keys(
@@ -723,17 +724,14 @@ impl<T> MapPointsTo<T> {
         // assert(forall|i|
         //     begin <= i < begin + len ==> submap[i].ptr()@.addr == self.ptr()@.addr + i);
         let key_map = Map::new(|i: usize| i < len, |i: usize| (i + begin) as usize);
-        assert(forall |j| key_map.dom().contains(j) ==> submap.dom().contains(key_map.index(j)));
+        assert(forall|j| key_map.dom().contains(j) ==> submap.dom().contains(key_map.index(j)));
         submap.tracked_map_keys_in_place(key_map);
         // assert(forall|i|
         //     0 <= i < len ==> submap[i].ptr()@.addr == self.ptr()@.addr + i + begin);
         // assert(forall|i|
         //     0 <= i < len ==> submap[i].ptr()@.addr == out_ptr@.addr + i);
-        
-        let tracked out_map = MapPointsTo {
-            points_to: submap,
-            ptr: out_ptr,
-        };
+
+        let tracked out_map = MapPointsTo { points_to: submap, ptr: out_ptr };
         out_map
     }
 
