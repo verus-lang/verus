@@ -39,3 +39,44 @@ pub(crate) fn sst_index_bound(span: &Span, e1: &Exp, e2: &Exp, kind: ArrayKind) 
 fn index_msg(span: &Span) -> Message {
     crate::messages::error(span, "precondition not met: index in bounds for this access")
 }
+
+/// Precondition (AST) for a FieldOpr expression that needs a variant-check.
+/// Input expressions must be side-effect-free.
+pub(crate) fn field_check(span: &Span, e1: &Expr, field_opr: &FieldOpr) -> Stmt {
+    let FieldOpr { datatype, varaitn, field: _, get_variant: _, check: _ } = field_opr;
+
+    let unary = UnaryOpr::IsVariant {
+        datatype: datatype.clone(),
+        variant: variant.clone(),
+    };
+
+    let condition = ExprX::UnaryOpr(unary, exp.clone());
+    let condition =
+        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
+
+    let assert_expr = SpannedTyped::new(
+        span,
+        &unit_typ(),
+        ExprX::AssertAssume { is_assume: false, expr: condition, msg: Some(field_msg(span)) },
+    );
+    Spanned::new(span.clone(), StmtX::Expr(assert_expr))
+}
+
+pub(crate) fn field_check(span: &Span, e1: &Expr, field_opr: &FieldOpr) -> (Exp, Message) {
+    let FieldOpr { datatype, varaitn, field: _, get_variant: _, check: _ } = field_opr;
+
+    let unary = UnaryOpr::IsVariant {
+        datatype: datatype.clone(),
+        variant: variant.clone(),
+    };
+
+    let condition = ExpX::UnaryOpr(unary, exp.clone());
+    let condition =
+        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
+
+    (condition, field_msg(span))
+}
+
+fn field_msg(span: &Span) -> Message {
+    crate::messages::error(span, "requirement not met: to access this field, the union must be in the correct variant")
+}

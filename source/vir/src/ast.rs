@@ -442,7 +442,8 @@ pub enum UnaryOp {
 pub enum VariantCheck {
     None,
     //Recommends,
-    Yes,
+    /// Check is required because the given field is from a union
+    Union,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
