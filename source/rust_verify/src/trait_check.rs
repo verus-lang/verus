@@ -118,6 +118,7 @@ impl<A: Copy> Clone for Tracked<A> { fn clone(&self) -> Self { panic!() } }
 impl<A: Copy> Copy for Tracked<A> { }
 #[derive(Clone, Copy)] struct int;
 #[derive(Clone, Copy)] struct nat;
+#[derive(Clone, Copy)] struct real;
 struct FnSpec<Args, Output> { x: PhantomData<(Args, Output)> }
 struct InvariantBlockGuard;
 fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
@@ -130,6 +131,7 @@ fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
 impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
+struct Dyn<const N: usize, A>(Box<A>, [bool]);
 fn use_type_invariant<A>(a: A) -> A { a }
 
 struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a fn(A) -> O>);

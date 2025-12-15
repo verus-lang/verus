@@ -69,6 +69,7 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     UserDefinedTypeInvariantPass(u64),
+    ResInfTemp(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -153,6 +154,34 @@ pub enum IntRange {
 
 /// Type information relevant to Rust but generally not relevant to the SMT encoding.
 /// This information is relevant for resolving traits.
+///
+/// A `TypDecoration` can be applied to a type (via `TypX::Decorate`) to represent
+/// a different type that has the same encoding at the SMT level.
+/// For example, `u64` is represented in VIR as `Int(IntRange::U(64))`
+/// while `Box<u64>` is represented in VIR as `Decorate(Box, Int(IntRange::U(64)))`.
+/// Since the VIR types differ only in the "decoration", we know they are represented
+/// by the same SMT sort (air's Int type, in this case).
+/// Many functions (e.g., HasType) that depend on a type can be written
+/// to only depend on the "base type" (i.e., the type minus the decoration).
+///
+/// Furthermore, many functions can be elided entirely because they are simply the identity
+/// operation, e.g., `Box::new` takes a `T` to a `Box<T>`; but since these types are
+/// equivalent up to decoration, they are represented the same in SMT, and it happens the
+/// function is the identity function.
+///
+/// However, decorations are not totally irrelevant. They are still significant for resolving
+/// traits (e.g., `u64` and `Box<u64>` might implement the same trait in different ways).
+///
+/// In some places, the decoration of a Typ cannot be considered meaningful due to these
+/// implicit 'identity' coercions:
+///   - `expr.typ`
+///   - `place.typ`
+///   - `pattern.typ`
+///   - `exp.typ` (SST nodes)
+/// But in other places, types must be exactly correct, *including* decoration:
+///   - type arguments for a Call
+///   - `pattern_binding.typ` (type of a local variable declaration)
+///   - Most places where `Typ` is given as an explicit field of a node
 #[derive(
     Debug,
     Serialize,
@@ -170,8 +199,10 @@ pub enum TypDecoration {
     /// &T
     Ref,
     /// &mut T
+    /// For new-mut-ref, don't use this; use TypX::MutRef instead
     MutRef,
     /// Box<T>
+    /// This is complicated due to the Allocator type argument; see `TypDecorationArg`.
     Box,
     /// Rc<T>
     Rc,
@@ -227,7 +258,10 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
+    /// Integer type: int, nat, i8, ..., i128, u8, ..., u128, isize, usize, char
     Int(IntRange),
+    /// SMT solver's real number (ghost code only)
+    Real,
     /// Floating point type (e.g. f32, f64), with specified number of bits (e.g. 32, 64)
     Float(u32),
     /// `spec_fn` type (t1, ..., tn) -> t0.
@@ -245,6 +279,8 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Dt, Typs, ImplPaths),
+    /// dyn T<...args...> for some trait T (given by the Path) applied to trait type arguments
+    Dyn(Path, Typs, ImplPaths),
     /// When an opaque type is defined (e.g., by a function return), Rustc creates
     /// an unique opaque type constructor for it.
     /// This opaque type is just an instantiation of the opaque type constructor with args
@@ -348,6 +384,8 @@ pub enum UnaryOp {
         range: IntRange,
         truncate: bool,
     },
+    /// Convert integer type to real type (SMT to_real operation)
+    IntToReal,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked
@@ -357,6 +395,8 @@ pub enum UnaryOp {
         to_mode: Mode,
         kind: ModeCoercion,
     },
+    /// Coerce from concrete type to dyn T
+    ToDyn,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -492,6 +532,18 @@ pub enum ArithOp {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum RealArithOp {
+    /// Real number add (spec mode only)
+    Add,
+    /// Real number subtract (spec mode only)
+    Sub,
+    /// Real number multiply (spec mode only)
+    Mul,
+    /// Real number divide (spec mode only)
+    Div,
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IntegerTypeBitwidth {
     /// Exact number of bits (e.g. 8 for u8/i8)
     Width(u32),
@@ -562,6 +614,8 @@ pub enum BinaryOp {
     Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by-zero checks
     Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
     /// Used only for handling verus_builtin::strslice_get_char
@@ -647,6 +701,8 @@ pub enum Constant {
     Bool(bool),
     /// integer of arbitrary size
     Int(BigInt),
+    /// String is >= 1 decimal digits, then one decimal point, then >= 1 decimal digits
+    Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
     // Hold unicode values here
@@ -1087,11 +1143,26 @@ pub struct UnfinalizedReadKind {
     pub id: u64,
 }
 
+/// What kind of read (i.e., nonmutating access to a place) is this?
+///
+/// For the most part, we only care if something is a "move" or not, information
+/// which is used by resolution analysis.
+/// Further subdivision of kinds is only for additional clarity.
+/// However, the `Spec` kind is somewhat special because we don't know if something is
+/// Spec until mode-checking, whereas the other kinds are distinguished in rust_to_vir.
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
 pub enum ReadKind {
+    /// A move.
     Move,
+    /// A copy. (Not a move.)
     Copy,
+    /// Take a shared borrow (&). (Not a move.)
     ImmutBor,
+    /// For an expression that goes unused, e.g., in the statement `foo(x, y);` the return
+    /// value of `foo` goes unused. Even though this is technically a move, we can ignore
+    /// it for the purposes of resolution analysis.
+    Unused,
+    /// Spec snapshot. (Not a move.)
     Spec,
 }
 
@@ -1104,9 +1175,16 @@ pub enum ModeWrapperMode {
 }
 
 /// `Place` is the replacement for `Loc` used for new-mut-refs.
-/// It represents a place that can be read from, moved from, or mutated.
 /// (Actually, `Place` is already used sometimes even when
 /// new-mut-refs is disabled, but only for reading.)
+///
+/// A `Place` represents (the computation of) a place that can be read from,
+/// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
+/// can have arbitrary side-effects.
+///
+/// A `Place` tree is always a sequence of modifiers that terminates in either a Local
+/// or a Temporary. Note that there are no modifier nodes for dereferencing a box or dereferencing
+/// a shared reference. These are implicit.
 // TODO(new_mut_ref): add ArrayIndex
 pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
@@ -1116,9 +1194,19 @@ pub enum PlaceX {
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),
-    Local(VarIdent),
-    Temporary(Expr),
+    /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
+    /// Named local variable.
+    Local(VarIdent),
+    /// Evaluate the given expression and assign it to a fresh, unnamed temporary,
+    /// and return the place of the temporary.
+    /// The resolution_inference pass replaces many of these with named locals.
+    Temporary(Expr),
+    /// Evaluate expr then return the place
+    /// This is useful when expanding temporaries, e.g., `Temporary(expr)` expands to
+    /// `WithExpr({ tmp = expr; }, Local(tmp))`.
+    /// Without this node, such a transformation would be significantly more complicated.
+    WithExpr(Expr, Place),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -1526,6 +1614,21 @@ pub struct OpaqueTypeX {
 pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
 pub type OpaqueTypes = Vec<OpaqueType>;
 
+/// Does the trait satisfy Verus's additional dyn-compatibility requirements,
+/// on top of Rust's dyn-compatibility requirements?
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum DynCompatible {
+    /// If Rust accepts trait as dyn compatible, Verus also accepts trait as dyn compatible
+    Accept,
+    /// The trait fails one of Verus's requirements for dyn compatibility
+    Reject { reason: String },
+    /// The trait satisfies Verus's requirements, but has a ?Sized blanket impl,
+    /// for which there is currently a known Rust unsoundness with dyn
+    /// (see https://github.com/rust-lang/rust/issues/57893 );
+    /// we can remove this case when the Rust issue is fixed.
+    RejectUnsizedBlanketImpl { trait_path: Path },
+}
+
 pub type Trait = Arc<Spanned<TraitX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct TraitX {
@@ -1539,6 +1642,9 @@ pub struct TraitX {
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
     pub is_unsafe: bool,
+    // Initially set to None during translation to VIR,
+    // then set to Some after all the Function declarations have been processed.
+    pub dyn_compatible: Option<Arc<DynCompatible>>,
     // If this trait has a verifier::external_trait_extension(TSpec via TSpecImpl),
     // Some((TSpec, TSpecImpl))
     pub external_trait_extension: Option<(Path, Path)>,

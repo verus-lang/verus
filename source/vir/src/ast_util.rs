@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -128,6 +129,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
+        (TypX::Real, TypX::Real) => true,
         (TypX::Float(f1), TypX::Float(f2)) => f1 == f2,
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
@@ -136,6 +138,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
         }
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
+            path1 == path2 && n_types_equal(ts1, ts2)
+        }
+        (TypX::Dyn(path1, ts1, _), TypX::Dyn(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
@@ -186,10 +191,12 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
+        (TypX::Real, _) => false,
         (TypX::Float(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
         (TypX::Decorate(..), _) => false,
         (TypX::Boxed(_), _) => false,
@@ -883,6 +890,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "bool".to_owned(),
         TypX::Int(range) => int_range_to_type_string(range),
+        TypX::Real => "real".to_owned(),
         TypX::Float(n) => format!("f{n}"),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
@@ -912,6 +920,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Datatype(Dt::Path(path), typs, _) => format!(
             "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Dyn(path, typs, _) => format!(
+            "dyn {}{}",
             path_as_friendly_rust_name(path),
             if typs.len() > 0 {
                 format!("<{}>", typs_to_comma_separated_str(typs))
@@ -1327,13 +1344,14 @@ impl PlaceX {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 
-    pub fn uses_temporary(&self) -> bool {
+    pub fn uses_unnamed_temporary(&self) -> bool {
         match self {
             PlaceX::Local(_) => false,
-            PlaceX::DerefMut(p) => p.x.uses_temporary(),
-            PlaceX::Field(_opr, p) => p.x.uses_temporary(),
+            PlaceX::DerefMut(p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Field(_opr, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Temporary(_) => true,
-            PlaceX::ModeUnwrap(p, _) => p.x.uses_temporary(),
+            PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
+            PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1345,44 +1363,33 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::Field(_opr, p) => place_get_local(p),
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
+        PlaceX::WithExpr(_e, p) => place_get_local(p),
     }
 }
 
 pub fn place_to_expr(place: &Place) -> Expr {
-    place_to_expr_rec(place, false)
-}
-
-pub fn place_to_expr_loc(place: &Place) -> Expr {
-    let e = place_to_expr_rec(place, true);
-    SpannedTyped::new(&e.span, &e.typ, ExprX::Loc(e.clone()))
-}
-
-fn place_to_expr_rec(place: &Place, loc: bool) -> Expr {
     let x = match &place.x {
-        PlaceX::Local(var_ident) => {
-            if loc {
-                ExprX::VarLoc(var_ident.clone())
-            } else {
-                ExprX::Var(var_ident.clone())
-            }
-        }
+        PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
         PlaceX::DerefMut(p) => {
-            let e = place_to_expr_rec(p, loc);
+            let e = place_to_expr(p);
             ExprX::Unary(UnaryOp::MutRefCurrent, e)
         }
         PlaceX::Field(opr, p) => {
-            let e = place_to_expr_rec(p, loc);
+            let e = place_to_expr(p);
             ExprX::UnaryOpr(UnaryOpr::Field(opr.clone()), e)
         }
         PlaceX::Temporary(e) => {
-            if loc {
-                panic!("Place Temporary should have been simplified out")
-            } else {
-                return e.clone();
-            }
+            return e.clone();
         }
         PlaceX::ModeUnwrap(p, _) => {
-            return place_to_expr_rec(p, loc);
+            return place_to_expr(p);
+        }
+        PlaceX::WithExpr(e, p) => {
+            let e2 = place_to_expr(p);
+            ExprX::Block(
+                Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
+                Some(e2),
+            )
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)

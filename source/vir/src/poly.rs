@@ -68,11 +68,20 @@ Note that the latter two cases lead to triggers involving "Unbox(x)", not just x
 This can lead to the completeness problems of (3).
 Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbox to handle (3).
 
-Note: in some cases, we can also support int quantifier variables x,
-for the purpose of triggering on arithmetic expressions,
-as long as *all* the expressions in all the triggers use x for arithmetic.
-For example, #[trigger] g(f(x), x + 1) would not be allowed,
-because x is used both for f and for +.
+For triggers on arithmetic expressions like #[trigger] (x * y),
+we use int instead of Poly for the arithmetic variables in the trigger.
+(This is an exception to the table above.)
+Otherwise, an expression like 3 * 4 would fail to match the trigger (Unbox(x) * Unbox(y)).
+
+Note that if a variable x is used *both* as a function argument and an arithmetic argument,
+as in #[trigger] g(f(x), x + 1), we have more flexibility, because any term passed to both
+the function and the arithmetic must be boxed or unboxed in one or the other.
+For example, in g(f(3), 3 + 1) would be represented as g(f(Box(3)), Box(3 + 1)),
+so that Box(3) triggers the unbox-box axiom yielding Unbox(Box(3)) = 3.
+In this case, a trigger of g(f(x), Unbox(x) + 1) for x: Poly e-matches the expanded term
+g(f(Box(3)), Box(Unbox(Box(3)) + 1)).
+We take advantage of this to support mixed function-arithmetic triggers with Poly variables
+(native variables would also work if we wanted, relying on Box(Unbox(x)) axioms.)
 */
 
 use crate::ast::{
@@ -100,6 +109,7 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
+    Real,
     Float(u32),
     Datatype(Dt, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
@@ -133,11 +143,13 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
     match &**typ {
         TypX::Bool => Some(Arc::new(MonoTypX::Bool)),
         TypX::Int(range) => Some(Arc::new(MonoTypX::Int(*range))),
+        TypX::Real => Some(Arc::new(MonoTypX::Real)),
         TypX::Float(range) => Some(Arc::new(MonoTypX::Float(*range))),
         TypX::Datatype(path, typs, _impl_paths) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
+        TypX::Dyn(..) => None,
         TypX::Decorate(d, None, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
             let m1 = typ_as_mono(allocator_typ)?;
@@ -168,6 +180,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
     match &**monotyp {
         MonoTypX::Bool => Arc::new(TypX::Bool),
         MonoTypX::Int(range) => Arc::new(TypX::Int(*range)),
+        MonoTypX::Real => Arc::new(TypX::Real),
         MonoTypX::Float(range) => Arc::new(TypX::Float(*range)),
         MonoTypX::Datatype(path, typs) => {
             let typs = vec_map(&**typs, monotyp_to_typ);
@@ -189,7 +202,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => false,
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => false,
         TypX::SpecFn(..) | TypX::FnDef(..) => false,
         TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
@@ -202,6 +215,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
                 typ_as_mono(typ).is_none()
             }
         }
+        TypX::Dyn(..) => true,
         TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
@@ -222,7 +236,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 /// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => typ.clone(),
         TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
@@ -239,6 +253,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
@@ -262,12 +277,14 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Bool | TypX::Int(_) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Real | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Dyn(..) => typ.clone(),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
@@ -287,9 +304,11 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
     match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
+        | TypX::Real
         | TypX::Float(_)
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
+        | TypX::Dyn(..)
         | TypX::Primitive(_, _)
         | TypX::FnDef(..) => exp.clone(),
         TypX::AnonymousClosure(..) => {
@@ -553,6 +572,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
@@ -565,6 +585,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     mk_exp(ExpX::Unary(*op, e1))
                 }
                 UnaryOp::HeightTrigger => {
+                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    mk_exp(ExpX::Unary(*op, e1))
+                }
+                UnaryOp::ToDyn => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
@@ -650,6 +674,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Implies | BinaryOp::Inequality(_) => (true, false),
                 BinaryOp::HeightCompare { .. } => (false, true),
                 BinaryOp::Arith(..) => (true, false),
+                BinaryOp::RealArith(..) => (true, false),
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
@@ -1114,7 +1139,8 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::BorrowMut, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _)
-            | (LocalDeclKind::Decreases, _, _) => coerce_typ_to_native(ctx, &l.typ),
+            | (LocalDeclKind::Decreases, _, _)
+            | (LocalDeclKind::MutableTemporary, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) => l.typ.clone(),
         };
         match l.kind {

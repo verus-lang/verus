@@ -92,10 +92,12 @@ impl ResolvedTypeCollection {
             }
             TypX::Bool
             | TypX::Int(_)
+            | TypX::Real
             | TypX::Float(_)
             | TypX::SpecFn(..)
             | TypX::AnonymousClosure(..)
             | TypX::FnDef(..)
+            | TypX::Dyn(..)
             | TypX::Boxed(_)
             | TypX::TypParam(_)
             | TypX::Projection { .. }

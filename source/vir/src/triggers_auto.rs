@@ -396,16 +396,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
+                UnaryOp::ToDyn => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::FloatToBits => 1,
+                UnaryOp::IntToReal => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => 1,
             };
-            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
                 UnaryOp::BitNot(_) => (
-                    true,
+                    is_pure1,
                     Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
                 ),
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1])))),
@@ -446,13 +448,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 HeightCompare { .. } => 1,
-                Ne | Inequality(_) | Arith(..) => 1,
+                Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
                 ArrayIndex => 1,
             };
-            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
+            let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
                 Bitwise(bp, _) => {
                     let bop = match bp {
@@ -462,14 +464,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                         BitwiseOp::Shl(..) => BitOpName::Shl,
                         BitwiseOp::BitOr => BitOpName::BitOr,
                     };
-                    (true, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
+                    let is_pure = is_pure1 && is_pure2;
+                    (is_pure, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
                 }
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
             }
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), e1, e2) => {
-            let (_, term1) = gather_terms(ctxt, ctx, e1, 0);
-            let (_, term2) = gather_terms(ctxt, ctx, e2, 0);
+            let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, 0);
+            let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, 0);
             let mut terms = vec![term1, term2];
             if ctxt.gather_for_all_triggers {
                 append_typ_params_as_terms(typ, &mut terms);
@@ -477,7 +480,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.gather_for_all_triggers {
                 (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
             } else {
-                (true, Arc::new(TermX::App(App::ExtEq, Arc::new(terms))))
+                (is_pure1 && is_pure2, Arc::new(TermX::App(App::ExtEq, Arc::new(terms))))
             }
         }
         ExpX::If(e1, e2, e3) => {

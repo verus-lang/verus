@@ -1,10 +1,10 @@
 use crate::ast::{
     Arm, ArmX, Arms, AssocTypeImpl, AssocTypeImplX, BinaryOpr, CallTarget, CallTargetKind,
     CtorUpdateTail, Datatype, DatatypeX, Expr, ExprX, Exprs, Field, Function, FunctionKind,
-    FunctionX, GenericBound, GenericBoundX, LoopInvariant, LoopInvariants, MaskSpec, NullaryOpr,
-    Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt,
-    StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX, Typs, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
+    FunctionX, GenericBound, GenericBoundX, Krate, KrateX, LoopInvariant, LoopInvariants, MaskSpec,
+    NullaryOpr, Param, ParamX, Params, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    SpannedTyped, Stmt, StmtX, Trait, TraitImpl, TraitImplX, TraitX, Typ, TypDecorationArg, TypX,
+    Typs, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -838,6 +838,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| place_new(PlaceX::ModeUnwrap(R::get(p), *mode)))
             }
+            PlaceX::WithExpr(e, p) => {
+                let e = self.visit_expr(e)?;
+                let p = self.visit_place(p)?;
+                R::ret(|| place_new(PlaceX::WithExpr(R::get(e), R::get(p))))
+            }
         }
     }
 
@@ -849,6 +854,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         match &**typ {
             TypX::Bool => R::ret(|| typ.clone()),
             TypX::Int(_) => R::ret(|| typ.clone()),
+            TypX::Real => R::ret(|| typ.clone()),
             TypX::Float(_) => R::ret(|| typ.clone()),
             TypX::TypParam(_) => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),
@@ -880,6 +886,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     Arc::new(TypX::Datatype(path.clone(), R::get_vec_a(ts), impl_paths.clone()))
                 })
+            }
+            TypX::Dyn(path, ts, impl_paths) => {
+                let ts = self.visit_typs(ts)?;
+                R::ret(|| Arc::new(TypX::Dyn(path.clone(), R::get_vec_a(ts), impl_paths.clone())))
             }
             TypX::Primitive(p, ts) => {
                 let ts = self.visit_typs(ts)?;
@@ -1209,6 +1219,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             assoc_typs_bounds,
             methods,
             is_unsafe,
+            dyn_compatible,
             external_trait_extension,
         } = &tr.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
@@ -1224,6 +1235,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 assoc_typs_bounds: R::get_vec_a(assoc_typs_bounds),
                 methods: methods.clone(),
                 is_unsafe: *is_unsafe,
+                dyn_compatible: dyn_compatible.clone(),
                 external_trait_extension: external_trait_extension.clone(),
             })
         })
@@ -1285,6 +1297,45 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             })
         })
     }
+
+    fn visit_krate(&mut self, krate: &Krate) -> Result<R::Ret<Krate>, Err> {
+        let KrateX {
+            functions,
+            reveal_groups,
+            datatypes,
+            traits,
+            trait_impls,
+            assoc_type_impls,
+            modules,
+            external_fns,
+            external_types,
+            path_as_rust_names,
+            arch,
+            opaque_types,
+        } = &**krate;
+        let functions = R::map_vec(functions, &mut |f| self.visit_function(f))?;
+        let datatypes = R::map_vec(datatypes, &mut |d| self.visit_datatype(d))?;
+        let traits = R::map_vec(traits, &mut |t| self.visit_trait(t))?;
+        let trait_impls = R::map_vec(trait_impls, &mut |ti| self.visit_trait_impl(ti))?;
+        let assoc_type_impls =
+            R::map_vec(assoc_type_impls, &mut |ati| self.visit_assoc_type_impl(ati))?;
+        R::ret(|| {
+            Arc::new(KrateX {
+                functions: R::get_vec(functions),
+                reveal_groups: reveal_groups.clone(),
+                datatypes: R::get_vec(datatypes),
+                traits: R::get_vec(traits),
+                trait_impls: R::get_vec(trait_impls),
+                assoc_type_impls: R::get_vec(assoc_type_impls),
+                modules: modules.clone(),
+                external_fns: external_fns.clone(),
+                external_types: external_types.clone(),
+                path_as_rust_names: path_as_rust_names.clone(),
+                arch: arch.clone(),
+                opaque_types: opaque_types.clone(),
+            })
+        })
+    }
 }
 
 pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
@@ -1324,6 +1375,37 @@ where
     match visitor.visit_typ(typ) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) struct WalkTypVisitorEnv<'a, E, FT> {
+    pub(crate) env: &'a mut E,
+    pub(crate) ft: &'a FT,
+}
+
+impl<'a, E, FT> AstVisitor<Walk, VirErr, NoScoper> for WalkTypVisitorEnv<'a, E, FT>
+where
+    FT: Fn(&mut E, &Typ) -> Result<(), VirErr>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), VirErr> {
+        self.visit_typ_rec(typ)?;
+        (self.ft)(&mut self.env, typ)
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) -> Result<(), VirErr> {
+        self.visit_expr_rec(expr)
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), VirErr> {
+        self.visit_stmt_rec(stmt)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<(), VirErr> {
+        self.visit_place_rec(place)
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), VirErr> {
+        self.visit_pattern_rec(pattern)
     }
 }
 

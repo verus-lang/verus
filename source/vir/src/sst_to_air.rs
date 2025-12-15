@@ -125,6 +125,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
+        MonoTypX::Real => str_ident("real"),
         MonoTypX::Float(n) => Arc::new(format!("f{}", n)),
         MonoTypX::Datatype(dt, typs) => {
             return crate::def::monotyp_apply(
@@ -155,6 +156,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Bool => bool_typ(),
         TypX::Int(_) => int_typ(),
+        TypX::Real => Arc::new(air::ast::TypX::Real),
         TypX::Float(_) => int_typ(),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
@@ -175,6 +177,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
+        TypX::Dyn(..) => str_typ(POLY),
         TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
@@ -236,6 +239,7 @@ pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id_sized(range_to_id(range)),
+        MonoTypX::Real => mk_id_sized(str_var(crate::def::TYPE_ID_REAL)),
         MonoTypX::Float(n) => {
             let bits = Constant::Nat(Arc::new(n.to_string()));
             mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
@@ -332,6 +336,7 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id_sized(range_to_id(range)),
+        TypX::Real => mk_id_sized(str_var(crate::def::TYPE_ID_REAL)),
         TypX::Float(n) => {
             let bits = Constant::Nat(Arc::new(n.to_string()));
             mk_id_sized(str_apply(crate::def::TYPE_ID_FLOAT, &vec![Arc::new(ExprX::Const(bits))]))
@@ -350,6 +355,7 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
                 vec![t]
             }
         }
+        TypX::Dyn(name, typs, _) => mk_id(dyn_id(ctx, name, typs), crate::def::DECORATE_NIL_DYN),
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
             mk_id(primitive_id(ctx, &name, typs), base)
@@ -452,6 +458,15 @@ pub(crate) fn datatype_id(ctx: &Ctx, path: &Path, typs: &Typs) -> Expr {
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
+fn dyn_id(ctx: &Ctx, tr: &Path, typs: &Typs) -> Expr {
+    let f_name = crate::def::prefix_dyn_id(tr);
+    let mut args: Vec<Expr> = Vec::new();
+    for t in typs.iter() {
+        args.extend(typ_to_ids(ctx, t));
+    }
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
+}
+
 pub(crate) fn primitive_id(ctx: &Ctx, name: &Primitive, typs: &Typs) -> Expr {
     let f_name = primitive_type_id(name);
     let mut args: Vec<Expr> = Vec::new();
@@ -533,6 +548,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
+        TypX::Dyn(..) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Primitive(Primitive::Array, _) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
         }
@@ -560,7 +576,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::PointeeMetadata(_) => Some(expr_has_typ(ctx, expr, typ)),
-        TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
+        TypX::Bool | TypX::Real | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
@@ -614,6 +630,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Real => Some(str_ident(crate::def::BOX_REAL)),
         TypX::Float(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
@@ -625,6 +642,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_box, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
         TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
@@ -650,6 +668,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Real => Some(str_ident(crate::def::UNBOX_REAL)),
         TypX::Float(_) => Some(str_ident(crate::def::UNBOX_INT)),
         TypX::Datatype(dt, _, _) => {
             if ctx.datatype_is_transparent[dt] {
@@ -658,6 +677,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
@@ -731,6 +751,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
+        crate::ast::Constant::Real(r) => air::ast_util::mk_real(r),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
@@ -846,6 +867,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
+    let exp_typ = &exp.typ;
 
     let result = match &exp.x {
         ExpX::Const(c) => {
@@ -1030,8 +1052,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 apply_range_fun(&f_name, &range, vec![expr])
             }
             UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::IntToReal => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                Arc::new(ExprX::Unary(air::ast::UnaryOp::ToReal, expr))
+            }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
+            }
+            UnaryOp::ToDyn => {
+                let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(exp_typ) else {
+                    panic!("ToDyn should have type TypX::Dyn: {:?}", exp_typ)
+                };
+                let inner_self_typ = undecorate_typ(&exp.typ); // strip off any Box, etc.
+                let mut args: Vec<Expr> = typ_to_ids(&inner_self_typ);
+                for t in typ_args.iter() {
+                    args.extend(typ_to_ids(t));
+                }
+                args.push(exp_to_expr(ctx, exp, expr_ctxt)?);
+                ident_apply(&crate::def::to_dyn(trait_path), &args)
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
@@ -1195,6 +1233,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 BinaryOp::Arith(ArithOp::Mul(_)) => {
                     ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh]))
                 }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Add) => {
+                    return Ok(str_apply(crate::def::RADD, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Sub) => {
+                    return Ok(str_apply(crate::def::RSUB, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Mul) => {
+                    return Ok(str_apply(crate::def::RMUL, &vec![lh, rh]));
+                }
+                BinaryOp::RealArith(crate::ast::RealArithOp::Div) => {
+                    return Ok(str_apply(crate::def::RDIV, &vec![lh, rh]));
+                }
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
@@ -1272,6 +1322,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
                             air::ast::BinaryOp::EuclideanMod
                         }
+                        BinaryOp::RealArith(..) => unreachable!(),
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
                         BinaryOp::ArrayIndex => unreachable!(),

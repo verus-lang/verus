@@ -3,6 +3,9 @@ name = "cargo-verus"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+integration-tests = []
+
 [dependencies]
 cargo_metadata = "0.18.1"
 rustc_tools_util = "0.3.0"
@@ -15,3 +18,12 @@ colored = "3.0.0"
 
 [build-dependencies]
 rustc_tools_util = "0.3.0"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+tempfile = "3"
+
+[[bin]]
+name = "fake-cargo"
+path = "tests/src/fake_cargo.rs"
+required-features = ["integration-tests"]
