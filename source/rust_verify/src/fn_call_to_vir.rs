@@ -241,6 +241,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     is_trait_default: true,
                 }
             }
+            ResolutionResult::Builtin(
+                rustc_trait_selection::traits::BuiltinImplSource::Object(_),
+            ) => {
+                // dyn T dispatch
+                vir::ast::CallTargetKind::Dynamic
+            }
             ResolutionResult::Builtin(b) => {
                 unsupported_err!(expr.span, format!("built-in instance {:?}", b));
             }

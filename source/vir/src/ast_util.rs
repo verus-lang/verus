@@ -140,6 +140,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
+        (TypX::Dyn(path1, ts1, _), TypX::Dyn(path2, ts2, _)) => {
+            path1 == path2 && n_types_equal(ts1, ts2)
+        }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
         (TypX::Decorate(d1, a1, t1), TypX::Decorate(d2, a2, t2)) => {
             d1 == d2
@@ -193,6 +196,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
         (TypX::Decorate(..), _) => false,
         (TypX::Boxed(_), _) => false,
@@ -916,6 +920,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Datatype(Dt::Path(path), typs, _) => format!(
             "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Dyn(path, typs, _) => format!(
+            "dyn {}{}",
             path_as_friendly_rust_name(path),
             if typs.len() > 0 {
                 format!("<{}>", typs_to_comma_separated_str(typs))

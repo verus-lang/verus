@@ -14,6 +14,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
+        TypX::Dyn(..) => false,
         TypX::Decorate(_, _, t) => auto_ext_equal_typ(ctx, t),
         TypX::Boxed(typ) => auto_ext_equal_typ(ctx, typ),
         TypX::TypParam(_) => false,
@@ -58,6 +59,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
+            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger

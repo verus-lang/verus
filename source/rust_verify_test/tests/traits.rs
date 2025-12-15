@@ -2624,12 +2624,11 @@ test_verify_one_file! {
         impl T for S { spec fn f() -> int { 200 } }
         impl<A: Sized> T for A { spec fn f() -> int { 100 } }
         proof fn test() {
-            assert(<S as T>::f() == 100);
-            assert(<S as T>::f() == 200); // FAILS
+            assert(<S as T>::f() == 200);
+            assert(<S as T>::f() == 100); // FAILS
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
-    // TODO: } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
