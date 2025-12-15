@@ -150,7 +150,7 @@ use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
-    VarIdentDisambiguate,
+    VarIdentDisambiguate, VariantCheck,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -1044,6 +1044,9 @@ impl<'a> Builder<'a> {
                 Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
                     let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
                     if mode == Mode::Spec {
+                        Ok((ComputedPlaceTyped::Partial(Some(fpt)), bb))
+                    } else if matches!(field_opr.check, VariantCheck::Union) {
+                        // TODO(new_mut_ref): not a good solution; revisit after enums are fixed
                         Ok((ComputedPlaceTyped::Partial(Some(fpt)), bb))
                     } else {
                         fpt.projections.push(ProjectionTyped::StructField(

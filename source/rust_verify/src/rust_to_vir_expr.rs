@@ -2345,7 +2345,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     str_ident(&variant.ident(tcx).as_str())
                 };
-                let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
+                let check =
+                    if adt_def.is_union() { VariantCheck::Union } else { VariantCheck::None };
                 FieldOpr {
                     datatype: Dt::Path(datatype_path),
                     variant: variant_name,
@@ -3751,7 +3752,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
 }
 
 /// Like the above, but also cancels with two-phase borrows
-/// It's _probably_ okay to always call this, but it's good to be caution about two-phase
+/// It's _probably_ okay to always call this, but it's good to be cautious about two-phase
 pub(crate) fn deref_mut_allow_cancelling_two_phase(
     bctx: &BodyCtxt,
     span: Span,

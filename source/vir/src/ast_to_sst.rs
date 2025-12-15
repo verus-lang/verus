@@ -1532,38 +1532,33 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
-        ExprX::UnaryOpr(op, expr) => {
-            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::UnaryOpr(op, arg) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = unwrap_or_return_never!(exp, stms);
-            match (op, state.checking_recommends(ctx)) {
-                (
-                    UnaryOpr::Field(FieldOpr {
-                        datatype,
-                        variant,
-                        field: _,
-                        get_variant: _,
-                        check: VariantCheck::Yes,
-                    }),
-                    false,
-                ) => {
-                    let unary = UnaryOpr::IsVariant {
-                        datatype: datatype.clone(),
-                        variant: variant.clone(),
-                    };
-                    let is_variant = ExpX::UnaryOpr(unary, exp.clone());
-                    let is_variant =
-                        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
-                    let error = crate::messages::error(
-                        &expr.span,
-                        "requirement not met: to access this field, the union must be in the correct variant",
-                    );
-                    let assert = StmX::Assert(state.next_assert_id(), Some(error), is_variant);
+            let (check, op) = match op {
+                UnaryOpr::Field(field_opr) => match field_opr.check {
+                    VariantCheck::Union => {
+                        let (condition, msg) = crate::place_preconditions::sst_field_check(
+                            &expr.span, &exp, field_opr,
+                        );
+                        let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+                        (Some((condition, msg)), UnaryOpr::Field(field_opr))
+                    }
+                    VariantCheck::None => (None, op.clone()),
+                },
+                _ => (None, op.clone()),
+            };
+            if let Some((condition, msg)) = check {
+                if !state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
                     let assert = Spanned::new(expr.span.clone(), assert);
                     stms.push(assert);
                 }
-                _ => {}
+                let assume = StmX::Assume(condition);
+                let assume = Spanned::new(expr.span.clone(), assume);
+                stms.push(assume);
             }
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op.clone(), exp)))))
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op, exp)))))
         }
         ExprX::Binary(op, e1, e2) => {
             // Handle short-circuiting, when applicable.
@@ -2763,7 +2758,7 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
 /// Returns two expressions:
 /// (i) the place as sst "loc" (l-value) which MUST NOT depend on any mutable vars.
 /// (ii) the evaluation of the place (by definition, this is dependent
-/// on the mutable var in question)
+/// on the mutable var in question, but it must not depend on any other mutable vars)
 fn place_to_exp_pair(
     ctx: &Ctx,
     state: &mut State,
@@ -2789,17 +2784,35 @@ fn place_to_exp_pair_rec(
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            // TODO(new_mut_ref): VariantCheck here?
-            let exps = match exps {
-                None => None,
-                Some((e1, e2)) => {
-                    let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
-                    let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e2));
-                    Some((e1, e2))
-                }
+            let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            let Some((e1, e2)) = exps else {
+                return Ok((stms, None));
             };
-            Ok((stms, exps))
+
+            let check = match field_opr.check {
+                VariantCheck::Union => {
+                    let (condition, msg) =
+                        crate::place_preconditions::sst_field_check(&place.span, &e2, field_opr);
+                    Some((condition, msg))
+                }
+                VariantCheck::None => None,
+            };
+            if let Some((condition, msg)) = check {
+                if !state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+                    let assert = Spanned::new(place.span.clone(), assert);
+                    stms.push(assert);
+                }
+                let assume = StmX::Assume(condition);
+                let assume = Spanned::new(place.span.clone(), assume);
+                stms.push(assume);
+            }
+
+            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+
+            let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
+            let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
+            Ok((stms, Some((e1, e2))))
         }
         PlaceX::DerefMut(p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;

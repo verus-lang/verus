@@ -440,9 +440,10 @@ pub enum UnaryOp {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub enum VariantCheck {
+    /// No check necessary
     None,
-    //Recommends,
-    Yes,
+    /// Check is required because the given field is from a union
+    Union,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -1151,7 +1152,7 @@ pub type Place = Arc<SpannedTyped<PlaceX>>;
 pub type Places = Arc<Vec<Place>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PlaceX {
-    /// TODO(new_mut_ref): Decide: is this only for single-variant structs? What about unions?
+    /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
     DerefMut(Place),

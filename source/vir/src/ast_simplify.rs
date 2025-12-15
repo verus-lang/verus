@@ -351,10 +351,17 @@ fn simplify_one_place(
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            if !matches!(field_opr.check, VariantCheck::None) {
-                todo!(); // TODO(new_mut_ref)
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            match field_opr.check {
+                VariantCheck::None => {}
+                VariantCheck::Union => {
+                    let p1_expr = place_to_expr(&p1);
+                    let assert_stmt =
+                        crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
+                    stmts.push(assert_stmt);
+                }
             }
-            let (stmts, p1) = place_to_pure_place(state, p);
+            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2)
