@@ -430,6 +430,54 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
