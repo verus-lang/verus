@@ -6,6 +6,7 @@ use core::iter::Iterator;
 
 verus_! {
 
+/*
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
@@ -24,13 +25,14 @@ pub trait ExIterator {
 
     fn next(&mut self) -> Option<Self::Item>;
 }
+*/
 
-/*
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
 pub trait ExIterator {
-    // REVIEW: Should I have to add this here when it already exists in the original trait?
-    //         (without it, the mentions of Self::Item below cause errors)
+    // TODO: Need to check for this ExternalTraitSpecificationFor and complain if it's omitted
+    type ExternalTraitSpecificationFor: Iterator;
+
     type Item;
 
     /// This iterator obeys the specifications below on `next`
@@ -99,7 +101,7 @@ pub struct VerusForLoopIterator<'a, I: Iterator> {
 impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
-        <I as IteratorSpec>::seq(self.snapshot@)
+        self.snapshot@.seq()
     }
 
     /// These properties help maintain the properties in wf,
@@ -180,9 +182,8 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
     }
 }
 
-*/
 
-
+/*
 pub struct VerusForLoopIterator<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
@@ -226,4 +227,5 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         None
     }
 }
+*/
 } // verus!

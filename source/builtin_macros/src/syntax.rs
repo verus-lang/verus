@@ -3564,7 +3564,7 @@ impl Visitor {
         //             'label: loop
         //                  invariant_except_break
         //                     #[verus::internal(auto_decreases)]
-        //                     y.iter.decrease() is Some,
+        //                     y.iter.decrease() is Some,   // TODO: Use the method version
         //                  invariant
         //                     // We track the continuitiy of the snapshot and the initial iterator-creation expression
         //                     y.snapshot == VERUS_old_snap,
@@ -3579,6 +3579,7 @@ impl Visitor {
         //                     y.wf(),
         //                     ({ 
         //                         // Grab the next val for (possible) use in the user-provided inv
+// TODO: Use .view()
         //                         let x = if y.index@ < y.seq().len() { 
         //                                     y.seq()[y.index@] 
         //                                 } else { vstd::pervasive::arbitrary() };
