@@ -41,4 +41,4 @@ elif [ "$1" = "--debug" ]; then
     PROFILE=debug
 fi
 
-VERUS_Z3_PATH="$SOURCE/z3" "$SOURCE"/target-verus/$PROFILE/verus --no-lifetime "$@"
+VERUS_Z3_PATH="$SOURCE/z3" "$SOURCE"/target-verus/$PROFILE/verus "$@"

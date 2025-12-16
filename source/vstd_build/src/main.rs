@@ -33,6 +33,7 @@ fn main() {
     let mut trace = false;
     let mut log_all = false;
     let mut no_lifetime = false;
+    let mut expand_errors = false;
     let mut no_solver_version_check = false;
     for arg in args {
         if arg == "--release" {
@@ -51,6 +52,8 @@ fn main() {
             log_all = true;
         } else if arg == "--no-lifetime" {
             no_lifetime = true;
+        } else if arg == "--expand-errors" {
+            expand_errors = true;
         } else if arg == "--no-solver-version-check" {
             no_solver_version_check = true;
         } else {
@@ -117,6 +120,9 @@ fn main() {
     }
     if no_lifetime {
         child_args.push("--no-lifetime".to_string());
+    }
+    if expand_errors {
+        child_args.push("--expand-errors".to_string());
     }
     if no_solver_version_check {
         child_args.push("-V".to_string());
