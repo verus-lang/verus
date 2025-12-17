@@ -96,6 +96,37 @@ Thus, we need to treat the resolution of `x` independently of the resolution of 
 This is in contrast with fields, where resolving `x` is equivalent to resolving all the
 fields of `x`.
 
+### Working with enums
+
+In order to resolve the field of an enum (e.g., `opt->Some_0` for a varible `opt: Option<T>`),
+the resolution needs to be conditional on the variant:
+
+```
+assume(opt is Some ==> has_resolved(opt->Some_0)
+```
+
+Since resolution is explicitly conditional, we don't need to account for variants
+in the initialization analysis; when an enum place is initialized, we then consider all
+fields of the enum to be initialized (until they are subsequently moved from).
+
+More formally, we can define a notion of "conditional initialization": a place is
+conditionally initialized if "parents being in the correct variant ==> place is initialized".
+
+Example:
+
+```
+let x: Result<A, B> = Ok(foo);
+```
+
+There are two fields of interest, `x->Ok_0` and `x->Err_0`. In the above statement, *both*
+of these fields are considered "conditionally initialized"
+
+ * Ok_0 is "conditionally initialized" because it's "really" initialized
+ * Err_0 is "conditionally initialized" in a vacuous sense because `x` is not in the Err state
+
+Thus, we can compute the "conditionally initialized" places with a straightforward
+analysis that treats enums like normal structs.
+
 ### Notes about scopes
 
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
@@ -149,8 +180,8 @@ We place the declaration `let tmp;` at a larger scope.
 use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
-    VarIdentDisambiguate, VariantCheck,
+    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
+    VarIdent, VarIdentDisambiguate, VariantCheck,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -189,8 +220,10 @@ pub(crate) fn infer_resolution(
 #[derive(Debug)]
 enum PlaceTree {
     Leaf(Typ),
-    /// Use None for ghost places; all non-ghost fields should be filled in
-    Struct(Typ, Dt, Vec<Option<PlaceTree>>),
+    /// We have 1 child for every non-ghost field. Use None in place of the ghost fields.
+    /// Outer vec corresponds to variants, inner vec to fields of that variant.
+    /// Use the same ordering as on the datatype.
+    Struct(Typ, Dt, Vec<Vec<Option<PlaceTree>>>),
     MutRef(Typ, Box<PlaceTree>),
 }
 
@@ -254,7 +287,7 @@ struct FlattenedPlaceTyped {
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Projection {
-    StructField(usize),
+    StructField((usize, usize)),
     DerefMut,
 }
 
@@ -1343,41 +1376,22 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                let is_irrefutable = match dt {
-                    Dt::Path(path) => {
-                        let datatype = &datatypes[path];
-                        datatype.x.variants.len() == 1
-                    }
-                    Dt::Tuple(_) => true,
-                };
+                for binder in patterns.iter() {
+                    let field_typ = binder.a.typ.clone();
+                    let proj = ProjectionTyped::StructField(
+                        FieldOpr {
+                            datatype: dt.clone(),
+                            variant: variant.clone(),
+                            field: binder.name.clone(),
+                            get_variant: false,
+                            check: crate::ast::VariantCheck::None,
+                        },
+                        field_typ,
+                    );
 
-                if is_irrefutable {
-                    for binder in patterns.iter() {
-                        let field_typ = binder.a.typ.clone();
-                        let proj = ProjectionTyped::StructField(
-                            FieldOpr {
-                                datatype: dt.clone(),
-                                variant: variant.clone(),
-                                field: binder.name.clone(),
-                                get_variant: false,
-                                check: crate::ast::VariantCheck::None,
-                            },
-                            field_typ,
-                        );
-
-                        projs.push(proj);
-                        moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
-                        projs.pop();
-                    }
-                } else {
-                    // TODO(new_mut_ref) this is not quite right, need to check if anything
-                    // is actually bound in here, irrefutability issues, Copy,
-                    // what if there's a mixture of muts and moves
-                    if crate::patterns::pattern_has_move(pattern, modes) {
-                        out.push((projs.clone(), ByRef::No));
-                    } else if crate::patterns::pattern_has_mut(pattern) {
-                        out.push((projs.clone(), ByRef::MutRef));
-                    }
+                    projs.push(proj);
+                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
+                    projs.pop();
                 }
             }
             PatternX::Or(_, _) => {
@@ -1482,30 +1496,37 @@ impl<'a> LocalCollection<'a> {
                             *tree = PlaceTree::Struct(
                                 typ.clone(),
                                 dt.clone(),
-                                (0..*n)
-                                    .map(|i| Some(PlaceTree::Leaf(typ_args[i].clone())))
-                                    .collect(),
+                                vec![
+                                    (0..*n)
+                                        .map(|i| Some(PlaceTree::Leaf(typ_args[i].clone())))
+                                        .collect(),
+                                ],
                             );
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
-                            let fields = variant
-                                .fields
+                            let fields = datatype
+                                .x
+                                .variants
                                 .iter()
-                                .map(|f| {
-                                    if f.a.1 == Mode::Spec {
-                                        None
-                                    } else {
-                                        Some(PlaceTree::Leaf(subst_typ_for_datatype(
-                                            &datatype.x.typ_params,
-                                            typ_args,
-                                            &f.a.0,
-                                        )))
-                                    }
+                                .map(|variant| {
+                                    variant
+                                        .fields
+                                        .iter()
+                                        .map(|f| {
+                                            if f.a.1 == Mode::Spec {
+                                                None
+                                            } else {
+                                                Some(PlaceTree::Leaf(subst_typ_for_datatype(
+                                                    &datatype.x.typ_params,
+                                                    typ_args,
+                                                    &f.a.0,
+                                                )))
+                                            }
+                                        })
+                                        .collect::<Vec<Option<PlaceTree>>>()
                                 })
-                                .collect();
+                                .collect::<Vec<Vec<Option<PlaceTree>>>>();
                             *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
                         }
                     },
@@ -1519,19 +1540,19 @@ impl<'a> LocalCollection<'a> {
 
             let projection = match projection_typed {
                 ProjectionTyped::StructField(field_opr, _typ) => {
-                    Projection::StructField(field_opr_to_index(field_opr, datatypes))
+                    Projection::StructField(field_opr_to_indices(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
             };
             output_projections.push(projection);
 
             match &projection {
-                Projection::StructField(field_idx) => match tree {
+                Projection::StructField((variant_idx, field_idx)) => match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
                     PlaceTree::Struct(_, _, subtrees) => {
                         // If this unwrap fails, it means we are improperly trying to
                         // manipulate a ghost place
-                        tree = subtrees[*field_idx].as_mut().unwrap();
+                        tree = subtrees[*variant_idx][*field_idx].as_mut().unwrap();
                     }
                     PlaceTree::MutRef(..) => {
                         panic!(
@@ -1565,22 +1586,24 @@ impl<'a> LocalCollection<'a> {
         let mut tree = &self.locals[fp.local].tree;
         for projection in fp.projections.iter() {
             match projection {
-                Projection::StructField(idx) => {
+                Projection::StructField((variant_idx, field_idx)) => {
                     let (dt, inner_trees) = match tree {
                         PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
                         _ => unreachable!(),
                     };
-                    let inner_tree = inner_trees[*idx].as_ref().unwrap();
+                    let inner_tree = inner_trees[*variant_idx][*field_idx].as_ref().unwrap();
                     let field_opr = match dt {
-                        Dt::Tuple(n) => crate::ast_util::mk_tuple_field_opr(*n, *idx),
+                        Dt::Tuple(n) => {
+                            assert!(*variant_idx == 0);
+                            crate::ast_util::mk_tuple_field_opr(*n, *field_idx)
+                        }
                         Dt::Path(path) => {
                             let datatype = &self.datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
+                            let variant = &datatype.x.variants[*variant_idx];
                             FieldOpr {
                                 datatype: dt.clone(),
                                 variant: variant.name.clone(),
-                                field: variant.fields[*idx].name.clone(),
+                                field: variant.fields[*field_idx].name.clone(),
                                 get_variant: false,
                                 check: crate::ast::VariantCheck::None,
                             }
@@ -1635,11 +1658,13 @@ impl<'a> LocalCollection<'a> {
                 output.push(cur.clone());
             }
             PlaceTree::Struct(_t, _, children) => {
-                for (f, child) in children.iter().enumerate() {
-                    if let Some(child) = child {
-                        cur.projections.push(Projection::StructField(f));
-                        Self::traverse_rec(child, cur, output, go_inside_muts);
-                        cur.projections.pop();
+                for (v, variant_children) in children.iter().enumerate() {
+                    for (f, child) in variant_children.iter().enumerate() {
+                        if let Some(child) = child {
+                            cur.projections.push(Projection::StructField((v, f)));
+                            Self::traverse_rec(child, cur, output, go_inside_muts);
+                            cur.projections.pop();
+                        }
                     }
                 }
             }
@@ -1663,18 +1688,23 @@ fn undecorate_box_trk_decorations(t: &Typ) -> &Typ {
     }
 }
 
-fn field_opr_to_index(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> usize {
+fn field_opr_to_indices(
+    field_opr: &FieldOpr,
+    datatypes: &HashMap<Path, Datatype>,
+) -> (usize, usize) {
     match &field_opr.datatype {
         Dt::Tuple(n) => {
             let p = field_opr.field.parse::<usize>().unwrap();
             assert!(p < *n);
-            p
+            (0, p)
         }
         Dt::Path(path) => {
             let datatype = &datatypes[path];
-            assert!(datatype.x.variants.len() == 1);
-            let variant = &datatype.x.variants[0];
-            variant.fields.iter().position(|f| f.name == field_opr.field).unwrap()
+            let variant_idx =
+                datatype.x.variants.iter().position(|v| v.name == field_opr.variant).unwrap();
+            let variant = &datatype.x.variants[variant_idx];
+            let field_idx = variant.fields.iter().position(|f| f.name == field_opr.field).unwrap();
+            (variant_idx, field_idx)
         }
     }
 }
@@ -2125,18 +2155,18 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                 };
                 (".*".to_string(), inner_tree)
             }
-            Projection::StructField(idx) => {
+            Projection::StructField((variant_idx, field_idx)) => {
                 let (dt, inner_tree) = match tree {
-                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*idx]),
+                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*variant_idx][*field_idx]),
                     _ => unreachable!(),
                 };
                 let x = match dt {
                     Dt::Tuple(_) => {
-                        format!(".{:}", idx)
+                        format!(".{:}", field_idx)
                     }
                     Dt::Path(p) => {
                         let datatype = &locals.datatypes[p];
-                        format!(".{:}", datatype.x.variants[0].fields[*idx].name)
+                        format!(".{:}", datatype.x.variants[*variant_idx].fields[*field_idx].name)
                     }
                 };
                 (x, inner_tree.as_ref().unwrap())
@@ -2152,7 +2182,9 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct InitializationPossibilities {
-    /// Is it possible to reach the given program point when the given place uninitialized?
+    /// Is it possible to reach the given program point with the given place
+    /// not initialized?
+    /// (Using the definition of "conditionally initialized" described above)
     can_be_uninit: bool,
 }
 
@@ -2561,17 +2593,55 @@ fn filter_and_make_assumes(
         .collect()
 }
 
+/// Returns:
+/// assume(all IsVariant conditions needed for Place to be valid ==> HasResolved(Place))
 fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
-    let e = SpannedTyped::new(
-        &ast_place.span,
-        &ast_place.typ,
-        ExprX::ReadPlace(
-            ast_place.clone(),
-            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
-        ),
-    );
-    SpannedTyped::new(&ast_place.span, &unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
+    let e = crate::ast_util::place_to_spec_expr(&ast_place);
+    // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+    let has_resolvedx = ExprX::UnaryOpr(UnaryOpr::HasResolved(ast_place.typ.clone()), e);
+    let has_resolved = SpannedTyped::new(&ast_place.span, &bool_typ(), has_resolvedx);
+    let conditional_has_resolved =
+        condition_on_enum_variants(&has_resolved, &ast_place, &cfg.locals.datatypes);
+    crate::ast_util::mk_assume(&ast_place.span, &conditional_has_resolved)
+}
+
+/// Returns:
+/// `all IsVariant conditions needed for Place to be valid ==> bool_expr`
+fn condition_on_enum_variants(
+    bool_expr: &Expr,
+    place: &Place,
+    datatypes: &HashMap<Path, Datatype>,
+) -> Expr {
+    match &place.x {
+        PlaceX::Local(_l) => bool_expr.clone(),
+        PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::Field(field_opr, p) => {
+            let is_irref = match &field_opr.datatype {
+                Dt::Tuple(_) => true,
+                Dt::Path(path) => datatypes[path].x.variants.len() == 1,
+            };
+            let conditioned_bool_expr = if is_irref {
+                bool_expr
+            } else {
+                let e0 = crate::ast_util::place_to_spec_expr(p);
+                let is_variantx = ExprX::UnaryOpr(
+                    UnaryOpr::IsVariant {
+                        datatype: field_opr.datatype.clone(),
+                        variant: field_opr.variant.clone(),
+                    },
+                    e0,
+                );
+                let is_variant = SpannedTyped::new(&place.span, &bool_typ(), is_variantx);
+                &crate::ast_util::mk_implies(&place.span, &is_variant, bool_expr)
+            };
+            condition_on_enum_variants(conditioned_bool_expr, p, datatypes)
+        }
+        _ => {
+            // We only have to handle places produced by `to_ast_place`
+            panic!("condition_on_enum_variants got unexpected Place kind")
+        }
+    }
 }
 
 fn exprs_to_stmts(exprs: Vec<Expr>) -> Vec<Stmt> {

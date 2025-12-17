@@ -4,7 +4,6 @@ use crate::ast_util::{conjoin, mk_eq, mk_ineq};
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -197,34 +196,6 @@ fn pattern_to_exprs_rec(
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
     }
-}
-
-pub(crate) fn pattern_has_move(pattern: &Pattern, modes: &HashMap<VarIdent, Mode>) -> bool {
-    match &pattern.x {
-        PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => binding_is_move(binding, modes),
-        PatternX::Binding { binding, sub_pat } => {
-            binding_is_move(binding, modes) || pattern_has_move(sub_pat, modes)
-        }
-        PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                if pattern_has_move(&binder.a, modes) {
-                    return true;
-                }
-            }
-            false
-        }
-        PatternX::Or(pat1, pat2) => pattern_has_move(pat1, modes) || pattern_has_move(pat2, modes),
-        PatternX::Expr(_e) => false,
-        PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p, modes),
-    }
-}
-
-fn binding_is_move(binding: &PatternBinding, modes: &HashMap<VarIdent, Mode>) -> bool {
-    !binding.copy
-        && matches!(binding.by_ref, ByRef::No)
-        && !matches!(modes[&binding.name], Mode::Spec)
 }
 
 pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
