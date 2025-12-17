@@ -643,7 +643,7 @@ impl<'a> Builder<'a> {
                 }
 
                 for p in two_phase_delayed_mutations.into_iter() {
-                    // Convenentially, we can just put these mutations after the Ctor call itself
+                    // Conveniently, we can just put these mutations after the Ctor call itself
                     // since the Ctor is a trivial operation, i.e., we don't need a special
                     // place for the "post_args" like we do with calls.
                     self.push_instruction(
