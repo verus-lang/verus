@@ -550,6 +550,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     )?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
+    vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
     Ok(Arc::new(vir))
 }

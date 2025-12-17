@@ -36,6 +36,9 @@ pub(crate) enum TypX {
     TraitSelf,
     Tuple(Vec<Typ>),
     Datatype(Id, Vec<Id>, Vec<Typ>),
+    Dyn(Id, Vec<Typ>),
+    Slice(Typ),
+    StrSlice,
     Projection {
         self_typ: Typ,
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)

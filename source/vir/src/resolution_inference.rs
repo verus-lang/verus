@@ -96,6 +96,37 @@ Thus, we need to treat the resolution of `x` independently of the resolution of 
 This is in contrast with fields, where resolving `x` is equivalent to resolving all the
 fields of `x`.
 
+### Working with enums
+
+In order to resolve the field of an enum (e.g., `opt->Some_0` for a varible `opt: Option<T>`),
+the resolution needs to be conditional on the variant:
+
+```
+assume(opt is Some ==> has_resolved(opt->Some_0)
+```
+
+Since resolution is explicitly conditional, we don't need to account for variants
+in the initialization analysis; when an enum place is initialized, we then consider all
+fields of the enum to be initialized (until they are subsequently moved from).
+
+More formally, we can define a notion of "conditional initialization": a place is
+conditionally initialized if "parents being in the correct variant ==> place is initialized".
+
+Example:
+
+```
+let x: Result<A, B> = Ok(foo);
+```
+
+There are two fields of interest, `x->Ok_0` and `x->Err_0`. In the above statement, *both*
+of these fields are considered "conditionally initialized"
+
+ * Ok_0 is "conditionally initialized" because it's "really" initialized
+ * Err_0 is "conditionally initialized" in a vacuous sense because `x` is not in the Err state
+
+Thus, we can compute the "conditionally initialized" places with a straightforward
+analysis that treats enums like normal structs.
+
 ### Notes about scopes
 
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
@@ -149,8 +180,8 @@ We place the declaration `let tmp;` at a larger scope.
 use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnfinalizedReadKind, VarIdent,
-    VarIdentDisambiguate,
+    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
+    VarIdent, VarIdentDisambiguate, VariantCheck,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -189,8 +220,10 @@ pub(crate) fn infer_resolution(
 #[derive(Debug)]
 enum PlaceTree {
     Leaf(Typ),
-    /// Use None for ghost places; all non-ghost fields should be filled in
-    Struct(Typ, Dt, Vec<Option<PlaceTree>>),
+    /// We have 1 child for every non-ghost field. Use None in place of the ghost fields.
+    /// Outer vec corresponds to variants, inner vec to fields of that variant.
+    /// Use the same ordering as on the datatype.
+    Struct(Typ, Dt, Vec<Vec<Option<PlaceTree>>>),
     MutRef(Typ, Box<PlaceTree>),
 }
 
@@ -254,7 +287,7 @@ struct FlattenedPlaceTyped {
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Projection {
-    StructField(usize),
+    StructField((usize, usize)),
     DerefMut,
 }
 
@@ -358,19 +391,21 @@ struct LoopEntry {
 #[derive(Clone, Debug)]
 enum ComputedPlaceTyped {
     /// Subfield of some local
-    OfLocal(FlattenedPlaceTyped),
-    /// Subfield of some local, at a *ghost place*
-    /// The place given here is the most-specific non-spec place, e.g., if the user writes
-    /// x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar` is spec-mode, then
-    /// Return the place `x.foo`. If the local var itself is spec-mode, then None.
-    /// (note: I think we will generalize this later for other cases where we are mutating
-    /// a place more specific than what we track in the analysis)
-    OfGhost(Option<FlattenedPlaceTyped>),
+    Exact(FlattenedPlaceTyped),
+    /// Subfield of some local, at a granularity that we don't track
+    /// e.g. a ghost place (ghost local or ghost field), or an index Place
+    /// The place given here is the most-specific non-spec place that we might do analysis over.
+    /// Examples:
+    ///   * If the user writes x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar`
+    ///     is spec-mode, then return the place `x.foo`.
+    ///   * If the local var itself is spec-mode, then None.
+    ///   * If the user writes `x.foo[i]` then return `x.foo`
+    Partial(Option<FlattenedPlaceTyped>),
 }
 
 enum ComputedPlace {
-    OfLocal(FlattenedPlace),
-    OfGhost(Option<FlattenedPlace>),
+    Exact(FlattenedPlace),
+    Partial(Option<FlattenedPlace>),
 }
 
 /// Compute the CFG for the given expression.
@@ -592,10 +627,13 @@ impl<'a> Builder<'a> {
 
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
                     if self.is_move(unfinal_read_kind) {
-                        if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                            // This case should be unreachable because we already checked the ReadKind
+                        if matches!(p, ComputedPlaceTyped::Partial(..)) {
+                            // TODO(new_mut_ref): we need careful handling here; this case
+                            // should be impossible if the source program is well-formed,
+                            // but the problem is we haven't run lifetime  checking yet.
+                            // So we might get `try to move from foo[i]` error here or something.
                             panic!(
-                                "Verus Internal State: inconsistent state, move out of ghost place"
+                                "Verus Internal State: inconsistent state, move out of ghost place or index"
                             )
                         }
                         if let Some(mut p) = p.clone().get_place_for_move() {
@@ -604,7 +642,7 @@ impl<'a> Builder<'a> {
                                 field_name,
                                 &self.locals.datatypes,
                             ));
-                            let p = self.locals.add_place(p, false);
+                            let p = self.locals.add_place(&p, false);
                             self.push_instruction(
                                 bb,
                                 AstPosition::After(place.span.id),
@@ -638,7 +676,7 @@ impl<'a> Builder<'a> {
                 }
 
                 for p in two_phase_delayed_mutations.into_iter() {
-                    // Convenentially, we can just put these mutations after the Ctor call itself
+                    // Conveniently, we can just put these mutations after the Ctor call itself
                     // since the Ctor is a trivial operation, i.e., we don't need a special
                     // place for the "post_args" like we do with calls.
                     self.push_instruction(
@@ -750,7 +788,7 @@ impl<'a> Builder<'a> {
                             typ: bound_var.typ,
                             projections: vec![],
                         };
-                        let fp = self.locals.add_place(fpt, false);
+                        let fp = self.locals.add_place(&fpt, false);
                         self.push_instruction(
                             arm_bb,
                             AstPosition::Before(arm.x.body.span.id),
@@ -896,7 +934,7 @@ impl<'a> Builder<'a> {
                 let (p, bb) = self.build_place_and_intern(place, bb)?;
                 let bb = self.build(rhs, bb)?;
                 match p {
-                    ComputedPlace::OfLocal(p) => {
+                    ComputedPlace::Exact(p) => {
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
@@ -907,14 +945,14 @@ impl<'a> Builder<'a> {
                             },
                         );
                     }
-                    ComputedPlace::OfGhost(Some(p)) => {
+                    ComputedPlace::Partial(Some(p)) => {
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::Mutate(p),
                         );
                     }
-                    ComputedPlace::OfGhost(None) => {}
+                    ComputedPlace::Partial(None) => {}
                 }
                 Ok(bb)
             }
@@ -937,12 +975,17 @@ impl<'a> Builder<'a> {
             ExprX::ReadPlace(p, unfinal_read_kind) => {
                 let (p, bb) = self.build_place_typed(p, bb)?;
                 if self.is_move(unfinal_read_kind) {
-                    if matches!(p, ComputedPlaceTyped::OfGhost(..)) {
-                        // This case should be unreachable because we already checked the ReadKind
-                        panic!("Verus Internal State: inconsistent state, move out of ghost place")
+                    if matches!(p, ComputedPlaceTyped::Partial(..)) {
+                        // TODO(new_mut_ref): we need careful handling here; this case
+                        // should be impossible if the source program is well-formed,
+                        // but the problem is we haven't run lifetime  checking yet.
+                        // So we might get `try to move from foo[i]` error here or something.
+                        panic!(
+                            "Verus Internal State: inconsistent state, move out of ghost place or index"
+                        )
                     }
                     if let Some(p) = p.get_place_for_move() {
-                        let p = self.locals.add_place(p, false);
+                        let p = self.locals.add_place(&p, false);
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
@@ -993,7 +1036,7 @@ impl<'a> Builder<'a> {
                         typ: bound_var.typ,
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(fpt, false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         AstPosition::After(stmt.span.id),
@@ -1031,53 +1074,55 @@ impl<'a> Builder<'a> {
     ) -> Result<(ComputedPlaceTyped, BBIndex), ()> {
         match &place.x {
             PlaceX::Field(field_opr, p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
+                Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
                     let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
                     if mode == Mode::Spec {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
+                        Ok((ComputedPlaceTyped::Partial(Some(fpt)), bb))
+                    } else if matches!(field_opr.check, VariantCheck::Union) {
+                        // TODO(new_mut_ref): not a good solution; revisit after enums are fixed
+                        Ok((ComputedPlaceTyped::Partial(Some(fpt)), bb))
                     } else {
                         fpt.projections.push(ProjectionTyped::StructField(
                             field_opr.clone(),
                             place.typ.clone(),
                         ));
-                        Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                        Ok((ComputedPlaceTyped::Exact(fpt), bb))
                     }
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
+                Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
+                    Ok((ComputedPlaceTyped::Partial(fpt), bb))
                 }
                 Err(()) => Err(()),
             },
             PlaceX::DerefMut(p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::OfLocal(mut fpt), bb)) => {
+                Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
                     fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
-                Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
+                Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
+                    Ok((ComputedPlaceTyped::Partial(fpt), bb))
                 }
                 Err(()) => Err(()),
             },
             PlaceX::Local(var) => {
                 let mode = self.locals.var_modes[var];
                 if mode == Mode::Spec {
-                    Ok((ComputedPlaceTyped::OfGhost(None), bb))
+                    Ok((ComputedPlaceTyped::Partial(None), bb))
                 } else {
                     let fpt = FlattenedPlaceTyped {
                         local: LocalName::Named(var.clone()),
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::Temporary(e) => {
+                let bb = self.build(e, bb)?;
                 let mode = self.locals.temporary_modes[&place.span.id];
                 if mode == Mode::Spec {
-                    // TODO(new_mut_ref): should build here
-                    Ok((ComputedPlaceTyped::OfGhost(None), bb))
+                    Ok((ComputedPlaceTyped::Partial(None), bb))
                 } else {
-                    let bb = self.build(e, bb)?;
                     let temp_name = self.locals.new_temp_name(place.span.id);
 
                     let fpt = FlattenedPlaceTyped {
@@ -1085,14 +1130,14 @@ impl<'a> Builder<'a> {
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(fpt.clone(), false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         AstPosition::AfterTempAssignment(place.span.id),
                         InstructionKind::Overwrite(fp),
                     );
 
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb))
+                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => {
@@ -1100,19 +1145,16 @@ impl<'a> Builder<'a> {
                 self.build_place_typed(p, bb)
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Spec) => {
-                // wrap in OfGhost
-                match self.build_place_typed(p, bb) {
-                    Ok((ComputedPlaceTyped::OfLocal(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(Some(fpt)), bb))
-                    }
-                    Ok((ComputedPlaceTyped::OfGhost(fpt), bb)) => {
-                        Ok((ComputedPlaceTyped::OfGhost(fpt), bb))
-                    }
-                    Err(()) => Err(()),
-                }
+                let (cpt, bb) = self.build_place_typed(p, bb)?;
+                Ok((cpt.to_partial(), bb))
             }
             PlaceX::WithExpr(..) => {
                 panic!("Verus Internal Error: unexpected PlaceX::WithExpr");
+            }
+            PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
+                let (cpt, bb) = self.build_place_typed(p, bb)?;
+                let bb = self.build(idx, bb)?;
+                Ok((cpt.to_partial(), bb))
             }
         }
     }
@@ -1138,7 +1180,7 @@ impl<'a> Builder<'a> {
                     typ: bv.typ.clone(),
                     projections: vec![],
                 };
-                self.locals.add_place(fpt, false)
+                self.locals.add_place(&fpt, false)
             })
             .collect()
     }
@@ -1151,7 +1193,7 @@ impl<'a> Builder<'a> {
         position: AstPosition,
     ) {
         match cpt {
-            ComputedPlaceTyped::OfLocal(fpt) => {
+            ComputedPlaceTyped::Exact(fpt) => {
                 let places = moves_and_muts_for_place_being_matched(
                     pattern,
                     &fpt,
@@ -1159,7 +1201,7 @@ impl<'a> Builder<'a> {
                     &self.locals.var_modes,
                 );
                 for (fpt, by_ref) in places.into_iter() {
-                    let fp = self.locals.add_place(fpt, false);
+                    let fp = self.locals.add_place(&fpt, false);
                     self.push_instruction(
                         bb,
                         position,
@@ -1171,7 +1213,13 @@ impl<'a> Builder<'a> {
                     );
                 }
             }
-            ComputedPlaceTyped::OfGhost(_fpt) => {
+            ComputedPlaceTyped::Partial(Some(fpt)) => {
+                if crate::patterns::pattern_has_mut(pattern) {
+                    let fp = self.locals.add_place(fpt, false);
+                    self.push_instruction(bb, position, InstructionKind::Mutate(fp));
+                }
+            }
+            ComputedPlaceTyped::Partial(None) => {
                 if crate::patterns::pattern_has_mut(pattern) {
                     // Mode-checking should disallow mutable references to ghost places
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
@@ -1328,41 +1376,22 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                let is_irrefutable = match dt {
-                    Dt::Path(path) => {
-                        let datatype = &datatypes[path];
-                        datatype.x.variants.len() == 1
-                    }
-                    Dt::Tuple(_) => true,
-                };
+                for binder in patterns.iter() {
+                    let field_typ = binder.a.typ.clone();
+                    let proj = ProjectionTyped::StructField(
+                        FieldOpr {
+                            datatype: dt.clone(),
+                            variant: variant.clone(),
+                            field: binder.name.clone(),
+                            get_variant: false,
+                            check: crate::ast::VariantCheck::None,
+                        },
+                        field_typ,
+                    );
 
-                if is_irrefutable {
-                    for binder in patterns.iter() {
-                        let field_typ = binder.a.typ.clone();
-                        let proj = ProjectionTyped::StructField(
-                            FieldOpr {
-                                datatype: dt.clone(),
-                                variant: variant.clone(),
-                                field: binder.name.clone(),
-                                get_variant: false,
-                                check: crate::ast::VariantCheck::None,
-                            },
-                            field_typ,
-                        );
-
-                        projs.push(proj);
-                        moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
-                        projs.pop();
-                    }
-                } else {
-                    // TODO(new_mut_ref) this is not quite right, need to check if anything
-                    // is actually bound in here, irrefutability issues, Copy,
-                    // what if there's a mixture of muts and moves
-                    if crate::patterns::pattern_has_move(pattern, modes) {
-                        out.push((projs.clone(), ByRef::No));
-                    } else if crate::patterns::pattern_has_mut(pattern) {
-                        out.push((projs.clone(), ByRef::MutRef));
-                    }
+                    projs.push(proj);
+                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes);
+                    projs.pop();
                 }
             }
             PatternX::Or(_, _) => {
@@ -1402,7 +1431,7 @@ impl<'a> LocalCollection<'a> {
     fn add_param(&mut self, p: &Param) {
         if p.x.mode != Mode::Spec {
             self.add_place(
-                FlattenedPlaceTyped {
+                &FlattenedPlaceTyped {
                     local: LocalName::Named(p.x.name.clone()),
                     typ: p.x.typ.clone(),
                     projections: vec![],
@@ -1414,21 +1443,21 @@ impl<'a> LocalCollection<'a> {
 
     fn add_computed_place(&mut self, p: ComputedPlaceTyped) -> ComputedPlace {
         match p {
-            ComputedPlaceTyped::OfLocal(fpi) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfLocal(sp)
+            ComputedPlaceTyped::Exact(fpi) => {
+                let sp = self.add_place(&fpi, false);
+                ComputedPlace::Exact(sp)
             }
-            ComputedPlaceTyped::OfGhost(Some(fpi)) => {
-                let sp = self.add_place(fpi, false);
-                ComputedPlace::OfGhost(Some(sp))
+            ComputedPlaceTyped::Partial(Some(fpi)) => {
+                let sp = self.add_place(&fpi, false);
+                ComputedPlace::Partial(Some(sp))
             }
-            ComputedPlaceTyped::OfGhost(None) => ComputedPlace::OfGhost(None),
+            ComputedPlaceTyped::Partial(None) => ComputedPlace::Partial(None),
         }
     }
 
     /// Given a FlattenedPlaceTyped, we extend the tree if necessary so that it is deep enough
     /// to incorporate the given place. Returns a FlattenedPlace which indexes into the tree.
-    fn add_place(&mut self, p: FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
+    fn add_place(&mut self, p: &FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
             self.locals.push(Local {
                 name: p.local.clone(),
@@ -1467,30 +1496,37 @@ impl<'a> LocalCollection<'a> {
                             *tree = PlaceTree::Struct(
                                 typ.clone(),
                                 dt.clone(),
-                                (0..*n)
-                                    .map(|i| Some(PlaceTree::Leaf(typ_args[i].clone())))
-                                    .collect(),
+                                vec![
+                                    (0..*n)
+                                        .map(|i| Some(PlaceTree::Leaf(typ_args[i].clone())))
+                                        .collect(),
+                                ],
                             );
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
-                            let fields = variant
-                                .fields
+                            let fields = datatype
+                                .x
+                                .variants
                                 .iter()
-                                .map(|f| {
-                                    if f.a.1 == Mode::Spec {
-                                        None
-                                    } else {
-                                        Some(PlaceTree::Leaf(subst_typ_for_datatype(
-                                            &datatype.x.typ_params,
-                                            typ_args,
-                                            &f.a.0,
-                                        )))
-                                    }
+                                .map(|variant| {
+                                    variant
+                                        .fields
+                                        .iter()
+                                        .map(|f| {
+                                            if f.a.1 == Mode::Spec {
+                                                None
+                                            } else {
+                                                Some(PlaceTree::Leaf(subst_typ_for_datatype(
+                                                    &datatype.x.typ_params,
+                                                    typ_args,
+                                                    &f.a.0,
+                                                )))
+                                            }
+                                        })
+                                        .collect::<Vec<Option<PlaceTree>>>()
                                 })
-                                .collect();
+                                .collect::<Vec<Vec<Option<PlaceTree>>>>();
                             *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
                         }
                     },
@@ -1504,19 +1540,19 @@ impl<'a> LocalCollection<'a> {
 
             let projection = match projection_typed {
                 ProjectionTyped::StructField(field_opr, _typ) => {
-                    Projection::StructField(field_opr_to_index(field_opr, datatypes))
+                    Projection::StructField(field_opr_to_indices(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
             };
             output_projections.push(projection);
 
             match &projection {
-                Projection::StructField(field_idx) => match tree {
+                Projection::StructField((variant_idx, field_idx)) => match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
                     PlaceTree::Struct(_, _, subtrees) => {
                         // If this unwrap fails, it means we are improperly trying to
                         // manipulate a ghost place
-                        tree = subtrees[*field_idx].as_mut().unwrap();
+                        tree = subtrees[*variant_idx][*field_idx].as_mut().unwrap();
                     }
                     PlaceTree::MutRef(..) => {
                         panic!(
@@ -1550,22 +1586,24 @@ impl<'a> LocalCollection<'a> {
         let mut tree = &self.locals[fp.local].tree;
         for projection in fp.projections.iter() {
             match projection {
-                Projection::StructField(idx) => {
+                Projection::StructField((variant_idx, field_idx)) => {
                     let (dt, inner_trees) = match tree {
                         PlaceTree::Struct(_ty, dt, trees) => (dt, trees),
                         _ => unreachable!(),
                     };
-                    let inner_tree = inner_trees[*idx].as_ref().unwrap();
+                    let inner_tree = inner_trees[*variant_idx][*field_idx].as_ref().unwrap();
                     let field_opr = match dt {
-                        Dt::Tuple(n) => crate::ast_util::mk_tuple_field_opr(*n, *idx),
+                        Dt::Tuple(n) => {
+                            assert!(*variant_idx == 0);
+                            crate::ast_util::mk_tuple_field_opr(*n, *field_idx)
+                        }
                         Dt::Path(path) => {
                             let datatype = &self.datatypes[path];
-                            assert!(datatype.x.variants.len() == 1);
-                            let variant = &datatype.x.variants[0];
+                            let variant = &datatype.x.variants[*variant_idx];
                             FieldOpr {
                                 datatype: dt.clone(),
                                 variant: variant.name.clone(),
-                                field: variant.fields[*idx].name.clone(),
+                                field: variant.fields[*field_idx].name.clone(),
                                 get_variant: false,
                                 check: crate::ast::VariantCheck::None,
                             }
@@ -1620,11 +1658,13 @@ impl<'a> LocalCollection<'a> {
                 output.push(cur.clone());
             }
             PlaceTree::Struct(_t, _, children) => {
-                for (f, child) in children.iter().enumerate() {
-                    if let Some(child) = child {
-                        cur.projections.push(Projection::StructField(f));
-                        Self::traverse_rec(child, cur, output, go_inside_muts);
-                        cur.projections.pop();
+                for (v, variant_children) in children.iter().enumerate() {
+                    for (f, child) in variant_children.iter().enumerate() {
+                        if let Some(child) = child {
+                            cur.projections.push(Projection::StructField((v, f)));
+                            Self::traverse_rec(child, cur, output, go_inside_muts);
+                            cur.projections.pop();
+                        }
                     }
                 }
             }
@@ -1648,18 +1688,23 @@ fn undecorate_box_trk_decorations(t: &Typ) -> &Typ {
     }
 }
 
-fn field_opr_to_index(field_opr: &FieldOpr, datatypes: &HashMap<Path, Datatype>) -> usize {
+fn field_opr_to_indices(
+    field_opr: &FieldOpr,
+    datatypes: &HashMap<Path, Datatype>,
+) -> (usize, usize) {
     match &field_opr.datatype {
         Dt::Tuple(n) => {
             let p = field_opr.field.parse::<usize>().unwrap();
             assert!(p < *n);
-            p
+            (0, p)
         }
         Dt::Path(path) => {
             let datatype = &datatypes[path];
-            assert!(datatype.x.variants.len() == 1);
-            let variant = &datatype.x.variants[0];
-            variant.fields.iter().position(|f| f.name == field_opr.field).unwrap()
+            let variant_idx =
+                datatype.x.variants.iter().position(|v| v.name == field_opr.variant).unwrap();
+            let variant = &datatype.x.variants[variant_idx];
+            let field_idx = variant.fields.iter().position(|f| f.name == field_opr.field).unwrap();
+            (variant_idx, field_idx)
         }
     }
 }
@@ -1736,8 +1781,8 @@ impl FlattenedPlace {
 impl ComputedPlace {
     fn get_place_for_mutation(self) -> Option<FlattenedPlace> {
         match self {
-            ComputedPlace::OfLocal(p) => Some(p),
-            ComputedPlace::OfGhost(p) => {
+            ComputedPlace::Exact(p) => Some(p),
+            ComputedPlace::Partial(p) => {
                 // When mutating a ghost place, we treat it as a mutation of whatever
                 // "real" place contains it
                 p
@@ -1747,10 +1792,17 @@ impl ComputedPlace {
 }
 
 impl ComputedPlaceTyped {
+    fn to_partial(self) -> ComputedPlaceTyped {
+        match self {
+            ComputedPlaceTyped::Exact(fpt) => ComputedPlaceTyped::Partial(Some(fpt)),
+            cpt @ ComputedPlaceTyped::Partial(_) => cpt,
+        }
+    }
+
     fn get_place_for_move(self) -> Option<FlattenedPlaceTyped> {
         match self {
-            ComputedPlaceTyped::OfLocal(p) => Some(p),
-            ComputedPlaceTyped::OfGhost(_p) => {
+            ComputedPlaceTyped::Exact(p) => Some(p),
+            ComputedPlaceTyped::Partial(_p) => {
                 // reading out of a ghost field is NOT a move
                 None
             }
@@ -2103,18 +2155,18 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                 };
                 (".*".to_string(), inner_tree)
             }
-            Projection::StructField(idx) => {
+            Projection::StructField((variant_idx, field_idx)) => {
                 let (dt, inner_tree) = match tree {
-                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*idx]),
+                    PlaceTree::Struct(_, dt, trees) => (dt, &trees[*variant_idx][*field_idx]),
                     _ => unreachable!(),
                 };
                 let x = match dt {
                     Dt::Tuple(_) => {
-                        format!(".{:}", idx)
+                        format!(".{:}", field_idx)
                     }
                     Dt::Path(p) => {
                         let datatype = &locals.datatypes[p];
-                        format!(".{:}", datatype.x.variants[0].fields[*idx].name)
+                        format!(".{:}", datatype.x.variants[*variant_idx].fields[*field_idx].name)
                     }
                 };
                 (x, inner_tree.as_ref().unwrap())
@@ -2130,20 +2182,18 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct InitializationPossibilities {
-    /// Is it possible to reach the given program point when the given place uninitialized?
+    /// Is it possible to reach the given program point with the given place
+    /// not initialized?
+    /// (Using the definition of "conditionally initialized" described above)
     can_be_uninit: bool,
-    /// Is it possible to reach the given program point when the given place initialized?
-    can_be_init: bool,
 }
 
 impl DataflowState for InitializationPossibilities {
     type Const = FlattenedPlace;
 
     fn join(&mut self, b: &Self) {
-        *self = InitializationPossibilities {
-            can_be_uninit: self.can_be_uninit || b.can_be_uninit,
-            can_be_init: self.can_be_init || b.can_be_init,
-        };
+        *self =
+            InitializationPossibilities { can_be_uninit: self.can_be_uninit || b.can_be_uninit };
     }
 
     // forward transfer
@@ -2151,20 +2201,14 @@ impl DataflowState for InitializationPossibilities {
         match &instr.kind {
             InstructionKind::MoveFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
             }
             InstructionKind::Overwrite(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: false,
-                        can_be_init: self.can_be_init || self.can_be_uninit,
-                    }
+                    InitializationPossibilities { can_be_uninit: false }
                 } else {
                     *self
                 }
@@ -2172,10 +2216,7 @@ impl DataflowState for InitializationPossibilities {
             InstructionKind::Mutate(_sp) => *self,
             InstructionKind::DropFrom(sp) => {
                 if sp.contains(place) {
-                    InitializationPossibilities {
-                        can_be_uninit: self.can_be_init || self.can_be_uninit,
-                        can_be_init: false,
-                    }
+                    InitializationPossibilities { can_be_uninit: true }
                 } else {
                     *self
                 }
@@ -2186,12 +2227,12 @@ impl DataflowState for InitializationPossibilities {
 
 impl InitializationPossibilities {
     fn empty() -> Self {
-        InitializationPossibilities { can_be_uninit: false, can_be_init: false }
+        InitializationPossibilities { can_be_uninit: false }
     }
 
     fn entry(local: &Local) -> Self {
         // Params are initialized at the start, nothing else is
-        InitializationPossibilities { can_be_uninit: !local.is_param, can_be_init: local.is_param }
+        InitializationPossibilities { can_be_uninit: !local.is_param }
     }
 }
 
@@ -2552,17 +2593,55 @@ fn filter_and_make_assumes(
         .collect()
 }
 
+/// Returns:
+/// assume(all IsVariant conditions needed for Place to be valid ==> HasResolved(Place))
 fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     let ast_place = cfg.locals.to_ast_place(span, fp);
-    let e = SpannedTyped::new(
-        &ast_place.span,
-        &ast_place.typ,
-        ExprX::ReadPlace(
-            ast_place.clone(),
-            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
-        ),
-    );
-    SpannedTyped::new(&ast_place.span, &unit_typ(), ExprX::AssumeResolved(e, ast_place.typ.clone()))
+    let e = crate::ast_util::place_to_spec_expr(&ast_place);
+    // TODO(new_mut_ref): are we sure that ast_place.typ is correct including decoration?
+    let has_resolvedx = ExprX::UnaryOpr(UnaryOpr::HasResolved(ast_place.typ.clone()), e);
+    let has_resolved = SpannedTyped::new(&ast_place.span, &bool_typ(), has_resolvedx);
+    let conditional_has_resolved =
+        condition_on_enum_variants(&has_resolved, &ast_place, &cfg.locals.datatypes);
+    crate::ast_util::mk_assume(&ast_place.span, &conditional_has_resolved)
+}
+
+/// Returns:
+/// `all IsVariant conditions needed for Place to be valid ==> bool_expr`
+fn condition_on_enum_variants(
+    bool_expr: &Expr,
+    place: &Place,
+    datatypes: &HashMap<Path, Datatype>,
+) -> Expr {
+    match &place.x {
+        PlaceX::Local(_l) => bool_expr.clone(),
+        PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::Field(field_opr, p) => {
+            let is_irref = match &field_opr.datatype {
+                Dt::Tuple(_) => true,
+                Dt::Path(path) => datatypes[path].x.variants.len() == 1,
+            };
+            let conditioned_bool_expr = if is_irref {
+                bool_expr
+            } else {
+                let e0 = crate::ast_util::place_to_spec_expr(p);
+                let is_variantx = ExprX::UnaryOpr(
+                    UnaryOpr::IsVariant {
+                        datatype: field_opr.datatype.clone(),
+                        variant: field_opr.variant.clone(),
+                    },
+                    e0,
+                );
+                let is_variant = SpannedTyped::new(&place.span, &bool_typ(), is_variantx);
+                &crate::ast_util::mk_implies(&place.span, &is_variant, bool_expr)
+            };
+            condition_on_enum_variants(conditioned_bool_expr, p, datatypes)
+        }
+        _ => {
+            // We only have to handle places produced by `to_ast_place`
+            panic!("condition_on_enum_variants got unexpected Place kind")
+        }
+    }
 }
 
 fn exprs_to_stmts(exprs: Vec<Expr>) -> Vec<Stmt> {

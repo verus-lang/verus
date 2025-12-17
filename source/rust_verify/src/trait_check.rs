@@ -131,6 +131,7 @@ fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
 impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
+struct Dyn<const N: usize, A>(Box<A>, [bool]);
 fn use_type_invariant<A>(a: A) -> A { a }
 
 struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a fn(A) -> O>);

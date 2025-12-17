@@ -1,9 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, ByRef,
-    CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function, Ident,
-    IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding,
-    PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
-    VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck,
+    ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Expr, ExprX, FieldOpr, Fun, Function,
+    Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior,
+    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ};
@@ -1531,38 +1532,33 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Unary(*op, exp)))))
         }
-        ExprX::UnaryOpr(op, expr) => {
-            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+        ExprX::UnaryOpr(op, arg) => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = unwrap_or_return_never!(exp, stms);
-            match (op, state.checking_recommends(ctx)) {
-                (
-                    UnaryOpr::Field(FieldOpr {
-                        datatype,
-                        variant,
-                        field: _,
-                        get_variant: _,
-                        check: VariantCheck::Yes,
-                    }),
-                    false,
-                ) => {
-                    let unary = UnaryOpr::IsVariant {
-                        datatype: datatype.clone(),
-                        variant: variant.clone(),
-                    };
-                    let is_variant = ExpX::UnaryOpr(unary, exp.clone());
-                    let is_variant =
-                        SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), is_variant);
-                    let error = crate::messages::error(
-                        &expr.span,
-                        "requirement not met: to access this field, the union must be in the correct variant",
-                    );
-                    let assert = StmX::Assert(state.next_assert_id(), Some(error), is_variant);
+            let (check, op) = match op {
+                UnaryOpr::Field(field_opr) => match field_opr.check {
+                    VariantCheck::Union => {
+                        let (condition, msg) = crate::place_preconditions::sst_field_check(
+                            &expr.span, &exp, field_opr,
+                        );
+                        let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+                        (Some((condition, msg)), UnaryOpr::Field(field_opr))
+                    }
+                    VariantCheck::None => (None, op.clone()),
+                },
+                _ => (None, op.clone()),
+            };
+            if let Some((condition, msg)) = check {
+                if !state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
                     let assert = Spanned::new(expr.span.clone(), assert);
                     stms.push(assert);
                 }
-                _ => {}
+                let assume = StmX::Assume(condition);
+                let assume = Spanned::new(expr.span.clone(), assume);
+                stms.push(assume);
             }
-            Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op.clone(), exp)))))
+            Ok((stms, ReturnValue::Some(mk_exp(ExpX::UnaryOpr(op, exp)))))
         }
         ExprX::Binary(op, e1, e2) => {
             // Handle short-circuiting, when applicable.
@@ -1804,7 +1800,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));
         }
-        ExprX::AssertAssume { is_assume: false, expr: e } => {
+        ExprX::AssertAssume { is_assume: false, expr: e, msg } => {
             if state.checking_recommends(ctx) {
                 let (mut stms, exp) = expr_to_stm_or_error(ctx, state, e)?;
                 let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
@@ -1829,13 +1825,13 @@ pub(crate) fn expr_to_stm_opt(
                 };
                 stms.push(Spanned::new(
                     e.span.clone(),
-                    StmX::Assert(state.next_assert_id(), None, exp.clone()),
+                    StmX::Assert(state.next_assert_id(), msg.clone(), exp.clone()),
                 ));
                 stms.push(Spanned::new(e.span.clone(), StmX::Assume(exp)));
                 Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
             }
         }
-        ExprX::AssertAssume { is_assume: true, expr: e } => {
+        ExprX::AssertAssume { is_assume: true, expr: e, msg: _ } => {
             // Use expr_to_pure_exp_skip_checks,
             // because the goal of assume is to add an assumption, not to perform checks
             let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
@@ -2580,6 +2576,7 @@ fn binary_op_exp(
         BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
             BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
         }
+        BinaryOp::Index(kind, _) => BinaryOp::Index(kind, BoundsCheck::Allow),
         op => op,
     };
     let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
@@ -2595,7 +2592,7 @@ fn binary_op_exp(
                     let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
                     let has_type = ExpX::UnaryOpr(unary, bin.clone());
                     let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
-                    Some((has_type, "possible arithmetic underflow/overflow"))
+                    Some((has_type, error(span, "possible arithmetic underflow/overflow")))
                 }
             },
             ArithOp::EuclideanDiv(d0b) | ArithOp::EuclideanMod(d0b) => match d0b {
@@ -2604,7 +2601,7 @@ fn binary_op_exp(
                     let zero = ExpX::Const(Constant::Int(BigInt::zero()));
                     let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                     let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
-                    Some((ne, "possible division by zero"))
+                    Some((ne, error(span, "possible division by zero")))
                 }
             },
         },
@@ -2627,7 +2624,7 @@ fn binary_op_exp(
                     );
 
                     let msg = "possible bit shift underflow/overflow";
-                    Some((assert_exp, msg))
+                    Some((assert_exp, error(span, msg)))
                 }
                 (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
@@ -2636,6 +2633,12 @@ fn binary_op_exp(
                 }
             }
         }
+        BinaryOp::Index(kind, bounds_check) => match bounds_check {
+            BoundsCheck::Allow => None,
+            BoundsCheck::Error => {
+                Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind))
+            }
+        },
         _ => None,
     };
 
@@ -2643,8 +2646,7 @@ fn binary_op_exp(
 
     if let Some((assert_exp, msg)) = check {
         if !state.checking_spec_preconditions(ctx) {
-            let error = error(span, msg);
-            let assert = StmX::Assert(state.next_assert_id(), Some(error), assert_exp.clone());
+            let assert = StmX::Assert(state.next_assert_id(), Some(msg), assert_exp.clone());
             let assert = Spanned::new(span.clone(), assert);
             stms.push(assert);
         }
@@ -2756,7 +2758,7 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
 /// Returns two expressions:
 /// (i) the place as sst "loc" (l-value) which MUST NOT depend on any mutable vars.
 /// (ii) the evaluation of the place (by definition, this is dependent
-/// on the mutable var in question)
+/// on the mutable var in question, but it must not depend on any other mutable vars)
 fn place_to_exp_pair(
     ctx: &Ctx,
     state: &mut State,
@@ -2782,17 +2784,35 @@ fn place_to_exp_pair_rec(
     let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
-            // TODO(new_mut_ref): VariantCheck here?
-            let exps = match exps {
-                None => None,
-                Some((e1, e2)) => {
-                    let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
-                    let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e2));
-                    Some((e1, e2))
-                }
+            let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            let Some((e1, e2)) = exps else {
+                return Ok((stms, None));
             };
-            Ok((stms, exps))
+
+            let check = match field_opr.check {
+                VariantCheck::Union => {
+                    let (condition, msg) =
+                        crate::place_preconditions::sst_field_check(&place.span, &e2, field_opr);
+                    Some((condition, msg))
+                }
+                VariantCheck::None => None,
+            };
+            if let Some((condition, msg)) = check {
+                if !state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+                    let assert = Spanned::new(place.span.clone(), assert);
+                    stms.push(assert);
+                }
+                let assume = StmX::Assume(condition);
+                let assume = Spanned::new(place.span.clone(), assume);
+                stms.push(assume);
+            }
+
+            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+
+            let e1 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e1));
+            let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
+            Ok((stms, Some((e1, e2))))
         }
         PlaceX::DerefMut(p) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
@@ -2835,6 +2855,43 @@ fn place_to_exp_pair_rec(
             Ok((stms, exps))
         }
         PlaceX::ModeUnwrap(p, _mode) => place_to_exp_pair_rec(ctx, state, p),
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            let exps = exps.unwrap(); // TODO(new_mut_ref) fix this
+
+            let (mut stms2, idx_v) = expr_to_stm_opt(ctx, state, idx)?;
+            stms.append(&mut stms2);
+            let idx_exp = idx_v.to_value().unwrap(); // TODO(new_mut_ref) fix this
+
+            let idx_exp = state.make_tmp_var_for_exp(&mut stms, idx_exp);
+
+            match bounds_check {
+                BoundsCheck::Allow => {}
+                BoundsCheck::Error => {
+                    let (condition, msg) = crate::place_preconditions::sst_index_bound(
+                        &place.span,
+                        &exps.1,
+                        &idx_exp,
+                        *kind,
+                    );
+                    if !state.checking_recommends(ctx) {
+                        let stm = Spanned::new(
+                            place.span.clone(),
+                            StmX::Assert(state.next_assert_id(), Some(msg), condition.clone()),
+                        );
+                        stms.push(stm);
+                    }
+                    let stm = Spanned::new(place.span.clone(), StmX::Assume(condition));
+                    stms.push(stm);
+                }
+            }
+
+            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let e_l = mk_exp(ExpX::Binary(op, exps.0, idx_exp.clone()));
+            let e_r = mk_exp(ExpX::Binary(op, exps.1, idx_exp));
+
+            Ok((stms, Some((e_l, e_r))))
+        }
     }
 }
 

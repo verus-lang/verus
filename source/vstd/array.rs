@@ -136,12 +136,22 @@ pub broadcast axiom fn axiom_array_ext_equal<T, const N: usize>(a1: [T; N], a2: 
         #[trigger] (a1 =~= a2) <==> (forall|i: int| 0 <= i < N ==> a1[i] == a2[i]),
 ;
 
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::spec_array_update")]
+pub uninterp spec fn spec_array_update<T, const N: usize>(array: [T; N], i: int, t: T) -> [T; N];
+
+pub broadcast axiom fn axiom_spec_array_update<T, const N: usize>(array: [T; N], i: int, t: T)
+    ensures
+        0 <= i < N ==> (#[trigger] spec_array_update(array, i, t)@) == array@.update(i, t),
+;
+
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
+    axiom_spec_array_update,
 }
 
 } // verus!

@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX, Ident, Idents,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX,
-    Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX,
+    Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path,
+    PathX, Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -177,6 +177,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
+        TypX::Dyn(..) => str_typ(POLY),
         TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
@@ -354,6 +355,7 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
                 vec![t]
             }
         }
+        TypX::Dyn(name, typs, _) => mk_id(dyn_id(ctx, name, typs), crate::def::DECORATE_NIL_DYN),
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
             mk_id(primitive_id(ctx, &name, typs), base)
@@ -456,6 +458,15 @@ pub(crate) fn datatype_id(ctx: &Ctx, path: &Path, typs: &Typs) -> Expr {
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
+fn dyn_id(ctx: &Ctx, tr: &Path, typs: &Typs) -> Expr {
+    let f_name = crate::def::prefix_dyn_id(tr);
+    let mut args: Vec<Expr> = Vec::new();
+    for t in typs.iter() {
+        args.extend(typ_to_ids(ctx, t));
+    }
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
+}
+
 pub(crate) fn primitive_id(ctx: &Ctx, name: &Primitive, typs: &Typs) -> Expr {
     let f_name = primitive_type_id(name);
     let mut args: Vec<Expr> = Vec::new();
@@ -537,6 +548,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
+        TypX::Dyn(..) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Primitive(Primitive::Array, _) => {
             Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
         }
@@ -630,6 +642,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_box, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
         TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
@@ -664,6 +677,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Dyn(..) => None,
         TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
@@ -993,40 +1007,40 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
             panic!("internal error: NoInferSpecForLoopIter")
         }
-        ExpX::Unary(op, exp) => match op {
+        ExpX::Unary(op, e) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+                Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),
             )),
             UnaryOp::StrIsAscii => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_IS_ASCII),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
+                Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),
             )),
-            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
+            UnaryOp::Not => mk_not(&exp_to_expr(ctx, e, expr_ctxt)?),
             UnaryOp::BitNot(width_opt) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let expr = try_box(ctx, expr, &exp.typ).expect("Box");
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                let expr = try_box(ctx, expr, &e.typ).expect("Box");
                 let bit_expr =
                     ExprX::Apply(Arc::new(crate::def::BIT_NOT.to_string()), Arc::new(vec![expr]));
                 if let Some(width) = width_opt {
-                    if !check_bitwidth_typ_matches(&exp.typ, *width, false) {
+                    if !check_bitwidth_typ_matches(&e.typ, *width, false) {
                         return Err(error(
-                            &exp.span,
+                            &e.span,
                             format!("Verus Internal Error: BitNot: type doesn't match"),
                         ));
                     }
-                    return clip_bitwise_result(bit_expr, exp);
+                    return clip_bitwise_result(bit_expr, e);
                 } else {
                     return Ok(Arc::new(bit_expr));
                 }
             }
             UnaryOp::HeightTrigger => {
-                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt)?])
+                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, e, expr_ctxt)?])
             }
-            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::Trigger(_) => exp_to_expr(ctx, e, expr_ctxt)?,
+            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, e, expr_ctxt)?,
             UnaryOp::Clip { range, .. } => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
@@ -1036,27 +1050,39 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
             }
-            UnaryOp::FloatToBits => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::FloatToBits => exp_to_expr(ctx, e, expr_ctxt)?,
             UnaryOp::IntToReal => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 Arc::new(ExprX::Unary(air::ast::UnaryOp::ToReal, expr))
             }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }
+            UnaryOp::ToDyn => {
+                let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(&exp.typ) else {
+                    panic!("ToDyn should have type TypX::Dyn: {:?}", exp.typ)
+                };
+                let inner_self_typ = undecorate_typ(&e.typ); // strip off any Box, etc.
+                let mut args: Vec<Expr> = typ_to_ids(&inner_self_typ);
+                for t in typ_args.iter() {
+                    args.extend(typ_to_ids(t));
+                }
+                args.push(exp_to_expr(ctx, e, expr_ctxt)?);
+                ident_apply(&crate::def::to_dyn(trait_path), &args)
+            }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
-                panic!("internal error: Exp not finalized: {:?}", exp)
+                panic!("internal error: Exp not finalized: {:?}", e)
             }
             UnaryOp::InferSpecForLoopIter { .. } => {
                 // loop_inference failed to promote to Some, so demote to None
-                let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
-                exp_to_expr(ctx, &exp, expr_ctxt)?
+                let e = crate::loop_inference::make_option_exp(None, &e.span, &e.typ);
+                exp_to_expr(ctx, &e, expr_ctxt)?
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
             }
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let exprs = vec![expr];
                 let ident = match op {
                     UnaryOp::MutRefCurrent => crate::def::MUT_REF_CURRENT,
@@ -1065,6 +1091,41 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 let ident = Arc::new(ident.to_string());
                 Arc::new(ExprX::Apply(ident, Arc::new(exprs)))
+            }
+            UnaryOp::Length(kind) => {
+                let typ = undecorate_typ(&e.typ);
+                let typ = match &*typ {
+                    TypX::Boxed(x) => x,
+                    _ => &e.typ,
+                };
+                match &*undecorate_typ(&typ) {
+                    TypX::Primitive(Primitive::Array, typ_args) => {
+                        // to get the length of an array, we don't actually need to
+                        // evaluate the argument, just use the N from the type
+                        assert!(*kind == ArrayKind::Array);
+                        assert!(typ_args.len() == 2);
+                        let n = &typ_args[1];
+                        let f = crate::ast_util::const_generic_to_primitive(&exp.typ);
+                        str_apply(f, &vec![typ_to_id(ctx, n)])
+                    }
+                    TypX::Primitive(Primitive::Slice, typ_args) => {
+                        assert!(*kind == ArrayKind::Slice);
+                        assert!(typ_args.len() == 1);
+                        let t = &typ_args[0];
+                        let name = crate::def::fn_slice_len(&ctx.global.vstd_crate_name);
+                        let name = suffix_global_id(&fun_to_air_ident(&name));
+                        let mut exprs = typ_to_ids(t);
+                        exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+                        ident_apply(&name, &exprs)
+                    }
+                    _ => {
+                        dbg!(&e.typ);
+                        return Err(error(
+                            &exp.span,
+                            format!("Verus Internal Error: ArrayLength expected Array or Slice"),
+                        ));
+                    }
+                }
             }
         },
         ExpX::UnaryOpr(op, exp) => match op {
@@ -1229,15 +1290,30 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
-                BinaryOp::ArrayIndex => {
-                    let ts = match &*lhs.typ {
-                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => ts,
-                        _ => panic!("internal error: unexpected ArrayIndex type"),
-                    };
-                    let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
-                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
-                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
-                    ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                BinaryOp::Index(kind, _) => {
+                    let container_typ = undecorate_typ(&lhs.typ);
+                    match &*container_typ {
+                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => {
+                            assert!(*kind == ArrayKind::Array);
+                            let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                            args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                            args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+                            ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                        }
+                        TypX::Primitive(Primitive::Slice, ts) if ts.len() == 1 => {
+                            assert!(*kind == ArrayKind::Slice);
+                            let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                            let lhs_expr = exp_to_expr(ctx, lhs, expr_ctxt)?;
+                            let lhs_expr = as_box(ctx, lhs_expr, &container_typ);
+                            let rhs_expr = exp_to_expr(ctx, rhs, expr_ctxt)?;
+                            args.push(lhs_expr);
+                            args.push(rhs_expr);
+                            let name = crate::def::fn_slice_index(&ctx.global.vstd_crate_name);
+                            let name = suffix_global_id(&fun_to_air_ident(&name));
+                            ExprX::Apply(name, Arc::new(args))
+                        }
+                        _ => panic!("internal error: unexpected BinaryOp::Index type"),
+                    }
                 }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
@@ -1298,7 +1374,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         BinaryOp::RealArith(..) => unreachable!(),
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
-                        BinaryOp::ArrayIndex => unreachable!(),
+                        BinaryOp::Index(..) => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -1544,6 +1620,7 @@ fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
 enum FieldUpdateDatumOpr {
     Field(FieldOpr),
     MutRefCurrent,
+    Index(Exp, Typ, ArrayKind),
 }
 
 impl FieldUpdateDatumOpr {
@@ -1587,6 +1664,15 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
             ExpX::Unary(UnaryOp::MutRefCurrent, ee) => {
                 fields.push(FieldUpdateDatum {
                     opr: FieldUpdateDatumOpr::MutRefCurrent,
+                    field_typ: e.typ.clone(),
+                    base_exp: var_locs_to_bare_vars(ee),
+                });
+                e = ee;
+            }
+            ExpX::Binary(BinaryOp::Index(kind, _), ee, idx) => {
+                let container_typ = undecorate_typ(&ee.typ);
+                fields.push(FieldUpdateDatum {
+                    opr: FieldUpdateDatumOpr::Index(idx.clone(), container_typ, *kind),
                     field_typ: e.typ.clone(),
                     base_exp: var_locs_to_bare_vars(ee),
                 });
@@ -2239,6 +2325,38 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let ident = Arc::new(crate::def::MUT_REF_UPDATE_CURRENT.to_string());
                         let exprs = vec![base_expr, value];
                         value = Arc::new(ExprX::Apply(ident, Arc::new(exprs)));
+                    }
+                    FieldUpdateDatumOpr::Index(idx, container_typ, kind) => {
+                        let idx = exp_to_expr(ctx, idx, expr_ctxt)?;
+                        let (fun, typ_args) = match &**container_typ {
+                            TypX::Primitive(Primitive::Slice, typ_args) => {
+                                assert!(*kind == ArrayKind::Slice);
+                                (crate::def::fn_slice_update(&ctx.global.vstd_crate_name), typ_args)
+                            }
+                            TypX::Primitive(Primitive::Array, typ_args) => {
+                                assert!(*kind == ArrayKind::Array);
+                                (crate::def::fn_array_update(&ctx.global.vstd_crate_name), typ_args)
+                            }
+                            _ => {
+                                return Err(error(
+                                    &stm.span,
+                                    format!("Verus Internal Error: Assign expected Array or Slice"),
+                                ));
+                            }
+                        };
+                        let name = suffix_global_id(&fun_to_air_ident(&fun));
+                        let mut exprs: Vec<Expr> =
+                            typ_args.iter().map(typ_to_ids).flatten().collect();
+                        // REVIEW: cleaner boxing and unboxing strategy here?
+                        // spec_slice_update : Poly -> Poly
+                        // spec_array_update : Poly -> native
+                        exprs.push(as_box(ctx, base_expr, container_typ));
+                        exprs.push(idx);
+                        exprs.push(value);
+                        value = Arc::new(ExprX::Apply(name, Arc::new(exprs)));
+                        if *kind == ArrayKind::Slice {
+                            value = try_unbox(ctx, value.clone(), container_typ).unwrap_or(value);
+                        }
                     }
                 }
                 value_typ = base_exp.typ.clone();

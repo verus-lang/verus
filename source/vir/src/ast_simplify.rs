@@ -7,12 +7,12 @@ use crate::ast::VarBinderX;
 use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
-    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, ByRef, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr,
-    ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange,
-    ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck,
-    VirErr, Visibility,
+    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
+    ChainedOp, Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX,
+    Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp,
+    IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX,
+    Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
+    VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
@@ -351,10 +351,17 @@ fn simplify_one_place(
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            if !matches!(field_opr.check, VariantCheck::None) {
-                todo!(); // TODO(new_mut_ref)
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            match field_opr.check {
+                VariantCheck::None => {}
+                VariantCheck::Union => {
+                    let p1_expr = place_to_expr(&p1);
+                    let assert_stmt =
+                        crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
+                    stmts.push(assert_stmt);
+                }
             }
-            let (stmts, p1) = place_to_pure_place(state, p);
+            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2)
@@ -380,6 +387,33 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
             let (mut stmts, p1) = place_to_pure_place(state, p);
             stmts.insert(0, Spanned::new(place.span.clone(), StmtX::Expr(expr.clone())));
             (stmts, p1)
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            let (idx_decl, idx_expr) = temp_expr(state, idx);
+            stmts.push(idx_decl);
+
+            match bounds_check {
+                BoundsCheck::Allow => {}
+                BoundsCheck::Error => {
+                    let p1_expr = place_to_expr(&p1);
+                    let assert_stmt = crate::place_preconditions::index_bound(
+                        &place.span,
+                        &p1_expr,
+                        &idx_expr,
+                        *kind,
+                    );
+                    stmts.push(assert_stmt);
+                }
+            }
+
+            let p = SpannedTyped::new(
+                &place.span,
+                &place.typ,
+                PlaceX::Index(p1, idx_expr, *kind, BoundsCheck::Allow),
+            );
+
+            (stmts, p)
         }
     }
 }

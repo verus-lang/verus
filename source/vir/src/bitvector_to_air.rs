@@ -344,6 +344,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::IntToReal => panic!("internal error: unexpected int to real coercion"),
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
+            UnaryOp::ToDyn => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
             }
@@ -361,6 +362,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             }
             UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
                 panic!("mut-ref operation not allowed in bitvector query")
+            }
+            UnaryOp::Length(_) => {
+                panic!("ArrayLength operation not allowed in bitvector query")
             }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {

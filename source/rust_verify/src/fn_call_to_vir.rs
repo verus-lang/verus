@@ -31,11 +31,11 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BuiltinSpecFun,
-    CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr,
-    HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode,
-    MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
+    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration,
+    TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -240,6 +240,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     impl_paths,
                     is_trait_default: true,
                 }
+            }
+            ResolutionResult::Builtin(
+                rustc_trait_selection::traits::BuiltinImplSource::Object(_),
+            ) => {
+                // dyn T dispatch
+                vir::ast::CallTargetKind::Dynamic
             }
             ResolutionResult::Builtin(b) => {
                 unsupported_err!(expr.span, format!("built-in instance {:?}", b));
@@ -593,12 +599,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &Arc::new(TypX::Bool),
                     ExprX::Const(Constant::Bool(false)),
                 );
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f })
+                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f, msg: None })
             }
             SpecItem::Assume => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
+                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
             }
         },
         VerusItem::Quant(quant_item) => {
@@ -725,7 +731,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir_consume(bctx, arg1, ExprModifier::REGULAR)
                             .expect("invalid parameter for verus_builtin::array_index at arg1; arg1 must be an integer");
-                        mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
+                        mk_expr(ExprX::Binary(
+                            BinaryOp::Index(ArrayKind::Array, BoundsCheck::Allow),
+                            arg0,
+                            arg1,
+                        ))
                     }
                     _ => panic!(
                         "Expected a call for verus_builtin::array_index with two argument but did not receive it"
@@ -1060,7 +1070,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 AssertItem::Assert => {
                     unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
                     let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp })
+                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
                 }
                 AssertItem::AssertBy => {
                     unsupported_err_unless!(args_len == 2, expr.span, "expected assert_by", &args);

@@ -22,8 +22,6 @@ struct State {
     // trigger_vars covered by each trigger
     coverage: HashMap<Option<u64>, HashSet<VarIdent>>,
     // a variable cannot be both native and poly, so these should not intersect:
-    natives: HashSet<VarIdent>,
-    polys: HashSet<VarIdent>,
 }
 
 fn preprocess_exp(exp: &Exp) -> Exp {
@@ -49,63 +47,78 @@ pub(crate) fn native_quant_vars(bs: &VarBinders<Typ>, triggers: &Trigs) -> HashS
     struct NativeVars<'a> {
         bs: &'a VarBinders<Typ>,
         natives: HashSet<VarIdent>,
+        polys: HashSet<VarIdent>,
     }
     use crate::sst_visitor::{NoScoper, Visitor, Walk};
     impl<'a> Visitor<Walk, (), NoScoper> for NativeVars<'a> {
         fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
-            let mut check_arg = |e: &Exp| match &e.x {
+            let mut check_arg = |e: &Exp, is_native: bool| match &e.x {
                 ExpX::Var(x) => {
                     if self.bs.iter().any(|b| &b.name == x) {
-                        self.natives.insert(x.clone());
+                        if is_native {
+                            self.natives.insert(x.clone());
+                        } else {
+                            self.polys.insert(x.clone());
+                        }
                     }
                 }
                 _ => {}
             };
             match &exp.x {
                 ExpX::Unary(op, arg) => match op {
-                    UnaryOp::Clip { .. } => check_arg(arg),
-                    _ => {}
+                    UnaryOp::Clip { .. } => check_arg(arg, true),
+                    _ => check_arg(arg, false),
                 },
-                ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg),
+                ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg, true),
+                ExpX::UnaryOpr(_, arg) => check_arg(arg, false),
                 ExpX::Binary(op, arg1, arg2) => match op {
                     BinaryOp::Inequality(_) | BinaryOp::Arith(..) => {
-                        check_arg(arg1);
-                        check_arg(arg2);
+                        check_arg(arg1, true);
+                        check_arg(arg2, true);
                     }
-                    _ => {}
+                    _ => {
+                        check_arg(arg1, false);
+                        check_arg(arg2, false);
+                    }
                 },
+                ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), arg1, arg2) => {
+                    check_arg(arg1, false);
+                    check_arg(arg2, false);
+                }
+                ExpX::Call(_, _, args) | ExpX::CallLambda(_, args) => {
+                    for arg in args.iter() {
+                        check_arg(arg, false);
+                    }
+                }
                 _ => {}
             }
             let _ = self.visit_exp_rec(exp);
             Ok(())
         }
     }
-    let mut native_vars = NativeVars { bs, natives: HashSet::new() };
+    let mut native_vars = NativeVars { bs, natives: HashSet::new(), polys: HashSet::new() };
     for trig in triggers.iter() {
         for exp in trig.iter() {
             let _ = native_vars.visit_exp(exp);
         }
     }
-    native_vars.natives
+    // Return every bound variable used only natively:
+    // (bound variables are poly by default, so we lean towards poly for vars used both ways;
+    // either choice would be ok)
+    &native_vars.natives - &native_vars.polys
 }
 
-fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
+fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
     match &arg.x {
-        ExpX::Var(x) if state.trigger_vars.contains(x) => {
-            if expect_boxed {
-                state.polys.insert(x.clone());
-            } else {
-                state.natives.insert(x.clone());
-            }
-        }
         ExpX::Unary(op, arg) => match op {
             UnaryOp::Trigger(_)
             | UnaryOp::HeightTrigger
             | UnaryOp::CoerceMode { .. }
+            | UnaryOp::ToDyn
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated => {
                 // recurse inside coercions
-                check_trigger_expr_arg(state, expect_boxed, arg)
+                check_trigger_expr_arg(state, arg)
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
@@ -117,13 +130,14 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture
+            | UnaryOp::Length(_)
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
             UnaryOpr::CustomErr(_) => {
                 // recurse inside coercions
-                check_trigger_expr_arg(state, expect_boxed, arg)
+                check_trigger_expr_arg(state, arg)
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
@@ -135,9 +149,9 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
     }
 }
 
-fn check_trigger_expr_args(state: &mut State, expect_boxed: bool, args: &Exps) {
+fn check_trigger_expr_args(state: &mut State, args: &Exps) {
     for arg in args.iter() {
-        check_trigger_expr_arg(state, expect_boxed, arg);
+        check_trigger_expr_arg(state, arg);
     }
 }
 
@@ -180,7 +194,7 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::ArrayIndex, _, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::Index(..), _, _) => {}
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
@@ -201,12 +215,12 @@ fn check_trigger_expr(
             ExpX::Const(_) => Ok(()),
             ExpX::StaticVar(_) => Ok(()),
             ExpX::CallLambda(_, args) => {
-                check_trigger_expr_args(state, true, args);
+                check_trigger_expr_args(state, args);
                 Ok(())
             }
             ExpX::Ctor(_, _, bs) => {
                 for b in bs.iter() {
-                    check_trigger_expr_arg(state, true, &b.a);
+                    check_trigger_expr_arg(state, &b.a);
                 }
                 Ok(())
             }
@@ -216,7 +230,7 @@ fn check_trigger_expr(
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
             ExpX::ExecFnByName(..) => Ok(()),
             ExpX::Call(_, _typs, args) => {
-                check_trigger_expr_args(state, true, args);
+                check_trigger_expr_args(state, args);
                 Ok(())
             }
             ExpX::Var(x) => {
@@ -249,16 +263,17 @@ fn check_trigger_expr(
                 | UnaryOp::BitNot(_)
                 | UnaryOp::MutRefCurrent
                 | UnaryOp::MutRefFuture => {
-                    check_trigger_expr_arg(state, true, arg);
+                    check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
                 UnaryOp::Clip { .. } | UnaryOp::FloatToBits | UnaryOp::IntToReal => {
-                    check_trigger_expr_arg(state, false, arg);
+                    check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
                 UnaryOp::Trigger(_)
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
+                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),
@@ -266,21 +281,24 @@ fn check_trigger_expr(
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
+                UnaryOp::Length(_) => {
+                    Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
+                }
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
                 UnaryOpr::CustomErr(_) => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
-                    check_trigger_expr_arg(state, true, arg);
+                    check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
                 UnaryOpr::IntegerTypeBound(..) => {
-                    check_trigger_expr_arg(state, false, arg);
+                    check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
                 UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
                 UnaryOpr::HasResolved(_t) => {
-                    check_trigger_expr_arg(state, true, arg);
+                    check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
             },
@@ -296,25 +314,25 @@ fn check_trigger_expr(
                     )),
                     Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
                     StrGetChar | Bitwise(..) => {
-                        check_trigger_expr_arg(state, true, arg1);
-                        check_trigger_expr_arg(state, true, arg2);
+                        check_trigger_expr_arg(state, arg1);
+                        check_trigger_expr_arg(state, arg2);
                         Ok(())
                     }
-                    ArrayIndex => {
-                        check_trigger_expr_arg(state, true, arg1);
-                        check_trigger_expr_arg(state, true, arg2);
+                    Index(..) => {
+                        check_trigger_expr_arg(state, arg1);
+                        check_trigger_expr_arg(state, arg2);
                         Ok(())
                     }
                     Arith(..) | RealArith(..) => {
-                        check_trigger_expr_arg(state, false, arg1);
-                        check_trigger_expr_arg(state, false, arg2);
+                        check_trigger_expr_arg(state, arg1);
+                        check_trigger_expr_arg(state, arg2);
                         Ok(())
                     }
                 }
             }
             ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, _typ), arg1, arg2) => {
-                check_trigger_expr_arg(state, true, arg1);
-                check_trigger_expr_arg(state, true, arg2);
+                check_trigger_expr_arg(state, arg1);
+                check_trigger_expr_arg(state, arg2);
                 Ok(())
             }
             ExpX::If(_, _, _) => Err(error(&exp.span, "triggers cannot contain if/else")),
@@ -449,8 +467,6 @@ pub(crate) fn build_triggers(
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
-        natives: HashSet::new(),
-        polys: HashSet::new(),
     };
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
@@ -479,17 +495,6 @@ pub(crate) fn build_triggers(
                 }
             }
             trigs.push(Arc::new(trig.clone()));
-        }
-        for x in vars {
-            if state.natives.contains(x) && state.polys.contains(x) {
-                return Err(error(
-                    span,
-                    format!(
-                        "variable `{}` in trigger cannot appear in both arithmetic and non-arithmetic positions",
-                        crate::def::user_local_name(x)
-                    ),
-                ));
-            }
         }
         let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
         let found_triggers: Vec<Vec<(Span, String)>> =

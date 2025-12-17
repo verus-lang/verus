@@ -3,7 +3,7 @@
 set -e
 
 RUSTDOC=""
-if [ "x$1" = "x--check" ]; then
+if [ "x$1" = "x--strict" ]; then
     RUSTDOC="-D warnings"
 fi
 

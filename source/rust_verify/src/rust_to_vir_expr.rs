@@ -41,11 +41,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, CallTarget, Constant,
-    Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp, IntRange,
-    InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive, SpannedTyped, StmtX,
-    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
+    Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp,
+    IntRange, InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive,
+    SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
+    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -74,6 +74,7 @@ use vir::def::{field_ident_from_rust, positional_field_ident};
 /// The easiest way to convert a `Place` to an `Expr` is to move or copy from it
 /// (which we here call "consume"). To convert from an `Expr` to a `Place`, we can create
 /// a "temporary" place.
+#[derive(Clone, Debug)]
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
     Place(Place),
@@ -1336,6 +1337,18 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustment_idx - 1,
             )?;
 
+            let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+            let op = match (tyr1.kind(), tyr2.kind()) {
+                (_, TyKind::Dynamic(_, _, rustc_middle::ty::DynKind::Dyn)) => Some(UnaryOp::ToDyn),
+                _ => None,
+            };
+            if let Some(op) = op {
+                let arg = arg.consume(bctx, get_inner_ty());
+                let x = ExprX::Unary(op, arg);
+                let expr_typ = bctx.mid_ty_to_vir(expr.span, &ty2, false)?;
+                return Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(expr.span, &expr_typ, x)));
+            }
+
             let f = match (ty1.kind(), ty2.kind()) {
                 (TyKind::RawPtr(t1, _), TyKind::RawPtr(t2, _)) => {
                     match (t1.kind(), t2.kind()) {
@@ -2332,7 +2345,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     str_ident(&variant.ident(tcx).as_str())
                 };
-                let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
+                let check =
+                    if adt_def.is_union() { VariantCheck::Union } else { VariantCheck::None };
                 FieldOpr {
                     datatype: Dt::Path(datatype_path),
                     variant: variant_name,
@@ -2596,6 +2610,30 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Closure(Closure { fn_decl: _, .. }) => {
             Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)?))
+        }
+        ExprKind::Index(tgt_expr, idx_expr, _span) if bctx.ctxt.cmd_line_args.new_mut_ref => {
+            if bctx.in_ghost {
+                crate::internal_err!(
+                    expr.span,
+                    "index operator [] in ghost code (note: usually the syntax macro would turn this into a call to `spec_index`"
+                )
+            }
+            if bctx.types.is_method_call(expr) {
+                crate::internal_err!(expr.span, "overloaded index new-mut-ref") // TODO(new_mut_ref)
+            } else {
+                let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
+                let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
+                let kind = match tgt_ty.kind() {
+                    TyKind::Array(..) => vir::ast::ArrayKind::Array,
+                    TyKind::Slice(..) => vir::ast::ArrayKind::Slice,
+                    _ => unsupported_err!(expr.span, "Index operator for this type: {:}", tgt_ty),
+                };
+                let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?.to_place();
+                let idx_vir = expr_to_vir(bctx, idx_expr, modifier)?.consume(bctx, idx_ty);
+                let placex = PlaceX::Index(tgt_vir, idx_vir, kind, BoundsCheck::Error);
+                let vir = bctx.spanned_typed_new(expr.span, &expr_typ()?, placex);
+                Ok(ExprOrPlace::Place(vir))
+            }
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
@@ -3651,6 +3689,9 @@ pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
         PlaceX::WithExpr(..) => {
             panic!("Verus Internal Error: unexpected PlaceX::WithExpr")
         }
+        PlaceX::Index(..) => {
+            panic!("Verus Internal Error: PlaceX::Index should not be created outside new-mut-ref")
+        }
     };
     Ok(SpannedTyped::new(&place.span, &place.typ, x))
 }
@@ -3711,7 +3752,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
 }
 
 /// Like the above, but also cancels with two-phase borrows
-/// It's _probably_ okay to always call this, but it's good to be caution about two-phase
+/// It's _probably_ okay to always call this, but it's good to be cautious about two-phase
 pub(crate) fn deref_mut_allow_cancelling_two_phase(
     bctx: &BodyCtxt,
     span: Span,
