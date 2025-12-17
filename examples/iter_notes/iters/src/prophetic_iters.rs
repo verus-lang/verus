@@ -41,18 +41,16 @@ pub trait Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
+                old(self).decrease()->0 > self.decrease()->0,
     ;
 
     /******* Mechanisms that support ergonomic `for` loops *********/
-
-    type Decrease;
 
     /// Value used by default for decreases clause when no explicit decreases clause is provided
     /// (the user can override this with an explicit decreases clause).
     /// If there's no appropriate decrease, this can return None,
     /// and the user will have to provide an explicit decreases clause.
-    spec fn decrease(&self) -> Option<Self::Decrease>;
+    spec fn decrease(&self) -> Option<nat>;
     
     // Invariant relating the iterator to its initial value.
     // When the analysis can infer a spec initial value, the analysis 
@@ -78,7 +76,7 @@ pub trait DoubleEndedIterator : Iterator {
                 }
             }),
             self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                decreases_to!(old(self).decrease()->0 => self.decrease()->0),
+                old(self).decrease()->0 > self.decrease()->0,
     ;
 
 }
@@ -182,10 +180,8 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         }
     }
 
-    type Decrease = usize;
-
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
-        Some((self.back() - self.front()) as usize)
+    closed spec fn decrease(&self) -> Option<nat> {
+        Some((self.back() - self.front()) as nat)
     }
 }
 
@@ -438,9 +434,7 @@ impl<Item, Iter, F> Iterator for MapIterator<Item, Iter, F>
         }
     }
 
-    type Decrease = Iter::Decrease;
-
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<nat> {
         self.inner().decrease()
     }
 
@@ -523,10 +517,8 @@ impl<Iter: Iterator> Iterator for TakeIterator<Iter> {
         }
     }
 
-    type Decrease = usize;
-
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
-        Some(self.count())
+    closed spec fn decrease(&self) -> Option<nat> {
+        Some(self.count() as nat)
     }
 }
 
@@ -611,9 +603,7 @@ impl<Iter: Iterator> Iterator for SkipIterator<Iter> {
         self.iter.next()
     }
 
-    type Decrease = Iter::Decrease;
-
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<nat> {
         self.inner().decrease()
     }
 
@@ -681,9 +671,7 @@ impl<Iter: Iterator + DoubleEndedIterator> Iterator for ReverseIterator<Iter> {
         self.iter.next_back()
     }
 
-    type Decrease = Iter::Decrease;
-
-    closed spec fn decrease(&self) -> Option<Self::Decrease> {
+    closed spec fn decrease(&self) -> Option<nat> {
         self.inner().decrease()
     }
 }
