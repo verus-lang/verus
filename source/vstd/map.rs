@@ -161,7 +161,7 @@ impl<K, V> Map<K, V> {
         requires
             keys.subset_of(old(self).dom()),
         ensures
-            self == old(self).remove_keys(keys),
+            *self == old(self).remove_keys(keys),
             out_map == old(self).restrict(keys),
     ;
 

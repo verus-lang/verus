@@ -2945,8 +2945,8 @@ test_verify_one_file! {
 
         trait ATrait {
             exec fn afun(Tracked(aparam): Tracked<&mut AType>)
-                requires old(aparam) == (AType { v: 41 }),
-                ensures aparam == (AType { v: 41 });
+                requires *old(aparam) == (AType { v: 41 }),
+                ensures *aparam == (AType { v: 41 });
         }
 
         struct AnotherType {}
