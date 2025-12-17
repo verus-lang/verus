@@ -1187,7 +1187,6 @@ impl<'a> Builder<'a> {
                 }
             }
             ComputedPlaceTyped::Partial(None) => {
-                // TODO(new_mut_ref): this isn't correct any more
                 if crate::patterns::pattern_has_mut(pattern) {
                     // Mode-checking should disallow mutable references to ghost places
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
