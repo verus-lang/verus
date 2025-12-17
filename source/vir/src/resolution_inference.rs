@@ -1085,12 +1085,11 @@ impl<'a> Builder<'a> {
                 }
             }
             PlaceX::Temporary(e) => {
+                let bb = self.build(e, bb)?;
                 let mode = self.locals.temporary_modes[&place.span.id];
                 if mode == Mode::Spec {
-                    // TODO(new_mut_ref): should build here
                     Ok((ComputedPlaceTyped::Partial(None), bb))
                 } else {
-                    let bb = self.build(e, bb)?;
                     let temp_name = self.locals.new_temp_name(place.span.id);
 
                     let fpt = FlattenedPlaceTyped {
