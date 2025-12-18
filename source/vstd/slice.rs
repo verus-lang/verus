@@ -83,7 +83,6 @@ pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
         len == spec_slice_len(slice),
 ;
 
-#[cfg_attr(all(verus_keep_ghost, not(verus_verify_core)), rustc_diagnostic_item = "verus::vstd::slice::spec_slice_is_empty")]
 pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {
     slice@.len() == 0
 }
