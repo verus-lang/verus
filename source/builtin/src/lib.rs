@@ -8,6 +8,7 @@
     feature(fn_traits),
     feature(register_tool),
     feature(tuple_trait),
+    feature(sized_hierarchy),
     register_tool(verus),
     register_tool(verifier)
 )]
@@ -390,7 +391,7 @@ pub struct Ghost<A> {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Tracked")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Tracked<A> {
+pub struct Tracked<A: core::marker::PointeeSized> {
     phantom: PhantomData<A>,
 }
 
@@ -1952,4 +1953,28 @@ pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {
 #[verifier::spec]
 pub fn fin<T: ?Sized>(_mut_ref: &mut T) -> &mut T {
     unimplemented!()
+}
+
+#[rustc_diagnostic_item = "verus::verus_builtin::ref_mut_tracked"]
+#[allow(non_camel_case_types)]
+pub struct ref_mut_tracked<'a, T: core::marker::PointeeSized> {
+    _r: &'a mut Tracked<T>
+}
+
+impl<'a, T: ?Sized> core::ops::Deref for ref_mut_tracked<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unimplemented!();
+    }
+}
+
+impl<'a, T: ?Sized> core::ops::DerefMut for ref_mut_tracked<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unimplemented!();
+    }
+}
+
+#[rustc_diagnostic_item = "verus::verus_builtin::borrow_mut_tracked"]
+pub fn borrow_mut_tracked<'a, T: core::marker::PointeeSized>(_m: &'a mut T) -> ref_mut_tracked<'a, T> {
+    unimplemented!();
 }

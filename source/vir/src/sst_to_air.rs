@@ -2,7 +2,7 @@ use crate::ast::{
     ArithOp, ArrayKind, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, GenericBoundX,
     Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path,
     PathX, Primitive, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility,
+    UnaryOpr, UnwindSpec, VarAt, VarIdent, VariantCheck, VirErr, Visibility, MutRefMode,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
@@ -195,7 +195,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
-        TypX::MutRef(_) => str_typ(POLY),
+        TypX::MutRef(_, _) => str_typ(POLY),
         TypX::Opaque { .. } => str_typ(POLY),
     }
 }
@@ -360,8 +360,11 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
             let base = decoration_base_for_primitive(*name);
             mk_id(primitive_id(ctx, &name, typs), base)
         }
-        TypX::MutRef(typ) => {
-            let f_name = str_ident(crate::def::TYPE_ID_MUT_REF);
+        TypX::MutRef(typ, m) => {
+            let f_name = match m {
+                MutRefMode::Exec => str_ident(crate::def::TYPE_ID_MUT_REF_EXEC),
+                MutRefMode::Proof => str_ident(crate::def::TYPE_ID_MUT_REF_PROOF),
+            };
             let args = typ_to_ids(ctx, typ);
             mk_id_sized(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
         }
@@ -596,7 +599,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         }
         TypX::FnDef(..) => None,
         TypX::Opaque { .. } => Some(expr_has_typ(ctx, expr, typ)),
-        TypX::MutRef(_) => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::MutRef(_, _) => Some(expr_has_typ(ctx, expr, typ)),
     }
 }
 
@@ -655,7 +658,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
         TypX::Opaque { .. } => None,
-        TypX::MutRef(_) => None,
+        TypX::MutRef(_, _) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -693,7 +696,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
         TypX::Opaque { .. } => None,
-        TypX::MutRef(_) => None,
+        TypX::MutRef(_, _) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }

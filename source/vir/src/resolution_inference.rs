@@ -233,7 +233,7 @@ use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck,
+    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, MutRefMode,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -1298,19 +1298,24 @@ impl<'a> Builder<'a> {
                 }
                 Err(()) => Err(()),
             },
-            PlaceX::DerefMut(p) => match self.build_place_typed(p, bb) {
-                Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
-                    fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
-                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
+            PlaceX::DerefMut(p, mode) => {
+                // Only modes are Exec and Proof, so no need to handle spec modes
+                match mode { MutRefMode::Exec | MutRefMode::Proof => { } }
+
+                match self.build_place_typed(p, bb) {
+                    Ok((ComputedPlaceTyped::Exact(mut fpt), bb)) => {
+                        fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
+                        Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                    }
+                    Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
+                        Ok((ComputedPlaceTyped::Partial(fpt), bb))
+                    }
+                    Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb)) => {
+                        Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
+                    }
+                    Err(()) => Err(()),
                 }
-                Ok((ComputedPlaceTyped::Partial(fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::Partial(fpt), bb))
-                }
-                Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb)) => {
-                    Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
-                }
-                Err(()) => Err(()),
-            },
+            }
             PlaceX::Local(var) => {
                 let mode = self.locals.var_modes[var];
                 if mode == Mode::Spec {
@@ -1809,7 +1814,7 @@ impl<'a> LocalCollection<'a> {
                 let typ = undecorate_box_trk_decorations(&cur_typ);
 
                 match &**typ {
-                    TypX::MutRef(inner_typ) => {
+                    TypX::MutRef(inner_typ, _) => {
                         *tree = PlaceTree::MutRef(
                             typ.clone(),
                             Box::new(PlaceTree::Leaf(inner_typ.clone())),
@@ -1947,8 +1952,10 @@ impl<'a> LocalCollection<'a> {
                         PlaceTree::MutRef(_ty, tr) => tr,
                         _ => unreachable!(),
                     };
+                    // Mode doesn't matter beyond this point
+                    let placex = PlaceX::DerefMut(ast_place, MutRefMode::Exec);
                     ast_place =
-                        SpannedTyped::new(span, inner_tree.typ(), PlaceX::DerefMut(ast_place));
+                        SpannedTyped::new(span, inner_tree.typ(), placex);
                     tree = &inner_tree;
                 }
             }
@@ -3084,7 +3091,7 @@ fn condition_on_enum_variants(
 ) -> Expr {
     match &place.x {
         PlaceX::Local(_l) => bool_expr.clone(),
-        PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::DerefMut(p, _) => condition_on_enum_variants(bool_expr, p, datatypes),
         PlaceX::Field(field_opr, p) => {
             let is_irref = match &field_opr.datatype {
                 Dt::Tuple(_) => true,

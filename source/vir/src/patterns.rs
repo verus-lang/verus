@@ -29,7 +29,7 @@ pub fn pattern_to_exprs(
         let place = if mut_ref {
             PlaceX::temporary(SpannedTyped::new(
                 &place.span,
-                &Arc::new(TypX::MutRef(place.typ.clone())),
+                &Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec)),
                 ExprX::BorrowMut(place.clone()),
             ))
         } else {
@@ -191,8 +191,9 @@ fn pattern_to_exprs_rec(
         }
         PatternX::ImmutRef(sub_pat) => pattern_to_exprs_rec(ctx, sub_pat, place, bindings, true),
         PatternX::MutRef(sub_pat) => {
+            let placex = PlaceX::DerefMut(place.clone(), MutRefMode::Exec);
             let deref_place =
-                SpannedTyped::new(&sub_pat.span, &sub_pat.typ, PlaceX::DerefMut(place.clone()));
+                SpannedTyped::new(&sub_pat.span, &sub_pat.typ, placex);
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
     }

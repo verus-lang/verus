@@ -133,7 +133,7 @@ fn check_well_founded_typ(
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
-        TypX::MutRef(t) => {
+        TypX::MutRef(t, _) => {
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
         TypX::Opaque { .. } => {
@@ -319,7 +319,7 @@ fn check_positive_uses(
         TypX::ConstInt(_) => Ok(()),
         TypX::ConstBool(_) => Ok(()),
         TypX::Air(_) => Ok(()),
-        TypX::MutRef(t) => {
+        TypX::MutRef(t, _) => {
             check_positive_uses(datatype, global, local, polarity, t)?;
             Ok(())
         }

@@ -797,9 +797,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| place_new(PlaceX::Field(field_opr.clone(), R::get(p))))
             }
             PlaceX::Local(_ident) => R::ret(|| place_new(place.x.clone())),
-            PlaceX::DerefMut(p) => {
+            PlaceX::DerefMut(p, mode) => {
                 let p = self.visit_place(p)?;
-                R::ret(|| place_new(PlaceX::DerefMut(R::get(p))))
+                R::ret(|| place_new(PlaceX::DerefMut(R::get(p), *mode)))
             }
             PlaceX::Temporary(e) => {
                 let e = self.visit_expr(e)?;
@@ -901,9 +901,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::PointeeMetadata(R::get(t))))
             }
-            TypX::MutRef(t) => {
+            TypX::MutRef(t, m) => {
                 let t = self.visit_typ(t)?;
-                R::ret(|| Arc::new(TypX::MutRef(R::get(t))))
+                R::ret(|| Arc::new(TypX::MutRef(R::get(t), *m)))
             }
         }
     }

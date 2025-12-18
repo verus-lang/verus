@@ -42,7 +42,8 @@ enum TypNum {
     SpecFn,
     Ptr,
     Ref,
-    MutRef,
+    MutRefExec,
+    MutRefProof,
     Box,
     Rc,
     Arc,
@@ -136,7 +137,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Decorate(d, targ, t) => {
             let n = match d {
                 TypDecoration::Ref => TypNum::Ref,
-                TypDecoration::MutRef => TypNum::MutRef,
+                TypDecoration::MutRef => TypNum::MutRefExec,
                 TypDecoration::Box => TypNum::Box,
                 TypDecoration::Rc => TypNum::Rc,
                 TypDecoration::Arc => TypNum::Arc,
@@ -179,9 +180,13 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
-        vir::ast::TypX::MutRef(t) => {
+        vir::ast::TypX::MutRef(t, vir::ast::MutRefMode::Exec) => {
             let ts = vec![t.clone()];
-            gen_num_typ(TypNum::MutRef, gen_typs(state, &ts))
+            gen_num_typ(TypNum::MutRefExec, gen_typs(state, &ts))
+        }
+        vir::ast::TypX::MutRef(t, vir::ast::MutRefMode::Proof) => {
+            let ts = vec![t.clone()];
+            gen_num_typ(TypNum::MutRefProof, gen_typs(state, &ts))
         }
     }
 }

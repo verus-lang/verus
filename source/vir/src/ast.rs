@@ -318,7 +318,13 @@ pub enum TypX {
     ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    MutRef(Typ),
+    MutRef(Typ, MutRefMode),
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum MutRefMode {
+    Exec,
+    Proof,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -1171,7 +1177,7 @@ pub enum PlaceX {
     /// Place of the given field. May have a precondition if VariantCheck is set to Union
     Field(FieldOpr, Place),
     /// Conceptually, this is like a Field, accessing the 'current' field of a mut_ref.
-    DerefMut(Place),
+    DerefMut(Place, MutRefMode),
     /// Unwrap a Ghost or a Tracked
     ModeUnwrap(Place, ModeWrapperMode),
     /// Index into an array or slice (`place[expr]`)

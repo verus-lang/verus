@@ -366,9 +366,9 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2)
         }
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, m) => {
             let (stmts, p1) = place_to_pure_place(state, p);
-            let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p1));
+            let p2 = SpannedTyped::new(&place.span, &place.typ, PlaceX::DerefMut(p1, *m));
             (stmts, p2)
         }
         PlaceX::ModeUnwrap(p, mwm) => {

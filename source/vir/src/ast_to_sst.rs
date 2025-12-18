@@ -2773,7 +2773,7 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
     let sn = crate::ast::MutRefFutureSourceName::MutRefFuture;
     let future_expx = ExpX::Unary(UnaryOp::MutRefFuture(sn), mut_ref_exp.clone());
     let t = match &*expr.typ {
-        TypX::MutRef(t) => t,
+        TypX::MutRef(t, _) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
     let future_exp = SpannedTyped::new(&expr.span, &t, future_expx);
@@ -2845,7 +2845,7 @@ fn place_to_exp_pair_rec(
             let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
             Ok((stms, Some((e1, e2))))
         }
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, _mode) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
             let exps = match exps {
                 None => None,

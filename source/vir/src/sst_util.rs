@@ -801,7 +801,7 @@ pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
 
 pub fn sst_mut_ref_current(span: &Span, e1: &Exp) -> Exp {
     let t = match &*e1.typ {
-        TypX::MutRef(t) => t,
+        TypX::MutRef(t, _) => t,
         _ => panic!("sst_mut_ref_current expected MutRef type"),
     };
     let op = UnaryOp::MutRefCurrent;
@@ -810,7 +810,7 @@ pub fn sst_mut_ref_current(span: &Span, e1: &Exp) -> Exp {
 
 pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
     let t = match &*e1.typ {
-        TypX::MutRef(t) => t,
+        TypX::MutRef(t, _) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
     let op = UnaryOp::MutRefFuture(crate::ast::MutRefFutureSourceName::MutRefFuture);

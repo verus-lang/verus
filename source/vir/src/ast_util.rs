@@ -183,7 +183,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
         (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
-        (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
+        (TypX::MutRef(t1, m1), TypX::MutRef(t2, m2)) => m1 == m2 && types_equal(t1, t2),
         (
             TypX::Opaque { def_path: def_path1, args: args1 },
             TypX::Opaque { def_path: def_path2, args: args2 },
@@ -642,7 +642,7 @@ pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
 
 pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
     let t = match &*expr.typ {
-        TypX::MutRef(t) => t,
+        TypX::MutRef(t, _) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
     let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
@@ -1008,9 +1008,13 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             let t = typ_to_diagnostic_str(t);
             format!("<{} as Pointee>::Metadata", t)
         }
-        TypX::MutRef(t) => {
+        TypX::MutRef(t, MutRefMode::Exec) => {
             let t = typ_to_diagnostic_str(t);
             format!("&mut {}", t)
+        }
+        TypX::MutRef(t, MutRefMode::Proof) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("&mut tracked {}", t)
         }
         TypX::Opaque { .. } => format!("opaque_ty"),
     }
@@ -1356,7 +1360,7 @@ impl PlaceX {
     pub fn uses_unnamed_temporary(&self) -> bool {
         match self {
             PlaceX::Local(_) => false,
-            PlaceX::DerefMut(p) => p.x.uses_unnamed_temporary(),
+            PlaceX::DerefMut(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::Field(_opr, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Temporary(_) => true,
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
@@ -1369,7 +1373,7 @@ impl PlaceX {
 pub fn place_get_local(p: &Place) -> Option<Place> {
     match &p.x {
         PlaceX::Local(_) => Some(p.clone()),
-        PlaceX::DerefMut(p) => place_get_local(p),
+        PlaceX::DerefMut(p, _) => place_get_local(p),
         PlaceX::Field(_opr, p) => place_get_local(p),
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
@@ -1381,7 +1385,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
 pub fn place_to_expr(place: &Place) -> Expr {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, _mode) => {
             let e = place_to_expr(p);
             ExprX::Unary(UnaryOp::MutRefCurrent, e)
         }

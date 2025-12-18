@@ -25,7 +25,7 @@ use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, OpaqueTypeX, Path,
     PathX, Primitive, Sizedness, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr,
-    VirErrAs,
+    VirErrAs, MutRefMode,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -894,7 +894,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if new_mut_ref() => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::MutRef(t0.clone())), ghost)
+            (Arc::new(TypX::MutRef(t0, MutRefMode::Exec)), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             let (t0, ghost) = t_rec(tys)?;
@@ -959,6 +959,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Real)) = verus_item {
                 (Arc::new(TypX::Real), false)
+            } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::RefMutTracked)) = verus_item {
+                assert!(args.len() == 2);
+                let typ_args = mk_typ_args(&args)?;
+                assert!(typ_args.len() == 1);
+                if !new_mut_ref() {
+                    unsupported_err!(span, "ref_mut_tracked type outside of new-mut-ref experiment")
+                }
+                (Arc::new(TypX::MutRef(typ_args[0].0.clone(), MutRefMode::Proof)), false)
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 

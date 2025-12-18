@@ -24,7 +24,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, Node, QPath, StmtKind};
-use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
+use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv, adjustment::AllowTwoPhase};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -37,6 +37,7 @@ use vir::ast::{
     FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
     ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration,
     TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    MutRefMode,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1511,11 +1512,20 @@ fn verus_item_to_vir<'tcx, 'a>(
             // This can't be two-phase since this is an opaque function call from
             // Rust's perspective.
             let e = crate::rust_to_vir_expr::borrow_mut_vir(
-                bctx,
-                expr.span,
-                &p,
-                rustc_middle::ty::adjustment::AllowTwoPhase::No,
+                bctx, expr.span, &p, AllowTwoPhase::No, MutRefMode::Exec);
+
+            Ok(e)
+        }
+        VerusItem::BorrowMutTracked => {
+            record_compilable_operator(bctx, expr, CompilableOperator::BorrowMutTracked);
+
+            assert!(args.len() == 1);
+            let vir_arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            let p = crate::rust_to_vir_expr::deref_mut_allow_cancelling_two_phase(
+                bctx, expr.span, &vir_arg,
             );
+            let e = crate::rust_to_vir_expr::borrow_mut_vir(
+                bctx, expr.span, &p, AllowTwoPhase::No, MutRefMode::Proof);
 
             Ok(e)
         }

@@ -1,6 +1,6 @@
 use crate::ast::{
     Datatype, Dt, FieldOpr, Krate, Mode, Path, Primitive, SpannedTyped, Typ, TypDecoration, TypX,
-    UnaryOpr, VarBinder, VarBinderX, VarIdentDisambiguate,
+    UnaryOpr, VarBinder, VarBinderX, VarIdentDisambiguate, MutRefMode,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
@@ -58,7 +58,7 @@ impl ResolvedTypeCollection {
                     self.visit_type(arg);
                 }
             }
-            TypX::MutRef(_t) => {
+            TypX::MutRef(_t, _m) => {
                 self.append(ResolvableType::MutRef);
             }
             TypX::Primitive(Primitive::Slice, args) => {
@@ -140,13 +140,16 @@ impl ResolvedTypeCollection {
     }
 }
 
-pub fn resolve_mut_ref_axiom() -> Node {
+pub fn resolve_mut_ref_axiom(mode: MutRefMode) -> Node {
     let decoration = str_to_node(DECORATION);
     let typ = str_to_node(TYPE);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let has_type = str_to_node(HAS_TYPE);
-    let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
+    let type_id_mut_ref = match mode {
+        MutRefMode::Exec => str_to_node(TYPE_ID_MUT_REF_EXEC),
+        MutRefMode::Proof => str_to_node(TYPE_ID_MUT_REF_PROOF),
+    };
     let resolved = str_to_node(HAS_RESOLVED);
     let decorate_nil_sized = str_to_node(DECORATE_NIL_SIZED);
     let mut_ref_current = str_to_node(MUT_REF_CURRENT);
@@ -335,7 +338,8 @@ pub fn resolve_axioms(ctx: &Ctx) -> Vec<Command> {
                 commands.append(&mut resolve_datatype_axiom(ctx, dt));
             }
             ResolvableType::MutRef => {
-                nodes.push(resolve_mut_ref_axiom());
+                nodes.push(resolve_mut_ref_axiom(MutRefMode::Exec));
+                nodes.push(resolve_mut_ref_axiom(MutRefMode::Proof));
             }
             ResolvableType::Decoration(dec) => {
                 nodes.push(resolve_decoration_axiom(dec));
