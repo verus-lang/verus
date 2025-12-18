@@ -102,7 +102,7 @@ fn is_small_expr(expr: &Expr) -> bool {
 fn temp_var(state: &mut State, expr: &Expr, mutable: bool) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
-    let pattern = PatternX::simple_var(name, mutable, &expr.span, &expr.typ);
+    let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
     let decl = StmtX::Decl {
         pattern,
         mode: Some(Mode::Exec),
@@ -146,8 +146,8 @@ fn pattern_to_exprs(
     let e = pattern_to_exprs_rec(ctx, state, expr, pattern, &mut pattern_bound_decls)?;
 
     for pbd in pattern_bound_decls {
-        let PatternBoundDecl { name, mutable, expr } = pbd;
-        let pattern = PatternX::simple_var(name, mutable, &expr.span, &expr.typ);
+        let PatternBoundDecl { name, expr } = pbd;
+        let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
         let decl = StmtX::Decl {
             pattern,
@@ -163,7 +163,6 @@ fn pattern_to_exprs(
 
 struct PatternBoundDecl {
     name: VarIdent,
-    mutable: bool,
     expr: Expr,
 }
 
@@ -182,7 +181,6 @@ fn pattern_to_exprs_rec(
         PatternX::Var(binding) => {
             decls.push(PatternBoundDecl {
                 name: binding.name.clone(),
-                mutable: binding.mutable,
                 expr: expr.clone(),
             });
             Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
@@ -191,7 +189,6 @@ fn pattern_to_exprs_rec(
             let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
             decls.push(PatternBoundDecl {
                 name: binding.name.clone(),
-                mutable: binding.mutable,
                 expr: expr.clone(),
             });
             Ok(pattern_test)
@@ -231,10 +228,8 @@ fn pattern_to_exprs_rec(
                     .iter()
                     .find(|d| d.name == d1.name)
                     .expect("both sides of 'or' pattern should bind the same variables");
-                assert!(d1.mutable == d2.mutable);
                 let combined_decl = PatternBoundDecl {
                     name: d1.name,
-                    mutable: d1.mutable,
                     expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
                 };
                 decls.push(combined_decl);
@@ -266,7 +261,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::Var(binding) | PatternX::Binding { binding, sub_pat: _ } => {
             let v_patternx = PatternX::Var(PatternBinding {
                 name: binding.name.clone(),
-                mutable: binding.mutable,
+                user_mut: None,
                 by_ref: ByRef::No,
                 typ: binding.typ.clone(),
                 copy: false,
@@ -776,7 +771,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
             PatternX::Var(PatternBinding {
                 by_ref: ByRef::No,
                 name: _,
-                mutable: _,
+                user_mut: _,
                 typ: _,
                 copy: _,
             }) => Ok(vec![stmt.clone()]),
@@ -796,7 +791,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 PatternX::Var(PatternBinding {
                     by_ref: ByRef::No,
                     name: _,
-                    mutable: _,
+                    user_mut: _,
                     typ: _,
                     copy: _
                 })
@@ -968,7 +963,7 @@ fn exec_closure_spec_requires(
     let mut decls: Vec<Stmt> = Vec::new();
     for (i, p) in params.iter().enumerate() {
         let typ = &p.a;
-        let pattern = PatternX::simple_var(p.name.clone(), false, span, typ);
+        let pattern = PatternX::simple_var(p.name.clone(), span, typ);
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
@@ -1031,7 +1026,7 @@ fn exec_closure_spec_ensures(
     let mut decls: Vec<Stmt> = Vec::new();
     for (i, p) in params.iter().enumerate() {
         let typ = &p.a;
-        let pattern = PatternX::simple_var(p.name.clone(), false, span, typ);
+        let pattern = PatternX::simple_var(p.name.clone(), span, typ);
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
@@ -1267,6 +1262,7 @@ fn simplify_function(
             name: dummy_param_name(),
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mode: Mode::Spec,
+            user_mut: false,
             is_mut: false,
             unwrapped_info: None,
         };

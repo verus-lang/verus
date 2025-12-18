@@ -265,13 +265,11 @@ pub enum LocalDeclKind {
     QuantBinder,
     ChooseBinder,
     ClosureBinder,
-    OpenInvariantBinder,
     ExecClosureId,
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
     BorrowMut,
-    MutableTemporary,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

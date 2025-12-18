@@ -857,23 +857,21 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
-            LocalDeclKind::Return => false,
-            LocalDeclKind::TempViaAssign => false,
-            LocalDeclKind::Decreases => false,
-            LocalDeclKind::StmCallArg { native: _ } => false,
-            LocalDeclKind::Assert => false,
-            LocalDeclKind::AssertByVar { native: _ } => false,
-            LocalDeclKind::LetBinder => false,
-            LocalDeclKind::QuantBinder => false,
-            LocalDeclKind::ChooseBinder => false,
-            LocalDeclKind::ClosureBinder => false,
-            LocalDeclKind::OpenInvariantBinder => true,
-            LocalDeclKind::ExecClosureId => false,
-            LocalDeclKind::ExecClosureParam => false,
-            LocalDeclKind::ExecClosureRet => false,
-            LocalDeclKind::Nondeterministic => false,
+            LocalDeclKind::Return |
+            LocalDeclKind::TempViaAssign |
+            LocalDeclKind::Decreases |
+            LocalDeclKind::StmCallArg { native: _ } |
+            LocalDeclKind::Assert |
+            LocalDeclKind::AssertByVar { native: _ } |
+            LocalDeclKind::LetBinder |
+            LocalDeclKind::QuantBinder |
+            LocalDeclKind::ChooseBinder |
+            LocalDeclKind::ClosureBinder |
+            LocalDeclKind::ExecClosureId |
+            LocalDeclKind::ExecClosureParam |
+            LocalDeclKind::ExecClosureRet |
+            LocalDeclKind::Nondeterministic |
             LocalDeclKind::BorrowMut => false,
-            LocalDeclKind::MutableTemporary => true,
         }
     }
 }

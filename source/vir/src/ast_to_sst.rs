@@ -40,6 +40,23 @@ pub(crate) struct ClosureState {
     dest: UniqueIdent,
 }
 
+struct Immutable(LocalDeclKind);
+
+enum PreLocalDeclKind {
+    /// Any 'immutable' kind
+    Immutable(LocalDeclKind),
+    /// Param (mutability to be inferred)
+    Param,
+    /// StmtLet (mutability to be inferred)
+    StmtLet
+}
+
+struct PreLocalDecl {
+    pub ident: UniqueIdent,
+    pub typ: Typ,
+    pub kind: PreLocalDeclKind,
+}
+
 pub(crate) struct State<'a> {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
@@ -49,7 +66,7 @@ pub(crate) struct State<'a> {
     // Counter to generate temporary variables
     next_var: u64,
     // Collect all local variable declarations
-    local_decls: Vec<LocalDecl>,
+    pre_local_decls: Vec<PreLocalDecl>,
     // Rename variables when needed, using unique integers, to avoid collisions.
     rename_map: ScopeMap<VarIdent, VarIdent>,
     // Track which variable Ident have potentially been used in this scope as Exp-bound
@@ -180,7 +197,7 @@ impl<'a> State<'a> {
             view_as_spec: false,
             check_spec_decreases: None,
             next_var: 0,
-            local_decls: Vec::new(),
+            pre_local_decls: Vec::new(),
             rename_map,
             rename_exp_idents,
             rename_counters: HashMap::new(),
@@ -322,12 +339,12 @@ impl<'a> State<'a> {
         &mut self,
         ident: &VarIdent,
         typ: &Typ,
-        kind: LocalDeclKind,
+        kind: PreLocalDeclKind,
         may_need_rename: bool,
     ) -> VarIdent {
         let unique_ident = if may_need_rename { self.rename_var_stm(ident) } else { ident.clone() };
-        let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), kind };
-        self.local_decls.push(Arc::new(decl));
+        let decl = PreLocalDecl { ident: unique_ident.clone(), typ: typ.clone(), kind };
+        self.pre_local_decls.push(decl);
         unique_ident
     }
 
@@ -343,7 +360,7 @@ impl<'a> State<'a> {
     }
 
     fn declare_temp_assign(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
-        self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign)
+        self.declare_temp_var_stm(span, typ, Immutable(LocalDeclKind::TempViaAssign))
     }
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
@@ -355,7 +372,7 @@ impl<'a> State<'a> {
                 self.declare_var_stm(
                     name,
                     &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
+                    Immutable(LocalDeclKind::Param { mutable: false }),
                     false,
                 );
             }
@@ -2986,7 +3003,7 @@ fn stmt_to_stm(
     ctx: &Ctx,
     state: &mut State,
     stmt: &Stmt,
-) -> Result<(Vec<Stm>, Maybe<Value>, Option<(VarIdent, LocalDecl, Option<Bnd>)>), VirErr> {
+) -> Result<(Vec<Stm>, Maybe<Value>, Option<(VarIdent, PreLocalDecl, Option<Bnd>)>), VirErr> {
     match &stmt.x {
         StmtX::Expr(expr) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
@@ -2996,24 +3013,24 @@ fn stmt_to_stm(
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
-            let (name, mutable, typ) = match &pattern.x {
+            let (name, typ) = match &pattern.x {
                 PatternX::Var(PatternBinding {
                     name,
-                    mutable,
+                    user_mut: _,
                     by_ref: ByRef::No,
                     typ,
                     copy: _,
-                }) => (name, mutable, typ),
+                }) => (name, typ),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
 
             let rename = state.rename_var_maybe_exp(&name);
             let ident = rename.clone();
-            let decl = Arc::new(LocalDeclX {
+            let decl = PreLocalDecl {
                 ident,
                 typ: typ.clone(),
-                kind: LocalDeclKind::StmtLet { mutable: *mutable },
-            });
+                kind: PreLocalDeclKind::StmtLet,
+            };
 
             let init = init.as_ref().map(|init| place_to_expr(init));
 
