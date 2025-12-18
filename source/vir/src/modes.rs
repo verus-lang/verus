@@ -1931,9 +1931,16 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Exec)
         }
         ExprX::Atomically(_info, _p, e) => {
-            let ExprX::Loop { body, invs, .. } = &e.x else {
-                dbg!(&e);
-                panic!("malformed atomically block");
+            let (expr, loop_is_infinite) = match &e.x {
+                ExprX::NeverToAny(e) => (e, true),
+                _ => (e, false),
+            };
+
+            let ExprX::Loop { body, invs, .. } = &expr.x else {
+                return Err(error(
+                    &expr.span,
+                    "malformed atomic function call; please do not use `vstd::atomic::atomically` directly",
+                ));
             };
 
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
@@ -1943,6 +1950,13 @@ fn check_expr_handle_mut_arg(
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);
                 let mut typing = typing.push_allow_prophecy_dependence(true);
                 check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, &inv.inv, Mode::Spec)?;
+            }
+
+            if loop_is_infinite {
+                let err = error(&expr.span, "atomic function call forms an infinite loop")
+                    .help("make sure to `break` this loop if the update function succeeded");
+
+                return Err(err);
             }
 
             Ok(Mode::Proof)

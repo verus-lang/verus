@@ -39,7 +39,7 @@ pub fn middle(x: i32) -> (y: i32)
     loop invariant au == atom_upd { break }
 
     atomic_function(x, "hi", ()) atomically |upd|
-        //invariant au == atom_upd,
+        invariant au == atom_upd,
     {
         let tracked Tracked(res) = try_open_atomic_update!(au, a => {
             assert(a == 5);
@@ -55,7 +55,7 @@ pub fn middle(x: i32) -> (y: i32)
 
             Err(new_au) => {
                 au = new_au;
-                continue;
+                //continue;
             }
         }
     }
@@ -68,7 +68,7 @@ pub fn atomic_call() {
         assert(z == 5);
         let w = update(z);
         //assert(w == 7);
-        break;
+        if w is Ok { break }
     };
 }
 

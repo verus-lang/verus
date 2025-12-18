@@ -2755,6 +2755,8 @@ pub(crate) fn expr_to_stm_opt(
             //
             // () = $body;
             //
+            // assert(resolves(au));
+            //
             // au
             // ```
 
@@ -2862,6 +2864,28 @@ pub(crate) fn expr_to_stm_opt(
                 panic!("malformed atomic function call, body does not return unit");
             };
 
+            // assert atomic update resolves
+
+            if !state.checking_recommends(ctx) {
+                let call_resolves = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                );
+
+                let call_resolves =
+                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
+                let err = error(&expr.span, "atomic function call might not allow atomic update to resolve")
+                    .help("make sure to `break` this loop only if the update function succeeded");
+
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(err), call_resolves),
+                ));
+            }
+
+            // return atomic update
+
             state.au_var_exp = backup_au_var;
             Ok((stms, ReturnValue::Some(au_var_exp)))
         }
@@ -2874,8 +2898,22 @@ pub(crate) fn expr_to_stm_opt(
             // assert(inner_mask(au) ⊆ state.mask);
             //
             // assert(req(au, x));
-            // assume(res is Ok ==> ens(au, x, field(res, Ok)));
-            // assume(res is Err ==> field(res, Err) == x);
+            //
+            // if is_variant(res, Ok) {
+            //     let y = field(res, Ok);
+            //     assume(ens(au_tmp, x_tmp, y));
+            //
+            //     assume(input(au_tmp, x_tmp));
+            //     assume(output(au_tmp, y));
+            //     assume(resolves(au_tmp));
+            //
+            //     Ok(())
+            // } else {
+            //     let x = field(res, Err);
+            //     assume(x == x_tmp);
+            //
+            //     Err(au_tmp)
+            // }
             //
             // res
             // ```
@@ -3040,15 +3078,15 @@ pub(crate) fn expr_to_stm_opt(
 
                 // mark as resolved
 
-                // let call_resolves = ExpX::Call(
-                //     ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
-                //     typ_args.clone(),
-                //     Arc::new(vec![au_temp_var_exp.clone()]),
-                // );
+                let call_resolves = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                );
 
-                // let call_resolves =
-                //     SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
-                // stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
+                let call_resolves =
+                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
 
                 (stms, ReturnValue::Some(res_var_exp.clone()))
             };
