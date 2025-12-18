@@ -45,7 +45,7 @@ use vir::ast::{
     Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath, InequalityOp,
     IntRange, InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX, Primitive,
     SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
-    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr, MutRefMode,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -533,7 +533,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
                     };
 
                     if is_mut {
-                        let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone()));
+                        let typ = Arc::new(TypX::MutRef(vir_pat.typ.clone(), MutRefMode::Exec));
                         let x = PatternX::MutRef(vir_pat);
                         vir_pat = bctx.spanned_typed_new(pat.span, &typ, x);
                     } else {
@@ -592,7 +592,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             let actual_pat_typ = match by_ref {
                 ByRef::No => var_typ.clone(),
                 ByRef::Yes(Mutability::Mut) => match &*var_typ {
-                    TypX::MutRef(t) => t.clone(),
+                    TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
                     _ => crate::internal_err!(pat.span, "expected &mut type"),
                 },
                 ByRef::Yes(Mutability::Not) => match &*var_typ {
@@ -3745,7 +3745,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     }
 
     let t = match &*undecorate_typ(&place.typ) {
-        TypX::MutRef(t) => t.clone(),
+        TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
         _ => panic!("expected mut ref"),
     };
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
@@ -3772,7 +3772,7 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
     }
 
     let t = match &*place.typ {
-        TypX::MutRef(t) => t.clone(),
+        TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
         _ => panic!("expected mut ref"),
     };
     bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
@@ -3808,7 +3808,7 @@ pub(crate) fn borrow_mut_vir(
         }
         AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
     };
-    let typ = Arc::new(TypX::MutRef(place.typ.clone()));
+    let typ = Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec));
     bctx.spanned_typed_new(span, &typ, x)
 }
 

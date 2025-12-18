@@ -29,7 +29,7 @@ pub fn pattern_to_exprs(
         let place = if mut_ref {
             PlaceX::temporary(SpannedTyped::new(
                 &place.span,
-                &Arc::new(TypX::MutRef(place.typ.clone())),
+                &Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec)),
                 ExprX::BorrowMut(place.clone()),
             ))
         } else {

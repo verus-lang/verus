@@ -27,7 +27,7 @@ pub fn migrate_mut_ref_function(f: &mut Function) {
                     params_migrated.insert(p.x.name.clone());
                     p.new_x(ParamX {
                         name: p.x.name.clone(),
-                        typ: Arc::new(TypX::MutRef(p.x.typ.clone())),
+                        typ: Arc::new(TypX::MutRef(p.x.typ.clone(), MutRefMode::Exec)),
                         mode: p.x.mode,
                         is_mut: false,
                         unwrapped_info: p.x.unwrapped_info.clone(),
@@ -64,12 +64,12 @@ fn migrate_one_expr(expr: &Expr, params_migrated: &HashSet<VarIdent>) -> Expr {
     match &expr.x {
         ExprX::VarAt(ident, VarAt::Pre) => {
             assert!(params_migrated.contains(ident));
-            let mut_ref_typ = Arc::new(TypX::MutRef(expr.typ.clone()));
+            let mut_ref_typ = Arc::new(TypX::MutRef(expr.typ.clone(), MutRefMode::Exec));
             let e = SpannedTyped::new(&expr.span, &mut_ref_typ, ExprX::Var(ident.clone()));
             SpannedTyped::new(&expr.span, &expr.typ, ExprX::Unary(UnaryOp::MutRefCurrent, e))
         }
         ExprX::Var(ident) if params_migrated.contains(ident) => {
-            let mut_ref_typ = Arc::new(TypX::MutRef(expr.typ.clone()));
+            let mut_ref_typ = Arc::new(TypX::MutRef(expr.typ.clone(), MutRefMode::Exec));
             let e = SpannedTyped::new(&expr.span, &mut_ref_typ, ExprX::Var(ident.clone()));
             SpannedTyped::new(&expr.span, &expr.typ, ExprX::Unary(UnaryOp::MutRefFuture, e))
         }
@@ -80,7 +80,7 @@ fn migrate_one_expr(expr: &Expr, params_migrated: &HashSet<VarIdent>) -> Expr {
 fn migrate_one_place(place: &Place, params_migrated: &HashSet<VarIdent>) -> Place {
     match &place.x {
         PlaceX::Local(ident) if params_migrated.contains(ident) => {
-            let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone()));
+            let mut_ref_typ = Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec));
             let e = SpannedTyped::new(&place.span, &mut_ref_typ, ExprX::Var(ident.clone()));
             let e =
                 SpannedTyped::new(&place.span, &place.typ, ExprX::Unary(UnaryOp::MutRefFuture, e));

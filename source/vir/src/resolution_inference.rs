@@ -1485,7 +1485,7 @@ impl<'a> LocalCollection<'a> {
             if let PlaceTree::Leaf(typ) = tree {
                 let typ = undecorate_box_trk_decorations(typ);
                 match &**typ {
-                    TypX::MutRef(inner_typ) => {
+                    TypX::MutRef(inner_typ, _) => {
                         *tree = PlaceTree::MutRef(
                             typ.clone(),
                             Box::new(PlaceTree::Leaf(inner_typ.clone())),

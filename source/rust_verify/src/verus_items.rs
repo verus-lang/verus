@@ -328,6 +328,7 @@ pub(crate) enum BuiltinTypeItem {
     FnSpec,
     Ghost,
     Tracked,
+    RefMutTracked,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -584,6 +585,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
         ("verus::verus_builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
+        ("verus::verus_builtin::ref_mut_tracked",         VerusItem::BuiltinType(BuiltinTypeItem::RefMutTracked)),
 
         ("verus::verus_builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
         ("verus::verus_builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),

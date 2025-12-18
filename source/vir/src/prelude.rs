@@ -149,7 +149,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
     let type_id_global = str_to_node(TYPE_ID_GLOBAL);
-    let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
+    let type_id_mut_ref_exec = str_to_node(TYPE_ID_MUT_REF_EXEC);
+    let type_id_mut_ref_proof = str_to_node(TYPE_ID_MUT_REF_PROOF);
 
     let mut_ref_current = str_to_node(MUT_REF_CURRENT);
     let mut_ref_future = str_to_node(MUT_REF_FUTURE);
@@ -216,7 +217,8 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_never] ([decoration]) [decoration])
         (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
-        (declare-fun [type_id_mut_ref] ([decoration] [typ]) [typ])
+        (declare-fun [type_id_mut_ref_exec] ([decoration] [typ]) [typ])
+        (declare-fun [type_id_mut_ref_proof] ([decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-const [type_id_strslice] [typ])
         (declare-const [type_id_global] [typ])

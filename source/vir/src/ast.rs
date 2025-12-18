@@ -318,7 +318,13 @@ pub enum TypX {
     ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-    MutRef(Typ),
+    MutRef(Typ, MutRefMode),
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone, Copy, PartialEq, Eq)]
+pub enum MutRefMode {
+    Exec,
+    Proof,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

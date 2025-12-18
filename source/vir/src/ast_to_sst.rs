@@ -2742,7 +2742,7 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
 
     let future_expx = ExpX::Unary(UnaryOp::MutRefFuture, mut_ref_exp.clone());
     let t = match &*expr.typ {
-        TypX::MutRef(t) => t,
+        TypX::MutRef(t, _) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
     let future_exp = SpannedTyped::new(&expr.span, &t, future_expx);

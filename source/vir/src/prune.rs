@@ -146,7 +146,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
-        TypX::MutRef(_) => ReachedType::None,
+        TypX::MutRef(_, _) => ReachedType::None,
         TypX::Opaque { .. } => ReachedType::None,
     }
 }
@@ -318,7 +318,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
                 reach_function(ctxt, state, res_fun);
             }
         }
-        TypX::MutRef(_) => {}
+        TypX::MutRef(_, _) => {}
     }
 }
 
