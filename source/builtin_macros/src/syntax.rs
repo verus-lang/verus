@@ -3553,18 +3553,19 @@ impl Visitor {
         //          // Real iterator
         //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init), 
         //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-        //          Ghost(Some(::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
+        //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
         //      ); 
         //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
-        //      let Ghost(VERUS_old_snap) = VERUS_iter.snapshot;
+        //      #[verus::internal(spec)] 
+        //      let y = VERUS_OLD_y.snapshot.view();
         //      #[allow(non_snake_case)]
         //      let VERUS_loop_result = match VERUS_iter {
         //         mut y => {
         //             'label: loop
         //                  invariant_except_break
         //                     #[verus::internal(auto_decreases)]
-        //                     y.iter.decrease() is Some,   // TODO: Use the method version
+        //                     y.iter.decrease().is_Some(),
         //                  invariant
         //                     // We track the continuitiy of the snapshot and the initial iterator-creation expression
         //                     y.snapshot == VERUS_old_snap,
@@ -3579,15 +3580,14 @@ impl Visitor {
         //                     y.wf(),
         //                     ({ 
         //                         // Grab the next val for (possible) use in the user-provided inv
-// TODO: Use .view()
-        //                         let x = if y.index@ < y.seq().len() { 
-        //                                     y.seq()[y.index@] 
+        //                         let x = if y.index.view() < y.seq().len() { 
+        //                                     y.seq()[y.index.view()] 
         //                                 } else { vstd::pervasive::arbitrary() };
         //                         inv
         //                     }),
         //                  ensures
-        //                     y.snapshot@.completes(),
-        //                     y.index@ == y.seq().len(),
+        //                     y.snapshot.view().completes(),
+        //                     y.index.view() == y.seq().len(),
         //                  decreases
         //                     y.iter.decrease(),
         //                      .unwrap_or(vstd::pervasive::arbitrary()),
@@ -3710,7 +3710,7 @@ impl Visitor {
         
         let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
-            #x_iter_name.snapshot == #x_snapshot
+            #x_iter_name.snapshot.view() == #x_snapshot
         ));
         let wf_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
@@ -3731,14 +3731,15 @@ impl Visitor {
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
             #[verus::internal(auto_decreases)]
-            #x_iter_name.iter.decrease() is Some
+            #vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter).is_Some()
+            //#x_iter_name.iter.decrease().is_Some()
         ));
         dbg!("invs created");
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = if #x_iter_name.index@ < #x_iter_name.seq().len() {
-                        #x_iter_name.seq()[#x_iter_name.index@]
+                    let #pat = if #x_iter_name.index.view() < #x_iter_name.seq().len() {
+                        #x_iter_name.seq()[#x_iter_name.index.view()]
                     } else {
                         #vstd::pervasive::arbitrary()
                     };
@@ -3765,8 +3766,8 @@ impl Visitor {
             dbg!("inv_except_break 1");
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat = if #x_iter_name.index@ < #x_iter_name.seq().len() {
-                        #x_iter_name.seq()[#x_iter_name.index@]
+                    let #pat = if #x_iter_name.index.view() < #x_iter_name.seq().len() {
+                        #x_iter_name.seq()[#x_iter_name.index.view()]
                     } else {
                         #vstd::pervasive::arbitrary()
                     };
@@ -3790,8 +3791,8 @@ impl Visitor {
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
-                    let #pat = if #x_iter_name.index@ < #x_iter_name.seq().len() {
-                        #x_iter_name.seq()[#x_iter_name.index@]
+                    let #pat = if #x_iter_name.index.view() < #x_iter_name.seq().len() {
+                        #x_iter_name.seq()[#x_iter_name.index.view()]
                     } else {
                         #vstd::pervasive::arbitrary()
                     };
@@ -3802,7 +3803,8 @@ impl Visitor {
             attrs.push(mk_verus_attr(span, quote! { auto_decreases }));
             decreases = Some(parse_quote_spanned_vstd!(vstd, span =>
                 decreases
-                    #x_iter_name.iter.decrease()
+                    #vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter)
+                    //#x_iter_name.iter.decrease()
                     .unwrap_or(#vstd::pervasive::arbitrary()),
             ))
         }
@@ -3813,9 +3815,9 @@ impl Visitor {
             Some(parse_quote_spanned_vstd!(vstd, span =>
                 ensures
                     #[verus::internal(auto_decreases)]
-                    #x_iter_name.snapshot@.completes(),
+                    #x_iter_name.snapshot.view().completes(),
                     #[verus::internal(auto_decreases)]
-                    #x_iter_name.index@ == #x_iter_name.seq().len(),
+                    #x_iter_name.index.view() == #x_iter_name.seq().len() as int,
                     true,
             ))
         } else {
@@ -3825,7 +3827,8 @@ impl Visitor {
         self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
         dbg!("about to create body_exec");
         let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
-            let ghost #x_iter_body_old = #x_iter_name;
+            #[verus::internal(spec)] 
+            let #x_iter_body_old = #x_iter_name.view();
             #[allow(non_snake_case)]
             let mut VERUS_loop_next;
             match #vstd::std_specs::iter::VerusForLoopIterator::next(&mut #x_iter_name) {
@@ -3835,7 +3838,8 @@ impl Visitor {
                 ::core::option::Option::None => break,
             };
             let #pat = VERUS_loop_next;
-            let ghost #x_iter_name = #x_iter_body_old;
+            #[verus::internal(spec)] 
+            let #x_iter_name = #x_iter_body_old.view();
             let () = #body;
         }));
         let mut body: Block = parse_quote_spanned!(span => { #body_exec });
@@ -3850,15 +3854,16 @@ impl Visitor {
             #[allow(non_snake_case)]
             let #x_verus_iter_init = #expr;
             #[allow(non_snake_case)]
-            let #x_wrapped_iter = VerusForLoopIterator::new(
+            let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopIterator::new(
                 // Real iterator
                 ::core::iter::IntoIterator::into_iter(#x_verus_iter_init), 
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-                #vstd::prelude::Ghost::new(Some(::core::iter::IntoIterator::into_iter(#x_verus_iter_init))),
+                #vstd::prelude::Ghost::new(Some(&::core::iter::IntoIterator::into_iter(#x_verus_iter_init))),
             ); 
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
-            #[allow(non_snake_case)]
-            let #vstd::prelude::Ghost(#x_snapshot) = #x_wrapped_iter.snapshot;
+            #[allow(non_snake_case)] 
+            #[verus::internal(spec)] 
+            let #x_snapshot = #x_wrapped_iter.snapshot.view();
             #[allow(non_snake_case)]
             let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
