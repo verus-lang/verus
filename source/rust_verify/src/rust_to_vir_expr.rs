@@ -8,8 +8,7 @@ use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
     get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
-    mid_ty_simplify, mid_ty_to_vir_ghost, mk_range, ty_is_vec, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    mid_ty_simplify, mk_range, ty_is_vec, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;
@@ -631,17 +630,10 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             };
             pat_typ = actual_pat_typ;
 
-            // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
-            // mutable reference (or if it contains a nested mutable reference),
-            // even if the variable is not marked 'mut'.
-            // Conservatively mark all variables mutable for now
-            // TODO(new_mut_ref) be more precise about this.
-            let mutable = mutable || bctx.new_mut_ref;
-
             let name = local_to_var(x, canonical.local_id);
             let binding = vir::ast::PatternBinding {
                 name,
-                mutable,
+                user_mut: Some(mutable),
                 by_ref: vir_by_ref,
                 typ: var_typ.clone(),
                 copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
@@ -3065,64 +3057,6 @@ fn expr_assign_to_vir_innermost<'tcx>(
         });
     }
 
-    fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
-        Ok(match lhs.kind {
-            ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) => {
-                let not_mut = if let Node::Pat(pat) = bctx.ctxt.tcx.hir_node(*id) {
-                    let (mutable, _) = pat_to_mut_var(pat)?;
-                    let ty = bctx.types.node_type(*id);
-                    !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
-                } else {
-                    panic!("assignment to non-local");
-                };
-                if not_mut {
-                    let mut parent = bctx.ctxt.tcx.hir_parent_iter(*id);
-                    let (_, parent) = parent.next().expect("one parent for local");
-                    match parent {
-                        Node::Param(_) => err_span(lhs.span, "cannot assign to non-mut parameter")?,
-                        Node::LetStmt(_) => (),
-                        other => unsupported_err!(lhs.span, "assignee node", other),
-                    }
-                }
-                not_mut
-            }
-            ExprKind::Field(lhs, _) => {
-                let deref_ghost = mid_ty_to_vir_ghost(
-                    bctx.ctxt.tcx,
-                    &bctx.ctxt.verus_items,
-                    None,
-                    bctx.fun_id,
-                    lhs.span,
-                    &bctx.types.expr_ty_adjusted(lhs),
-                    true,
-                )?
-                .1;
-                unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");
-                init_not_mut(bctx, lhs)?
-            }
-            ExprKind::MethodCall(_, receiver, _, span) => {
-                let fn_def_id = bctx
-                    .types
-                    .type_dependent_def_id(lhs.hir_id)
-                    .expect("def id of the method definition");
-                let verus_item = bctx.ctxt.get_verus_item(fn_def_id);
-                if matches!(
-                    verus_item,
-                    Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut))
-                ) {
-                    let nm = init_not_mut(bctx, &receiver)?;
-                    unsupported_err_unless!(!nm, span, "this call for delayed initialization");
-                    nm
-                } else {
-                    unsupported_err!(span, "this call in assignment");
-                }
-            }
-            ExprKind::Unary(UnOp::Deref, _) => false,
-            _ => {
-                unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
-            }
-        })
-    }
     let op = match op_kind {
         Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
         None => None,
@@ -3186,11 +3120,9 @@ fn expr_assign_to_vir_innermost<'tcx>(
         erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
         return Ok(ExprOrPlace::Expr(index_set));
     }
-    let init_not_mut = init_not_mut(bctx, lhs)?;
 
     let lhs = expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF_MUT)?.to_place();
     mk_expr(ExprX::Assign {
-        init_not_mut,
         lhs: place_to_loc(&lhs)?,
         rhs: expr_to_vir_consume(bctx, rhs, modifier)?,
         op: op,

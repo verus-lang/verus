@@ -9,8 +9,7 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX, Stm, Trig,
-    Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -52,15 +51,15 @@ pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-pub(crate) fn subst_local_decl(
+pub(crate) fn subst_pre_local_decl(
     typ_substs: &HashMap<Ident, Typ>,
-    local_decl: &LocalDecl,
-) -> LocalDecl {
-    Arc::new(LocalDeclX {
-        ident: local_decl.ident.clone(),
-        typ: subst_typ(typ_substs, &local_decl.typ),
-        kind: local_decl.kind.clone(),
-    })
+    pre_local_decl: &crate::ast_to_sst::PreLocalDecl,
+) -> crate::ast_to_sst::PreLocalDecl {
+    crate::ast_to_sst::PreLocalDecl {
+        ident: pre_local_decl.ident.clone(),
+        typ: subst_typ(typ_substs, &pre_local_decl.typ),
+        kind: pre_local_decl.kind.clone(),
+    }
 }
 
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
@@ -858,23 +857,22 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
-            LocalDeclKind::Return => false,
-            LocalDeclKind::TempViaAssign => false,
-            LocalDeclKind::Decreases => false,
-            LocalDeclKind::StmCallArg { native: _ } => false,
-            LocalDeclKind::Assert => false,
-            LocalDeclKind::AssertByVar { native: _ } => false,
-            LocalDeclKind::LetBinder => false,
-            LocalDeclKind::QuantBinder => false,
-            LocalDeclKind::ChooseBinder => false,
-            LocalDeclKind::ClosureBinder => false,
-            LocalDeclKind::OpenInvariantBinder => true,
-            LocalDeclKind::ExecClosureId => false,
-            LocalDeclKind::ExecClosureParam => false,
-            LocalDeclKind::ExecClosureRet => false,
-            LocalDeclKind::Nondeterministic => false,
-            LocalDeclKind::BorrowMut => false,
-            LocalDeclKind::MutableTemporary => true,
+            LocalDeclKind::Return
+            | LocalDeclKind::TempViaAssign
+            | LocalDeclKind::Decreases
+            | LocalDeclKind::StmCallArg { native: _ }
+            | LocalDeclKind::Assert
+            | LocalDeclKind::AssertByVar { native: _ }
+            | LocalDeclKind::LetBinder
+            | LocalDeclKind::QuantBinder
+            | LocalDeclKind::ChooseBinder
+            | LocalDeclKind::ClosureBinder
+            | LocalDeclKind::ExecClosureId
+            | LocalDeclKind::ExecClosureParam
+            | LocalDeclKind::ExecClosureRet
+            | LocalDeclKind::Nondeterministic
+            | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::BorrowMut => false,
         }
     }
 }
