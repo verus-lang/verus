@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use crate::std_specs::iter::IteratorSpec;
 use verus_builtin::*;
 
 use alloc::vec::{IntoIter, Vec};
@@ -312,10 +313,12 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-pub struct VecSpecIterator<T, A>;
+pub struct VecSpecIterator<T, A:Allocator> {
+    _phantom: PhantomData<(T,A)>,
+}
 
-impl <T, A> VecSpecIterator<T, A> {
-    pub closed spec fn new(v: &Vec<T>) -> Self; 
+impl <T, A:Allocator> VecSpecIterator<T, A> {
+    pub closed spec fn new(v: Vec<T, A>) -> Self; 
 
     pub closed spec fn front(self) -> usize;
     pub closed spec fn back(self) -> usize;
@@ -337,11 +340,11 @@ impl <T, A> VecSpecIterator<T, A> {
 //         We need an "ensures", rather than (say) a postcondition on `vec_iter`,
 //         since we need to know properties about vec_iter_spec *inside*
 //         the loop invariant, not just before the loop starts.
-pub open spec fn new_vec_spec_iter<T, A>(v: &Vec<T, A>) -> VecSpecIterator<T, A> {
+pub open spec fn new_vec_spec_iter<T, A:Allocator>(v: Vec<T, A>) -> VecSpecIterator<T, A> {
     VecSpecIterator::new(v)
 }
 
-pub broadcast proof fn new_vec_spec_iter_properties<T, A>(v: &Vec<T, A>)
+pub broadcast proof fn new_vec_spec_iter_properties<T, A:Allocator>(v: Vec<T, A>)
     ensures
         #[trigger] new_vec_spec_iter(v).elts() == v@,
 {
@@ -467,20 +470,21 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
 // }
 
 //#[verifier::when_used_as_spec(spec_into_iter)]
-#[verifier::when_used_as_spec(new_vec_spec_iter)]
+//#[verifier::when_used_as_spec(new_vec_spec_iter)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
     T,
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-//        iter@ == (0int, vec@)
-        iter.seq() == vec@.map(|i, vec| &vec),
-        // iter.vec_iterator_type_inv(),
-        // iter.front() == 0,
-        // iter.back() == vec.len(),
-        iter.elts() == vec@,
-        iter.decrease() is Some,
-        iter.initial_value_inv(Some(&new_vec_spec_iter(vec)))
+        true,
+// //        iter@ == (0int, vec@)
+//         iter.seq() == vec@.map(|i, vec| &vec),
+//         // iter.vec_iterator_type_inv(),
+//         // iter.front() == 0,
+//         // iter.back() == vec.len(),
+//         iter@.elts() == vec@,
+//         iter@.decrease() is Some,
+//         iter@.initial_value_inv(Some(&new_vec_spec_iter(vec)))
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
