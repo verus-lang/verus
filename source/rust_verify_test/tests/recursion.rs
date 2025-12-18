@@ -2257,3 +2257,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] termination_check_decreases_when verus_code! {
+        spec fn f(x: int) -> int
+            decreases x when x > 1
+        {
+            f(x-1) //FAIL
+        }
+    } => Err(err) => assert_vir_error_msg(err, "could not prove termination")
+}
