@@ -1703,14 +1703,13 @@ fn check_expr_handle_mut_arg(
             }
             Ok(final_mode)
         }
-        ExprX::Loop { cond, body, invs, decrease, loop_isolation: _, is_for_loop: _, label: _ } => {
+        ExprX::Loop { cond, body, invs, decrease, .. } => {
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
             }
-            match typing.update_atomic_insts() {
-                None => {}
-                Some(ai) => ai.add_loop(&expr.span),
+            if let Some(collector) = typing.update_atomic_insts() {
+                collector.add_loop(&expr.span)
             }
             if let Some(cond) = cond {
                 check_expr_has_mode(ctxt, record, typing, outer_mode, cond, Mode::Exec)?;
@@ -1932,8 +1931,20 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Exec)
         }
         ExprX::Atomically(_info, _p, e) => {
+            let ExprX::Loop { body, invs, .. } = &e.x else {
+                dbg!(&e);
+                panic!("malformed atomically block");
+            };
+
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            check_expr(ctxt, record, &mut typing, Mode::Proof, e)?;
+            check_expr_has_mode(ctxt, record, &mut typing, Mode::Proof, body, Mode::Proof)?;
+
+            for inv in invs.iter() {
+                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                let mut typing = typing.push_allow_prophecy_dependence(true);
+                check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, &inv.inv, Mode::Spec)?;
+            }
+
             Ok(Mode::Proof)
         }
         ExprX::Update(_info, e) => {

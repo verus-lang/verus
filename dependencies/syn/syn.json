@@ -439,6 +439,21 @@
         "or2_token": {
           "token": "Or"
         },
+        "invariant_except_break": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "body": {
           "box": {
             "syn": "Block"

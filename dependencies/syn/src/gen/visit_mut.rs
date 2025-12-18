@@ -1388,6 +1388,15 @@ where
     skip!(node.or1_token);
     v.visit_ident_mut(&mut node.update_binder);
     skip!(node.or2_token);
+    if let Some(it) = &mut node.invariant_except_breaks {
+        v.visit_invariant_except_break_mut(it);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
     full!(v.visit_block_mut(& mut * node.body));
 }
 #[cfg(any(feature = "derive", feature = "full"))]

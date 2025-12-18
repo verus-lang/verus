@@ -594,6 +594,9 @@ ast_struct! {
         pub or1_token: Token![|],
         pub update_binder: Ident,
         pub or2_token: Token![|],
+        pub invariant_except_breaks: Option<InvariantExceptBreak>,
+        pub invariants: Option<Invariant>,
+        pub ensures: Option<Ensures>,
         pub body: Box<Block>,
     }
 }
@@ -1677,6 +1680,9 @@ pub mod parsing {
                 or1_token: input.parse()?,
                 update_binder: input.parse()?,
                 or2_token: input.parse()?,
+                invariant_except_breaks: input.parse()?,
+                invariants: input.parse()?,
+                ensures: input.parse()?,
                 body: input.parse()?,
             })
         }

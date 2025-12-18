@@ -764,7 +764,7 @@ pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
 #[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
 #[doc(hidden)]
 #[verifier::external_body]
-pub fn atomically<X, Y, P>(_f: impl FnOnce(fn (X) -> Y)) -> AtomicUpdate<X, Y, P> {
+pub fn atomically<X, Y, P>(_f: impl FnOnce(fn (X) -> Result<Y, X>)) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }
 

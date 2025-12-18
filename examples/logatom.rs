@@ -1,3 +1,6 @@
+#![verifier::exec_allows_no_decreases_clause]
+#![verifier::loop_isolation(false)]
+
 use vstd::prelude::*;
 use vstd::*;
 
@@ -31,16 +34,30 @@ pub fn middle(x: i32) -> (y: i32)
     },
     requires x == 2,
 {
-    atomic_function(x, "hi", ()) atomically |upd| {
-        let tracked Tracked(res) = try_open_atomic_update!(atom_upd, a => {
+    let tracked mut au = atom_upd;
+
+    loop invariant au == atom_upd { break }
+
+    atomic_function(x, "hi", ()) atomically |upd|
+        //invariant au == atom_upd,
+    {
+        let tracked Tracked(res) = try_open_atomic_update!(au, a => {
             assert(a == 5);
-            let tracked b = upd(a);
-            assert(b == 7);
-            Tracked(Ok(b))
+            let tracked res = upd(a);
+            Tracked(res)
         });
 
-        assert(res is Ok);
-        assert(atom_upd.resolves());
+        match res {
+            Ok(_) => {
+                assert(atom_upd.resolves());
+                break;
+            }
+
+            Err(new_au) => {
+                au = new_au;
+                continue;
+            }
+        }
     }
 }
 
@@ -50,7 +67,8 @@ pub fn atomic_call() {
         let tracked z = 5;
         assert(z == 5);
         let w = update(z);
-        assert(w == 7);
+        //assert(w == 7);
+        break;
     };
 }
 

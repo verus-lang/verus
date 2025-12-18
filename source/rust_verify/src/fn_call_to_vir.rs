@@ -673,8 +673,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 //     ...
                 // }
                 //
-                // function(x1, x2, x3, ::vstd::atomic::atomically(move |update| {
-                //     let _args = (x1, x2, x3);
+                // function(x1, x2, x3, ::vstd::atomic::atomically(|update| loop {
                 //     { ... }
                 // }))
                 //
@@ -739,7 +738,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 });
 
                 let atomically = Some(actx.clone());
-                let bctx_inner = BodyCtxt { atomically, ..bctx.clone() };
+                let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
                 let value = expr_to_vir_consume(&bctx_inner, body.value, outer_modifier)?;
 
                 let call_spans = rx.try_iter().collect::<Vec<_>>();

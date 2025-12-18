@@ -2092,7 +2092,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     let arg = expr_to_vir_consume(bctx, input, modifier)?;
                                     Some(bctx.spanned_typed_new(
                                         fun.span,
-                                        &actx.info.y_typ,
+                                        &expr_typ()?,
                                         ExprX::Update(actx.info.clone(), arg),
                                     ))
                                 }
@@ -2724,9 +2724,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
-            use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
-            let allow_no_decreases =
-                get_allow_exec_allows_no_decreases_clause_walk_parents(bctx.ctxt.tcx, bctx.fun_id);
+            let allow_no_decreases = expr_vattrs.assume_termination
+                || crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
+                    bctx.ctxt.tcx,
+                    bctx.fun_id,
+                );
             let decrease = if expr_vattrs.auto_decreases && allow_no_decreases {
                 Arc::new(vec![])
             } else {
@@ -2738,6 +2740,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ExprX::Loop {
                     loop_isolation,
                     is_for_loop: expr_vattrs.for_loop,
+                    assume_termination: expr_vattrs.assume_termination,
                     label,
                     cond: None,
                     body,
@@ -2801,6 +2804,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ExprX::Loop {
                     loop_isolation: loop_isolation(),
                     is_for_loop: false,
+                    assume_termination: expr_vattrs.assume_termination,
                     label,
                     cond,
                     body,

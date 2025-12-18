@@ -415,6 +415,48 @@ impl Debug for Lite<syn::AtomicallyBlock> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
         formatter.field("update_binder", Lite(&self.value.update_binder));
+        if let Some(val) = &self.value.invariant_except_break {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::InvariantExceptBreak);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant_except_break", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.invariant {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Invariant);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariant", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
         formatter.field("body", Lite(&self.value.body));
         formatter.finish()
     }

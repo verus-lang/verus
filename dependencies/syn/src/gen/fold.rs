@@ -1493,6 +1493,10 @@ where
         or1_token: node.or1_token,
         update_binder: f.fold_ident(node.update_binder),
         or2_token: node.or2_token,
+        invariant_except_break: (node.invariant_except_break)
+            .map(|it| f.fold_invariant_except_break(it)),
+        invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         body: Box::new(full!(f.fold_block(* node.body))),
     }
 }

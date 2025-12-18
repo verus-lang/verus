@@ -1384,6 +1384,15 @@ where
     skip!(node.or1_token);
     v.visit_ident(&node.update_binder);
     skip!(node.or2_token);
+    if let Some(it) = &node.invariant_except_breaks {
+        v.visit_invariant_except_break(it);
+    }
+    if let Some(it) = &node.invariants {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     full!(v.visit_block(& * node.body));
 }
 #[cfg(any(feature = "derive", feature = "full"))]

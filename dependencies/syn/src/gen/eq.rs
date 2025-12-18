@@ -117,7 +117,10 @@ impl Eq for crate::AtomicallyBlock {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::AtomicallyBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.update_binder == other.update_binder && self.body == other.body
+        self.update_binder == other.update_binder
+            && self.invariant_except_breaks == other.invariant_except_breaks
+            && self.invariants == other.invariants && self.ensures == other.ensures
+            && self.body == other.body
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

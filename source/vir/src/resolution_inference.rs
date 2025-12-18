@@ -780,6 +780,7 @@ impl<'a> Builder<'a> {
                 // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
+                assume_termination: _,
                 label,
                 cond,
                 body,

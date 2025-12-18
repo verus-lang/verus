@@ -1067,6 +1067,7 @@ pub enum ExprX {
     Loop {
         loop_isolation: bool,
         is_for_loop: bool,
+        assume_termination: bool,
         label: Option<String>,
         cond: Option<Expr>,
         body: Expr,

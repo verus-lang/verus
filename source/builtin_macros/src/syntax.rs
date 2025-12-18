@@ -3546,20 +3546,60 @@ impl Visitor {
         };
 
         let span = atomically.span();
-        let AtomicallyBlock { update_binder, mut body, .. } = atomically;
+        let AtomicallyBlock {
+            update_binder,
+            mut body,
+            mut invariant_except_breaks,
+            mut invariants,
+            mut ensures,
+            ..
+        } = atomically;
 
         attrs.push(parse_quote_spanned!(span =>
             #[verifier::atomic_call]
         ));
 
         self.inside_ghost += 1;
+        if let Some(it) = &mut invariant_except_breaks {
+            self.visit_invariant_except_break_mut(it);
+        }
+
+        if let Some(it) = &mut invariants {
+            self.visit_invariant_mut(it);
+        }
+
+        if let Some(it) = &mut ensures {
+            self.visit_ensures_mut(it);
+        }
+
         self.visit_block_mut(&mut body);
         self.inside_ghost -= 1;
 
         let extra_arg = match self.erase_ghost {
-            EraseGhost::Keep => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(|#update_binder| #body)
-            ),
+            EraseGhost::Keep => {
+                let mut stmts = Vec::new();
+                self.add_loop_specs(
+                    &mut stmts,
+                    invariant_except_breaks,
+                    invariants,
+                    None,
+                    ensures,
+                    None,
+                );
+
+                let mut loop_specs = TokenStream::new();
+                for stmt in stmts {
+                    stmt.to_tokens(&mut loop_specs)
+                }
+
+                quote_spanned_vstd!(vstd, span =>
+                    #vstd::atomic::atomically(|#update_binder|
+                        #[verus::internal(proof)]
+                        #[verifier::assume_termination]
+                        loop { #loop_specs #body }
+                    )
+                )
+            }
 
             _ => quote_spanned_vstd!(vstd, span =>
                 #vstd::atomic::atomically(::core::mem::drop)

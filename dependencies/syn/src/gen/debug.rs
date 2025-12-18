@@ -161,6 +161,9 @@ impl Debug for crate::AtomicallyBlock {
         formatter.field("or1_token", &self.or1_token);
         formatter.field("update_binder", &self.update_binder);
         formatter.field("or2_token", &self.or2_token);
+        formatter.field("invariant_except_break", &self.invariant_except_breaks);
+        formatter.field("invariant", &self.invariants);
+        formatter.field("ensures", &self.ensures);
         formatter.field("body", &self.body);
         formatter.finish()
     }

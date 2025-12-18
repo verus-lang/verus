@@ -154,6 +154,9 @@ impl Clone for crate::AtomicallyBlock {
             or1_token: self.or1_token.clone(),
             update_binder: self.update_binder.clone(),
             or2_token: self.or2_token.clone(),
+            invariant_except_breaks: self.invariant_except_breaks.clone(),
+            invariants: self.invariants.clone(),
+            ensures: self.ensures.clone(),
             body: self.body.clone(),
         }
     }

@@ -2202,7 +2202,16 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Match(..) => {
             panic!("internal error: Match should have been simplified by ast_simplify")
         }
-        ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
+        ExprX::Loop {
+            loop_isolation,
+            is_for_loop,
+            assume_termination,
+            label,
+            cond,
+            body,
+            invs,
+            decrease,
+        } => {
             let is_for_loop = *is_for_loop;
             let loop_isolation = *loop_isolation;
             let id = state.loop_id_counter;
@@ -2251,16 +2260,13 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
-            if decrease.len() == 0
-                && !ctx
-                    .fun
-                    .as_ref()
-                    .map(|c| {
-                        let function = &ctx.func_map[&c.current_fun];
-                        function.x.attrs.exec_assume_termination
-                            || function.x.attrs.exec_allows_no_decreases_clause
-                    })
-                    .unwrap_or(false)
+            if decrease.is_empty()
+                && !assume_termination
+                && ctx.fun.as_ref().is_none_or(|fun_ctx| {
+                    let function = &ctx.func_map[&fun_ctx.current_fun];
+                    !function.x.attrs.exec_assume_termination
+                        && !function.x.attrs.exec_allows_no_decreases_clause
+                })
             {
                 return Err(error(&expr.span, "loop must have a decreases clause")
                             .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
@@ -2468,6 +2474,7 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, au_raw_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
             let au_raw_exp = unwrap_or_return_never!(au_raw_exp, stms);
             let au_typ = undecorate_typ(&au_expr.typ);
+            let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_exp);
 
             let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
                 return crate::util::err_span(
@@ -2476,9 +2483,13 @@ pub(crate) fn expr_to_stm_opt(
                 );
             };
 
-            let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_exp);
+            let [x_typ, y_typ, _pred_typ] = typ_args.as_slice() else {
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed atomic update block; atomic update should have three type params",
+                );
+            };
 
-            let x_typ = &x_bind.a;
             let (x_temp_var_id, x_temp_var_exp) =
                 state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::Nondeterministic);
             stms.push(assume_has_typ(&x_temp_var_id, x_typ, &expr.span));
@@ -2576,7 +2587,7 @@ pub(crate) fn expr_to_stm_opt(
 
                 let field_exp = SpannedTyped::new(
                     &expr.span,
-                    x_typ,
+                    y_typ,
                     ExpX::UnaryOpr(
                         UnaryOpr::Field(FieldOpr {
                             datatype: res_dt.clone(),
@@ -2857,15 +2868,16 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Update(info, x_expr) => {
             // ```
             // let x = $x_expr;
-            // let y = new existential;
+            // let res = new existential;
             //
             // recommend(inner_mask(au) ⊆ outer_mask(au));
             // assert(inner_mask(au) ⊆ state.mask);
             //
             // assert(req(au, x));
-            // assume(ens(au, x, y));
+            // assume(res is Ok ==> ens(au, x, field(res, Ok)));
+            // assume(res is Err ==> field(res, Err) == x);
             //
-            // y
+            // res
             // ```
 
             let AtomicCallInfoX { au_typ_args, x_typ, y_typ, call_span, .. } = info.as_ref();
@@ -2878,9 +2890,10 @@ pub(crate) fn expr_to_stm_opt(
             let (x_var_id, x_var_exp) = state.declare_temp_assign(&x_expr.span, x_typ);
             stms.push(init_var(&x_expr.span, &x_var_id, &x_raw_exp));
 
-            let (y_var_id, y_var_exp) =
-                state.declare_temp_var_stm(&expr.span, y_typ, LocalDeclKind::Nondeterministic);
-            stms.push(assume_has_typ(&y_var_id, y_typ, &expr.span));
+            let res_typ = &expr.typ;
+            let (res_var_id, res_var_exp) =
+                state.declare_temp_var_stm(&expr.span, res_typ, LocalDeclKind::Nondeterministic);
+            stms.push(assume_has_typ(&res_var_id, res_typ, &expr.span));
 
             // check invariant mask
 
@@ -2959,30 +2972,130 @@ pub(crate) fn expr_to_stm_opt(
                 ));
             }
 
-            // generate assumption
+            // generate assumptions
 
-            let call_ens = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
-                au_typ_args.clone(),
-                Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
-            );
+            let TypX::Datatype(res_dt, ..) = &**res_typ else {
+                dbg!(&res_typ);
+                return crate::util::err_span(
+                    expr.span.clone(),
+                    "malformed update function; result should be a datatype",
+                );
+            };
 
-            let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
+            let ok_variant = Arc::new("Ok".to_owned());
+            let err_variant = Arc::new("Err".to_owned());
+            let variant_field = Arc::new("0".to_owned());
 
-            // bind for private post condition
+            let cond = ReturnValue::Some(SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::UnaryOpr(
+                    UnaryOpr::IsVariant { datatype: res_dt.clone(), variant: ok_variant.clone() },
+                    res_var_exp.clone(),
+                ),
+            ));
 
-            atomic_update_bind_arrow(
-                ctx,
+            let (ok_arm_stms, ok_arm_ret_val) = {
+                let mut stms = Vec::new();
+
+                let field_exp = SpannedTyped::new(
+                    &expr.span,
+                    y_typ,
+                    ExpX::UnaryOpr(
+                        UnaryOpr::Field(FieldOpr {
+                            datatype: res_dt.clone(),
+                            variant: ok_variant.clone(),
+                            field: variant_field.clone(),
+                            get_variant: false,
+                            check: VariantCheck::None,
+                        }),
+                        res_var_exp.clone(),
+                    ),
+                );
+
+                let y_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
+
+                // generate assumption
+
+                let call_ens = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
+                );
+
+                let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
+
+                // bind for private post condition
+
+                atomic_update_bind_arrow(
+                    ctx,
+                    expr,
+                    au_typ_args,
+                    &au_var_exp,
+                    &x_var_exp,
+                    &y_var_exp,
+                    &mut stms,
+                );
+
+                // mark as resolved
+
+                // let call_resolves = ExpX::Call(
+                //     ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+                //     typ_args.clone(),
+                //     Arc::new(vec![au_temp_var_exp.clone()]),
+                // );
+
+                // let call_resolves =
+                //     SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
+                // stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
+
+                (stms, ReturnValue::Some(res_var_exp.clone()))
+            };
+
+            let (err_arm_stms, err_arm_ret_val) = {
+                let mut stms = Vec::new();
+
+                let field_exp = SpannedTyped::new(
+                    &expr.span,
+                    x_typ,
+                    ExpX::UnaryOpr(
+                        UnaryOpr::Field(FieldOpr {
+                            datatype: res_dt.clone(),
+                            variant: err_variant.clone(),
+                            field: variant_field.clone(),
+                            get_variant: false,
+                            check: VariantCheck::None,
+                        }),
+                        res_var_exp.clone(),
+                    ),
+                );
+
+                let x2_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
+
+                // generate assumption
+
+                let cmp_eq = SpannedTyped::new(
+                    &expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), x2_var_exp, x_var_exp),
+                );
+
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(cmp_eq)));
+
+                (stms, ReturnValue::Some(res_var_exp.clone()))
+            };
+
+            return Ok(if_to_stm(
+                state,
                 expr,
-                au_typ_args,
-                &au_var_exp,
-                &x_var_exp,
-                &y_var_exp,
-                &mut stms,
-            );
-
-            Ok((stms, ReturnValue::Some(y_var_exp)))
+                stms,
+                &cond,
+                ok_arm_stms,
+                &ok_arm_ret_val,
+                err_arm_stms,
+                &err_arm_ret_val,
+            ));
         }
         ExprX::InvMask(mask_spec) => {
             let (span, exprs, compl) = match mask_spec {
