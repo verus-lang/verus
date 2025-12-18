@@ -83,6 +83,16 @@ pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
         len == spec_slice_len(slice),
 ;
 
+pub open spec fn spec_slice_is_empty<T>(slice: &[T]) -> bool {
+    slice@.len() == 0
+}
+
+#[verifier::when_used_as_spec(spec_slice_is_empty)]
+pub assume_specification<T>[ <[T]>::is_empty ](slice: &[T]) -> (b: bool)
+    ensures
+        b <==> slice@.len() == 0,
+;
+
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub exec fn slice_to_vec<T: Copy>(slice: &[T]) -> (out: alloc::vec::Vec<T>)
