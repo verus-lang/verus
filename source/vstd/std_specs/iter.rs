@@ -6,7 +6,6 @@ use core::iter::Iterator;
 
 verus_! {
 
-/*
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
@@ -17,6 +16,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
     type ExternalTraitSpecificationFor: core::iter::Step;
 }
 
+/*
 #[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
@@ -30,7 +30,6 @@ pub trait ExIterator {
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
 pub trait ExIterator {
-    // TODO: Need to check for this ExternalTraitSpecificationFor and complain if it's omitted
     type ExternalTraitSpecificationFor: Iterator;
 
     type Item;
@@ -73,14 +72,11 @@ pub trait ExIterator {
 
     /******* Mechanisms that support ergonomic `for` loops *********/
 
-    /// The type of the metric that this iterator decreases on each call to next
-    type Decrease;
-
     /// Value used by default for the decreases clause when no explicit decreases clause is provided
     /// (the user can override this with an explicit decreases clause).
     /// If there's no appropriate metric to decrease, this can return None,
     /// and the user will have to provide an explicit decreases clause.
-    spec fn decrease(&self) -> Option<Self::Decrease>;
+    spec fn decrease(&self) -> Option<nat>;
     
     /// Invariant relating the iterator to the initial expression that created it 
     /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
@@ -178,6 +174,8 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
                 self.index@ = self.index@ + 1;
             }
         }
+// TODO:
+assume(false);
         ret
     }
 }
