@@ -509,11 +509,13 @@ impl<T> PointsTo<[T]> {
         ensures
             m.addrs() == slice_ptr_addrs(self.ptr()),
             forall|i: nat|
-                // TODO: revisit triggers
-                // #![trigger m.addrs().contains(i)]
+            // TODO: revisit triggers
+            // #![trigger m.addrs().contains(i)]
+
                 #![trigger self.mem_contents_seq()[i as int]]
-                // #![trigger m[i].mem_contents()]
-                // m.addrs().contains(i) ==> m[i].mem_contents() == self.mem_contents_seq()[(i - self.ptr()@.addr) / layout::size_of::<T>()],
+            // #![trigger m[i].mem_contents()]
+            // m.addrs().contains(i) ==> m[i].mem_contents() == self.mem_contents_seq()[(i - self.ptr()@.addr) / layout::size_of::<T>()],
+
                 0 <= i < self.mem_contents_seq().len() ==> m[addr_from_index(
                     self.ptr(),
                     i,
@@ -612,6 +614,7 @@ pub open spec fn range_addrs(start_addr: usize, len: nat, size: nat) -> Set<usiz
         |i: nat| (start_addr + i * size) as usize,
     )
     // Set::new(|a: usize| exists |i: nat| 0 <= i < len && a == (start_addr + i * size) as usize)
+
 }
 
 impl<T> MapPointsTo<T> {
@@ -722,15 +725,16 @@ impl<T> MapPointsTo<T> {
                 layout::size_of::<T>(),
             ).subset_of(old(self).addrs()),
         ensures
-            // out_map.points_to() == Map::new(
-            //     |a: usize|
-            //         range_addrs(
-            //             addr_from_index(old(self).ptr(), begin),
-            //             len,
-            //             layout::size_of::<T>(),
-            //         ).contains(a),
-            //     |i: usize| old(self).points_to()[i],
-            // ),
+    // out_map.points_to() == Map::new(
+    //     |a: usize|
+    //         range_addrs(
+    //             addr_from_index(old(self).ptr(), begin),
+    //             len,
+    //             layout::size_of::<T>(),
+    //         ).contains(a),
+    //     |i: usize| old(self).points_to()[i],
+    // ),
+
             out_map.points_to() == old(self).points_to().restrict(
                 range_addrs(addr_from_index(old(self).ptr(), begin), len, layout::size_of::<T>()),
             ),
@@ -790,7 +794,7 @@ impl<T> MapPointsTo<T> {
         //     begin <= i < begin + len ==> self[i].ptr()@.addr == self.ptr()@.addr + i);
         let tracked submap = self.points_to.tracked_remove_keys(
             slice_ptr_addrs(out_ptr),
-            // range_addrs(addr_from_index(old(self).ptr(), begin), len, layout::size_of::<T>()),
+        // range_addrs(addr_from_index(old(self).ptr(), begin), len, layout::size_of::<T>()),
         );
         // assert(forall|i|
         //     begin <= i < begin + len ==> submap[i].ptr()@.addr == self.ptr()@.addr + i);
@@ -821,10 +825,12 @@ impl<T> MapPointsTo<T> {
             (<=)
             out_ptr@.addr + out_ptr@.metadata * layout::size_of::<T>(); (<=) {
                 broadcast use lemma_mul_inequality;
+
             }
             self.ptr()@.addr + begin * layout::size_of::<T>() + (self.ptr()@.metadata - begin)
                 * layout::size_of::<T>(); (==) {
                 broadcast use {lemma_mul_is_distributive_sub, lemma_mul_is_commutative};
+
             }
             self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>(); (<=) {}
             out_ptr@.provenance.start_addr() + out_ptr@.provenance.alloc_len();
@@ -898,7 +904,7 @@ impl<T> MapPointsTo<T> {
         use_type_invariant(self);
         broadcast use is_nonnull;
 
-    }// // https:
+    }  // // https:
     //doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
     // // https://doc.rust-lang.org/std/ptr/index.html#alignment
     // /// Guarantee that the `PointsTo` points to an aligned address.
