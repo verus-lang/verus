@@ -2265,6 +2265,7 @@ fn check_function(
                         } else {
                             // Otherwise, abandon the expression and return NoInferSpecForLoopIter,
                             // which will be converted to None in sst_to_air
+                            dbg!("Inserting NoInferSpecForLoopIter");
                             let no_infer = crate::ast::NullaryOpr::NoInferSpecForLoopIter;
                             let e = e.new_x(ExprX::NullaryOpr(no_infer));
                             Ok(expr.new_x(ExprX::Unary(*op, e)))

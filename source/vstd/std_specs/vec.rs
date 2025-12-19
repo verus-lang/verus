@@ -491,16 +491,16 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
 //     }
 // }
 
-// // To allow reasoning about the ghost iterator when the executable
-// // function `into_iter()` is invoked in a `for` loop header (e.g., in
-// // `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
-// // the iterator in spec mode. To do that, we add
-// // `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
-// // the executable `into_iter` method and define that spec function here.
-// pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
-//     T,
-//     A,
-// > as core::iter::IntoIterator>::IntoIter);
+// To allow reasoning about the ghost iterator when the executable
+// function `into_iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
 
 // pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
 //     ensures
@@ -509,14 +509,14 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
 //     admit();
 // }
 
-//#[verifier::when_used_as_spec(spec_into_iter)]
-//#[verifier::when_used_as_spec(new_vec_spec_iter)]
+#[verifier::when_used_as_spec(spec_into_iter)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
     T,
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         true,
+        iter == spec_into_iter(vec),
 // //        iter@ == (0int, vec@)
 //         iter.seq() == vec@.map(|i, vec| &vec),
 //         // iter.vec_iterator_type_inv(),
@@ -524,8 +524,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 //         // iter.back() == vec.len(),
 //         iter@.elts() == vec@,
     // REVIEW: Should this explicit path be needed?
-         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-//         iter@.initial_value_inv(Some(&new_vec_spec_iter(vec)))
+        crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
+//        crate::std_specs::iter::IteratorSpec::initial_value_inv(Some(&new_vec_spec_iter(vec))),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()

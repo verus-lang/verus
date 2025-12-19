@@ -19,7 +19,7 @@ pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
     SpannedTyped::new(span, &Arc::new(option_typx), expx)
 }
 
-// InferSpecForLoopIter produces None if any variables in the express are modified in the loop
+// InferSpecForLoopIter produces None if any variables in the expression are modified in the loop
 fn vars_unmodified(
     modified_vars: &Arc<Vec<UniqueIdent>>,
     exp: &Exp,
