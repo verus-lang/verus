@@ -337,7 +337,7 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
         // &&& self.elts() == self.seq().map_values(|v: &T| *v)
         // &&& init matches Some(v) && v.elts() == self.elts()
-        &&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
+        //&&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
         &&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
     }
 
