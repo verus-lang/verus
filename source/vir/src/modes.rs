@@ -647,14 +647,14 @@ fn get_var_loc_mode(
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!("cannot perform operation with mode 1 {}, {:?}", op_mode, &expr.x),
                     ));
                 }
             }
             if outer_mode != *op_mode {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode 2 {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let mode1 = get_var_loc_mode(
@@ -1274,16 +1274,17 @@ fn check_expr_handle_mut_arg(
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if ctxt.check_ghost_blocks {
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
+                    dbg!(op_mode, typing.block_ghostness, from_mode, to_mode, kind);
                     return Err(error(
                         &expr.span,
-                        format!("cannot perform operation with mode {}", op_mode),
+                        format!("cannot perform operation with mode 3 {}, {:?},\n{:?}", op_mode, &expr.x, &e1),
                     ));
                 }
             }
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}", op_mode),
+                    format!("cannot perform operation with mode 4 {}, {:?}", op_mode, &expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2043,6 +2044,7 @@ fn check_stmt(
                 && mode != Mode::Exec
                 && init.is_some()
             {
+                dbg!(pattern, init, els);
                 return Err(error(&stmt.span, "exec code cannot initialize non-exec variables"));
             }
             if !mode_le(outer_mode, mode) {

@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use crate::std_specs::iter::IteratorSpec;
+use crate::std_specs::iter::{IteratorSpec, IteratorSpecImpl};
 use verus_builtin::*;
 
 use alloc::vec::{IntoIter, Vec};
@@ -313,23 +313,63 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-pub struct VecSpecIterator<T, A:Allocator> {
-    _phantom: PhantomData<(T,A)>,
+impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
+    open spec fn obeys_iter_laws(&self) -> bool {
+        true
+    }
+
+    closed spec fn seq(&self) -> Seq<Self::Item> {
+        Seq::empty()
+        //self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
+    }
+
+    closed spec fn completes(&self) -> bool {
+        true
+    }
+
+    open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
+        true
+        // &&& self.elts() == self.seq().map_values(|v: &T| *v)
+        // &&& init matches Some(v) && v.elts() == self.elts()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        //Some((self.back() - self.front()) as nat)
+        None
+    }
 }
 
-impl <T, A:Allocator> VecSpecIterator<T, A> {
-    pub closed spec fn new(v: Vec<T, A>) -> Self; 
+// pub assume_specification<T, A: Allocator>[ <IntoIter<T, A> as Iterator<T>>::obeys_iter_laws(&self)] -> bool {
+//     true
+// };
+// pub assume_specification<T, A: Allocator>[ <IntoIter<T, A> as Iterator<T>::completes(&self)] -> bool {
+//     true
+// };
 
-    pub closed spec fn front(self) -> usize;
-    pub closed spec fn back(self) -> usize;
-    pub closed spec fn elts(self) -> Seq<T>;
+// impl<T, A: Allocator> IntoIter<T, A> {
 
-    // #[verifier::type_invariant]
-    // pub closed spec fn vec_iterator_type_inv(self) -> bool {
-    //     &&& self.i <= self.j <= self.v.len()
-    //     &&& self.front() <= self.back() <= self.elts().len()
-    // }
-}
+//     pub closed spec fn front(self) -> usize;
+//     pub closed spec fn back(self) -> usize;
+//     pub closed spec fn elts(self) -> Seq<T>;
+// } 
+
+// pub struct VecSpecIterator<T, A:Allocator> {
+//     _phantom: PhantomData<(T,A)>,
+// }
+
+// impl <T, A:Allocator> VecSpecIterator<T, A> {
+//     pub closed spec fn new(v: Vec<T, A>) -> Self; 
+
+//     pub closed spec fn front(self) -> usize;
+//     pub closed spec fn back(self) -> usize;
+//     pub closed spec fn elts(self) -> Seq<T>;
+
+//     // #[verifier::type_invariant]
+//     // pub closed spec fn vec_iterator_type_inv(self) -> bool {
+//     //     &&& self.i <= self.j <= self.v.len()
+//     //     &&& self.front() <= self.back() <= self.elts().len()
+//     // }
+// }
 
 // REVIEW: We add a layer of indirection here because VecIterator's fields
 //         are not pub, which was a design decision intended to preserve
@@ -340,22 +380,22 @@ impl <T, A:Allocator> VecSpecIterator<T, A> {
 //         We need an "ensures", rather than (say) a postcondition on `vec_iter`,
 //         since we need to know properties about vec_iter_spec *inside*
 //         the loop invariant, not just before the loop starts.
-pub open spec fn new_vec_spec_iter<T, A:Allocator>(v: Vec<T, A>) -> VecSpecIterator<T, A> {
-    VecSpecIterator::new(v)
-}
+// pub open spec fn new_vec_spec_iter<T, A:Allocator>(v: Vec<T, A>) -> VecSpecIterator<T, A> {
+//     VecSpecIterator::new(v)
+// }
 
-pub broadcast proof fn new_vec_spec_iter_properties<T, A:Allocator>(v: Vec<T, A>)
-    ensures
-        #[trigger] new_vec_spec_iter(v).elts() == v@,
-{
-}
+// pub broadcast proof fn new_vec_spec_iter_properties<T, A:Allocator>(v: Vec<T, A>)
+//     ensures
+//         #[trigger] new_vec_spec_iter(v).elts() == v@,
+// {
+// }
 
 
-impl<T, A: Allocator> View for IntoIter<T, A> {
-    type V = VecSpecIterator<T, A>;
+// impl<T, A: Allocator> View for IntoIter<T, A> {
+//     type V = VecSpecIterator<T, A>;
 
-    uninterp spec fn view(self: &IntoIter<T, A>) -> Self::V;
-}
+//     uninterp spec fn view(self: &IntoIter<T, A>) -> Self::V;
+// }
 
 // pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
 //     elements: &mut IntoIter<T, A>,
@@ -534,7 +574,7 @@ pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
-    new_vec_spec_iter_properties,
+    //new_vec_spec_iter_properties,
     //axiom_spec_into_iter,
 }
 
