@@ -244,7 +244,7 @@ impl<V> PointsTo<V> {
     }
 
     pub closed spec fn mem_contents(&self) -> MemContents<V> {
-        self.points_to.opt_value()
+        self.points_to.mem_contents()
     }
 
     #[doc(hidden)]
