@@ -523,7 +523,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 //         // iter.front() == 0,
 //         // iter.back() == vec.len(),
 //         iter@.elts() == vec@,
-//         iter@.decrease() is Some,
+    // REVIEW: Should this explicit path be needed?
+         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
 //         iter@.initial_value_inv(Some(&new_vec_spec_iter(vec)))
 ;
 

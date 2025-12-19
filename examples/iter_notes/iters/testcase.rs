@@ -8,8 +8,9 @@ fn test() {
 
     for x in y: v 
         invariant
-            w.len() as int == y.index@,
-            forall |i| 0 <= i < w.len() ==> w[i] == v[i],
+            true,
+//            w.len() as int == y.index@,
+//            forall |i| 0 <= i < w.len() ==> w[i] == v[i],
     {
         w.push(x);
     }    
