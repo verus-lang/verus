@@ -1,4 +1,5 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
+use crate::config::Vstd;
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
@@ -1763,8 +1764,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 format!("this builtin item should not appear in user code",),
             );
         }
-        VerusItem::HasResolved | VerusItem::HasResolvedUnsized => {
-            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+        item @ (VerusItem::HasResolved | VerusItem::HasResolvedUnsized) => {
+            if !bctx.ctxt.cmd_line_args.new_mut_ref
+                && !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore)
+            {
                 unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
             }
             record_spec_fn_no_proof_args(bctx, expr);
@@ -1773,6 +1776,16 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
+            let arg_typ = match item {
+                VerusItem::HasResolved => arg_typ,
+                VerusItem::HasResolvedUnsized => match arg_typ.kind() {
+                    TyKind::Ref(_, t, rustc_middle::ty::Mutability::Not) => *t,
+                    _ => {
+                        return err_span(expr.span, "has_resolved_unsized expects shared ref");
+                    }
+                },
+                _ => unreachable!(),
+            };
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }

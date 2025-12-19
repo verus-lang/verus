@@ -926,18 +926,20 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-// TODO(new_mut_ref): resolving for arrays/slices
 test_verify_one_file_with_options! {
-    #[ignore] #[test] array_of_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] array_of_mut_refs ["new-mut-ref"] => verus_code! {
         use vstd::prelude::*;
 
         fn test_array() {
+            broadcast use vstd::array::axiom_array_has_resolved;
+
             let mut a = 0;
             let mut b = 1;
             let mut c = 2;
             let mut d = 3;
 
             let mut x: [&mut u64; 3] = [&mut a, &mut b, &mut c];
+
             *x[0] = 10;
             *x[1] = 11;
             *x[2] = 12;
@@ -946,10 +948,53 @@ test_verify_one_file_with_options! {
 
             *x[2] = 13;
 
+            assert(has_resolved(x[0]));
+            assert(has_resolved(x[1]));
+            assert(has_resolved(x[2]));
+
             assert(a == 10);
-            assert(a == 11);
-            assert(a == 12);
-            assert(a == 13);
+            assert(b == 11);
+            //assert(c == 12); // TODO(new_mut_ref)
+            assert(d == 13);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] slice_of_mut_refs ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice(x: Box<[&mut u64]>)
+            requires x@.len() == 3
+        {
+            broadcast use vstd::slice::axiom_slice_has_resolved;
+
+            let mut a = 0;
+            let mut b = 1;
+            let mut c = 2;
+            let mut d = 3;
+
+            let mut x = x;
+            x[0] = &mut a;
+            x[1] = &mut b;
+            x[2] = &mut c;
+
+            *x[0] = 10;
+            *x[1] = 11;
+            *x[2] = 12;
+
+            x[2] = &mut d;
+
+            *x[2] = 13;
+
+            assert(has_resolved(x[0]));
+            assert(has_resolved(x[1]));
+            assert(has_resolved(x[2]));
+
+            assert(a == 10);
+            assert(b == 11);
+            //assert(c == 12); // TODO(new_mut_ref)
+            assert(d == 13);
         }
     } => Ok(())
 }

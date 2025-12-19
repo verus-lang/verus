@@ -1119,7 +1119,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         ident_apply(&name, &exprs)
                     }
                     _ => {
-                        dbg!(&e.typ);
                         return Err(error(
                             &exp.span,
                             format!("Verus Internal Error: ArrayLength expected Array or Slice"),
@@ -1292,7 +1291,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 ),
                 BinaryOp::Index(kind, _) => {
                     let container_typ = undecorate_typ(&lhs.typ);
-                    match &*container_typ {
+                    let container_typ = match &*container_typ {
+                        TypX::Boxed(x) => x,
+                        _ => &container_typ,
+                    };
+                    match &*undecorate_typ(container_typ) {
                         TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => {
                             assert!(*kind == ArrayKind::Array);
                             let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
@@ -1304,7 +1307,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             assert!(*kind == ArrayKind::Slice);
                             let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
                             let lhs_expr = exp_to_expr(ctx, lhs, expr_ctxt)?;
-                            let lhs_expr = as_box(ctx, lhs_expr, &container_typ);
+                            let lhs_expr = as_box(ctx, lhs_expr, &lhs.typ);
                             let rhs_expr = exp_to_expr(ctx, rhs, expr_ctxt)?;
                             args.push(lhs_expr);
                             args.push(rhs_expr);
@@ -1671,6 +1674,11 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
             }
             ExpX::Binary(BinaryOp::Index(kind, _), ee, idx) => {
                 let container_typ = undecorate_typ(&ee.typ);
+                let container_typ = match &*container_typ {
+                    TypX::Boxed(x) => x,
+                    _ => &container_typ,
+                };
+                let container_typ = undecorate_typ(&container_typ);
                 fields.push(FieldUpdateDatum {
                     opr: FieldUpdateDatumOpr::Index(idx.clone(), container_typ, *kind),
                     field_typ: e.typ.clone(),
@@ -2350,12 +2358,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         // REVIEW: cleaner boxing and unboxing strategy here?
                         // spec_slice_update : Poly -> Poly
                         // spec_array_update : Poly -> native
-                        exprs.push(as_box(ctx, base_expr, container_typ));
+                        exprs.push(as_box(ctx, base_expr, &base_exp.typ));
                         exprs.push(idx);
                         exprs.push(value);
                         value = Arc::new(ExprX::Apply(name, Arc::new(exprs)));
                         if *kind == ArrayKind::Slice {
-                            value = try_unbox(ctx, value.clone(), container_typ).unwrap_or(value);
+                            value = try_unbox(ctx, value.clone(), &base_exp.typ).unwrap_or(value);
                         }
                     }
                 }

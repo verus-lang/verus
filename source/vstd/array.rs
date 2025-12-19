@@ -145,6 +145,13 @@ pub broadcast axiom fn axiom_spec_array_update<T, const N: usize>(array: [T; N],
         0 <= i < N ==> (#[trigger] spec_array_update(array, i, t)@) == array@.update(i, t),
 ;
 
+pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N], i: int)
+    ensures
+        0 <= i < N ==> #[trigger] has_resolved::<[T; N]>(array) ==> has_resolved(
+            #[trigger] array@[i],
+        ),
+;
+
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,
@@ -152,6 +159,7 @@ pub broadcast group group_array_axioms {
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
     axiom_spec_array_update,
+    //axiom_array_has_resolved,
 }
 
 } // verus!

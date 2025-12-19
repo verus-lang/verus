@@ -162,12 +162,19 @@ pub broadcast axiom fn axiom_spec_slice_index<T>(slice: &[T], i: int)
         0 <= i < spec_slice_len(slice) ==> (#[trigger] spec_slice_index(slice, i)) == slice@[i],
 ;
 
+pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
+    ensures
+        0 <= i < spec_slice_len(slice) ==> #[trigger] has_resolved_unsized::<[T]>(slice)
+            ==> has_resolved(#[trigger] slice@[i]),
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
     axiom_slice_ext_equal,
     axiom_spec_slice_update,
     axiom_spec_slice_index,
+    //axiom_slice_has_resolved,
 }
 
 } // verus!
