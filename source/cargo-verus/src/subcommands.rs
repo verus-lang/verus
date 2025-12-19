@@ -87,29 +87,29 @@ verify = true
     Ok(())
 }
 
-pub fn run_build(
-    cargo_subcommand: &str,
+pub fn run_cargo(
+    subcommand: &str,
     cargo_options: &CargoOptions,
     verus_args: &[String],
-    warn_if_not_verified: bool,
+    warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
-    let cargo_args = build_cargo_args(cargo_options, false);
+    let cargo_args = make_cargo_args(cargo_options, false);
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
 
-    if !warn_if_not_verified {
+    if !warn_if_nothing_verified {
         common_verus_driver_args.extend_from_slice(&[
             "--VIA-CARGO".to_owned(),
             "compile-when-primary-package".to_owned(),
         ]);
     }
 
-    let metadata_args = build_cargo_args(cargo_options, true);
+    let metadata_args = make_cargo_args(cargo_options, true);
     let metadata = fetch_metadata(&metadata_args)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) =
-        build_cargo_command(cargo_subcommand, &cargo_args, common_verus_driver_args, &metadata)?;
+        make_cargo_command(subcommand, &cargo_args, common_verus_driver_args, &metadata)?;
 
     let exit_status = command
         .spawn()
@@ -117,7 +117,7 @@ pub fn run_build(
         .wait()
         .context("Failed to wait for cargo")?;
 
-    if warn_if_not_verified && !verified_something {
+    if warn_if_nothing_verified && !verified_something {
         eprint!(
             "{}",
             "\
@@ -138,76 +138,76 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
     }
 }
 
-fn build_cargo_args(cargo_opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
     let mut args = vec![];
 
-    if cargo_opts.frozen {
+    if opts.frozen {
         args.push("--frozen".to_owned());
     }
 
-    if cargo_opts.locked {
+    if opts.locked {
         args.push("--locked".to_owned());
     }
 
-    if cargo_opts.offline {
+    if opts.offline {
         args.push("--offline".to_owned());
     }
 
-    for cfg in &cargo_opts.config {
+    for cfg in &opts.config {
         args.push("--config".to_owned());
         args.push(cfg.clone());
     }
 
-    for flag in &cargo_opts.unstable_flags {
+    for flag in &opts.unstable_flags {
         args.push("-Z".to_owned());
         args.push(flag.clone());
     }
 
-    if let Some(path) = &cargo_opts.manifest.manifest_path {
+    if let Some(path) = &opts.manifest.manifest_path {
         args.push("--manifest-path".to_owned());
         args.push(path.to_string_lossy().into_owned());
     }
 
     if !for_cargo_metadata {
-        for pkg in &cargo_opts.workspace.package {
+        for pkg in &opts.workspace.package {
             args.push("--package".to_owned());
             args.push(pkg.clone());
         }
 
-        if cargo_opts.workspace.workspace {
+        if opts.workspace.workspace {
             args.push("--workspace".to_owned());
         }
 
-        if cargo_opts.workspace.all {
+        if opts.workspace.all {
             args.push("--all".to_owned());
         }
 
-        for exclude in &cargo_opts.workspace.exclude {
+        for exclude in &opts.workspace.exclude {
             args.push("--exclude".to_owned());
             args.push(exclude.clone());
         }
 
-        if cargo_opts.features.all_features {
+        if opts.features.all_features {
             args.push("--all-features".to_owned());
         }
 
-        if cargo_opts.features.no_default_features {
+        if opts.features.no_default_features {
             args.push("--no-default-features".to_owned());
         }
 
-        if !cargo_opts.features.features.is_empty() {
+        if !opts.features.features.is_empty() {
             args.push("--features".to_owned());
-            args.push(cargo_opts.features.features.join(" "));
+            args.push(opts.features.features.join(" "));
         }
 
-        args.extend(cargo_opts.cargo_args.iter().cloned());
+        args.extend(opts.cargo_args.iter().cloned());
     }
 
     args
 }
 
-fn build_cargo_command(
-    cargo_subcommand: &str,
+fn make_cargo_command(
+    subcommand: &str,
     cargo_args: &[String],
     common_verus_driver_args: Vec<String>,
     metadata: &cargo_metadata::Metadata,
@@ -215,9 +215,9 @@ fn build_cargo_command(
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-    cmd.arg(cargo_subcommand.to_owned()).args(cargo_args);
+    cmd.arg(subcommand.to_owned()).args(cargo_args);
 
-    cmd.env("RUSTC_WRAPPER", verus_driver_path());
+    cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
 
     cmd.env(VERUS_DRIVER_VIA_CARGO, "1");
 
@@ -300,7 +300,7 @@ fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -
     args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
 }
 
-fn verus_driver_path() -> PathBuf {
+fn get_verus_driver_path() -> PathBuf {
     let mut path =
         env::current_exe().expect("current executable path invalid").with_file_name("verus");
 
