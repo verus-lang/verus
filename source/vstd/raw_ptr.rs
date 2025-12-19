@@ -613,6 +613,7 @@ pub open spec fn range_addrs(start_addr: usize, len: nat, size: nat) -> Set<usiz
     Set::new(|i: nat| 0 <= i < len).map(
         |i: nat| (start_addr + i * size) as usize,
     )
+    // TODO: Should this be phrased differently? Not sure if it makes sense when size == 0
     // Set::new(|a: usize| exists |i: nat| 0 <= i < len && a == (start_addr + i * size) as usize)
 
 }
@@ -712,13 +713,16 @@ impl<T> MapPointsTo<T> {
     /// The pointer of `self` remains the same.
     /// (By constructing the pointers this way, we ensure that the type invariant is upheld.)
     ///
-    /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
+    /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous,
+    /// and we require `len` to be nonzero (otherwise making a map is pointless).
     pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
         Self)
         requires
             begin + len <= old(self).ptr()@.metadata,
             old(self).ptr()@.addr + begin * layout::size_of::<T>() <= usize::MAX,
             old(self).ptr()@.addr + (begin + len) * layout::size_of::<T>() <= usize::MAX + 1,
+            0 < len,
+            // Should we also require size_of::<T>() > 0?
             range_addrs(
                 addr_from_index(old(self).ptr(), begin),
                 len,
@@ -839,19 +843,18 @@ impl<T> MapPointsTo<T> {
         // assert(out_ptr@.addr + out_ptr@.metadata * layout::size_of::<T>() <= out_ptr@.addr + (self.ptr()@.metadata - begin) * layout::size_of::<T>());
         // assert(out_ptr@.addr + (self.ptr()@.metadata - begin) * layout::size_of::<T>() == self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>());
         // assert(self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len());
-        assert(self.ptr()@.addr as nat % layout::align_of::<T>() == 0);
-        assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
-            == out_ptr@.addr as nat % layout::align_of::<T>());
+        // assert(self.ptr()@.addr as nat % layout::align_of::<T>() == 0);
+        // assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
+        //     == out_ptr@.addr as nat % layout::align_of::<T>());
 
         assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
             == 0) by {
-            // broadcast use lemma_mod_add_multiples_vanish;
-            broadcast use lemma_mod_multiples_vanish;
+            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop};
+            // Know: (1) a % m == 0
+            // Know: (2) b % m == 0
+            // (3) By (2), (b * c) % m == 0 (lemma_mul_mod_noop_right)
+            // By (1) and (3), (a + b * c) % m == 0 (lemma_add_mod_noop)
 
-            assume(false);
-            assert(layout::size_of::<T>() % layout::align_of::<T>() == 0);
-            assert(begin * layout::size_of::<T>() % layout::align_of::<T>() == 0);
-            assert(self.ptr()@.addr as nat % layout::align_of::<T>() == 0);
         };
 
         let tracked out_map = MapPointsTo { points_to: submap, ptr: out_ptr };
