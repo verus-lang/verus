@@ -959,6 +959,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Real)) = verus_item {
                 (Arc::new(TypX::Real), false)
+            } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::RefMutTracked)) = verus_item {
+                assert!(args.len() == 2);
+                let typ_args = mk_typ_args(&args)?;
+                assert!(typ_args.len() == 1);
+                if !new_mut_ref() {
+                    unsupported_err!(span, "ref_mut_tracked type outside of new-mut-ref experiment")
+                }
+                (Arc::new(TypX::MutRef(typ_args[0].0.clone(), MutRefMode::Proof)), false)
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 

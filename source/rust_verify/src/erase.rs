@@ -18,6 +18,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
 
+// TODO: this should probably be renamed because some of these are not compilable
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
     IntIntrinsic,
@@ -35,6 +36,7 @@ pub enum CompilableOperator {
     TrackedBorrowMut,
     UseTypeInvariant,
     ClosureToFnProof(Mode),
+    BorrowMutTracked,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -217,7 +219,8 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedGet
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
-            | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
+            | CompilableOperator::UseTypeInvariant
+            | CompilableOperator::BorrowMutTracked => CallErasure::keep_all(),
         },
     })
 }

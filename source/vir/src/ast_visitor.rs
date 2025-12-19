@@ -796,9 +796,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| place_new(PlaceX::Field(field_opr.clone(), R::get(p))))
             }
             PlaceX::Local(_ident) => R::ret(|| place_new(place.x.clone())),
-            PlaceX::DerefMut(p) => {
+            PlaceX::DerefMut(p, mode) => {
                 let p = self.visit_place(p)?;
-                R::ret(|| place_new(PlaceX::DerefMut(R::get(p))))
+                R::ret(|| place_new(PlaceX::DerefMut(R::get(p), *mode)))
             }
             PlaceX::Temporary(e) => {
                 let e = self.visit_expr(e)?;

@@ -2814,7 +2814,7 @@ fn place_to_exp_pair_rec(
             let e2 = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e2));
             Ok((stms, Some((e1, e2))))
         }
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, _mode) => {
             let (stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
             let exps = match exps {
                 None => None,

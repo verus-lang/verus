@@ -1953,8 +1953,12 @@ impl<'a, T: ?Sized> core::ops::Deref for ref_mut_tracked<'a, T> {
 }
 
 impl<'a, T: ?Sized> core::ops::DerefMut for ref_mut_tracked<'a, T> {
-    // TODO(new_mut_ref): need to make sure this cannot be called abnormally
     fn deref_mut(&mut self) -> &mut T {
         unimplemented!();
     }
+}
+
+#[rustc_diagnostic_item = "verus::verus_builtin::borrow_mut_tracked"]
+pub fn borrow_mut_tracked<'a, T: core::marker::PointeeSized>(_m: &'a mut T) -> ref_mut_tracked<'a, T> {
+    unimplemented!();
 }

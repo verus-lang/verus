@@ -1290,6 +1290,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     expr.span,
                     &place,
                     *allow_two_phase_borrow,
+                    MutRefMode::Exec,
                 )))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
@@ -2096,7 +2097,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             if bctx.ctxt.cmd_line_args.new_mut_ref {
                 let place = expr_to_vir(bctx, e, modifier)?.to_place();
-                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No)))
+                Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, AllowTwoPhase::No, MutRefMode::Exec)))
             } else if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -3620,6 +3621,8 @@ fn deref_expr_to_vir<'tcx>(
             // Normal dereference, just strip the inner expression.
             Ok(strip_vir_ref_decoration(inner_expr))
         }
+    } else if let Some(is_mut) = is_deref_for_mut_ref_tracked_ty(bctx, arg_ty) {
+        deref_for_mut_ref_tracked_ty(bctx, expr.span, inner_expr, is_mut)
     } else {
         // Overloaded dereference other than internally implemented ones.
         // Insert a function call to the overloaded method.
@@ -3633,6 +3636,50 @@ fn deref_expr_to_vir<'tcx>(
         Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::deref_to_vir(
             bctx, expr, fn_def_id, inner_expr, inner_ty, arg_ty, expr.span,
         )?))
+    }
+}
+
+fn is_deref_for_mut_ref_tracked_ty<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    arg_ty: rustc_middle::ty::Ty<'tcx>
+) -> Option<bool> {
+    if !bctx.ctxt.cmd_line_args.new_mut_ref {
+        return None;
+    }
+    match arg_ty.kind() {
+        TyKind::Ref(_, t, mutability) => {
+            match t.kind() {
+                TyKind::Adt(adt_def, _args) => {
+                    let verus_item = bctx.ctxt.verus_items.id_to_name.get(&adt_def.did());
+                    if let Some(VerusItem::BuiltinType(crate::verus_items::BuiltinTypeItem::RefMutTracked)) = verus_item {
+                        return Some(match mutability {
+                            Mutability::Mut => true,
+                            Mutability::Not => false,
+                        })
+                    }
+                }
+                _ => { }
+            }
+        }
+        _ => { }
+    }
+    return None;
+}
+
+fn deref_for_mut_ref_tracked_ty<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    inner_expr: ExprOrPlace,
+    is_mut: bool,
+) -> Result<ExprOrPlace, VirErr> {
+    // TODO(new_mut_ref): need to make sure these Deref/DerefMut cannot be called normally
+    if is_mut {
+        let p = inner_expr.to_place();
+        let p = deref_mut_allow_cancelling_two_phase(bctx, span, &p);
+        let p = deref_mut_mode(bctx, span, &p, MutRefMode::Proof);
+        Ok(ExprOrPlace::Place(p))
+    } else {
+        todo!()
     }
 }
 
@@ -3666,7 +3713,7 @@ fn add_vir_ref_decoration<'tcx>(mut inner_expr: vir::ast::Expr) -> vir::ast::Exp
 pub(crate) fn place_to_loc(place: &Place) -> Result<vir::ast::Expr, VirErr> {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::VarLoc(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, _) => {
             return place_to_loc(p);
         }
         PlaceX::Field(opr, p) => {
@@ -3729,6 +3776,20 @@ pub(crate) fn expr_to_loc_coerce_modes(expr: &vir::ast::Expr) -> Result<vir::ast
     Ok(SpannedTyped::new(&expr.span, &expr.typ, x))
 }
 
+pub(crate) fn deref_mut_mode(bctx: &BodyCtxt, span: Span, place: &Place, mode: MutRefMode) -> Place {
+    let t = match &*undecorate_typ(&place.typ) {
+        TypX::MutRef(t, m) => {
+            if *m == mode {
+                t.clone()
+            } else {
+                panic!("expected mut ref of matching mode")
+            }
+        }
+        _ => panic!("expected mut ref"),
+    };
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone(), mode))
+}
+
 pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // `* &mut x` cancels out and we can just use x
     // This shows up a lot (in part due to adjustments) so we make the simplification
@@ -3748,7 +3809,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
         TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
         _ => panic!("expected mut ref"),
     };
-    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone(), MutRefMode::Exec))
 }
 
 /// Like the above, but also cancels with two-phase borrows
@@ -3775,7 +3836,7 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
         TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
         _ => panic!("expected mut ref"),
     };
-    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone()))
+    bctx.spanned_typed_new(span, &t, PlaceX::DerefMut(place.clone(), MutRefMode::Exec))
 }
 
 pub(crate) fn borrow_mut_vir(
@@ -3783,13 +3844,14 @@ pub(crate) fn borrow_mut_vir(
     span: Span,
     place: &Place,
     allow_two_phase: AllowTwoPhase,
+    mode: MutRefMode,
 ) -> vir::ast::Expr {
     // In general, `&mut *x` does NOT cancel itself out;
     // this is a reborrow which has nontrivial semantics.
     // However, if x is a temporary, then it's ok.
 
     match &place.x {
-        PlaceX::DerefMut(inner_place) => match &inner_place.x {
+        PlaceX::DerefMut(inner_place, m) if *m == mode => match &inner_place.x {
             PlaceX::Temporary(temp) => {
                 return temp.clone();
             }
@@ -3808,7 +3870,7 @@ pub(crate) fn borrow_mut_vir(
         }
         AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
     };
-    let typ = Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec));
+    let typ = Arc::new(TypX::MutRef(place.typ.clone(), mode));
     bctx.spanned_typed_new(span, &typ, x)
 }
 

@@ -3,6 +3,7 @@ use crate::ast::{
     ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode,
     ModeCoercion, MultiOp, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
     PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    MutRefMode,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -881,11 +882,12 @@ fn check_place_rec_inner(
 
             Ok(mode_join(mode, field_mode))
         }
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, m) => {
             let mode = check_place_rec(ctxt, record, typing, outer_mode, p, access)?;
             if mode == Mode::Spec && access.is_mut() {
-                // In principle we could allow mutating the 'current' field a ghost mutable
-                // reference. However, this probably has unintuitive behavior (i.e., it wouldn't
+                // In principle we could allow mutating the 'current' field of a spec-mode mutable
+                // reference (as a spec-mode place).
+                // However, this probably has unintuitive behavior (i.e., it wouldn't
                 // cause an update to any other place) so I disallow it.
                 return Err(error(
                     &place.span,
@@ -893,9 +895,13 @@ fn check_place_rec_inner(
                 ));
             }
 
-            // The 'dereference' of a mutable reference is always considered an exec place,
-            // even if the reference itself is only tracked.
-            Ok(Mode::Exec)
+            // Note that even if the reference itself is proof-mode, we can still end
+            // up with an exec-mode place.
+            let place_mode = match m {
+                MutRefMode::Exec => Mode::Exec,
+                MutRefMode::Proof => Mode::Proof,
+            };
+            Ok(place_mode)
         }
         PlaceX::Local(var) => typing.get(var, &place.span),
         PlaceX::Temporary(e) => {

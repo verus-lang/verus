@@ -1360,7 +1360,7 @@ impl PlaceX {
     pub fn uses_unnamed_temporary(&self) -> bool {
         match self {
             PlaceX::Local(_) => false,
-            PlaceX::DerefMut(p) => p.x.uses_unnamed_temporary(),
+            PlaceX::DerefMut(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::Field(_opr, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Temporary(_) => true,
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
@@ -1373,7 +1373,7 @@ impl PlaceX {
 pub fn place_get_local(p: &Place) -> Option<Place> {
     match &p.x {
         PlaceX::Local(_) => Some(p.clone()),
-        PlaceX::DerefMut(p) => place_get_local(p),
+        PlaceX::DerefMut(p, _) => place_get_local(p),
         PlaceX::Field(_opr, p) => place_get_local(p),
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
@@ -1385,7 +1385,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
 pub fn place_to_expr(place: &Place) -> Expr {
     let x = match &place.x {
         PlaceX::Local(var_ident) => ExprX::Var(var_ident.clone()),
-        PlaceX::DerefMut(p) => {
+        PlaceX::DerefMut(p, _mode) => {
             let e = place_to_expr(p);
             ExprX::Unary(UnaryOp::MutRefCurrent, e)
         }
