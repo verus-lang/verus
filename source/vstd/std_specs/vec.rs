@@ -1,6 +1,7 @@
 use super::super::prelude::*;
 use verus_builtin::*;
 
+use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
@@ -30,6 +31,10 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
         self.view().index(i)
     }
 }
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExTryReserveError(alloc::collections::TryReserveError);
 
 // TODO this should really be an 'assume_specification' function
 // but it's difficult to handle vec.index right now because
@@ -97,6 +102,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
     vec: &mut Vec<T, A>,
     additional: usize,
 )
+    ensures
+        vec@ == old(vec)@,
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+) -> (result: Result<(), TryReserveError>)
     ensures
         vec@ == old(vec)@,
 ;
