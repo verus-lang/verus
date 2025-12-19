@@ -62,7 +62,6 @@ impl PointsTo<str> {
         ensures
             ret.is_init(),
             ret.value() == target@,
-            ret.phy() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
     ;
