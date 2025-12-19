@@ -159,7 +159,7 @@ pub broadcast group group_array_axioms {
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
     axiom_spec_array_update,
-    //axiom_array_has_resolved,
+    axiom_array_has_resolved,
 }
 
 } // verus!
