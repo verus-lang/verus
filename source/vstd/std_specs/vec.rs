@@ -515,17 +515,15 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        true,
         iter == spec_into_iter(vec),
-// //        iter@ == (0int, vec@)
-//         iter.seq() == vec@.map(|i, vec| &vec),
+        // REVEW: Should this explicit path be needed?
+        crate::std_specs::iter::IteratorSpec::seq(&iter) == vec@,
 //         // iter.vec_iterator_type_inv(),
 //         // iter.front() == 0,
 //         // iter.back() == vec.len(),
 //         iter@.elts() == vec@,
-    // REVIEW: Should this explicit path be needed?
         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
-//        crate::std_specs::iter::IteratorSpec::initial_value_inv(Some(&new_vec_spec_iter(vec))),
+        crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
 ;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
