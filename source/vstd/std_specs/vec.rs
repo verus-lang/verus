@@ -313,6 +313,13 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
+// To allow reasoning about the "contents" of the Vec iterator,
+// we need a function that gives us the underlying sequence of the original vec.
+// In our prototype, this was a member function on the iterator.  We can't do that
+// here, since IntoIter is defined in another crate.  Creating an AdditionalFns trait
+// seems like overkill, so we use an uninterp function here.
+pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
+
 impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
     open spec fn obeys_iter_laws(&self) -> bool {
         true
@@ -328,9 +335,10 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
     }
 
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
-        true
         // &&& self.elts() == self.seq().map_values(|v: &T| *v)
         // &&& init matches Some(v) && v.elts() == self.elts()
+        &&& into_iter_elts(*self) == crate::std_specs::iter::IteratorSpecImpl::seq(self) //self.seq() //crate::std_specs::iter::IteratorSpecImpl::seq(self) //.map_values(|v: &T| *v)
+        &&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -502,12 +510,12 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
     A,
 > as core::iter::IntoIterator>::IntoIter);
 
-// pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
-//     ensures
-//         (#[trigger] spec_into_iter(v))@ == (0int, v@),
-// {
-//     admit();
-// }
+pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
+    ensures
+        #[trigger] into_iter_elts(spec_into_iter(v)) == v@,
+{
+    admit();
+}
 
 #[verifier::when_used_as_spec(spec_into_iter)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
@@ -518,10 +526,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
         iter == spec_into_iter(vec),
         // REVEW: Should this explicit path be needed?
         crate::std_specs::iter::IteratorSpec::seq(&iter) == vec@,
-//         // iter.vec_iterator_type_inv(),
-//         // iter.front() == 0,
-//         // iter.back() == vec.len(),
-//         iter@.elts() == vec@,
+        into_iter_elts(iter) == vec@,
         crate::std_specs::iter::IteratorSpec::decrease(&iter) is Some,
         crate::std_specs::iter::IteratorSpec::initial_value_inv(&iter, Some(&iter)),
 ;
@@ -573,8 +578,7 @@ pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
-    //new_vec_spec_iter_properties,
-    //axiom_spec_into_iter,
+    axiom_spec_into_iter,
 }
 
 } // verus!
