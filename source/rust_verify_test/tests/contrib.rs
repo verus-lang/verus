@@ -74,11 +74,11 @@ test_verify_one_file! {
         #[auto_spec]
         fn f(x: &mut u32, y: u32) -> u32
             requires
-                x < 100,
+                *x < 100,
                 y < 100,
         {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+    } => Err(e) => assert_vir_error_msg(e, "allow_in_spec not supported for function with &mut param")
 }

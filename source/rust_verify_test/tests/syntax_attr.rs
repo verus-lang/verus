@@ -676,7 +676,7 @@ test_verify_one_file! {
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(
             requires
-                x < 100,
+                *x < 100,
                 y < 100,
             returns
                 f(x, y),
@@ -685,7 +685,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+    } => Err(e) => assert_vir_error_msg(e, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
