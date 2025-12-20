@@ -2,11 +2,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -92,8 +92,12 @@ pub fn run_cargo(
     cargo_options: &CargoOptions,
     verus_args: &[String],
     warn_if_nothing_verified: bool,
+    without_deps: bool,
 ) -> Result<ExitCode> {
-    let cargo_args = make_cargo_args(cargo_options, false);
+    let cargo_args = {
+        let for_cargo_metadata = false;
+        make_cargo_args(cargo_options, for_cargo_metadata, false)
+    };
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
 
@@ -104,7 +108,10 @@ pub fn run_cargo(
         ]);
     }
 
-    let metadata_args = make_cargo_args(cargo_options, true);
+    let metadata_args = {
+        let for_cargo_metadata = true;
+        make_cargo_args(cargo_options, for_cargo_metadata, true)
+    };
     let metadata = fetch_metadata(&metadata_args)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
@@ -138,8 +145,12 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
     }
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, no_deps: bool) -> Vec<String> {
     let mut args = vec![];
+
+    if for_cargo_metadata && no_deps {
+        args.push("--no-deps".to_owned());
+    }
 
     if opts.frozen {
         args.push("--frozen".to_owned());

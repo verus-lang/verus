@@ -5,6 +5,7 @@ edition = "2021"
 description = "A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow."
 
 [features]
+default = ["integration-tests"]
 integration-tests = []
 
 [dependencies]
