@@ -30,14 +30,15 @@ fn workspace_workdir() {
         cmd.arg("--rlimit=100");
     });
 
-    println!("{:?}", data.env);
+    //println!("{:?}", data.env);
+
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    dbg!(&driver_args);
+    assert!(driver_args.contains(&"--expand-errors"));
+    assert!(driver_args.contains(&"--rlimit=100"));
 
     assert!(status.success());
     assert_eq!(data.args, vec!["build", "--release"]);
-
-    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
-    assert!(driver_args.contains(&"--expand-errors"));
-    assert!(driver_args.contains(&"--rlimit=100"));
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
