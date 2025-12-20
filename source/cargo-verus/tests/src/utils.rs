@@ -1,3 +1,6 @@
+#[cfg(not(feature = "integration-tests"))]
+compile_error!("Enable the `integration-tests` feature to run these tests.");
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
