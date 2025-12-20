@@ -2,11 +2,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -90,7 +90,7 @@ verify = true
 pub fn run_cargo(
     subcommand: &str,
     cargo_options: &CargoOptions,
-    verus_args: &[String],
+    verus_args: Vec<String>,
     warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
     let cargo_args = make_cargo_args(cargo_options, false);
