@@ -7,7 +7,6 @@ use clap::{ArgAction, Args, Parser, Subcommand};
     arg_required_else_help = true,
     about,
     styles = clap_cargo::style::CLAP_STYLING,
-    trailing_var_arg = true,
 )]
 pub struct CargoVerusCli {
     #[command(subcommand)]
@@ -45,6 +44,15 @@ pub struct NewCommand {
 pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
+
+    #[arg(
+        value_name = "VERUS_ARGS",
+        last = true,
+        num_args = 0..,
+        allow_hyphen_values = true,
+        help = "Arguments passed to 'verus' after `--`"
+    )]
+    pub verus_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -80,15 +88,6 @@ pub struct CargoOptions {
         help = "Options forwarded to 'cargo build' or 'cargo check'"
     )]
     pub cargo_args: Vec<String>,
-
-    #[arg(
-        value_name = "VERUS_ARGS",
-        last = true,
-        num_args = 0..,
-        allow_hyphen_values = true,
-        help = "Arguments passed to 'verus' after `--`"
-    )]
-    pub verus_args: Vec<String>,
 }
 
 impl CargoVerusCli {
@@ -103,7 +102,7 @@ impl CargoVerusCli {
                     let cargo_args = cargo_args.to_owned();
                     let verus_args = verus_args[1..].to_owned();
                     cmd.cargo_opts.cargo_args = cargo_args;
-                    cmd.cargo_opts.verus_args = verus_args;
+                    cmd.verus_args = verus_args;
                 }
             }
             _ => {}
