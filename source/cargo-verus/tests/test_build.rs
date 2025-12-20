@@ -29,8 +29,15 @@ fn workspace_workdir() {
         cmd.arg("--expand-errors");
         cmd.arg("--rlimit=100");
     });
+
+    println!("{:?}", data.env);
+
     assert!(status.success());
-    assert_eq!(data.args, vec!["build", "--release", "--", "--expand-errors", "--rlimit=100"]);
+    assert_eq!(data.args, vec!["build", "--release"]);
+
+    let driver_args = data.parse_driver_args(" __VERUS_DRIVER_ARGS__");
+    assert!(driver_args.contains(&"--expand-errors"));
+    assert!(driver_args.contains(&"--rlimit=100"));
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
