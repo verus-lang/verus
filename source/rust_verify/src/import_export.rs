@@ -4,7 +4,10 @@ use crate::verifier::io_vir_err;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Krate, Mode, VirErr};
+use vir::{
+    ast::{Krate, Mode, Path, VirErr},
+    ast_util,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct CrateMetadata {
@@ -16,6 +19,7 @@ pub(crate) struct CrateMetadata {
 pub(crate) struct CrateWithMetadata {
     krate: Krate,
     metadata: CrateMetadata,
+    friendly_name_map: Option<HashMap<Path, String>>,
 }
 
 pub(crate) struct ImportOutput {
@@ -42,14 +46,18 @@ pub(crate) fn import_crates(
                 ));
             }
         });
-        let CrateWithMetadata { krate, metadata } = match bincode::deserialize_from(file) {
-            Ok(crate_with_metadata) => crate_with_metadata,
-            Err(_e) => {
-                return Err(crate::util::error(format!(
-                    "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
-                )));
-            }
-        };
+        let CrateWithMetadata { krate, metadata, friendly_name_map } =
+            match bincode::deserialize_from(file) {
+                Ok(crate_with_metadata) => crate_with_metadata,
+                Err(_e) => {
+                    return Err(crate::util::error(format!(
+                        "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
+                    )));
+                }
+            };
+        if let Some(map) = &friendly_name_map {
+            ast_util::merge_friendly_name_map(map);
+        }
         //   let libcrate: Krate = serde_json::from_reader(file).expect("read crate from file");
         // We can also look at other packages: https://github.com/djkoloski/rust_serialization_benchmark
         vir_crates.push(krate);
@@ -90,7 +98,9 @@ pub(crate) fn export_crate(
                 ));
             }
         });
-        let krate_with_metadata = CrateWithMetadata { krate: vir_crate, metadata: vir_metadata };
+        let friendly_name_map = ast_util::get_friendly_name_map();
+        let krate_with_metadata =
+            CrateWithMetadata { krate: vir_crate, metadata: vir_metadata, friendly_name_map };
         bincode::serialize_into(file, &krate_with_metadata).expect("write crate to file");
         //serde_json::to_writer(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer_pretty(file, &vir_crate).expect("write crate to file");
