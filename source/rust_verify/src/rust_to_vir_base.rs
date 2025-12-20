@@ -11,9 +11,9 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarReplacerDelegate, BoundVarIndexKind, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
+    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -322,7 +322,9 @@ where
 
     fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
         match *t.kind() {
-            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty) if debruijn == self.current_index => {
+            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty)
+                if debruijn == self.current_index =>
+            {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
@@ -337,7 +339,9 @@ where
             // NOTE(verus): This is the one change, we replace == with >=
             rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) = region.kind() {
+                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
+                    region.kind()
+                {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -350,7 +354,9 @@ where
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const) if debruijn == self.current_index => {
+            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const)
+                if debruijn == self.current_index =>
+            {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
