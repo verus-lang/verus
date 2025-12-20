@@ -1253,9 +1253,10 @@ fn restrict_precision_for_unsafe(
     (place, curr_mode)
 }
 
-/// Truncate projections so that following rules are obeyed by the captured `place`:
+/// Truncate projections so that the following rules are obeyed by the captured `place`:
 /// - No Index projections are captured, since arrays are captured completely.
-/// - No unsafe block is required to capture `place`
+/// - No unsafe block is required to capture `place`.
+///
 /// Returns the truncated place and updated capture mode.
 fn restrict_capture_precision(
     place: Place<'_>,
