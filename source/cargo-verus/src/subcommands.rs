@@ -2,11 +2,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
+use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -109,7 +109,7 @@ pub fn run_cargo(
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) =
-        make_cargo_command(subcommand, &cargo_args, &common_verus_driver_args, &metadata)?;
+        make_cargo_command(subcommand, &cargo_args, common_verus_driver_args, &metadata)?;
 
     let exit_status = command
         .spawn()
@@ -209,7 +209,7 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
 fn make_cargo_command(
     subcommand: &str,
     cargo_args: &[String],
-    common_verus_driver_args: &[String],
+    common_verus_driver_args: Vec<String>,
     metadata: &cargo_metadata::Metadata,
 ) -> Result<(Command, bool)> {
     // TODO: use the "+ ... toolchain" argument?
