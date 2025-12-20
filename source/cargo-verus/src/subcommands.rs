@@ -90,7 +90,7 @@ verify = true
 pub fn run_cargo(
     subcommand: &str,
     cargo_options: &CargoOptions,
-    verus_args: Vec<String>,
+    verus_args: &[String],
     warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
     let cargo_args = make_cargo_args(cargo_options, false);

@@ -33,13 +33,13 @@ pub fn main() -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         VerusSubcommand::Verify(cmd) => {
-            subcommands::run_cargo("build", &cmd.cargo_opts, cmd.verus_args, true)
+            subcommands::run_cargo("build", &cmd.cargo_opts, &cmd.verus_args, true)
         }
         VerusSubcommand::Build(cmd) => {
-            subcommands::run_cargo("build", &cmd.cargo_opts, cmd.verus_args, false)
+            subcommands::run_cargo("build", &cmd.cargo_opts, &cmd.verus_args, false)
         }
         VerusSubcommand::Check(cmd) => {
-            subcommands::run_cargo("check", &cmd.cargo_opts, cmd.verus_args, true)
+            subcommands::run_cargo("check", &cmd.cargo_opts, &cmd.verus_args, true)
         }
     }
 }
