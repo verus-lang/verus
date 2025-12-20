@@ -33,13 +33,40 @@ pub fn main() -> Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         VerusSubcommand::Verify(cmd) => {
-            subcommands::run_cargo("build", &cmd.cargo_opts, &cmd.verus_args, true)
+            let warn_if_nothing_verified = true;
+            subcommands::run_cargo(
+                "build",
+                &cmd.cargo_opts,
+                &cmd.verus_args,
+                warn_if_nothing_verified,
+            )
+        }
+        VerusSubcommand::Focus(cmd) => {
+            let warn_if_nothing_verified = true;
+            subcommands::run_cargo(
+                "build",
+                &cmd.cargo_opts,
+                &cmd.verus_args,
+                warn_if_nothing_verified,
+            )
         }
         VerusSubcommand::Build(cmd) => {
-            subcommands::run_cargo("build", &cmd.cargo_opts, &cmd.verus_args, false)
+            let warn_if_nothing_verified = false;
+            subcommands::run_cargo(
+                "build",
+                &cmd.cargo_opts,
+                &cmd.verus_args,
+                warn_if_nothing_verified,
+            )
         }
         VerusSubcommand::Check(cmd) => {
-            subcommands::run_cargo("check", &cmd.cargo_opts, &cmd.verus_args, true)
+            let warn_if_nothing_verified = true;
+            subcommands::run_cargo(
+                "check",
+                &cmd.cargo_opts,
+                &cmd.verus_args,
+                warn_if_nothing_verified,
+            )
         }
     }
 }

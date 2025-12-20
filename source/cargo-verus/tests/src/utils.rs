@@ -7,13 +7,6 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitStatus};
 
-pub const MEMBER_OPTIN: &str = "member-optin";
-pub const MEMBER_OPTOUT: &str = "member-optout";
-pub const MEMBER_UNSET: &str = "member-unset";
-pub const MEMBER_HASDEPS: &str = "member-hasdeps";
-
-const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 
 #[derive(Debug, Deserialize)]
