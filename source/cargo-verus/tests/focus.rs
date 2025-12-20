@@ -27,19 +27,26 @@ fn workspace_manifest_package_hasdeps() {
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.arg("focus");
         cmd.arg("--manifest-path").arg(&manifest_path);
+        cmd.arg("--package").arg(hasdeps);
     });
 
     assert!(status.success());
     assert_eq!(
         data.args,
-        vec!["build", "--manifest-path", manifest_path.to_str().expect("manifest path to string"),]
+        vec![
+            "build",
+            "--manifest-path",
+            manifest_path.to_str().expect("manifest path to string"),
+            "--package",
+            hasdeps,
+        ]
     );
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
     data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
-    data.assert_env_sets_key_prefix(&verify_optin_prefix, "0");
     data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    data.assert_env_has_no_key_prefix(&verify_optin_prefix);
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
     data.assert_env_has_no_key_prefix(&verify_unset_prefix);
 }
