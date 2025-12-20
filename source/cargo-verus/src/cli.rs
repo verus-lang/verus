@@ -46,7 +46,7 @@ pub struct VerifyCommand {
     pub cargo_opts: CargoOptions,
 
     #[arg(
-        value_name = "VERUS_ARGS",
+        value_name = "ARGS",
         last = true,
         num_args = 0..,
         allow_hyphen_values = true,
