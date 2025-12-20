@@ -95,7 +95,7 @@ fn trait_impl_to_vir<'tcx>(
         return Ok(None);
     }
 
-    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id);
     let trait_did = trait_ref.skip_binder().def_id;
     let impl_paths = crate::rust_to_vir_base::get_impl_paths(
         ctxt.tcx,
@@ -163,7 +163,7 @@ fn translate_assoc_type<'tcx>(
     trait_typ_args: Typs,
 ) -> Result<AssocTypeImpl, VirErr> {
     let impl_path = ctxt.def_id_to_vir_path(impl_def_id);
-    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+    let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id);
     let ty = ctxt.tcx.type_of(impl_item_id).skip_binder();
     let typ = ctxt.mid_ty_to_vir(impl_item_id, impl_item_span, &ty, false)?;
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
@@ -589,7 +589,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
     // Process only the new implementations that could be visible to Verus:
     'impls: for impl_def_id in auto_import_impls {
-        let trait_ref = tcx.impl_trait_ref(&impl_def_id).expect("impl_trait_ref");
+        let trait_ref = tcx.impl_trait_ref(&impl_def_id);
         for arg in trait_ref.skip_binder().args.iter() {
             if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                 ctxt,
@@ -695,7 +695,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
         let trait_ref = tcx.impl_trait_ref(impl_def_id);
-        let trait_did = trait_ref.expect("impl_trait_ref").skip_binder().def_id;
+        let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = ctxt.def_id_to_vir_path(trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {
             continue;
