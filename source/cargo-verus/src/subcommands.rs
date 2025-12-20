@@ -93,9 +93,6 @@ pub fn run_cargo(
     verus_args: &[String],
     warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
-    dbg!(&cargo_options);
-    dbg!(&verus_args);
-
     let cargo_args = make_cargo_args(cargo_options, false);
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
