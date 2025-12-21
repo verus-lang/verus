@@ -66,14 +66,10 @@
           pname = "vargo";
           inherit version src;
           buildAndTestSubdir = "tools/vargo";
+          cargoRoot = "tools/vargo";
           cargoLock = {
             lockFile = ./tools/vargo/Cargo.lock;
           };
-          postPatch = ''
-            cp ${./tools/vargo/Cargo.lock} Cargo.lock
-            cp rust-toolchain.toml source/
-          '';
-          cargoHash = "sha256-0WJEW3FtoWxMaedqBoCmaS0HLsLjxtBlBClAXcjf/6s=";
           meta = meta // { mainProgram = "vargo"; };
         });
 
@@ -81,17 +77,8 @@
           pname = "verus";
           inherit version src;
           buildAndTestSubdir = "source";
-          cargoLock = {
-            lockFile = ./source/Cargo.lock;
-            outputHashes = {
-              "getopts-0.2.21" = "sha256-N/QJvyOmLoU5TabrXi8i0a5s23ldeupmBUzP8waVOiU=";
-              "smt2parser-0.6.1" = "sha256-AKBq8Ph8D2ucyaBpmDtOypwYie12xVl4gLRxttv5Ods=";
-            };
-          };
-          postPatch = ''
-            cp ${./source/Cargo.lock} Cargo.lock
-          '';
-          cargoHash = "sha256-y3SmOo6pCfJfPNN+9yUN7FeFcrmJ8xL4rQrjqtSe96M=";
+          cargoRoot = "source";
+          cargoHash = "sha256-hxEH8qurjEDiXX2GGfZF4FTKaMz2e7O1rKHsb+ywnvc=";
           nativeBuildInputs = [ pkgs.makeBinaryWrapper rust-bin rustup vargo z3 ];
           buildInputs = [ rustup z3 ];
           buildPhase = ''
