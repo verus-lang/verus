@@ -2091,6 +2091,16 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
     }
 }
 
+pub(crate) fn ty_is_vec<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    match ty.kind() {
+        TyKind::Adt(adt, _) => {
+            let rust_item = verus_items::get_rust_item(tcx, adt.did());
+            matches!(rust_item, Some(verus_items::RustItem::Vec))
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn ty_remove_references<'tcx>(
     ty: &'tcx rustc_middle::ty::Ty<'tcx>,
 ) -> &'tcx rustc_middle::ty::Ty<'tcx> {
