@@ -1709,9 +1709,7 @@ impl Verifier {
                                             message_interface.clone(),
                                             &profile_file_name,
                                             Some(&current_profile_description),
-                                            self.args.profile || self.args.profile_all,
                                             reporter,
-                                            self.args.capture_profiles,
                                         ) {
                                             Ok(profiler) => {
                                                 if self.args.capture_profiles {
@@ -1721,7 +1719,7 @@ impl Verifier {
                                                         &bucket_id,
                                                         Some(&op),
                                                         &function_opgen.ctx().func_map,
-                                                        profiler.instantiation_graph().unwrap(),
+                                                        profiler.instantiation_graph(),
                                                         &function_opgen
                                                             .ctx()
                                                             .global
@@ -1873,9 +1871,7 @@ impl Verifier {
                         message_interface.clone(),
                         &profile_all_file_name,
                         Some(&bucket_id.friendly_name()),
-                        self.args.profile || self.args.profile_all,
                         reporter,
-                        self.args.capture_profiles,
                     ) {
                         Ok(profiler) => {
                             if self.args.capture_profiles {
@@ -1885,7 +1881,7 @@ impl Verifier {
                                     &bucket_id,
                                     None,
                                     &opgen.ctx.func_map,
-                                    profiler.instantiation_graph().unwrap(),
+                                    profiler.instantiation_graph(),
                                     &opgen.ctx.global.qid_map.borrow(),
                                     profile_all_file_name,
                                 );
