@@ -94,7 +94,10 @@ impl Profiler {
         &self.instantiation_graph
     }
 
-    fn compute_quantifier_costs(parser: &Z3Parser, inst_graph: &InstGraph) -> Result<Vec<QuantCost>, ProfilerError> {
+    fn compute_quantifier_costs(
+        parser: &Z3Parser,
+        inst_graph: &InstGraph,
+    ) -> Result<Vec<QuantCost>, ProfilerError> {
         let graph = &inst_graph.raw.graph;
 
         // Extract costs from the graph nodes (smt-scope already computed them)
@@ -150,7 +153,10 @@ impl Profiler {
         Ok(user_quant_costs)
     }
 
-    fn make_instantiation_graph(parser: &Z3Parser, inst_graph: &InstGraph) -> Result<InstantiationGraph, ProfilerError> {
+    fn make_instantiation_graph(
+        parser: &Z3Parser,
+        inst_graph: &InstGraph,
+    ) -> Result<InstantiationGraph, ProfilerError> {
         // Convert smt-scope's graph structure to our InstantiationGraph format
         let mut edges: HashMap<(u64, usize), HashSet<(u64, usize)>> = HashMap::new();
         let mut names: HashMap<(u64, usize), String> = HashMap::new();
