@@ -28,7 +28,6 @@ pub struct Profiler {
     instantiation_graph: InstantiationGraph,
 }
 
-// TODO: can we directly replace this?
 pub struct InstantiationGraph {
     pub edges: HashMap<(u64, usize), HashSet<(u64, usize)>>,
     pub names: HashMap<(u64, usize), String>,
