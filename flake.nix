@@ -28,7 +28,7 @@
         formatter = pkgs.nixpkgs-fmt;
         linters = [ pkgs.statix ];
         rust-bin = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        
+
         # Inline rustup
         rustup = pkgs.stdenvNoCC.mkDerivation {
           name = "rustup";
@@ -51,7 +51,7 @@
             maintainers = with lib.maintainers; [ stephen-huan jakeginesin ];
           };
         };
-        
+
         version = "latest";
         src = ./.;
         meta = {
@@ -61,7 +61,7 @@
           maintainers = with lib.maintainers; [ stephen-huan jakeginesin ];
           platforms = systems;
         };
-        
+
         vargo = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
           pname = "vargo";
           inherit version src;
@@ -76,7 +76,7 @@
           cargoHash = "sha256-0WJEW3FtoWxMaedqBoCmaS0HLsLjxtBlBClAXcjf/6s=";
           meta = meta // { mainProgram = "vargo"; };
         });
-        
+
         verus = pkgs.rustPlatform.buildRustPackage {
           pname = "verus";
           inherit version src;
@@ -118,7 +118,7 @@
           passthru = { inherit vargo; };
           meta = meta // { mainProgram = "verus"; };
         };
-        
+
         z3 = pkgs.z3.overrideAttrs (finalAttrs: previousAttrs: {
           version = "4.12.5";
           src = pkgs.fetchFromGitHub {
@@ -163,7 +163,7 @@
             initialPath = [ pkgs.coreutils ];
           };
         }) {
-          packages = with self.packages.${system}; [
+          packages = [
             rust-bin
             rustup
             vargo
