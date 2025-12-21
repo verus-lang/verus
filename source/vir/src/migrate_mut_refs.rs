@@ -5,6 +5,16 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Port every functions signature from old-style to new-mut-ref style
+pub fn ignore_mut_ref_only_fns(krate: Krate) -> Krate {
+    let mut krate = krate;
+    let kratex = Arc::make_mut(&mut krate);
+    let functions = std::mem::take(&mut kratex.functions);
+    kratex.functions =
+        functions.into_iter().filter(|f| !f.x.attrs.ignore_outside_new_mut_ref).collect();
+    krate
+}
+
+/// Port every functions signature from old-style to new-mut-ref style
 pub fn migrate_mut_ref_krate(krate: Krate) -> Krate {
     let mut krate = krate;
     let kratex = Arc::make_mut(&mut krate);

@@ -836,7 +836,8 @@ pub fn parse_args_with_imports(
     (Arc::new(args), unmatched)
 }
 
-static NEW_MUT_REF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn new_mut_ref() -> bool {
     NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)

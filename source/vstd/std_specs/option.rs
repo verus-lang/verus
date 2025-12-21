@@ -298,4 +298,16 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
         res == spec_ok_or(option, err),
 ;
 
+#[verifier::ignore_outside_new_mut_ref_experiment]
+#[doc(hidden)]
+pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
+    ensures
+        (match mut_ref_current(option) {
+            None => mut_ref_future(option).is_none() && res.is_none(),
+            Some(r) => mut_ref_future(option).is_some() && res.is_some() && mut_ref_current(
+                res.unwrap(),
+            ) === r && mut_ref_future(res.unwrap()) === mut_ref_future(option).unwrap(),
+        }),
+;
+
 } // verus!

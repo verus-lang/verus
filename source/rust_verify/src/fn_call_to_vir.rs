@@ -1467,7 +1467,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))
         | VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
-            if bctx.ctxt.cmd_line_args.new_mut_ref =>
+            if bctx.new_mut_ref =>
         {
             let tracked_mode =
                 matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut));
@@ -1765,7 +1765,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             );
         }
         item @ (VerusItem::HasResolved | VerusItem::HasResolvedUnsized) => {
-            if !bctx.ctxt.cmd_line_args.new_mut_ref
+            if !bctx.new_mut_ref
                 && !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore)
             {
                 unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
@@ -1790,7 +1790,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
-            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+            if !bctx.new_mut_ref {
                 unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
             }
             record_spec_fn_no_proof_args(bctx, expr);
@@ -2273,7 +2273,7 @@ fn mk_vir_args<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+            let is_mut_ref_param = !bctx.new_mut_ref
                 && match raw_param.kind() {
                     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
                     _ => false,
@@ -2306,7 +2306,7 @@ fn mk_vir_args_auto_skip_mut_refs<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+            let is_mut_ref_param = !bctx.new_mut_ref
                 && match raw_param.kind() {
                     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
                     _ => false,
