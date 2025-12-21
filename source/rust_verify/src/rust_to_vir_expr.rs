@@ -8,7 +8,8 @@ use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
     get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
-    mid_ty_simplify, mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    mid_ty_simplify, mid_ty_to_vir_ghost, mk_range, ty_is_vec, typ_of_node,
+    typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;
@@ -2647,7 +2648,85 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 )
             }
             if bctx.types.is_method_call(expr) {
-                crate::internal_err!(expr.span, "overloaded index new-mut-ref") // TODO(new_mut_ref)
+                // Determine if this is Index or IndexMut
+                // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
+                // this is determined by the (adjusted) type of the receiver
+                let rustc_middle::ty::Ref(_, tgt_ty, mutbl) =
+                    bctx.types.expr_ty_adjusted(tgt_expr).kind()
+                else {
+                    crate::internal_err!(
+                        expr.span,
+                        "overloaded_place: receiver is not a reference"
+                    );
+                };
+                let mutbl = match mutbl {
+                    Mutability::Not => false,
+                    Mutability::Mut => true,
+                };
+
+                let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
+
+                let tgt_vir = expr_to_vir_consume(bctx, tgt_expr, modifier)?;
+                let idx_vir = expr_to_vir_consume(bctx, idx_expr, ExprModifier::REGULAR)?;
+
+                let (fun, typ_args) = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
+                    let fun = if mutbl {
+                        vir::fun!("vstd" => "std_specs", "vec", "vec_index_mut")
+                    } else {
+                        vir::fun!("vstd" => "std_specs", "vec", "vec_index")
+                    };
+
+                    let mut tgt_typ_vir = undecorate_typ(&tgt_vir.typ);
+                    if mutbl {
+                        tgt_typ_vir = match &*tgt_typ_vir {
+                            TypX::MutRef(t) => t.clone(),
+                            _ => crate::internal_err!(
+                                expr.span,
+                                "Index operator expected TypX::MutRef"
+                            ),
+                        };
+                    }
+                    let typ_args = match &*tgt_typ_vir {
+                        TypX::Datatype(_, typ_args, _) => typ_args.clone(),
+                        _ => crate::internal_err!(
+                            expr.span,
+                            "Index operator expected TypX::Datatype"
+                        ),
+                    };
+                    (fun, typ_args)
+                } else {
+                    return Err(err_span_bare(
+                        expr.span,
+                        format!("Index operator not supported for ({:}, {:})", tgt_ty, idx_ty),
+                    )
+                    .help("At present, the index operator is only supported for (Vec<_>, usize)"));
+                };
+
+                let call_target = CallTarget::Fun(
+                    vir::ast::CallTargetKind::Static,
+                    fun,
+                    typ_args,
+                    // arbitrary impl_path
+                    // REVIEW: why is this needed?
+                    Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
+                    AutospecUsage::Final,
+                );
+
+                // tgt[idx] is equivalent to either *index(tgt, idx) or *index_mut(tgt, idx)
+                // (The * on the outside isn't part of the adjustments; we add it here)
+                let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
+                let x = ExprX::Call(call_target, args, None);
+                let call_ret_typ = if mutbl {
+                    Arc::new(TypX::MutRef(expr_typ()?))
+                } else {
+                    Arc::new(TypX::Decorate(TypDecoration::Ref, None, expr_typ()?))
+                };
+                let e = bctx.spanned_typed_new(expr.span, &call_ret_typ, x);
+                let mut p = bctx.spanned_typed_new(expr.span, &call_ret_typ, PlaceX::Temporary(e));
+                if mutbl {
+                    p = deref_mut(bctx, expr.span, &p);
+                }
+                Ok(ExprOrPlace::Place(p))
             } else {
                 let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
                 let idx_ty = bctx.types.expr_ty_adjusted(idx_expr);
@@ -2666,7 +2745,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             // Determine if this is Index or IndexMut
             // Based on ./rustc_mir_build/src/thir/cx/expr.rs in rustc
-            // this is apparently determined by the (adjusted) type of the receiver
+            // this is determined by the (adjusted) type of the receiver
             let tgt_ty = bctx.types.expr_ty_adjusted(tgt_expr);
             let is_index_mut = match tgt_ty.kind() {
                 TyKind::Array(_, _) => false,

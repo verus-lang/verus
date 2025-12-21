@@ -45,7 +45,7 @@ pub struct ExTryReserveError(alloc::collections::TryReserveError);
 //
 // It's not ideal, but I think it's better than the alternative, which would
 // be to have users call some function with a nonstandard name to perform indexing.
-/// This is a specification for the indexing operator `vec[i]`
+/// This is a specification for the indexing operator `vec[i]` when it expands to the `Index` trait
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index")]
 pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
@@ -56,6 +56,24 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
     no_unwind
 {
     &vec[i]
+}
+
+/// This is a specification for the indexing operator `vec[i]` when it expands to the `IndexMut` trait
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
+pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
+    requires
+        i < vec.view().len(),
+    ensures
+        mut_ref_current(element) == mut_ref_current(vec).view().index(i as int),
+        mut_ref_future(vec)@ == mut_ref_current(vec)@.update(i as int, mut_ref_future(element)),
+
+        mut_ref_future(element) == mut_ref_future(vec).view().index(i as int),
+    no_unwind
+{
+    &mut vec[i]
 }
 
 ////// Len (with autospec)
@@ -495,11 +513,19 @@ pub broadcast proof fn lemma_vec_obeys_deep_eq<T: PartialEq + DeepView>()
     }
 }
 
+pub broadcast axiom fn axiom_vec_has_resolved<T>(vec: Vec<T>, i: int)
+    ensures
+        0 <= i < vec.len() ==> #[trigger] has_resolved::<Vec<T>>(vec) ==> has_resolved(
+            #[trigger] vec@[i],
+        ),
+;
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
+    axiom_vec_has_resolved,
 }
 
 } // verus!

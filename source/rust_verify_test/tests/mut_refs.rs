@@ -2293,8 +2293,7 @@ test_verify_one_file_with_options! {
             // two-phase borrow.
             j[0].method_call(j[0].a);
         }
-    //} => Err(err) => assert_rust_error_msg(err, "cannot use `j` because it was mutably borrowed")
-    } => Err(err) => assert_vir_error_msg(err, "overloaded index new-mut-ref")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*j` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
