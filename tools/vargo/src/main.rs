@@ -10,6 +10,7 @@ mod consts;
 
 const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 5, 0];
 
+mod cli;
 mod util;
 
 use filetime::FileTime as FFileTime;
