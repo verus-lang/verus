@@ -74,6 +74,34 @@ use vir::def::{field_ident_from_rust, positional_field_ident};
 /// The easiest way to convert a `Place` to an `Expr` is to move or copy from it
 /// (which we here call "consume"). To convert from an `Expr` to a `Place`, we can create
 /// a "temporary" place.
+///
+/// It is very important to follow Rust's rules and put the Temporary nodes in the right places.
+/// Consider, for example, the following nearly-identical snippets:
+///
+/// ```rust
+/// fn test1() {
+///     let mut a = 0;
+///     let a_ref = &mut a;
+///     *a_ref = 20;
+///     println!("{:}", a);  // prints 20
+/// }
+///
+/// fn test2() {
+///     let mut a = 0;
+///     let a_ref = &mut { a };
+///     *a_ref = 20;
+///     println!("{:}", a);  // prints 0
+/// }
+/// ```
+///
+/// The first (with `&mut a`) takes a mutable reference to `a`,
+/// while the second (with `&mut { a }`) first copies `a` into a temporary, and then takes
+/// a mutable reference to the temporary. Thus, `a` never gets updated! The 2 snippets
+/// have different semantics, and the key difference in VIR is the presence of the Temporary node.
+///
+/// `&mut a`     : `MutRef(Local("a"))`
+/// `&mut { a }` : `MutRef(Temporary(Block([], ReadPlace(Local("a")))))`
+
 #[derive(Clone, Debug)]
 pub(crate) enum ExprOrPlace {
     Expr(vir::ast::Expr),
