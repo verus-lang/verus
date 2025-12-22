@@ -44,7 +44,7 @@ struct Immutable(LocalDeclKind);
 
 enum PreLocalDeclKind {
     /// Any 'immutable' kind
-    Immutable(LocalDeclKind),
+    Immutable(Immutable),
     /// Param (mutability to be inferred)
     Param,
     /// StmtLet (mutability to be inferred)
@@ -352,7 +352,7 @@ impl<'a> State<'a> {
         &mut self,
         span: &Span,
         typ: &Typ,
-        kind: LocalDeclKind,
+        kind: PreLocalDeclKind,
     ) -> (VarIdent, Exp) {
         let (temp, temp_var) = self.next_temp(span, typ);
         let temp_id = self.declare_var_stm(&temp, typ, kind, false);
@@ -360,7 +360,8 @@ impl<'a> State<'a> {
     }
 
     fn declare_temp_assign(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
-        self.declare_temp_var_stm(span, typ, Immutable(LocalDeclKind::TempViaAssign))
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::TempViaAssign));
+        self.declare_temp_var_stm(span, typ, kind)
     }
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
@@ -372,7 +373,9 @@ impl<'a> State<'a> {
                 self.declare_var_stm(
                     name,
                     &param.x.typ,
-                    Immutable(LocalDeclKind::Param { mutable: false }),
+                    PreLocalDeclKind::Immutable(
+                        Immutable(LocalDeclKind::Param { mutable: false }),
+                    ),
                     false,
                 );
             }
@@ -584,7 +587,7 @@ pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
 /// The purpose of the `Sequencer` object is to safely commute all the Exps to the end.
 struct Sequencer {
     stms: Vec<Vec<Stm>>,
-    exps: Vec<(Exp, LocalDeclKind)>,
+    exps: Vec<(Exp, PreLocalDeclKind)>,
 }
 
 impl Sequencer {
@@ -599,7 +602,7 @@ impl Sequencer {
     /// The `kind` argument is the LocalDeclKind that should be used in the event that a
     /// temporary is created.
     #[must_use]
-    fn push(&mut self, stms: Vec<Stm>, rv: Maybe<Value>, kind: LocalDeclKind) -> Option<Vec<Stm>> {
+    fn push(&mut self, stms: Vec<Stm>, rv: Maybe<Value>, kind: PreLocalDeclKind) -> Option<Vec<Stm>> {
         self.stms.push(stms);
         match rv.to_maybe_exp() {
             Maybe::Some(e) => {
@@ -737,7 +740,7 @@ fn expr_get_call(
                 for arg in args.iter() {
                     let poly =
                         crate::poly::arg_is_poly(ctx, &function.x.kind, function.x.mode, &arg.typ);
-                    let kind = LocalDeclKind::StmCallArg { native: !poly };
+                    let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::StmCallArg { native: !poly }));
 
                     match &arg.x {
                         ExprX::TwoPhaseBorrowMut(_) => {
@@ -849,7 +852,7 @@ fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &VarBinders<Typ>,
-    kind: LocalDeclKind,
+    kind: PreLocalDeclKind,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_spec_general(ctx) {
@@ -3107,10 +3110,9 @@ fn stmt_to_stm(
                 _ => None,
             };
 
-            match (*mutable, &exp) {
-                (false, None) => {}
-                (true, None) => {}
-                (_, Some(exp)) => {
+            match &exp {
+                None => {}
+                Some(exp) => {
                     stms.push(init_var(&stmt.span, &decl.ident, exp));
                 }
             }
