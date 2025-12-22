@@ -931,8 +931,6 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
 
         fn test_array() {
-            broadcast use vstd::array::axiom_array_has_resolved;
-
             let mut a = 0;
             let mut b = 1;
             let mut c = 2;
@@ -967,8 +965,6 @@ test_verify_one_file_with_options! {
         fn test_slice(x: Box<[&mut u64]>)
             requires x@.len() == 3
         {
-            broadcast use vstd::slice::axiom_slice_has_resolved;
-
             let mut a = 0;
             let mut b = 1;
             let mut c = 2;
