@@ -167,6 +167,8 @@
             rustup
             vargo
             verus
+            z3
+            cvc5
           ];
         };
       }
