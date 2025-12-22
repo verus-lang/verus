@@ -52,7 +52,7 @@
           };
         };
 
-        version = "latest";
+        version = self.rev or "dirty";
         meta = {
           homepage = "https://github.com/verus-lang/verus";
           description = "Verified Rust for low-level systems code";
