@@ -38,7 +38,7 @@ struct Args {
 
 // Path to cargo-verus's main file, where we have a static string
 // indicating which version of vstd to use
-const CARGO_VERUS_MAIN: &str = "source/cargo-verus/src/main.rs";
+const CARGO_VERUS_TEMPLATE_FILE: &str = "source/cargo-verus/src/subcommands.rs";
 
 // Generates a fresh version string of the form "0.0.0-year-month-day-time",
 // which we'll assign to any updated crate.  Using a const + LazyLock ensures
@@ -234,14 +234,14 @@ fn publish(dir: &Path, dry_run: bool) {
 }
 
 fn update_cargo_verus_template() {
-    let main = Path::new(CARGO_VERUS_MAIN);
+    let main = Path::new(CARGO_VERUS_TEMPLATE_FILE);
     let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
 
     // Replace the version in the template
     let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
     let count = re.find_iter(&content).count();
     if count != 1 {
-        panic!("Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.", CARGO_VERUS_MAIN, count);
+        panic!("Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.", CARGO_VERUS_TEMPLATE_FILE, count);
     }
     let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
     //println!("Updated cargo-verus main.rs:\n{}", updated_content);
