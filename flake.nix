@@ -53,7 +53,6 @@
         };
 
         version = "latest";
-        src = ./.;
         meta = {
           homepage = "https://github.com/verus-lang/verus";
           description = "Verified Rust for low-level systems code";
@@ -64,9 +63,9 @@
 
         vargo = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
           pname = "vargo";
-          inherit version src;
-          buildAndTestSubdir = "tools/vargo";
-          cargoRoot = "tools/vargo";
+          inherit version;
+          src = ./tools;
+          sourceRoot = "tools/vargo";
           cargoLock = {
             lockFile = ./tools/vargo/Cargo.lock;
           };
@@ -75,17 +74,16 @@
 
         verus = pkgs.rustPlatform.buildRustPackage {
           pname = "verus";
-          inherit version src;
-          buildAndTestSubdir = "source";
-          cargoRoot = "source";
+          inherit version;
+          srcs = [ ./source ./tools ./dependencies ];
+          sourceRoot = "source";
           cargoHash = "sha256-hxEH8qurjEDiXX2GGfZF4FTKaMz2e7O1rKHsb+ywnvc=";
           nativeBuildInputs = [ pkgs.makeBinaryWrapper rust-bin rustup vargo z3 ];
           buildInputs = [ rustup z3 ];
           buildPhase = ''
             runHook preBuild
-            cd source
             ln -s ${lib.getExe z3} ./z3
-            ln -sf ../rust-toolchain.toml rust-toolchain.toml
+            ln -sf ${./rust-toolchain.toml} ../rust-toolchain.toml
             vargo build --release
             runHook postBuild
           '';
