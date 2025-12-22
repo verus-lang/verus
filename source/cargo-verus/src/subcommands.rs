@@ -91,10 +91,10 @@ verify = true
 
 pub fn run_cargo(
     subcommand: &str,
+    verify_deps: bool,
     cargo_options: &CargoOptions,
     verus_args: &[String],
     warn_if_nothing_verified: bool,
-    without_deps: bool,
 ) -> Result<ExitCode> {
     let cargo_args = {
         let for_cargo_metadata = false;
@@ -117,8 +117,13 @@ pub fn run_cargo(
     let metadata = fetch_metadata(&metadata_args)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
-    let (mut command, verified_something) =
-        make_cargo_command(subcommand, &cargo_args, common_verus_driver_args, &metadata)?;
+    let (mut command, verified_something) = make_cargo_command(
+        subcommand,
+        verify_deps,
+        &cargo_args,
+        common_verus_driver_args,
+        &metadata,
+    )?;
 
     let exit_status = command
         .spawn()
@@ -221,6 +226,7 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, no_deps: bool)
 
 fn make_cargo_command(
     subcommand: &str,
+    verify_deps: bool,
     cargo_args: &[String],
     common_verus_driver_args: Vec<String>,
     metadata: &cargo_metadata::Metadata,
@@ -288,12 +294,14 @@ fn make_cargo_command(
                 verus_driver_args_for_package.push("--no-vstd".to_owned());
             }
 
-            for dep in entry.deps() {
-                if metadata_index.get(&dep.pkg).verus_metadata().verify {
-                    verus_driver_args_for_package.extend_from_slice(&[
-                        "--VIA-CARGO".to_owned(),
-                        format!("import-dep-if-present={}", dep.name),
-                    ]);
+            if verify_deps {
+                for dep in entry.deps() {
+                    if metadata_index.get(&dep.pkg).verus_metadata().verify {
+                        verus_driver_args_for_package.extend_from_slice(&[
+                            "--VIA-CARGO".to_owned(),
+                            format!("import-dep-if-present={}", dep.name),
+                        ]);
+                    }
                 }
             }
 
