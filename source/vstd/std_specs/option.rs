@@ -198,7 +198,7 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 // take
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
-        t == old(option),
+        t == *old(option),
         *option is None,
 ;
 
