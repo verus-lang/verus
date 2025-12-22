@@ -174,7 +174,7 @@ pub broadcast group group_slice_axioms {
     axiom_slice_ext_equal,
     axiom_spec_slice_update,
     axiom_spec_slice_index,
-    //axiom_slice_has_resolved,
+    axiom_slice_has_resolved,
 }
 
 } // verus!

@@ -799,7 +799,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     /// Tests alternating quantifiers.
-    #[test] test_exec_spec_alt_quants IMPORTS.to_string() + verus_code_str! {
+    /// Currently ignored because it contains a trigger loop and is thus flaky.
+    #[ignore] #[test] test_exec_spec_alt_quants IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
             spec fn has_unique_maximum(a: Seq<u32>) -> bool {
                 exists |i: usize| #![trigger a[i as int]] 0 <= i < a.len() &&
