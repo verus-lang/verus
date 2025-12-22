@@ -115,6 +115,7 @@ pub fn run_cargo(
         make_cargo_args(cargo_options, for_cargo_metadata, true)
     };
     let metadata = fetch_metadata(&metadata_args)?;
+    let metadata_index = MetadataIndex::new(&metadata)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(
@@ -122,7 +123,7 @@ pub fn run_cargo(
         verify_deps,
         &cargo_args,
         common_verus_driver_args,
-        &metadata,
+        &metadata_index,
     )?;
 
     let exit_status = command
@@ -229,7 +230,7 @@ fn make_cargo_command(
     verify_deps: bool,
     cargo_args: &[String],
     common_verus_driver_args: Vec<String>,
-    metadata: &cargo_metadata::Metadata,
+    metadata_index: &MetadataIndex,
 ) -> Result<(Command, bool)> {
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
@@ -248,8 +249,6 @@ fn make_cargo_command(
     if !common_verus_driver_args.is_empty() {
         cmd.env(VERUS_DRIVER_ARGS, common_verus_driver_args);
     }
-
-    let metadata_index = MetadataIndex::new(metadata)?;
 
     let mut verified_something = false;
     for entry in metadata_index.entries() {
