@@ -96,7 +96,7 @@
             ln -s $out/rust_verify $out/bin/rust_verify
             ln -s $out/cargo-verus $out/bin/cargo-verus
             ln -s $out/z3 $out/bin/z3
-            wrapProgram $out/bin/verus --prefix PATH : ${lib.makeBinPath [ rustup rust-bin z3 ]}
+            wrapProgram $out/bin/verus --prefix PATH : ${lib.makeBinPath [ rustup rust-bin z3 cvc5 ]}
             runHook postInstall
           '';
           doCheck = false;
@@ -114,11 +114,24 @@
             sha256 = "sha256-Qj9w5s02OSMQ2qA7HG7xNqQGaUacA1d4zbOHynq5k+A=";
           };
         });
+        cvc5' = pkgs.cvc5.override {
+          cadical = pkgs.cadical.override { version = "2.0.0"; };
+        };
+        # EXPECTED_CVC5_VERSION in tools/common/consts.rs
+        cvc5 = cvc5'.overrideAttrs (finalAttrs: previousAttrs: {
+          version = "1.1.2";
+          src = pkgs.fetchFromGitHub {
+            owner = "cvc5";
+            repo = "cvc5";
+            tag = "cvc5-${finalAttrs.version}";
+            hash = "sha256-v+3/2IUslQOySxFDYgTBWJIDnyjbU2RPdpfLcIkEtgQ=";
+          };
+        });
       in
       {
         packages.${system} = rec {
           default = verus;
-          inherit rust-bin rustup vargo verus;
+          inherit rust-bin rustup vargo verus z3 cvc5;
         };
         formatter.${system} = formatter;
         checks.${system}.lint = pkgs.stdenvNoCC.mkDerivation {
