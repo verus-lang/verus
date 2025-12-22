@@ -105,7 +105,7 @@ impl CargoVerusCli {
                     cmd.verus_args = verus_args;
                 }
             }
-            _ => {}
+            VerusSubcommand::New(_) => {}
         }
         self
     }
