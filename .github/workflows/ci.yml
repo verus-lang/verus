@@ -16,7 +16,7 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
           - build: windows
             os: windows-latest
 
@@ -229,7 +229,7 @@ jobs:
   # will complain if there are warnings
   build-docs:
     needs: [fmt]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -269,7 +269,7 @@ jobs:
             os: macos-15-intel
             release_name: verus-x86-macos
           - build: linux
-            os: ubuntu-latest
+            os: ubuntu-22.04
             release_name: verus-x86-linux
           - build: windows
             os: windows-latest
@@ -325,7 +325,7 @@ jobs:
   release:
     needs: [build-docs, build-release, full-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: download all artifacts
         uses: actions/download-artifact@v4
