@@ -115,6 +115,8 @@ pub fn run_cargo(
         make_cargo_args(cargo_options, for_cargo_metadata, true)
     };
     let metadata = fetch_metadata(&metadata_args)?;
+    let (included_packages, _excluded_packages) =
+        cargo_options.workspace.partition_packages(&metadata);
     let metadata_index = MetadataIndex::new(&metadata)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
