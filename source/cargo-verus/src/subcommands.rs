@@ -3,12 +3,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -117,7 +117,7 @@ pub fn run_cargo(
     let metadata = fetch_metadata(&metadata_args)?;
     let (included_packages, _excluded_packages) =
         cargo_options.workspace.partition_packages(&metadata);
-    let metadata_index = MetadataIndex::new(&metadata)?;
+    let metadata_index = MetadataIndex::new(&metadata, &included_packages)?;
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(

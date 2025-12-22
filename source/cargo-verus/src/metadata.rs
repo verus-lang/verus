@@ -45,7 +45,9 @@ pub struct MetadataIndexEntry<'a> {
 }
 
 impl<'a> MetadataIndex<'a> {
-    pub fn new(metadata: &'a Metadata) -> Result<Self> {
+    pub fn new(metadata: &'a Metadata, packages: &'a [Package]) -> Result<Self> {
+        todo!("Breadth-first traversal to collect transitive deps of `packages`");
+
         let mut deps_by_package = BTreeMap::new();
         if let Some(resolve) = &metadata.resolve {
             for node in &resolve.nodes {
@@ -58,18 +60,16 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(
-                entries
-                    .insert(
-                        &package.id,
-                        MetadataIndexEntry {
-                            package,
-                            verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap_or_default(),
-                        }
-                    )
-                    .is_none()
-            );
+            assert!(entries
+                .insert(
+                    &package.id,
+                    MetadataIndexEntry {
+                        package,
+                        verus_metadata: VerusMetadata::parse_from_package(package)?,
+                        deps: deps_by_package.remove(&package.id).unwrap_or_default(),
+                    }
+                )
+                .is_none());
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
