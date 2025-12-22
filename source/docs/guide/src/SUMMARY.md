@@ -76,6 +76,7 @@
 - [Mutation, references, and borrowing](mutation-references-borrowing.md)
     - [Requires and ensures with mutable references](requires-ensures-mut-ref.md)
     - [Assertions about mutable references](assert-mut-ref.md)
+    - [new-mut-ref](new-mut-ref.md)
 - [Traits]()
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
