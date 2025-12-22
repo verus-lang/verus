@@ -843,7 +843,7 @@ impl<K, V> GhostSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 
@@ -1231,7 +1231,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             result.id() == self.id(),
             old(self)@ == self@.insert(result.key(), result.value()),
             result.key() == k,
-            self@.dom() =~= old(self)@.dom().remove(k),
+            self@ == old(self)@.remove(k),
     {
         use_type_invariant(&*self);
 
