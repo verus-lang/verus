@@ -337,7 +337,9 @@ where
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br) if debruijn >= self.current_index => {
+            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br)
+                if debruijn >= self.current_index =>
+            {
                 let region = self.delegate.replace_region(br);
                 if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
                     region.kind()
