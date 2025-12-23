@@ -4,9 +4,9 @@ use crate::ast::{
     VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
-    State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
-    expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
-    stms_to_one_stm,
+    FinalState, State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
+    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_check_with_typ_substs,
+    expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
@@ -19,7 +19,7 @@ use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::{subst_exp, subst_local_decl, subst_stm};
+use crate::sst_util::subst_exp;
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -227,7 +227,7 @@ fn func_body_to_sst(
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
     let proof_body_stm = check_state.finalize_stm(ctx, &proof_body_stm)?;
-    check_state.finalize();
+    let FinalState { local_decls, statics: _ } = check_state.finalize();
 
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
     let termination_check = if is_recursive && verifying_owning_bucket {
@@ -240,7 +240,7 @@ fn func_body_to_sst(
                 &check_body_stm,
                 false,
             )?;
-        termination_decls.splice(0..0, check_state.local_decls.into_iter());
+        termination_decls.splice(0..0, local_decls.into_iter());
 
         let termination_check = FuncCheckSst {
             post_condition: Arc::new(crate::sst::PostConditionSst {
@@ -586,27 +586,20 @@ where
                     // function context makes sense in the trait implementation with has different
                     // argument names and type arguments.
                     //
-                    // Right now, we: do the param renames, then do the lowering, then do type
-                    // param substitution, and fix up the local decls.
-                    // Though it seems to work fine, it does mean the lowering takes place
-                    // in a weird "half-substituted" state.
-
-                    let local_decls_init_len = state.local_decls.len();
+                    // Right now, we: do the param renames, then do the lowering,
+                    // then (inside the call `expr_to_pure_exp_check_with_substs`)
+                    // do type param substitution, and fix up the local decls.
+                    // Though it seems to work fine, it does mean that the main lowering step
+                    // (i.e., the big recursive function over Expr in ast_to_sst)
+                    // takes place in a weird "half-substituted" state.
 
                     let expr = map_expr_rename_vars(expr, &inh.param_renames)?;
-                    let (stms0, exp) = expr_to_pure_exp_check(ctx, state, &expr)?;
-
-                    let exp = subst_exp(&inh.trait_typ_substs, &HashMap::new(), &exp);
-                    let mut stms0: Vec<_> = stms0
-                        .iter()
-                        .map(|stm| subst_stm(&inh.trait_typ_substs, &HashMap::new(), &stm))
-                        .collect();
-
-                    let local_decls_new_len = state.local_decls.len();
-                    for i in local_decls_init_len..local_decls_new_len {
-                        state.local_decls[i] =
-                            subst_local_decl(&inh.trait_typ_substs, &state.local_decls[i]);
-                    }
+                    let (mut stms0, exp) = expr_to_pure_exp_check_with_typ_substs(
+                        ctx,
+                        state,
+                        &expr,
+                        &inh.trait_typ_substs,
+                    )?;
 
                     stms.append(&mut stms0);
                     Ok(exp)
@@ -850,13 +843,12 @@ pub fn func_def_to_sst(
             )?
         };
 
+    let FinalState { mut local_decls, statics } = state.finalize();
+
     // SST --> AIR
     for decl in decls {
-        state.local_decls.push(decl.clone());
+        local_decls.push(decl.clone());
     }
-
-    state.finalize();
-    let State { local_decls, statics, .. } = state;
 
     Ok(FuncCheckSst {
         reqs: Arc::new(reqs),

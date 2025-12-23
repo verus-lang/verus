@@ -18,7 +18,7 @@ use crate::sst::{
 };
 use crate::sst_util::{
     sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
-    sst_unit_value,
+    sst_unit_value, subst_exp, subst_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
@@ -49,7 +49,7 @@ pub(crate) struct State<'a> {
     // Counter to generate temporary variables
     next_var: u64,
     // Collect all local variable declarations
-    pub(crate) local_decls: Vec<LocalDecl>,
+    local_decls: Vec<LocalDecl>,
     // Rename variables when needed, using unique integers, to avoid collisions.
     rename_map: ScopeMap<VarIdent, VarIdent>,
     // Track which variable Ident have potentially been used in this scope as Exp-bound
@@ -76,11 +76,16 @@ pub(crate) struct State<'a> {
     // If inside a closure
     containing_closure: Option<ClosureState>,
     // Statics that are referenced (not counting statics in loops)
-    pub statics: IndexSet<Fun>,
+    statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
 
     pub mask: Option<MaskSet>,
+}
+
+pub(crate) struct FinalState {
+    pub local_decls: Vec<LocalDecl>,
+    pub statics: IndexSet<Fun>,
 }
 
 #[derive(Clone, Debug)]
@@ -348,9 +353,10 @@ impl<'a> State<'a> {
         map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))
     }
 
-    pub(crate) fn finalize(&mut self) {
+    pub(crate) fn finalize(mut self) -> FinalState {
         self.pop_scope();
         assert_eq!(self.rename_map.num_scopes(), 0);
+        FinalState { local_decls: self.local_decls, statics: self.statics }
     }
 
     fn checking_spec_preconditions(&self, ctx: &Ctx) -> bool {
@@ -856,6 +862,28 @@ pub(crate) fn expr_to_pure_exp_check(
     }
 }
 
+pub(crate) fn expr_to_pure_exp_check_with_typ_substs(
+    ctx: &Ctx,
+    state: &mut State,
+    expr: &Expr,
+    typ_substs: &HashMap<Ident, Typ>,
+) -> Result<(Vec<Stm>, Exp), VirErr> {
+    let local_decls_init_len = state.local_decls.len();
+
+    let (stms, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+
+    let exp = subst_exp(typ_substs, &HashMap::new(), &exp);
+    let stms: Vec<_> =
+        stms.iter().map(|stm| subst_stm(typ_substs, &HashMap::new(), &stm)).collect();
+
+    let local_decls_new_len = state.local_decls.len();
+    for i in local_decls_init_len..local_decls_new_len {
+        state.local_decls[i] = subst_local_decl(typ_substs, &state.local_decls[i]);
+    }
+
+    Ok((stms, exp))
+}
+
 pub(crate) fn expr_to_decls_exp_skip_checks(
     ctx: &Ctx,
     diagnostics: &dyn Diagnostics,
@@ -868,8 +896,8 @@ pub(crate) fn expr_to_decls_exp_skip_checks(
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(ctx, &exp)?;
-    state.finalize();
-    Ok((state.local_decls, exp))
+    let FinalState { local_decls, statics: _ } = state.finalize();
+    Ok((local_decls, exp))
 }
 
 pub(crate) fn expr_to_bind_decls_exp_skip_checks(
