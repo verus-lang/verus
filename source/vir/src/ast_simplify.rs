@@ -99,7 +99,7 @@ fn is_small_expr(expr: &Expr) -> bool {
 /// Create a temporary and return:
 ///  - A Stmt that assigns the given `expr` to the temporary
 ///  - The name of the temporary
-fn temp_var(state: &mut State, expr: &Expr, mutable: bool) -> (Stmt, VarIdent) {
+fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
     let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
@@ -114,7 +114,7 @@ fn temp_var(state: &mut State, expr: &Expr, mutable: bool) -> (Stmt, VarIdent) {
 }
 
 fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
-    let (temp_decl, var_ident) = temp_var(state, expr, false);
+    let (temp_decl, var_ident) = temp_var(state, expr);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(var_ident)))
 }
 
@@ -373,8 +373,7 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
         }
         PlaceX::Local(_l) => (vec![], place.clone()),
         PlaceX::Temporary(expr) => {
-            // TODO(new_mut_ref): this doens't always need to be mutable
-            let (ts, var_ident) = temp_var(state, expr, true);
+            let (ts, var_ident) = temp_var(state, expr);
             let p = SpannedTyped::new(&place.span, &place.typ, PlaceX::Local(var_ident));
             (vec![ts], p)
         }
@@ -428,6 +427,13 @@ fn simplify_one_expr(
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
         ExprX::VarLoc(x) => {
+            // Note: the below reasoning is why I originally added this check, but the reasoning
+            // doesn't entirely apply anymore since now ast_to_sst infers mutability rather
+            // than relying on user checks. I'm leaving this for now (since the check can't hurt)
+            // but this case is obselete by new-mut-ref anyway.
+            //
+            // ========
+            //
             // If we try to mutate `x`, check that `x` is actually marked mut.
             // This is *usually* caught by rustc for us, during our lifetime checking phase.
             // However, there are a few cases to watch out for:
@@ -448,7 +454,7 @@ fn simplify_one_expr(
             // which comes after our lifetime checking pass.
             match scope_map.get(x) {
                 None => Err(error(&expr.span, "Verus Internal Error: cannot find this variable")),
-                Some(entry) if !entry.is_mut && entry.init => {
+                Some(entry) if entry.user_mut == Some(false) && entry.init => {
                     let name = user_local_name(x);
                     Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")))
                 }

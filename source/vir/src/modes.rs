@@ -484,13 +484,13 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ }) => {
+        PatternX::Var(PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ }) => {
             check_binding(&pattern.span, by_ref, mode)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Binding {
-            binding: PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ },
+            binding: PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ },
             sub_pat,
         } => {
             check_binding(&pattern.span, by_ref, mode)?;
@@ -2044,7 +2044,7 @@ fn check_stmt(
                 (
                     PatternX::Var(PatternBinding {
                         name: x,
-                        mutable: _,
+                        user_mut: _,
                         by_ref: _,
                         typ: _,
                         copy: _,

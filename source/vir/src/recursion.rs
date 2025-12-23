@@ -258,17 +258,17 @@ pub(crate) fn mk_decreases_at_entry(
 
 pub(crate) fn mk_decreases_at_entry_pre(
     ctx: &Ctx,
-    span: &Span,
     loop_id: Option<u64>,
     exps: &Vec<Exp>,
 ) -> Result<Vec<PreLocalDecl>, VirErr> {
-    let mut decls: Vec<LocalDecl> = Vec::new();
+    let mut decls: Vec<PreLocalDecl> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
         let typ = height_typ(ctx, exp);
         let decl = PreLocalDecl {
             ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
-            kind: crate::sst::LocalDeclKind::Decreases,
+            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(
+                crate::ast_to_sst::Immutable(crate::sst::LocalDeclKind::Decreases)),
         };
         decls.push(decl);
     }

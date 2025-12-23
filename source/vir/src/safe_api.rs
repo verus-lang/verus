@@ -271,7 +271,7 @@ pub fn axioms_for_default_spec_fns(
                 );
 
                 state.pop_scope();
-                state.finalize();
+                state.finalize()?;
 
                 let call_exp = SpannedTyped::new(
                     &function.span,

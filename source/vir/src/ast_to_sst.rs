@@ -40,10 +40,10 @@ pub(crate) struct ClosureState {
     dest: UniqueIdent,
 }
 
-#[derive(Clone)]
-struct Immutable(LocalDeclKind);
+#[derive(Clone, Copy)]
+pub(crate) struct Immutable(pub LocalDeclKind);
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum PreLocalDeclKind {
     /// Any 'immutable' kind
     Immutable(Immutable),
@@ -354,6 +354,17 @@ impl<'a> State<'a> {
         unique_ident
     }
 
+    pub(crate) fn declare_imm_var_stm(
+        &mut self,
+        ident: &VarIdent,
+        typ: &Typ,
+        kind: LocalDeclKind,
+        may_need_rename: bool,
+    ) -> VarIdent {
+        let kind = PreLocalDeclKind::Immutable(Immutable(kind));
+        self.declare_var_stm(ident, typ, kind, may_need_rename)
+    }
+
     fn declare_temp_var_stm(
         &mut self,
         span: &Span,
@@ -376,12 +387,10 @@ impl<'a> State<'a> {
                 let name = &param.x.name;
                 self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
                 self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_var_stm(
+                self.declare_imm_var_stm(
                     name,
                     &param.x.typ,
-                    PreLocalDeclKind::Immutable(
-                        Immutable(LocalDeclKind::Param { mutable: false }),
-                    ),
+                    LocalDeclKind::Param { mutable: false },
                     false,
                 );
             }
@@ -1004,7 +1013,7 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(ctx, &exp)?;
-    state.finalize();
+    state.finalize()?;
     Ok(exp)
 }
 
@@ -1815,8 +1824,7 @@ pub(crate) fn expr_to_stm_opt(
                 .as_ref()
                 .expect("external_spec should have been added in ast_simplify");
             state.push_scope();
-            let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureId));
-            let uid = state.declare_var_stm(&cid, &expr.typ, kind, false);
+            let uid = state.declare_imm_var_stm(&cid, &expr.typ, LocalDeclKind::ExecClosureId, false);
             // Use expr_to_pure_exp_skip_checks,
             // because we checked spec preconditions in exec_closure_body_stms
             let cexp = expr_to_pure_exp_skip_checks(ctx, state, &cexpr)?;
@@ -2001,8 +2009,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut body: Vec<Stm> = Vec::new();
             let mut locals: Vec<VarIdent> = Vec::new();
             for var in vars.iter() {
-                let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::AssertByVar { native: false }));
-                let x = state.declare_var_stm(&var.name, &var.a, kind, true);
+                let x = state.declare_imm_var_stm(&var.name, &var.a, LocalDeclKind::AssertByVar { native: false }, true);
                 body.push(assume_has_typ(&x, &var.a, &require.span));
                 locals.push(x);
             }
@@ -2385,7 +2392,7 @@ pub(crate) fn expr_to_stm_opt(
                 assert!(cnd.is_none());
             }
             let pre_local_decls =
-                crate::recursion::mk_decreases_at_entry_pre(ctx, &expr.span, Some(id), &decrease1)?;
+                crate::recursion::mk_decreases_at_entry_pre(ctx, Some(id), &decrease1)?;
             state.pre_local_decls.extend(pre_local_decls);
             let while_stm = Spanned::new(
                 expr.span.clone(),
@@ -3190,8 +3197,9 @@ fn exec_closure_body_stms(
 
     for param in params.iter() {
         // TODO(new_mut_ref): can't assume closure params are immutable anymore
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureParam));
         let uid =
-            state.declare_var_stm(&param.name, &param.a, LocalDeclKind::ExecClosureParam, false);
+            state.declare_var_stm(&param.name, &param.a, kind, false);
         typ_inv_vars.push((uid, param.a.clone()));
     }
 
@@ -3205,7 +3213,8 @@ fn exec_closure_body_stms(
         stms.push(stm);
     }
 
-    state.declare_var_stm(&ret.name, &ret.a, LocalDeclKind::ExecClosureRet, false);
+    let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
+    state.declare_var_stm(&ret.name, &ret.a, kind, false);
     let dest = unique_local(&ret.name);
 
     let mut ens_exps = Vec::new();

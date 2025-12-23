@@ -631,17 +631,10 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             };
             pat_typ = actual_pat_typ;
 
-            // In new-mut-refs, we need to treat a variable as 'mutable' if it's a
-            // mutable reference (or if it contains a nested mutable reference),
-            // even if the variable is not marked 'mut'.
-            // Conservatively mark all variables mutable for now
-            // TODO(new_mut_ref) be more precise about this.
-            let mutable = mutable || bctx.new_mut_ref;
-
             let name = local_to_var(x, canonical.local_id);
             let binding = vir::ast::PatternBinding {
                 name,
-                mutable,
+                user_mut: Some(mutable),
                 by_ref: vir_by_ref,
                 typ: var_typ.clone(),
                 copy: bctx.is_copy(bctx.types.node_type(pat.hir_id)),
