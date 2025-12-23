@@ -60,16 +60,18 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(entries
-                .insert(
-                    &package.id,
-                    MetadataIndexEntry {
-                        package,
-                        verus_metadata: VerusMetadata::parse_from_package(package)?,
-                        deps: deps_by_package.remove(&package.id).unwrap_or_default(),
-                    }
-                )
-                .is_none());
+            assert!(
+                entries
+                    .insert(
+                        &package.id,
+                        MetadataIndexEntry {
+                            package,
+                            verus_metadata: VerusMetadata::parse_from_package(package)?,
+                            deps: deps_by_package.remove(&package.id).unwrap_or_default(),
+                        }
+                    )
+                    .is_none()
+            );
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })

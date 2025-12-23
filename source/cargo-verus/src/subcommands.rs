@@ -1,10 +1,8 @@
-use std::collections::BTreeSet as Set;
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use anyhow::{anyhow, bail, Context, Result};
-use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
