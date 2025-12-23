@@ -50,7 +50,9 @@ pub(crate) enum PreLocalDeclKind {
     /// Param (mutability to be inferred)
     Param,
     /// StmtLet (mutability to be inferred)
-    StmtLet
+    StmtLet,
+    /// Param, always consider mut
+    MutParam,
 }
 
 #[derive(Clone)]
@@ -508,6 +510,9 @@ impl PreLocalDeclKind {
             }
             PreLocalDeclKind::StmtLet => {
                 Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() })
+            }
+            PreLocalDeclKind::MutParam => {
+                Ok(LocalDeclKind::Param { mutable: true })
             }
         }
     }

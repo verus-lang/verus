@@ -715,7 +715,11 @@ pub fn func_def_to_sst(
         state.declare_var_stm(
             &param.x.name,
             &param.x.typ,
-            PreLocalDeclKind::Param,
+            if param.x.is_mut {
+                PreLocalDeclKind::MutParam
+            } else {
+                PreLocalDeclKind::Param
+            },
             false,
         );
     }
