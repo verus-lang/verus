@@ -57,18 +57,16 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(
-                entries
-                    .insert(
-                        &package.id,
-                        MetadataIndexEntry {
-                            package,
-                            verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap(),
-                        }
-                    )
-                    .is_none()
-            );
+            assert!(entries
+                .insert(
+                    &package.id,
+                    MetadataIndexEntry {
+                        package,
+                        verus_metadata: VerusMetadata::parse_from_package(package)?,
+                        deps: deps_by_package.remove(&package.id).unwrap(),
+                    }
+                )
+                .is_none());
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
@@ -82,8 +80,9 @@ impl<'a> MetadataIndex<'a> {
         self.entries.values()
     }
 
-    pub fn get_transitive_closure(&self, mut visited: Set<PackageId>) -> Set<PackageId> {
+    pub fn get_transitive_closure(&self, roots: Set<PackageId>) -> Set<PackageId> {
         // Breadth-first traversal to collect transitive deps of `roots`
+        let mut visited = roots;
         let mut queue = VecDeque::from_iter(visited.iter().cloned());
         while let Some(id) = queue.pop_front() {
             let entry = self.get(&id);
