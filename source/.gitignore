@@ -4,3 +4,4 @@ target/
 /.verus-log/
 doc/
 /target-verus/
+.direnv/
