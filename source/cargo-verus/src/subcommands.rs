@@ -1,8 +1,10 @@
+use std::collections::BTreeSet as Set;
 use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use anyhow::{anyhow, bail, Context, Result};
+use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
@@ -117,14 +119,18 @@ pub fn run_cargo(
 
     let (included_packages, _excluded_packages) =
         cargo_options.workspace.partition_packages(&metadata);
-    let package_roots: Vec<_> =
+    let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
-    let all_packages = metadata_index.get_transitive_closure(package_roots.iter().cloned());
+    let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
+
+    let packages_to_process = &all_packages;
+    let packages_to_verify = if verify_deps { &all_packages } else { &root_packages };
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(
         subcommand,
-        verify_deps,
+        packages_to_process,
+        packages_to_verify,
         &cargo_args,
         common_verus_driver_args,
         &metadata_index,
@@ -231,7 +237,8 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, no_deps: bool)
 
 fn make_cargo_command(
     subcommand: &str,
-    verify_deps: bool,
+    packages_to_process: &Set<PackageId>,
+    packages_to_verify: &Set<PackageId>,
     cargo_args: &[String],
     common_verus_driver_args: Vec<String>,
     metadata_index: &MetadataIndex,

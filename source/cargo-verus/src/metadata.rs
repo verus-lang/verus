@@ -81,10 +81,8 @@ impl<'a> MetadataIndex<'a> {
         self.entries.values()
     }
 
-    pub fn get_transitive_closure(&self, roots: impl Iterator<Item = PackageId>) -> Set<PackageId> {
+    pub fn get_transitive_closure(&self, mut visited: Set<PackageId>) -> Set<PackageId> {
         // Breadth-first traversal to collect transitive deps of `roots`
-        let mut visited = Set::from_iter(roots);
-
         let mut queue = VecDeque::from_iter(visited.iter().cloned());
         while let Some(id) = queue.pop_front() {
             let entry = self.get(&id);
