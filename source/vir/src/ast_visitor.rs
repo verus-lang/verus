@@ -449,12 +449,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::Assign { init_not_mut, lhs, rhs, op } => {
+            ExprX::Assign { lhs, rhs, op } => {
                 let lhs = self.visit_expr(lhs)?;
                 let rhs = self.visit_expr(rhs)?;
                 R::ret(|| {
                     expr_new(ExprX::Assign {
-                        init_not_mut: *init_not_mut,
                         lhs: R::get(lhs),
                         rhs: R::get(rhs),
                         op: *op,

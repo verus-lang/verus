@@ -720,7 +720,7 @@ fn simplify_one_expr(
                 },
             ))
         }
-        ExprX::Assign { init_not_mut, lhs, rhs, op: Some(op) } => {
+        ExprX::Assign { lhs, rhs, op: Some(op) } => {
             match &lhs.x {
                 ExprX::VarLoc(id) => {
                     // convert VarLoc to Var to be used on the RHS
@@ -734,7 +734,6 @@ fn simplify_one_expr(
                         &expr.span,
                         &expr.typ,
                         ExprX::Assign {
-                            init_not_mut: *init_not_mut,
                             lhs: lhs.clone(),
                             rhs: new_rhs,
                             op: None,

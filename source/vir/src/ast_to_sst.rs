@@ -1406,7 +1406,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms1, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2, op } => {
+        ExprX::Assign { lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {
                 panic!("op should already be removed")
             }
@@ -1433,9 +1433,8 @@ pub(crate) fn expr_to_stm_opt(
                     // make a Call
                     stms.extend(stms2.into_iter());
                     let (dest, assign) = if direct_assign.is_some() {
-                        (Dest { dest: lhs_exp, is_init: *init_not_mut }, None)
+                        (Dest { dest: lhs_exp, is_init: false }, None)
                     } else {
-                        assert!(!*init_not_mut, "init_not_mut unexpected for complex call dest");
                         let (temp_ident, temp_var) =
                             state.declare_temp_assign(&lhs_exp.span, &expr2.typ);
                         let assign = Spanned::new(
@@ -1486,7 +1485,7 @@ pub(crate) fn expr_to_stm_opt(
                         temp_var
                     };
                     let assign =
-                        StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: *init_not_mut }, rhs };
+                        StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs };
                     stms.push(Spanned::new(expr.span.clone(), assign));
                     Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                 }

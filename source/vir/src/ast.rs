@@ -1012,11 +1012,9 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     /// Not used when new-mut-refs is enabled.
-    /// TODO: remove init_not_mut, no longer used
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Used only when new-mut-refs is enabled.
     AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount

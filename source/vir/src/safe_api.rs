@@ -173,7 +173,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
                     span,
                     &crate::ast_util::unit_typ(),
                     ExprX::Assign {
-                        init_not_mut: false,
                         lhs: SpannedTyped::new(
                             span,
                             &param.x.typ,

@@ -623,7 +623,6 @@ fn get_var_loc_mode(
     outer_mode: Mode,
     expr_inner_mode: Option<Mode>,
     expr: &Expr,
-    init_not_mut: bool,
 ) -> Result<Mode, VirErr> {
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
@@ -642,7 +641,6 @@ fn get_var_loc_mode(
             UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind: ModeCoercion::BorrowMut },
             e1,
         ) => {
-            assert!(!init_not_mut);
             if ctxt.check_ghost_blocks {
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
@@ -664,7 +662,6 @@ fn get_var_loc_mode(
                 outer_mode,
                 Some(*to_mode),
                 e1,
-                init_not_mut,
             )?;
             if !mode_le(mode1, *from_mode) {
                 return Err(error(
@@ -685,7 +682,6 @@ fn get_var_loc_mode(
                 outer_mode,
                 expr_inner_mode,
                 rcvr,
-                init_not_mut,
             )?;
             record
                 .type_inv_info
@@ -710,25 +706,19 @@ fn get_var_loc_mode(
         }
         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
             // For now, only support the special case for Tracked::borrow_mut.
-            get_var_loc_mode(ctxt, record, typing, outer_mode, None, e1, init_not_mut)?
+            get_var_loc_mode(ctxt, record, typing, outer_mode, None, e1)?
         }
         ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => {
             // For now, only support the special case for Tracked::borrow_mut.
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
             let mode =
-                get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1, init_not_mut)?;
+                get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1)?;
             mode
         }
         _ => {
             panic!("unexpected loc {:?}", expr);
         }
     };
-    if x_mode == Mode::Spec && init_not_mut {
-        return Err(error(
-            &expr.span,
-            "delayed assignment to non-mut let not allowed for spec variables",
-        ));
-    }
     match &expr.x {
         ExprX::Ghost { .. } => {}
         _ => {
@@ -1589,7 +1579,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, rhs, lhs_mode)?;
             Ok(lhs_mode)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs, op: _ } => {
+        ExprX::Assign { lhs, rhs, op: _ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -1612,7 +1602,7 @@ fn check_expr_handle_mut_arg(
                 }
             }
             let x_mode =
-                get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs, *init_not_mut)?;
+                get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
             if !mode_le(outer_mode, x_mode) {
                 return Err(error(
                     &expr.span,
