@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use crate::seq::{axiom_seq_subrange_index, axiom_seq_subrange_len};
 
 use verus as verus_;
 
@@ -15,17 +16,6 @@ pub trait ExIntoIterator {
 pub trait ExIterStep: Clone + PartialOrd + Sized {
     type ExternalTraitSpecificationFor: core::iter::Step;
 }
-
-/*
-#[verifier::external_trait_specification]
-pub trait ExIterator {
-    type ExternalTraitSpecificationFor: core::iter::Iterator;
-
-    type Item;
-
-    fn next(&mut self) -> Option<Self::Item>;
-}
-*/
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -173,58 +163,13 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
         proof {
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
-            }
+                // These aren't automatically broadcasted but are needed to prove self.wf_inner()
+                broadcast use {axiom_seq_subrange_len, axiom_seq_subrange_index};
+            } 
         }
-// TODO:
-assume(false);
         ret
     }
 }
 
 
-/*
-pub struct VerusForLoopIterator<'a, I: Iterator> {
-    pub index: Ghost<int>,
-    pub snapshot: Ghost<I>,
-    pub init: Ghost<Option<&'a I>>,
-    pub iter: I 
-}
-
-impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
-    pub open spec fn seq(self) -> Seq<I::Item> {
-        Seq::empty()
-    }
-
-    /// These properties help maintain the properties in wf,
-    /// but they don't need to be exposed to the client 
-    #[verifier::prophetic]
-    pub closed spec fn wf_inner(self) -> bool {
-        true
-    }
-
-    /// These properties are needed for the client code to verify
-    #[verifier::prophetic]
-    pub open spec fn wf(self) -> bool {
-        true
-    }
-
-    /// Bundle the real iterator with its ghost state and loop invariants
-    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
-    {
-        VerusForLoopIterator {
-            index: Ghost(0),
-            snapshot: Ghost(iter),
-            init: init,
-            iter,
-        }
-    }
-
-    /// Advance the underlying (real) iterator and prove
-    /// that the loop invariants are preserved.
-    pub fn next(&mut self) -> (ret: Option<I::Item>)
-    {
-        None
-    }
-}
-*/
 } // verus!
