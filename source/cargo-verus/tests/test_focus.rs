@@ -4,6 +4,35 @@ mod utils;
 use utils::*;
 
 #[test]
+fn crate_optin_manifest() {
+    let crate_name = "foo";
+    let verify_crate_prefix = format!("__VERUS_DRIVER_VERIFY_{crate_name}-0.1.0-");
+    let verify_for_crate_prefix = format!(" __VERUS_DRIVER_ARGS_FOR_{crate_name}-0.1.0-");
+    let package_dir = MockPackage::new(crate_name).lib().verify(true).materialize();
+
+    let manifest_path = package_dir.path().join("Cargo.toml");
+
+    let (status, data) = run_cargo_verus(|cmd| {
+        cmd.arg("verify");
+        cmd.arg("--manifest-path").arg(&manifest_path);
+    });
+
+    assert!(status.success());
+
+    assert_eq!(
+        data.args,
+        vec!["build", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
+    );
+
+    data.assert_env_has("RUSTC_WRAPPER");
+    data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
+    data.assert_env_sets("__VERUS_DRIVER_VIA_CARGO__", "1");
+    data.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
+    let verify_crate_args = data.parse_driver_args_for_key_prefix(&verify_for_crate_prefix);
+    assert!(!verify_crate_args.contains(&"--no-verify"));
+}
+
+#[test]
 fn workspace_manifest_package_hasdeps() {
     let optin = "optin";
     let optout = "optout";
