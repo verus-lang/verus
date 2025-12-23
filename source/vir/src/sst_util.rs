@@ -9,7 +9,7 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX, Stm, Trig,
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig,
     Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
@@ -52,15 +52,15 @@ pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
     vars
 }
 
-pub(crate) fn subst_local_decl(
+pub(crate) fn subst_pre_local_decl(
     typ_substs: &HashMap<Ident, Typ>,
-    local_decl: &LocalDecl,
-) -> LocalDecl {
-    Arc::new(LocalDeclX {
-        ident: local_decl.ident.clone(),
-        typ: subst_typ(typ_substs, &local_decl.typ),
-        kind: local_decl.kind.clone(),
-    })
+    pre_local_decl: &crate::ast_to_sst::PreLocalDecl,
+) -> crate::ast_to_sst::PreLocalDecl {
+    crate::ast_to_sst::PreLocalDecl {
+        ident: pre_local_decl.ident.clone(),
+        typ: subst_typ(typ_substs, &pre_local_decl.typ),
+        kind: pre_local_decl.kind.clone(),
+    }
 }
 
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {

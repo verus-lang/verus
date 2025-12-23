@@ -17,6 +17,7 @@ use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
     UniqueIdent,
 };
+use crate::ast_to_sst::PreLocalDecl;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast_util::str_typ;
@@ -253,6 +254,25 @@ pub(crate) fn mk_decreases_at_entry(
         stm_assigns.push(stm_assign);
     }
     Ok((decls, stm_assigns))
+}
+
+pub(crate) fn mk_decreases_at_entry_pre(
+    ctx: &Ctx,
+    span: &Span,
+    loop_id: Option<u64>,
+    exps: &Vec<Exp>,
+) -> Result<Vec<PreLocalDecl>, VirErr> {
+    let mut decls: Vec<LocalDecl> = Vec::new();
+    for (i, exp) in exps.iter().enumerate() {
+        let typ = height_typ(ctx, exp);
+        let decl = PreLocalDecl {
+            ident: unique_local(&decrease_at_entry(loop_id, i)),
+            typ: typ.clone(),
+            kind: crate::sst::LocalDeclKind::Decreases,
+        };
+        decls.push(decl);
+    }
+    Ok(decls)
 }
 
 pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
