@@ -3,12 +3,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -129,11 +129,11 @@ pub fn run_cargo(
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(
         subcommand,
-        packages_to_process,
-        packages_to_verify,
         &cargo_args,
         common_verus_driver_args,
         &metadata_index,
+        packages_to_process,
+        packages_to_verify,
     )?;
 
     let exit_status = command
@@ -237,11 +237,11 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, no_deps: bool)
 
 fn make_cargo_command(
     subcommand: &str,
-    packages_to_process: &Set<PackageId>,
-    packages_to_verify: &Set<PackageId>,
     cargo_args: &[String],
     common_verus_driver_args: Vec<String>,
     metadata_index: &MetadataIndex,
+    packages_to_process: &Set<PackageId>,
+    packages_to_verify: &Set<PackageId>,
 ) -> Result<(Command, bool)> {
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
