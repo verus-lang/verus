@@ -52,7 +52,7 @@ impl CargoData {
         encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 
-    pub fn parse_driver_args_key_prefix(&self, key_prefix: &str) -> Vec<&str> {
+    pub fn parse_driver_args_for_key_prefix(&self, key_prefix: &str) -> Vec<&str> {
         let Some((_, value)) = self.env.iter().find(|(k, _)| k.starts_with(key_prefix)) else {
             panic!("Cargo env MUST have entry with key prefix `{}`", key_prefix);
         };

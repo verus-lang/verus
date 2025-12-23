@@ -120,14 +120,6 @@ pub fn run_cargo(
     let (included_packages, _excluded_packages) =
         cargo_options.workspace.partition_packages(&metadata);
 
-    let included_package_names: Vec<String> =
-        included_packages.iter().map(|p| p.name.to_string()).collect();
-    let excluded_package_names: Vec<String> =
-        _excluded_packages.iter().map(|p| p.name.to_string()).collect();
-
-    dbg!(included_package_names);
-    dbg!(excluded_package_names);
-
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
@@ -248,9 +240,6 @@ fn make_cargo_command(
     packages_to_process: &Set<PackageId>,
     packages_to_verify: &Set<PackageId>,
 ) -> Result<(Command, bool)> {
-    dbg!(&packages_to_process);
-    dbg!(&packages_to_verify);
-
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
@@ -272,8 +261,6 @@ fn make_cargo_command(
     let mut verified_something = false;
     for pkg_id in packages_to_process {
         let no_verify = !packages_to_verify.contains(&pkg_id);
-        dbg!(pkg_id);
-        dbg!(no_verify);
 
         let entry = metadata_index.get(pkg_id);
         let package = entry.package();
