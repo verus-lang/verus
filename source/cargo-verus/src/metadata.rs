@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet as Set, VecDeque};
 
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
@@ -45,9 +45,7 @@ pub struct MetadataIndexEntry<'a> {
 }
 
 impl<'a> MetadataIndex<'a> {
-    pub fn new(metadata: &'a Metadata, packages: &'a [Package]) -> Result<Self> {
-        todo!("Breadth-first traversal to collect transitive deps of `packages`");
-
+    pub fn new(metadata: &'a Metadata) -> Result<Self> {
         let mut deps_by_package = BTreeMap::new();
         if let Some(resolve) = &metadata.resolve {
             for node in &resolve.nodes {
@@ -60,18 +58,16 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(
-                entries
-                    .insert(
-                        &package.id,
-                        MetadataIndexEntry {
-                            package,
-                            verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap_or_default(),
-                        }
-                    )
-                    .is_none()
-            );
+            assert!(entries
+                .insert(
+                    &package.id,
+                    MetadataIndexEntry {
+                        package,
+                        verus_metadata: VerusMetadata::parse_from_package(package)?,
+                        deps: deps_by_package.remove(&package.id).unwrap_or_default(),
+                    }
+                )
+                .is_none());
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
@@ -83,6 +79,24 @@ impl<'a> MetadataIndex<'a> {
 
     pub fn entries(&self) -> impl Iterator<Item = &MetadataIndexEntry<'a>> {
         self.entries.values()
+    }
+
+    pub fn get_transitive_closure(&self, roots: impl Iterator<Item = PackageId>) -> Set<PackageId> {
+        // Breadth-first traversal to collect transitive deps of `roots`
+        let mut visited = Set::from_iter(roots);
+
+        let mut queue = VecDeque::from_iter(visited.iter().cloned());
+        while let Some(id) = queue.pop_front() {
+            let entry = self.get(&id);
+            for dep in entry.deps.values() {
+                if !visited.contains(&dep.pkg) {
+                    visited.insert(dep.pkg.clone());
+                    queue.push_back(dep.pkg.clone());
+                }
+            }
+        }
+
+        visited
     }
 }
 
