@@ -113,9 +113,13 @@ pub fn run_cargo(
         make_cargo_args(cargo_options, for_cargo_metadata, true)
     };
     let metadata = fetch_metadata(&metadata_args)?;
+    let metadata_index = MetadataIndex::new(&metadata)?;
+
     let (included_packages, _excluded_packages) =
         cargo_options.workspace.partition_packages(&metadata);
-    let metadata_index = MetadataIndex::new(&metadata, &included_packages)?;
+    let package_roots: Vec<_> =
+        included_packages.iter().map(|package| package.id.clone()).collect();
+    let all_packages = metadata_index.get_transitive_closure(package_roots.iter().cloned());
 
     common_verus_driver_args.extend(verus_args.iter().cloned());
     let (mut command, verified_something) = make_cargo_command(
