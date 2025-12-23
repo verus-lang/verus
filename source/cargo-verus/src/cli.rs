@@ -92,6 +92,7 @@ pub struct CargoOptions {
 
 impl CargoVerusCli {
     pub fn clap_trailing_args_hotfix(mut self) -> Self {
+        // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
         match &mut self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Build(cmd)
