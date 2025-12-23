@@ -3,12 +3,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -98,7 +98,7 @@ pub fn run_cargo(
 ) -> Result<ExitCode> {
     let cargo_args = {
         let for_cargo_metadata = false;
-        make_cargo_args(cargo_options, for_cargo_metadata, false)
+        make_cargo_args(cargo_options, for_cargo_metadata)
     };
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
@@ -112,13 +112,22 @@ pub fn run_cargo(
 
     let metadata_args = {
         let for_cargo_metadata = true;
-        make_cargo_args(cargo_options, for_cargo_metadata, true)
+        make_cargo_args(cargo_options, for_cargo_metadata)
     };
     let metadata = fetch_metadata(&metadata_args)?;
     let metadata_index = MetadataIndex::new(&metadata)?;
 
     let (included_packages, _excluded_packages) =
         cargo_options.workspace.partition_packages(&metadata);
+
+    let included_package_names: Vec<String> =
+        included_packages.iter().map(|p| p.name.to_string()).collect();
+    let excluded_package_names: Vec<String> =
+        _excluded_packages.iter().map(|p| p.name.to_string()).collect();
+
+    dbg!(included_package_names);
+    dbg!(excluded_package_names);
+
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
@@ -163,12 +172,8 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
     }
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, no_deps: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
     let mut args = vec![];
-
-    if for_cargo_metadata && no_deps {
-        args.push("--no-deps".to_owned());
-    }
 
     if opts.frozen {
         args.push("--frozen".to_owned());
@@ -243,6 +248,9 @@ fn make_cargo_command(
     packages_to_process: &Set<PackageId>,
     packages_to_verify: &Set<PackageId>,
 ) -> Result<(Command, bool)> {
+    dbg!(&packages_to_process);
+    dbg!(&packages_to_verify);
+
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
@@ -264,6 +272,8 @@ fn make_cargo_command(
     let mut verified_something = false;
     for pkg_id in packages_to_process {
         let no_verify = !packages_to_verify.contains(&pkg_id);
+        dbg!(pkg_id);
+        dbg!(no_verify);
 
         let entry = metadata_index.get(pkg_id);
         let package = entry.package();

@@ -50,7 +50,7 @@ fn workspace_manifest_package_hasdeps() {
 
     data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
     let verify_optin_args =
-        data.parse_driver_args(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
+        data.parse_driver_args_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
     assert!(verify_optin_args.contains(&"--no-verify"));
 
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
