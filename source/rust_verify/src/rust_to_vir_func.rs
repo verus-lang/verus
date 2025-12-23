@@ -117,6 +117,7 @@ fn handle_autospec<'tcx>(
                     mode: Mode::Spec,
                     is_mut: false,
                     unwrapped_info: None,
+                    user_mut: false,
                 },
             ));
         }
@@ -129,6 +130,7 @@ fn handle_autospec<'tcx>(
                 mode: Mode::Spec,
                 is_mut: false,
                 unwrapped_info: None,
+                user_mut: false,
             },
         );
 
@@ -1300,6 +1302,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode: param_mode,
                 is_mut,
                 unwrapped_info: None,
+                user_mut: is_mut_var || is_mut,
             },
         );
 
@@ -1333,7 +1336,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 &typ,
                 vir::ast::PatternX::Var(vir::ast::PatternBinding {
                     name: name.clone(),
-                    mutable: true,
+                    user_mut: Some(true),
                     by_ref: vir::ast::ByRef::No,
                     typ: typ.clone(),
                     copy: false,
@@ -1525,6 +1528,7 @@ pub(crate) fn check_item_fn<'tcx>(
             typ: ret_typ,
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2385,6 +2389,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             typ: typ.clone(),
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2515,7 +2520,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
+            ParamX {
+                name,
+                typ,
+                mode,
+                is_mut: is_mut.is_some(),
+                unwrapped_info: None,
+                user_mut: false,
+            },
         );
         vir_params.push(vir_param);
     }
@@ -2529,6 +2541,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,
+        user_mut: false,
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);

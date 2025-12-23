@@ -369,7 +369,7 @@ test_verify_one_file! {
         proof fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -377,7 +377,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {

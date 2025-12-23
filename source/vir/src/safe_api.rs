@@ -173,7 +173,6 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
                     span,
                     &crate::ast_util::unit_typ(),
                     ExprX::Assign {
-                        init_not_mut: false,
                         lhs: SpannedTyped::new(
                             span,
                             &param.x.typ,
@@ -271,7 +270,7 @@ pub fn axioms_for_default_spec_fns(
                 );
 
                 state.pop_scope();
-                state.finalize();
+                state.finalize()?;
 
                 let call_exp = SpannedTyped::new(
                     &function.span,

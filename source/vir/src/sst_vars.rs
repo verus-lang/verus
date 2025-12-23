@@ -1,9 +1,11 @@
 use crate::ast::{BinaryOp, Typ, UnaryOp, UnaryOpr, VarIdent};
 use crate::def::Spanned;
+use crate::messages::Span;
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
 use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
@@ -28,6 +30,49 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
         ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var(x),
         ExpX::VarLoc(x) => x.clone(),
         _ => panic!("lhs {:?} unsupported", exp),
+    }
+}
+
+/// If this Stm node performs a (non-init) assignment, add it to the map.
+/// Shallow: does not recurse into sub-nodes.
+pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Span>) {
+    match &stm.x {
+        StmX::Call { args, .. } => {
+            for arg in args.iter() {
+                if let ExpX::Loc(_) = &arg.x {
+                    let v = get_loc_var(arg);
+                    m.insert(v, arg.span.clone());
+                }
+            }
+        }
+        _ => {}
+    }
+
+    match &stm.x {
+        StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
+            let Dest { dest, is_init } = dest;
+            if !*is_init {
+                let v = get_loc_var(dest);
+                m.insert(v, stm.span.clone());
+            }
+        }
+        StmX::Call { dest: None, .. }
+        | StmX::Assert(..)
+        | StmX::AssertBitVector { .. }
+        | StmX::AssertQuery { .. }
+        | StmX::AssertCompute(..)
+        | StmX::Assume(..)
+        | StmX::Fuel(..)
+        | StmX::RevealString(..)
+        | StmX::DeadEnd(..)
+        | StmX::Return { .. }
+        | StmX::BreakOrContinue { .. }
+        | StmX::If(..)
+        | StmX::Loop { .. }
+        | StmX::OpenInvariant(..)
+        | StmX::ClosureInner { .. }
+        | StmX::Air(..)
+        | StmX::Block(..) => {}
     }
 }
 
