@@ -262,7 +262,10 @@ fn make_cargo_command(
     }
 
     let mut verified_something = false;
-    for entry in metadata_index.entries() {
+    for pkg_id in packages_to_process {
+        let no_verify = !packages_to_verify.contains(&pkg_id);
+
+        let entry = metadata_index.get(pkg_id);
         let package = entry.package();
 
         let package_id =
@@ -285,7 +288,7 @@ fn make_cargo_command(
 
         if verus_metadata.verify {
             // Any project using Verus may pull in vstd, which has a Cargo.toml file verify=true
-            if !verus_metadata.is_vstd {
+            if !verus_metadata.is_vstd && !no_verify {
                 verified_something = true;
             }
             cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
@@ -304,14 +307,16 @@ fn make_cargo_command(
                 verus_driver_args_for_package.push("--no-vstd".to_owned());
             }
 
-            if verify_deps {
-                for dep in entry.deps() {
-                    if metadata_index.get(&dep.pkg).verus_metadata().verify {
-                        verus_driver_args_for_package.extend_from_slice(&[
-                            "--VIA-CARGO".to_owned(),
-                            format!("import-dep-if-present={}", dep.name),
-                        ]);
-                    }
+            if no_verify {
+                verus_driver_args_for_package.push("--no-verify".to_owned());
+            }
+
+            for dep in entry.deps() {
+                if metadata_index.get(&dep.pkg).verus_metadata().verify {
+                    verus_driver_args_for_package.extend_from_slice(&[
+                        "--VIA-CARGO".to_owned(),
+                        format!("import-dep-if-present={}", dep.name),
+                    ]);
                 }
             }
 
