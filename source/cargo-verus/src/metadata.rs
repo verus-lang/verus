@@ -46,15 +46,14 @@ pub struct MetadataIndexEntry<'a> {
 
 impl<'a> MetadataIndex<'a> {
     pub fn new(metadata: &'a Metadata) -> Result<Self> {
+        assert!(metadata.resolve.is_some());
         let mut deps_by_package = BTreeMap::new();
-        if let Some(resolve) = &metadata.resolve {
-            for node in &resolve.nodes {
-                let mut deps = BTreeMap::new();
-                for dep in &node.deps {
-                    assert!(deps.insert(dep.name.as_str(), dep).is_none());
-                }
-                assert!(deps_by_package.insert(&node.id, deps).is_none());
+        for node in &metadata.resolve.as_ref().unwrap().nodes {
+            let mut deps = BTreeMap::new();
+            for dep in &node.deps {
+                assert!(deps.insert(dep.name.as_str(), dep).is_none());
             }
+            assert!(deps_by_package.insert(&node.id, deps).is_none());
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
@@ -65,7 +64,7 @@ impl<'a> MetadataIndex<'a> {
                         MetadataIndexEntry {
                             package,
                             verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap_or_default(),
+                            deps: deps_by_package.remove(&package.id).unwrap(),
                         }
                     )
                     .is_none()
