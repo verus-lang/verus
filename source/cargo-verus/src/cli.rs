@@ -89,3 +89,25 @@ pub struct CargoOptions {
     )]
     pub cargo_args: Vec<String>,
 }
+
+impl CargoVerusCli {
+    pub fn clap_trailing_args_hotfix(mut self) -> Self {
+        // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
+        match &mut self.command {
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => {
+                let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
+                if let Some(index) = arg_split_pos {
+                    let (cargo_args, verus_args) = cmd.cargo_opts.cargo_args.split_at(index);
+                    let cargo_args = cargo_args.to_owned();
+                    let verus_args = verus_args[1..].to_owned();
+                    cmd.cargo_opts.cargo_args = cargo_args;
+                    cmd.verus_args = verus_args;
+                }
+            }
+            VerusSubcommand::New(_) => {}
+        }
+        self
+    }
+}

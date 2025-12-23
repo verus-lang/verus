@@ -1,6 +1,3 @@
-#[cfg(not(feature = "integration-tests"))]
-compile_error!("Enable the `integration-tests` feature to run these tests.");
-
 #[path = "src/utils.rs"]
 mod utils;
 

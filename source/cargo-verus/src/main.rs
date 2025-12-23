@@ -20,7 +20,8 @@ use crate::cli::{CargoVerusCli, VerusSubcommand};
 
 pub fn main() -> Result<ExitCode> {
     let normalized_args: Vec<_> = normalize_args(env::args()).collect();
-    let parsed_cli = CargoVerusCli::parse_from(normalized_args.iter().cloned());
+    let parsed_cli =
+        CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
 
     match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {
