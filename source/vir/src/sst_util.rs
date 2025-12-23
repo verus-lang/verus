@@ -871,6 +871,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureParam |
             LocalDeclKind::ExecClosureRet |
             LocalDeclKind::Nondeterministic |
+            LocalDeclKind::OpenInvariantInnerTemp |
             LocalDeclKind::BorrowMut => false,
         }
     }

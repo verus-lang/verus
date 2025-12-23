@@ -20,7 +20,7 @@ use crate::sst_util::{
     sst_bitwidth, sst_conjoin, sst_equal, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
     sst_unit_value, subst_exp, subst_pre_local_decl, subst_stm,
 };
-use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
+use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX};
@@ -411,8 +411,14 @@ impl<'a> State<'a> {
 
     // Erase unused unique ids from Vars, perform inlining, choose triggers,
     // and perform splitting if necessary
-    pub(crate) fn finalize_stm(&self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> {
-        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))
+    pub(crate) fn finalize_stm(&mut self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> { 
+        let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))?;
+        map_stm_visitor(&stm, &mut |stm| {
+            // TODO doesn't need to be a map
+            crate::sst_vars::stm_get_mutations_shallow(stm, &mut self.mutated_var_idents);
+            Ok(stm.clone())
+        }).unwrap();
+        Ok(stm) 
     }
 
     pub(crate) fn finalize(mut self) -> Result<FinalState, VirErr> {
@@ -2444,7 +2450,7 @@ pub(crate) fn expr_to_stm_opt(
             let (arb_id, arb_exp) = state.declare_temp_var_stm(
                 &big_inv_exp.span,
                 &inner_typ,
-                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::TempViaAssign)),
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::OpenInvariantInnerTemp)),
             );
             stms1.push(assume_has_typ(&arb_id, &inner_typ, &expr.span));
 

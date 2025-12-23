@@ -451,7 +451,8 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::Var(x) =>
+            SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -1122,6 +1123,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::Assert, _, _)
             | (LocalDeclKind::AssertByVar { native: true }, _, _)
             | (LocalDeclKind::LetBinder, _, _)
+            | (LocalDeclKind::OpenInvariantInnerTemp, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
             | (LocalDeclKind::Nondeterministic, _, _)

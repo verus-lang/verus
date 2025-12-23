@@ -269,6 +269,7 @@ pub enum LocalDeclKind {
     ExecClosureParam,
     ExecClosureRet,
     Nondeterministic,
+    OpenInvariantInnerTemp,
     BorrowMut,
 }
 
