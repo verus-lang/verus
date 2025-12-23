@@ -179,18 +179,12 @@ fn pattern_to_exprs_rec(
             Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Var(binding) => {
-            decls.push(PatternBoundDecl {
-                name: binding.name.clone(),
-                expr: expr.clone(),
-            });
+            decls.push(PatternBoundDecl { name: binding.name.clone(), expr: expr.clone() });
             Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Binding { binding, sub_pat } => {
             let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
-            decls.push(PatternBoundDecl {
-                name: binding.name.clone(),
-                expr: expr.clone(),
-            });
+            decls.push(PatternBoundDecl { name: binding.name.clone(), expr: expr.clone() });
             Ok(pattern_test)
         }
         PatternX::Constructor(path, variant, patterns) => {
@@ -733,11 +727,7 @@ fn simplify_one_expr(
                     Ok(SpannedTyped::new(
                         &expr.span,
                         &expr.typ,
-                        ExprX::Assign {
-                            lhs: lhs.clone(),
-                            rhs: new_rhs,
-                            op: None,
-                        },
+                        ExprX::Assign { lhs: lhs.clone(), rhs: new_rhs, op: None },
                     ))
                 }
                 _ => Err(error(&lhs.span, "not yet implemented: lhs of compound assignment")),

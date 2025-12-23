@@ -8,8 +8,7 @@ use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type,
     get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
-    mid_ty_simplify, mk_range, ty_is_vec, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    mid_ty_simplify, mk_range, ty_is_vec, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;

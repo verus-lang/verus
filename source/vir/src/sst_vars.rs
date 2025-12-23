@@ -5,8 +5,8 @@ use crate::sst::{Dest, Exp, ExpX, Stm, StmX, Stms, UniqueIdent};
 use crate::sst_visitor::exp_visitor_check;
 use air::scope_map::ScopeMap;
 use indexmap::{IndexMap, IndexSet};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 fn to_ident_set(input: &IndexSet<UniqueIdent>) -> IndexSet<VarIdent> {
     let mut output = IndexSet::new();
@@ -35,10 +35,7 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
 
 /// If this Stm node performs a (non-init) assignment, add it to the map.
 /// Shallow: does not recurse into sub-nodes.
-pub(crate) fn stm_get_mutations_shallow(
-    stm: &Stm,
-    m: &mut HashMap<VarIdent, Span>,
-) {
+pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Span>) {
     match &stm.x {
         StmX::Call { args, .. } => {
             for arg in args.iter() {
@@ -48,13 +45,11 @@ pub(crate) fn stm_get_mutations_shallow(
                 }
             }
         }
-        _ => { }
+        _ => {}
     }
 
     match &stm.x {
-        StmX::Call { dest: Some(dest), .. }
-        | StmX::Assign { lhs: dest, .. }
-        => {
+        StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
             let Dest { dest, is_init } = dest;
             if !*is_init {
                 let v = get_loc_var(dest);
@@ -77,8 +72,7 @@ pub(crate) fn stm_get_mutations_shallow(
         | StmX::OpenInvariant(..)
         | StmX::ClosureInner { .. }
         | StmX::Air(..)
-        | StmX::Block(..)
-        => { }
+        | StmX::Block(..) => {}
     }
 }
 

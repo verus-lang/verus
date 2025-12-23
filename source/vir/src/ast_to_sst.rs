@@ -413,14 +413,15 @@ impl<'a> State<'a> {
 
     // Erase unused unique ids from Vars, perform inlining, choose triggers,
     // and perform splitting if necessary
-    pub(crate) fn finalize_stm(&mut self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> { 
+    pub(crate) fn finalize_stm(&mut self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> {
         let stm = map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))?;
         map_stm_visitor(&stm, &mut |stm| {
             // TODO doesn't need to be a map
             crate::sst_vars::stm_get_mutations_shallow(stm, &mut self.mutated_var_idents);
             Ok(stm.clone())
-        }).unwrap();
-        Ok(stm) 
+        })
+        .unwrap();
+        Ok(stm)
     }
 
     pub(crate) fn finalize(mut self) -> Result<FinalState, VirErr> {
@@ -500,20 +501,20 @@ impl PreLocalDeclKind {
         match self {
             PreLocalDeclKind::Immutable(Immutable(imm)) => {
                 if let Some(span) = mutbl {
-                    Err(error(span, format!("Verus Internal Error: assignment for immutable decl kind {:?}", imm)))
+                    Err(error(
+                        span,
+                        format!(
+                            "Verus Internal Error: assignment for immutable decl kind {:?}",
+                            imm
+                        ),
+                    ))
                 } else {
                     Ok(imm)
                 }
             }
-            PreLocalDeclKind::Param => {
-                Ok(LocalDeclKind::Param { mutable: mutbl.is_some() })
-            }
-            PreLocalDeclKind::StmtLet => {
-                Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() })
-            }
-            PreLocalDeclKind::MutParam => {
-                Ok(LocalDeclKind::Param { mutable: true })
-            }
+            PreLocalDeclKind::Param => Ok(LocalDeclKind::Param { mutable: mutbl.is_some() }),
+            PreLocalDeclKind::StmtLet => Ok(LocalDeclKind::StmtLet { mutable: mutbl.is_some() }),
+            PreLocalDeclKind::MutParam => Ok(LocalDeclKind::Param { mutable: true }),
         }
     }
 }
@@ -701,7 +702,11 @@ impl Sequencer {
                 && i < largest_idx_with_stm.unwrap()
                 && !matches!(&arg.x, ExpX::Loc(_))
             {
-                let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, PreLocalDeclKind::Immutable(*kind));
+                let (temp_id, temp_var) = state.declare_temp_var_stm(
+                    &arg.span,
+                    &arg.typ,
+                    PreLocalDeclKind::Immutable(*kind),
+                );
                 final_exps.push(temp_var);
                 final_stms[i].push(init_var(&arg.span, &temp_id, arg));
             } else {
@@ -1204,7 +1209,8 @@ fn stm_call(
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
             let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
-            let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::StmCallArg { native: !poly }));
+            let kind =
+                PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::StmCallArg { native: !poly }));
             let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
             small_args.push(temp_var);
             stms.push(init_var(&arg.span, &temp_id, arg));
@@ -1489,8 +1495,7 @@ pub(crate) fn expr_to_stm_opt(
                         stms.push(init_var(&expr.span, &temp_ident, &e2));
                         temp_var
                     };
-                    let assign =
-                        StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs };
+                    let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs };
                     stms.push(Spanned::new(expr.span.clone(), assign));
                     Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
                 }
@@ -1743,8 +1748,16 @@ pub(crate) fn expr_to_stm_opt(
                 }
                 _ => {
                     let mut sequr = Sequencer::new();
-                    push_or_return_never!(sequr.push(stms1, e1, Immutable(LocalDeclKind::TempViaAssign)));
-                    push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
+                    push_or_return_never!(sequr.push(
+                        stms1,
+                        e1,
+                        Immutable(LocalDeclKind::TempViaAssign)
+                    ));
+                    push_or_return_never!(sequr.push(
+                        stms2,
+                        e2,
+                        Immutable(LocalDeclKind::TempViaAssign)
+                    ));
                     let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
 
                     let (mut stms3, bin) =
@@ -1772,8 +1785,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Quant(quant, binders, body) => {
             let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::QuantBinder));
-            let check_stms =
-                check_pure_expr_bind(ctx, state, binders, kind, body)?;
+            let check_stms = check_pure_expr_bind(ctx, state, binders, kind, body)?;
             state.push_scope();
             let binders = state.rename_binders_exp(binders);
             // Use expr_to_pure_exp_skip_checks,
@@ -1790,8 +1802,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Closure(params, body) => {
             state.disable_recommends += 1;
             let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ClosureBinder));
-            let check_stms =
-                check_pure_expr_bind(ctx, state, params, kind, body)?;
+            let check_stms = check_pure_expr_bind(ctx, state, params, kind, body)?;
             // Note: to avoid false alarms, we don't check recommends inside closures
             // (since there's no precondition on the closure parameters)
             state.push_scope();
@@ -1834,7 +1845,8 @@ pub(crate) fn expr_to_stm_opt(
                 .as_ref()
                 .expect("external_spec should have been added in ast_simplify");
             state.push_scope();
-            let uid = state.declare_imm_var_stm(&cid, &expr.typ, LocalDeclKind::ExecClosureId, false);
+            let uid =
+                state.declare_imm_var_stm(&cid, &expr.typ, LocalDeclKind::ExecClosureId, false);
             // Use expr_to_pure_exp_skip_checks,
             // because we checked spec preconditions in exec_closure_body_stms
             let cexp = expr_to_pure_exp_skip_checks(ctx, state, &cexpr)?;
@@ -1850,7 +1862,11 @@ pub(crate) fn expr_to_stm_opt(
             let mut sequr = Sequencer::new();
             for elem in elems.iter() {
                 let (stms0, e0) = expr_to_stm_opt(ctx, state, elem)?;
-                push_or_return_never!(sequr.push(stms0, e0, Immutable(LocalDeclKind::TempViaAssign)));
+                push_or_return_never!(sequr.push(
+                    stms0,
+                    e0,
+                    Immutable(LocalDeclKind::TempViaAssign)
+                ));
             }
             let (stms, exps) = sequr.into_stms_exps(state);
             let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
@@ -1862,15 +1878,8 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Choose { params, cond, body } => {
             let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ChooseBinder));
-            let mut check_stms =
-                check_pure_expr_bind(ctx, state, params, kind, cond)?;
-            check_stms.extend(check_pure_expr_bind(
-                ctx,
-                state,
-                params,
-                kind,
-                body,
-            )?);
+            let mut check_stms = check_pure_expr_bind(ctx, state, params, kind, cond)?;
+            check_stms.extend(check_pure_expr_bind(ctx, state, params, kind, body)?);
             state.push_scope();
             let params = state.rename_binders_exp(&params);
             // Use expr_to_pure_exp_skip_checks,
@@ -1970,8 +1979,7 @@ pub(crate) fn expr_to_stm_opt(
                     // To avoid copying exp in Assert and Assume,
                     // put exp into a temporary variable
                     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Assert));
-                    let (temp_id, temp_var) =
-                        state.declare_temp_var_stm(&exp.span, &exp.typ, kind);
+                    let (temp_id, temp_var) = state.declare_temp_var_stm(&exp.span, &exp.typ, kind);
                     stms.push(init_var(&exp.span, &temp_id, &exp));
                     temp_var
                 };
@@ -2019,7 +2027,12 @@ pub(crate) fn expr_to_stm_opt(
             let mut body: Vec<Stm> = Vec::new();
             let mut locals: Vec<VarIdent> = Vec::new();
             for var in vars.iter() {
-                let x = state.declare_imm_var_stm(&var.name, &var.a, LocalDeclKind::AssertByVar { native: false }, true);
+                let x = state.declare_imm_var_stm(
+                    &var.name,
+                    &var.a,
+                    LocalDeclKind::AssertByVar { native: false },
+                    true,
+                );
                 body.push(assume_has_typ(&x, &var.a, &require.span));
                 locals.push(x);
             }
@@ -2669,8 +2682,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Nondeterministic => {
             let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
-            let (var_ident, exp) =
-                state.declare_temp_var_stm(&expr.span, &expr.typ, kind);
+            let (var_ident, exp) = state.declare_temp_var_stm(&expr.span, &expr.typ, kind);
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], Maybe::Some(Value::Exp(exp))))
         }
@@ -2891,8 +2903,11 @@ fn borrow_mut_to_sst(
     let (lhs_exp, normal_exp) = unwrap_or_return_never!(exps, stms);
 
     // phase 1
-    let (var_ident, mut_ref_exp) =
-        state.declare_temp_var_stm(&expr.span, &expr.typ, PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)));
+    let (var_ident, mut_ref_exp) = state.declare_temp_var_stm(
+        &expr.span,
+        &expr.typ,
+        PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::BorrowMut)),
+    );
     let has_typ_stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
 
     let cur_exp = sst_mut_ref_current(&expr.span, &mut_ref_exp);
@@ -3091,11 +3106,7 @@ fn stmt_to_stm(
 
             let rename = state.rename_var_maybe_exp(&name);
             let ident = rename.clone();
-            let decl = PreLocalDecl {
-                ident,
-                typ: typ.clone(),
-                kind: PreLocalDeclKind::StmtLet,
-            };
+            let decl = PreLocalDecl { ident, typ: typ.clone(), kind: PreLocalDeclKind::StmtLet };
 
             let init = init.as_ref().map(|init| place_to_expr(init));
 
@@ -3208,8 +3219,7 @@ fn exec_closure_body_stms(
     for param in params.iter() {
         // TODO(new_mut_ref): can't assume closure params are immutable anymore
         let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureParam));
-        let uid =
-            state.declare_var_stm(&param.name, &param.a, kind, false);
+        let uid = state.declare_var_stm(&param.name, &param.a, kind, false);
         typ_inv_vars.push((uid, param.a.clone()));
     }
 

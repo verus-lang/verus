@@ -4,10 +4,10 @@ use crate::ast::{
     VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
-    FinalState, State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
-    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_check_with_typ_substs,
-    expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm,
-    PreLocalDeclKind,
+    FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
+    expr_to_exp_skip_checks, expr_to_one_stm_with_post, expr_to_pure_exp_check,
+    expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
+    expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
@@ -715,11 +715,7 @@ pub fn func_def_to_sst(
         state.declare_var_stm(
             &param.x.name,
             &param.x.typ,
-            if param.x.is_mut {
-                PreLocalDeclKind::MutParam
-            } else {
-                PreLocalDeclKind::Param
-            },
+            if param.x.is_mut { PreLocalDeclKind::MutParam } else { PreLocalDeclKind::Param },
             false,
         );
     }

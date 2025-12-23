@@ -655,14 +655,7 @@ fn get_var_loc_mode(
                     format!("cannot perform operation with mode {}", op_mode),
                 ));
             }
-            let mode1 = get_var_loc_mode(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                Some(*to_mode),
-                e1,
-            )?;
+            let mode1 = get_var_loc_mode(ctxt, record, typing, outer_mode, Some(*to_mode), e1)?;
             if !mode_le(mode1, *from_mode) {
                 return Err(error(
                     &expr.span,
@@ -675,14 +668,8 @@ fn get_var_loc_mode(
             UnaryOpr::Field(FieldOpr { datatype, variant: _, field, get_variant, check: _ }),
             rcvr,
         ) => {
-            let rcvr_mode = get_var_loc_mode(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                expr_inner_mode,
-                rcvr,
-            )?;
+            let rcvr_mode =
+                get_var_loc_mode(ctxt, record, typing, outer_mode, expr_inner_mode, rcvr)?;
             record
                 .type_inv_info
                 .field_loc_needs_check
@@ -711,8 +698,7 @@ fn get_var_loc_mode(
         ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => {
             // For now, only support the special case for Tracked::borrow_mut.
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            let mode =
-                get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1)?;
+            let mode = get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1)?;
             mode
         }
         _ => {
@@ -1601,8 +1587,7 @@ fn check_expr_handle_mut_arg(
                     }
                 }
             }
-            let x_mode =
-                get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
+            let x_mode = get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
             if !mode_le(outer_mode, x_mode) {
                 return Err(error(
                     &expr.span,

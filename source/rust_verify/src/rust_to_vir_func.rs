@@ -2520,7 +2520,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None, user_mut: false },
+            ParamX {
+                name,
+                typ,
+                mode,
+                is_mut: is_mut.is_some(),
+                unwrapped_info: None,
+                user_mut: false,
+            },
         );
         vir_params.push(vir_param);
     }

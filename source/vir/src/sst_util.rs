@@ -9,8 +9,7 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig,
-    Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -857,22 +856,22 @@ impl LocalDeclKind {
         match self {
             LocalDeclKind::Param { mutable } => *mutable,
             LocalDeclKind::StmtLet { mutable } => *mutable,
-            LocalDeclKind::Return |
-            LocalDeclKind::TempViaAssign |
-            LocalDeclKind::Decreases |
-            LocalDeclKind::StmCallArg { native: _ } |
-            LocalDeclKind::Assert |
-            LocalDeclKind::AssertByVar { native: _ } |
-            LocalDeclKind::LetBinder |
-            LocalDeclKind::QuantBinder |
-            LocalDeclKind::ChooseBinder |
-            LocalDeclKind::ClosureBinder |
-            LocalDeclKind::ExecClosureId |
-            LocalDeclKind::ExecClosureParam |
-            LocalDeclKind::ExecClosureRet |
-            LocalDeclKind::Nondeterministic |
-            LocalDeclKind::OpenInvariantInnerTemp |
-            LocalDeclKind::BorrowMut => false,
+            LocalDeclKind::Return
+            | LocalDeclKind::TempViaAssign
+            | LocalDeclKind::Decreases
+            | LocalDeclKind::StmCallArg { native: _ }
+            | LocalDeclKind::Assert
+            | LocalDeclKind::AssertByVar { native: _ }
+            | LocalDeclKind::LetBinder
+            | LocalDeclKind::QuantBinder
+            | LocalDeclKind::ChooseBinder
+            | LocalDeclKind::ClosureBinder
+            | LocalDeclKind::ExecClosureId
+            | LocalDeclKind::ExecClosureParam
+            | LocalDeclKind::ExecClosureRet
+            | LocalDeclKind::Nondeterministic
+            | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::BorrowMut => false,
         }
     }
 }

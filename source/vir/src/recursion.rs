@@ -3,6 +3,7 @@ use crate::ast::{
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
     VarBinder, VirErr,
 };
+use crate::ast_to_sst::PreLocalDecl;
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
@@ -17,7 +18,6 @@ use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
     UniqueIdent,
 };
-use crate::ast_to_sst::PreLocalDecl;
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
 use air::ast_util::str_typ;
@@ -267,8 +267,9 @@ pub(crate) fn mk_decreases_at_entry_pre(
         let decl = PreLocalDecl {
             ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
-            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(
-                crate::ast_to_sst::Immutable(crate::sst::LocalDeclKind::Decreases)),
+            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(crate::ast_to_sst::Immutable(
+                crate::sst::LocalDeclKind::Decreases,
+            )),
         };
         decls.push(decl);
     }

@@ -452,13 +452,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Assign { lhs, rhs, op } => {
                 let lhs = self.visit_expr(lhs)?;
                 let rhs = self.visit_expr(rhs)?;
-                R::ret(|| {
-                    expr_new(ExprX::Assign {
-                        lhs: R::get(lhs),
-                        rhs: R::get(rhs),
-                        op: *op,
-                    })
-                })
+                R::ret(|| expr_new(ExprX::Assign { lhs: R::get(lhs), rhs: R::get(rhs), op: *op }))
             }
             ExprX::AssignToPlace { place, rhs, op } => {
                 let place = self.visit_place(place)?;
