@@ -222,7 +222,7 @@ fn func_body_to_sst(
     let mut proof_body_stms: Vec<Stm> = Vec::new();
     for expr in proof_body {
         let (mut stms, exp) = expr_to_stm_opt(ctx, &mut check_state, &expr)?;
-        assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
+        assert!(!matches!(exp, crate::ast_to_sst::Maybe::Never));
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
