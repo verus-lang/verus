@@ -1368,7 +1368,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _, rustc_middle::ty::DynKind::Dyn)) => Some(UnaryOp::ToDyn),
+                (_, TyKind::Dynamic(_, _)) => Some(UnaryOp::ToDyn),
                 _ => None,
             };
             if let Some(op) = op {

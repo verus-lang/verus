@@ -1459,7 +1459,7 @@ test_verify_one_file_with_options! {
         extern "C" { type T; }
 
         trait ToBool { fn to_bool(&self) -> bool; }
-        impl ToBool for Box<T> where { fn to_bool(&self) -> bool { todo!() } }
+        impl ToBool for *const T where { fn to_bool(&self) -> bool { todo!() } }
     } => Ok(())
 }
 
