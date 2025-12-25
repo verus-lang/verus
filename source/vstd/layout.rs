@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use super::prelude::*;
+use core::mem::MaybeUninit;
 
 verus! {
 
@@ -148,7 +149,7 @@ pub broadcast axiom fn layout_of_references_and_pointers<T: ?Sized>()
         align_of::<*mut T>() == align_of::<*const T>() == align_of::<&T>(),
 ;
 
-/// Pointers to sized types have the same size and alignment as usize
+/// Pointers to sized types have the same size and alignment as `usize`
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro)).
 pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Sized>()
     ensures
@@ -158,11 +159,22 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
         align_of::<*mut T>() == align_of::<usize>(),
 ;
 
+/// [`MaybeUninit<T>`](core::mem::MaybeUninit) has the same size and aligment as `T`
+/// ([Reference](https://doc.rust-lang.org/stable/std/mem/union.MaybeUninit.html#layout-1)).
+pub broadcast axiom fn layout_of_maybe_uninit<T: Sized>()
+    ensures
+        #![trigger size_of::<MaybeUninit<T>>()]
+        #![trigger align_of::<MaybeUninit<T>>()]
+        size_of::<MaybeUninit<T>>() == size_of::<T>(),
+        align_of::<MaybeUninit<T>>() == align_of::<T>(),
+;
+
 pub broadcast group group_layout_axioms {
     layout_of_primitives,
     layout_of_unit_tuple,
     layout_of_references_and_pointers,
     layout_of_references_and_pointers_for_sized_types,
+    layout_of_maybe_uninit,
 }
 
 } // verus!
