@@ -13,6 +13,7 @@
 )]
 
 use core::marker::PhantomData;
+use core::future::Future;
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::admit"]
@@ -245,6 +246,14 @@ pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
 pub fn constrain_type<T>(_x: T, _y: T) -> bool {
     true
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::get_future_type"]
+#[verifier::spec]
+pub fn get_future_type<T>(x: impl Future<Output = T>) -> T {
+    unimplemented!()
+}
+
 
 // example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
 //   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))

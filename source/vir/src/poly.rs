@@ -432,7 +432,8 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::Var(x) => {            println!("key {:#?}", x);
+        SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone()))},
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -1015,8 +1016,12 @@ fn visit_func_decl_sst(
 
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
+    println!("visit visit_func_decl_sst enss0");
+    println!("state.types {:#?}", state.types);
     let enss0 = visit_exps_native(ctx, state, enss0);
+    println!("visit visit_func_decl_sst enss1");
     let enss1 = visit_exps_native(ctx, state, enss1);
+    println!("visit visit_func_decl_sst enss1 done");
     state.types.pop_scope();
 
     let fndef_axioms = visit_exps_native(ctx, state, fndef_axioms);
@@ -1176,6 +1181,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1284,6 +1290,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ: async_body_return_typ.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }

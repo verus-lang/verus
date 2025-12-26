@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) type Declared = Arc<DeclaredX>;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
@@ -204,10 +204,11 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
         ExprX::Const(Constant::BitVec(_, width)) => Ok(Arc::new(TypX::BitVec(*width))),
-        ExprX::Var(x) => match typing.get(x) {
+        ExprX::Var(x) => {
+            match typing.get(x) {
             Some(DeclaredX::Var { typ, .. }) => Ok(typ.clone()),
             _ => Err(format!("use of undeclared variable {}", x)),
-        },
+        }},
         ExprX::Old(snap, x) => match (typing.snapshots.contains(snap), typing.get(x)) {
             (false, _) => Err(format!("use of undeclared snapshot {}", snap)),
             (true, Some(DeclaredX::Var { typ, .. })) => Ok(typ.clone()),
@@ -614,6 +615,7 @@ pub(crate) fn check_decl(
     context: &mut Context,
     decl: &Decl,
 ) -> Result<(Vec<Decl>, Decl), TypeError> {
+    println!("check decl {:#?}", decl);
     let typing = &mut context.typing;
     let result = match &**decl {
         DeclX::Sort(_) => Ok(()),

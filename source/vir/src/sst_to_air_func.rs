@@ -736,6 +736,10 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
     }
 
+    if function.x.attrs.is_async{
+        println!("decl_commands {:#?}", decl_commands);
+    }
+
     Ok(Arc::new(decl_commands))
 }
 

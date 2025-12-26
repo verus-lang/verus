@@ -1014,6 +1014,8 @@ pub enum ExprX {
     /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
     /// vars that would clutter everything up.
     UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+
+    Await(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1195,6 +1197,8 @@ pub struct FunctionAttrsX {
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
     pub exec_allows_no_decreases_clause: bool,
+    /// Whether the function is an async function
+    pub is_async: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1342,6 +1346,12 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+    /// The async function body is desugared into a special async closure, in which
+    /// the parameters of the function are rebound again in the closure with the same name but different
+    /// identifier, here we record and later resolve them
+    pub async_params_mode_binding: Option<Arc<Vec<(VarIdent, Mode)>>>,
+    /// The return type of the async function i.e., impl Future<Output>.
+    pub async_body_return_typ: Option<Typ>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

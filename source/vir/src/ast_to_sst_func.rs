@@ -1,7 +1,5 @@
 use crate::ast::{
-    Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
-    VarIdent, VirErr,
+    AutospecUsage, BinaryOp, CallTarget, Expr, ExprX, Fun, FunX, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr
 };
 use crate::ast_to_sst::{
     State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
@@ -276,6 +274,15 @@ fn func_body_to_sst(
     Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
 }
 
+// fn rewrite_async_ens_sst(
+//     ctx: &Ctx,
+//     diagnostics: &impl air::messages::Diagnostics,
+//     function: &Function,
+//     specs: &Vec<Expr>,
+//     pre: bool,
+// ) -> Result<(Pars, Vec<Exp>), VirErr> {
+// }
+
 fn req_ens_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -286,16 +293,213 @@ fn req_ens_to_sst(
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
     let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        pars_mut.push(param_to_par(&function.x.ret, false));
+        if !function.x.attrs.is_async {
+            pars_mut.push(param_to_par(&function.x.ret, false));
+        }else{
+            // rewrite return value name with prefix
+            pars_mut.push(param_to_par(&Spanned::new_x(&function.x.ret, ParamX{
+                name: VarIdent(Arc::new("VERUS_INTERNAL_ASYNC_RET_PREFIX".to_owned() + &*function.x.ret.x.name.0), function.x.ret.x.name.1),
+                typ: function.x.async_body_return_typ.clone().expect("Async function has no return type"),
+                mode: function.x.ret.x.mode.clone(),
+                unwrapped_info: function.x.ret.x.unwrapped_info.clone(),
+                is_mut: function.x.ret.x.is_mut.clone(),
+            }), false));
+        }
     }
     let mut exps: Vec<Exp> = Vec::new();
+    println!("enss: {:#?}", specs);
     for e in specs.iter() {
+        let e = if function.x.attrs.is_async && !pre{
+            e.clone()
+        }else{
+            e.clone()
+        };
         // Use expr_to_exp_skip_checks because we check req/ens in body
-        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, e)?;
+        // let e = if !pre && function.x.attrs.is_async{
+        //     &rewrite_async_func_ens(ctx, diagnostics, function, e)?
+        //     let call_expr = SpannedTyped::new(&e.span, &Arc::new(TypX::Bool),
+        //         ExprX::Call(CallTarget::Fun(
+        //                     crate::ast::CallTargetKind::DynamicResolved{
+        //                         resolved: Arc::new(FunX{path: Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("impl&%0".to_string()),
+        //                                 Arc::new("awaited".to_string()),
+        //                             ])})}),
+        //                         typs: Arc::new(vec![function.x.async_body_return_typ.as_ref().expect("async function has no return type").clone(), function.x.ret.x.typ.clone()]),
+        //                         impl_paths: Arc::new(vec![]),
+        //                         is_trait_default: false,
+        //                     },
+        //                     Arc::new(FunX { path: Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("FutureAdditionalSpecFns".to_string()),
+        //                                 Arc::new("awaited".to_string()),
+        //                             ])}) }),
+        //                     Arc::new(vec![function.x.ret.x.typ.clone(), function.x.async_body_return_typ.as_ref().expect("async function has no return type").clone()]),
+        //                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+        //                         Arc::new(crate::ast::PathX{
+        //                             krate:Some(Arc::new("vstd".to_string())),
+        //                             segments: Arc::new(vec![
+        //                                 Arc::new("future".to_string()),
+        //                                 Arc::new("impl&%0".to_string()),
+        //                             ])})
+        //                     )]),
+        //                     AutospecUsage::Final
+        //                 ),
+        //             Arc::new(vec![
+        //                     SpannedTyped::new(&e.span, &function.x.ret.x.typ, ExprX::Var(function.x.ret.x.name.clone()))
+        //             ]),
+        //             None
+        //         )
+        //     );
+        //     // todo!()
+        //     println!("call_expr of async function {:#?}", call_expr);
+        //     // exp = Arc::new(SpannedTyped { span: exp.span, typ: Arc::new(TypX::Bool), x:
+        //     //     ExpX::Binary(BinaryOp::Implies, 
+        //     //         Arc::new(SpannedTyped { span: exp.span, typ: Arc::new(TypX::Bool), x:
+        //     //         ExpX::Call((), (), ())
+        //     //         })
+        //     //         , exp.clone())
+        //     // }
+        //     // )
+        //     &SpannedTyped::new(&e.span, &Arc::new(TypX::Bool), 
+        //         ExprX::Binary(
+        //             BinaryOp::Implies, call_expr, e.clone()))
+        // }else{
+        //     e
+        // };
+
+        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, &e)?;
         exps.push(exp);
     }
+
+    println!("(pars, exps) {:#?} {:#?}", pars, exps);
+
     Ok((pars, exps))
 }
+
+// fn rewrite_async_func_ret(
+//     ctx: &Ctx,
+//     diagnostics: &impl air::messages::Diagnostics,
+//     function: &Function,
+//     e: &Expr,
+// ) -> Result<Expr, VirErr> {
+//     match e.x{
+//         ExprX::Var(var_ident) => todo!(),
+//         ExprX::VarLoc(var_ident) => todo!(),
+//         ExprX::VarAt(var_ident, var_at) => todo!(),
+//         ExprX::ConstVar(fun_x, autospec_usage) => todo!(),
+//         ExprX::StaticVar(fun_x) => todo!(),
+//         ExprX::Loc(spanned_typed) => todo!(),
+//         ExprX::Call(call_target, spanned_typeds, spanned_typed) => todo!(),
+//         ExprX::Ctor(dt, _, items, spanned_typed) => todo!(),
+//         ExprX::NullaryOpr(nullary_opr) => todo!(),
+//         ExprX::Unary(unary_op, spanned_typed) => todo!(),
+//         ExprX::UnaryOpr(unary_opr, spanned_typed) => todo!(),
+//         ExprX::Binary(binary_op, spanned_typed, spanned_typed1) => todo!(),
+//         ExprX::BinaryOpr(binary_opr, spanned_typed, spanned_typed1) => todo!(),
+//         ExprX::Multi(multi_op, spanned_typeds) => todo!(),
+//         ExprX::Quant(quant, items, spanned_typed) => todo!(),
+//         ExprX::Closure(items, spanned_typed) => todo!(),
+//         ExprX::NonSpecClosure { params, proof_fn_modes, body, requires, ensures, ret, external_spec } => todo!(),
+//         ExprX::ArrayLiteral(spanned_typeds) => todo!(),
+//         ExprX::ExecFnByName(fun_x) => todo!(),
+//         ExprX::Choose { params, cond, body } => todo!(),
+//         ExprX::WithTriggers { triggers, body } => todo!(),
+//         ExprX::Assign { init_not_mut, lhs, rhs, op } => todo!(),
+//         ExprX::AssignToPlace { place, rhs, op } => todo!(),
+//         ExprX::Fuel(fun_x, _, _) => todo!(),
+//         ExprX::RevealString(_) => todo!(),
+//         ExprX::Header(header_expr_x) => todo!(),
+//         ExprX::AssertAssume { is_assume, expr } => todo!(),
+//         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => todo!(),
+//         ExprX::AssertBy { vars, require, ensure, proof } => todo!(),
+//         ExprX::AssertQuery { requires, ensures, proof, mode } => todo!(),
+//         ExprX::AssertCompute(spanned_typed, compute_mode) => todo!(),
+//         ExprX::If(spanned_typed, spanned_typed1, spanned_typed2) => todo!(),
+//         ExprX::Match(spanned_typed, spanneds) => todo!(),
+//         ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => todo!(),
+//         ExprX::OpenInvariant(spanned_typed, var_binder_x, spanned_typed1, inv_atomicity) => todo!(),
+//         ExprX::Return(spanned_typed) => todo!(),
+//         ExprX::BreakOrContinue { label, is_break } => todo!(),
+//         ExprX::Ghost { alloc_wrapper, tracked, expr } => todo!(),
+//         ExprX::ProofInSpec(spanned_typed) => todo!(),
+//         ExprX::Block(spanneds, spanned_typed) => todo!(),
+//         ExprX::AirStmt(_) => todo!(),
+//         ExprX::NeverToAny(spanned_typed) => todo!(),
+//         ExprX::Nondeterministic => todo!(),
+//         ExprX::BorrowMut(spanned_typed) => todo!(),
+//         ExprX::TwoPhaseBorrowMut(spanned_typed) => todo!(),
+//         ExprX::AssumeResolved(spanned_typed, typ_x) => todo!(),
+//         ExprX::ReadPlace(spanned_typed, unfinalized_read_kind) => todo!(),
+//         ExprX::UseLeftWhereRightCanHaveNoAssignments(spanned_typed, spanned_typed1) => todo!(),
+//         ExprX::Await(spanned_typed) => todo!(),
+//         _ => { Ok(e.clone())}
+//     }
+// }
+// fn rewrite_async_func_ens(
+//     ctx: &Ctx,
+//     diagnostics: &impl air::messages::Diagnostics,
+//     function: &Function,
+//     e: &Expr,
+// ) -> Result<Expr, VirErr> {
+//     println!("ens: {:#?}", e);
+//     let call_expr = SpannedTyped::new(&e.span, &Arc::new(TypX::Bool),
+//         ExprX::Call(CallTarget::Fun(
+//                     crate::ast::CallTargetKind::DynamicResolved{
+//                         resolved: Arc::new(FunX{path: Arc::new(crate::ast::PathX{
+//                             krate:Some(Arc::new("vstd".to_string())),
+//                             segments: Arc::new(vec![
+//                                 Arc::new("future".to_string()),
+//                                 Arc::new("impl&%0".to_string()),
+//                                 Arc::new("awaited".to_string()),
+//                             ])})}),
+//                         typs: Arc::new(vec![function.x.async_body_return_typ.as_ref().expect("async function has no return type").clone(), function.x.ret.x.typ.clone()]),
+//                         impl_paths: Arc::new(vec![]),
+//                         is_trait_default: false,
+//                     },
+//                     Arc::new(FunX { path: Arc::new(crate::ast::PathX{
+//                             krate:Some(Arc::new("vstd".to_string())),
+//                             segments: Arc::new(vec![
+//                                 Arc::new("future".to_string()),
+//                                 Arc::new("FutureAdditionalSpecFns".to_string()),
+//                                 Arc::new("awaited".to_string()),
+//                             ])}) }),
+//                     Arc::new(vec![function.x.ret.x.typ.clone(), function.x.async_body_return_typ.as_ref().expect("async function has no return type").clone()]),
+//                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+//                         Arc::new(crate::ast::PathX{
+//                             krate:Some(Arc::new("vstd".to_string())),
+//                             segments: Arc::new(vec![
+//                                 Arc::new("future".to_string()),
+//                                 Arc::new("impl&%0".to_string()),
+//                             ])})
+//                     )]),
+//                     AutospecUsage::Final
+//                 ),
+//             Arc::new(vec![
+//                     SpannedTyped::new(&e.span, &function.x.ret.x.typ, ExprX::Var(function.x.ret.x.name.clone()))
+//             ]),
+//             None
+//         )
+//     );
+//     // todo!()
+//     // println!("call_expr of async function {:#?}", call_expr);
+//     // exp = Arc::new(SpannedTyped { span: exp.span, typ: Arc::new(TypX::Bool), x:
+//     //     ExpX::Binary(BinaryOp::Implies, 
+//     //         Arc::new(SpannedTyped { span: exp.span, typ: Arc::new(TypX::Bool), x:
+//     //         ExpX::Call((), (), ())
+//     //         })
+//     //         , exp.clone())
+//     // }
+//     // )
+//     let e = &SpannedTyped::new(&e.span, &Arc::new(TypX::Bool), 
+//         ExprX::Binary(
+//             BinaryOp::Implies, call_expr, e.clone()));
+//     Ok(e.clone())
+// }
 
 pub fn func_decl_to_sst(
     ctx: &mut Ctx,
@@ -966,6 +1170,7 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_body_return_typ: function.x.async_body_return_typ.clone(),
     };
     Ok(function.new_x(functionx))
 }

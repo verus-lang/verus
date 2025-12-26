@@ -1,3 +1,5 @@
+use air::ast::BinaryOp;
+
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
     FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
@@ -15,6 +17,7 @@ use crate::internal_err;
 use crate::messages::{Message, Span, error, error_with_label};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Binary;
 use std::sync::Arc;
 
 struct Ctxt<'a> {
@@ -771,6 +774,39 @@ fn check_expr<Emit: EmitError>(
     check_result
 }
 
+fn check_async_function_postcondition<Emit: EmitError>(
+    ctxt: &Ctxt,
+    function: &Function,
+    emit: &mut Emit,
+) -> Result<(), VirErr> {
+    return Ok(());
+    let enss0 = &function.x.ensure.0;
+
+    for ens in enss0.iter(){
+        if let ExprX::Binary(crate::ast::BinaryOp::Implies, lhs, _) = &ens.x{
+            // if let ExprX::Call(fun, e, e_opt) = &lhs.x{
+            //     println!("lhs.x {:#?}", lhs.x);
+            //     if let CallTarget::Fun(CallTargetKind::DynamicResolved{ resolved, typs: _, impl_paths, is_trait_default }, fun, _, impl_path, autospec_usage) = fun{
+            //         if resolved.path
+            //     }else{
+            //         return Err(error(
+            //             &ens.span,
+            //             "ensures of async function must start with `return_vaule`.awaited() ==> xxx",
+            //         ));
+            //     }
+            // }
+        }
+        else{
+            return Err(error(
+                &ens.span,
+                "ensures of async function must start with `return_vaule`.awaited() ==> xxx",
+                ));
+        }  
+    }
+
+    Ok(())
+}
+
 fn check_function<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
@@ -1343,6 +1379,17 @@ fn check_function<Emit: EmitError>(
                 ));
             }
         }
+    }
+
+    if function.x.attrs.is_async {
+        // println!("{:#?}", function.x.mask_spec);
+        // match &function.x.mask_spec{
+        //     Some(MaskSpec::InvariantOpens(span, exprs)) => {},
+        //     Some(MaskSpec::InvariantOpensExcept(span, exprs)) => {},
+        //     Some(MaskSpec::InvariantOpensSet(exprs)) => {},
+        //     None => {},
+        // }
+        check_async_function_postcondition(ctxt, function, emit)?;
     }
 
     Ok(())
