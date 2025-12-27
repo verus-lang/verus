@@ -11,6 +11,7 @@ mod consts;
 const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 5, 0];
 
 mod cli;
+mod macros;
 mod util;
 
 use filetime::FileTime as FFileTime;
@@ -21,9 +22,13 @@ fn test_rust_min_stack() -> String {
     (20 * 1024 * 1024).to_string()
 }
 
+use macros::info;
+use macros::warning;
+
 const VARGO_SOURCE_FILES: &[(&'static str, &'static [u8])] = &[
     ("src/main.rs", include_bytes!("main.rs")),
     ("src/util.rs", include_bytes!("util.rs")),
+    ("src/macros.rs", include_bytes!("macros.rs")),
 ];
 
 static VARGO_NEST: std::sync::RwLock<u64> = std::sync::RwLock::new(0);
@@ -109,10 +114,10 @@ impl SmtSolverBinary {
             let path = std::path::Path::new(&file_name);
 
             if !path.is_file() && vargo_nest == 0 {
-                // When we fail to find Z3, we warn the user but optimistically continue
-                // Since we don't currently use cvc5, we don't warn the user about it, and we bail out
+                // When we fail to find Z3, we warning the user but optimistically continue
+                // Since we don't currently use cvc5, we don't warning the user about it, and we bail out
                 match solver_type {
-                    SmtSolverType::Z3 => warn(format!("{file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str()),
+                    SmtSolverType::Z3 => warning!("{file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first"),
                     SmtSolverType::Cvc5 => return None,
                 }
             }
@@ -263,34 +268,20 @@ fn main() {
     match run() {
         Ok(()) => (),
         Err(err) => {
-            eprintln!("{}", yansi::Paint::red(format!("error: {}", err)));
+            use yansi::Paint;
+            eprintln!("{}", format!("error: {}", err).red());
             std::process::exit(1);
         }
     }
 }
 
-fn info(msg: &str) {
-    let vargo_nest = *VARGO_NEST.read().unwrap();
-    eprintln!(
-        "{}",
-        yansi::Paint::blue(format!("vargo info [{}]: {}", vargo_nest, msg))
-    );
-}
-
-fn warn(msg: &str) {
-    let vargo_nest = *VARGO_NEST.read().unwrap();
-    eprintln!(
-        "{}",
-        yansi::Paint::yellow(format!("vargo warn [{}]: {}", vargo_nest, msg))
-    );
-}
-
 fn log_command(cmd: &std::process::Command, verbose: bool) {
+    use yansi::Paint;
     if verbose {
         let vargo_nest = *VARGO_NEST.read().unwrap();
         eprintln!(
             "{}",
-            yansi::Paint::magenta(format!("vargo running [{}]: {:?}", vargo_nest, cmd))
+            format!("vargo running [{}]: {:?}", vargo_nest, cmd).magenta()
         );
     }
 }
@@ -351,7 +342,7 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     for f in VSTD_FILES.iter() {
         let f = target_verus_dir.join(f);
         if f.is_file() && f.exists() {
-            info(format!("removing {}", f.display()).as_str());
+            info!("removing {}", f.display());
             std::fs::remove_file(&f)
                 .map_err(|x| format!("could not delete file {} ({x})", f.display()))?;
         }
@@ -615,9 +606,7 @@ fn run() -> Result<(), String> {
             Some(version_info)
         }
         Err(err) => {
-            warn(
-                format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()
-            );
+            warning!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err);
             None
         }
     };
@@ -732,10 +721,10 @@ fn run() -> Result<(), String> {
                             Err(format!("vargo returned status code {:?}", x.code()))
                         }
                     })?;
-                info(&format!(
+                info!(
                     "rebuilding: done{}",
                     if release { " (release)" } else { "" }
-                ));
+                );
             }
             (Task::Run | Task::Test { .. }, _) => {
                 return Err(format!(
@@ -749,14 +738,14 @@ fn run() -> Result<(), String> {
     let target_verus_dir = {
         let parent_dir = std::path::PathBuf::from("target-verus");
         if !parent_dir.exists() {
-            info(&format!("creating {}", parent_dir.display()));
+            info!("creating {}", parent_dir.display());
             std::fs::create_dir(&parent_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
         let target_verus_dir = parent_dir.join(if release { "release" } else { "debug" });
 
         if !target_verus_dir.exists() {
-            info(&format!("creating {}", target_verus_dir.display()));
+            info!("creating {}", target_verus_dir.display());
             std::fs::create_dir(&target_verus_dir)
                 .map_err(|x| format!("could not create target-verus directory ({})", x))?;
         }
@@ -792,7 +781,7 @@ fn run() -> Result<(), String> {
             if let Task::Fmt = task {
                 let pos = dashdash_pos.unwrap();
 
-                info(format!("formatting source").as_str());
+                info!("formatting source");
 
                 args.insert(pos + 1, "--config".to_string());
                 args.insert(pos + 2, "style_edition=2024".to_string());
@@ -832,9 +821,7 @@ fn run() -> Result<(), String> {
                         let target_verus_release_dir =
                             std::path::Path::new("target-verus").join("release");
                         if target_verus_release_dir.is_dir() && target_verus_release_dir.exists() {
-                            info(
-                                format!("removing {}", target_verus_release_dir.display()).as_str(),
-                            );
+                            info!("removing {}", target_verus_release_dir.display());
                             std::fs::remove_dir_all(target_verus_release_dir).map_err(|x| {
                                 format!("could not remove target-verus directory ({})", x)
                             })?;
@@ -843,10 +830,7 @@ fn run() -> Result<(), String> {
                             let target_verus_debug_dir =
                                 std::path::Path::new("target-verus").join("debug");
                             if target_verus_debug_dir.is_dir() && target_verus_debug_dir.exists() {
-                                info(
-                                    format!("removing {}", target_verus_debug_dir.display())
-                                        .as_str(),
-                                );
+                                info!("removing {}", target_verus_debug_dir.display());
                                 std::fs::remove_dir_all(target_verus_debug_dir).map_err(|x| {
                                     format!("could not remove target-verus directory ({})", x)
                                 })?;
@@ -876,7 +860,7 @@ fn run() -> Result<(), String> {
                         }
                         let fmt_check = original_args.contains("--check");
 
-                        info(format!("formatting syn").as_str());
+                        info!("formatting syn");
 
                         let syn_path = std::path::Path::new("../dependencies/syn");
                         let mut syn_fmt = std::process::Command::new("cargo");
@@ -892,7 +876,7 @@ fn run() -> Result<(), String> {
                             ));
                         }
 
-                        info(format!("formatting prettyplease").as_str());
+                        info!("formatting prettyplease");
 
                         let syn_path = std::path::Path::new("../dependencies/prettyplease");
                         let mut syn_fmt = std::process::Command::new("cargo");
@@ -955,14 +939,14 @@ fn run() -> Result<(), String> {
                                 }
                                 Err(err) => match err.kind() {
                                     std::io::ErrorKind::NotFound => {
-                                        warn(format!("cannot execute verusfmt, refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions\nvstd will not be formatted").as_str());
+                                        warning!("cannot execute verusfmt, refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions\nvstd will not be formatted");
                                         return Ok(());
                                     }
                                     _ => return Err(format!("cannot execute verusfmt: {}", err)),
                                 },
                             };
 
-                            info(format!("formatting vstd").as_str());
+                            info!("formatting vstd");
 
                             let vstd_path = std::path::Path::new("vstd");
                             let all_vstd_files = walkdir::WalkDir::new(vstd_path)
@@ -983,12 +967,9 @@ fn run() -> Result<(), String> {
                             let verusfmt_status = verusfmt.status().expect("failed to run vstd");
 
                             if !verusfmt_status.success() {
-                                warn(
-                                    format!(
-                                        "verusfmt returned error code {:?}",
-                                        verusfmt_status.code(),
-                                    )
-                                    .as_str(),
+                                warning!(
+                                    "verusfmt returned error code {:?}",
+                                    verusfmt_status.code(),
                                 );
                                 std::process::exit(verusfmt_status.code().unwrap_or(1))
                             }
@@ -1111,7 +1092,7 @@ fn run() -> Result<(), String> {
                 if package == Some(target)
                     || package == None && !exclude.iter().find(|x| x.as_str() == target).is_some()
                 {
-                    info(format!("building {}", target).as_str());
+                    info!("building {}", target);
                     let mut cmd = std::process::Command::new("cargo");
                     let mut cmd = cmd
                         .env("RUST_MIN_STACK", test_rust_min_stack())
@@ -1264,7 +1245,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             for f in [format!("vstd.vir"), format!("libvstd.rlib")] {
                 if !target_verus_dir.join(f).exists() {
                     if fingerprint_path.exists() {
-                        info(&format!("removing {}", fingerprint_path.display()));
+                        info!("removing {}", fingerprint_path.display());
                         std::fs::remove_file(&fingerprint_path).map_err(|x| {
                             format!("could not delete file {} ({x})", fingerprint_path.display())
                         })?;
@@ -1339,7 +1320,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
 
             if build_vstd {
                 if dependency_missing {
-                    info("not all of the vstd dependencies are built, skipping vstd build");
+                    info!("not all of the vstd dependencies are built, skipping vstd build");
 
                     clean_vstd(&target_verus_dir)?;
                 } else {
@@ -1361,7 +1342,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                         .map(|s| !(current_fingerprint <= s))
                         .unwrap_or(true)
                     {
-                        info("vstd outdated, rebuilding");
+                        info!("vstd outdated, rebuilding");
                         let mut vstd_build = std::process::Command::new("cargo");
                         let mut vstd_build = vstd_build
                             .env("RUSTC_BOOTSTRAP", "1")
@@ -1415,7 +1396,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                         )
                         .map_err(|x| format!("cannot write fingerprint file ({x})"))?;
                     } else {
-                        info("vstd fresh");
+                        info!("vstd fresh");
                     }
                 }
             }
@@ -1448,7 +1429,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 })
             {
                 if verus_root_path.exists() {
-                    info(format!("removing {}", verus_root_path.display()).as_str());
+                    info!("removing {}", verus_root_path.display());
                     std::fs::remove_file(&verus_root_path).map_err(|x| {
                         format!("could not delete file {} ({x})", verus_root_path.display())
                     })?;
