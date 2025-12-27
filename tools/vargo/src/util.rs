@@ -69,6 +69,7 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
 
 // ============================================================================
 
+#[derive(Debug)]
 pub struct VersionInfo {
     pub version: String,
     pub sha: String,

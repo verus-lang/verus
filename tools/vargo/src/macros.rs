@@ -1,6 +1,7 @@
 macro_rules! info {
     ($($arg:tt)*) => {{
         use yansi::Paint;
+        use crate::VARGO_NEST;
         let vargo_nest = *VARGO_NEST.read().unwrap();
         eprintln!(
             "{}{}",
@@ -13,6 +14,7 @@ macro_rules! info {
 macro_rules! warning {
     ($($arg:tt)*) => {{
         use yansi::Paint;
+        use crate::VARGO_NEST;
         let vargo_nest = *VARGO_NEST.read().unwrap();
         eprintln!(
             "{}{}",
