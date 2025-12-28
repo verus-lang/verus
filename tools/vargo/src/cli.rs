@@ -32,6 +32,9 @@ pub struct CargoOptions {
 
 #[derive(Clone, Debug, Args, PartialEq, Eq)]
 pub struct BuildOptions {
+    #[arg(short, long)]
+    pub release: bool,
+
     #[arg(long)]
     pub vstd_no_verify: bool,
 
@@ -48,13 +51,20 @@ pub struct BuildOptions {
     pub vstd_log_all: bool,
 }
 
+#[derive(Clone, Debug, Args, PartialEq, Eq)]
+pub struct FeaturesOptions {
+    #[arg(long)]
+    pub no_default_features: bool,
+
+    #[arg(short = 'F', long, action = clap::ArgAction::Append)]
+    pub features: Vec<VerusFeatures>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoBuild {
     pub package: Option<String>,
     pub exclude: HashSet<String>,
-    pub no_default_features: bool,
-    pub features: Vec<VerusFeatures>,
-    pub release: bool,
+    pub feature_options: FeaturesOptions,
     pub build_options: BuildOptions,
     pub verus_args: Vec<String>,
 }
@@ -63,32 +73,24 @@ pub struct VargoBuild {
 pub struct VargoTest {
     pub package: String,
     pub exclude: HashSet<String>,
-    pub no_default_features: bool,
-    pub features: Vec<VerusFeatures>,
-    pub release: bool,
+    pub feature_options: FeaturesOptions,
     pub build_options: BuildOptions,
     pub test_args: Vec<String>,
-    pub verus_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoNextestRun {
     pub package: String,
     pub exclude: HashSet<String>,
-    pub no_default_features: bool,
-    pub features: Vec<VerusFeatures>,
-    pub release: bool,
+    pub feature_options: FeaturesOptions,
     pub build_options: BuildOptions,
     pub nextest_args: Vec<String>,
-    pub verus_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoRun {
     pub package: Option<String>,
-    pub no_default_features: bool,
-    pub features: Vec<VerusFeatures>,
-    pub release: bool,
+    pub feature_options: FeaturesOptions,
     pub build_options: BuildOptions,
     pub verus_args: Vec<String>,
 }
@@ -101,8 +103,7 @@ pub struct VargoClean {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoMetadata {
-    pub no_default_features: bool,
-    pub features: Vec<VerusFeatures>,
+    pub feature_options: FeaturesOptions,
     pub format_version: String,
 }
 
@@ -158,10 +159,10 @@ impl VargoSubcommand {
     // otherwise, return false
     pub fn release(&self) -> bool {
         match self {
-            VargoSubcommand::Build(c) => c.release,
-            VargoSubcommand::Test(c) => c.release,
-            VargoSubcommand::NextestRun(c) => c.release,
-            VargoSubcommand::Run(c) => c.release,
+            VargoSubcommand::Build(c) => c.build_options.release,
+            VargoSubcommand::Test(c) => c.build_options.release,
+            VargoSubcommand::NextestRun(c) => c.build_options.release,
+            VargoSubcommand::Run(c) => c.build_options.release,
             VargoSubcommand::Clean(c) => c.release,
             VargoSubcommand::Metadata(_) => false,
             VargoSubcommand::Fmt(_) => false,
@@ -231,14 +232,8 @@ pub enum VargoParsedSubcommand {
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
-        #[arg(short, long)]
-        release: bool,
-
-        #[arg(long)]
-        no_default_features: bool,
-
-        #[arg(short = 'F', long, action = clap::ArgAction::Append)]
-        features: Vec<VerusFeatures>,
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
 
         #[command(flatten)]
         build_options: BuildOptions,
@@ -255,23 +250,14 @@ pub enum VargoParsedSubcommand {
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
-        #[arg(short, long)]
-        release: bool,
-
-        #[arg(long)]
-        no_default_features: bool,
-
-        #[arg(short = 'F', long, action = clap::ArgAction::Append)]
-        features: Vec<VerusFeatures>,
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
 
         #[command(flatten)]
         build_options: BuildOptions,
 
         #[arg(allow_hyphen_values = true)]
         test_args: Vec<String>,
-
-        #[arg(last = true, allow_hyphen_values = true)]
-        verus_args: Vec<String>,
     },
 
     /// Run Verus tests with nextest
@@ -285,14 +271,8 @@ pub enum VargoParsedSubcommand {
         #[arg(short, long)]
         package: Option<String>,
 
-        #[arg(long)]
-        no_default_features: bool,
-
-        #[arg(short = 'F', long, action = clap::ArgAction::Append)]
-        features: Vec<VerusFeatures>,
-
-        #[arg(short, long)]
-        release: bool,
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
 
         #[command(flatten)]
         build_options: BuildOptions,
@@ -312,11 +292,8 @@ pub enum VargoParsedSubcommand {
 
     /// Get metadata from cargo
     Metadata {
-        #[arg(long)]
-        no_default_features: bool,
-
-        #[arg(short = 'F', long, action = clap::ArgAction::Append)]
-        features: Vec<VerusFeatures>,
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
 
         #[arg(long, default_value = "1")]
         format_version: String,
@@ -330,11 +307,11 @@ pub enum VargoParsedSubcommand {
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
-        #[arg(last = true, allow_hyphen_values = true)]
-        rustfmt_args: Vec<String>,
-
         #[arg(long)]
         vstd_no_verusfmt: bool,
+
+        #[arg(last = true, allow_hyphen_values = true)]
+        rustfmt_args: Vec<String>,
     },
 
     /// Run an arbitrary command in vargo's environment
@@ -353,23 +330,14 @@ pub enum NexTestCommand {
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
-        #[arg(short, long)]
-        release: bool,
-
-        #[arg(long)]
-        no_default_features: bool,
-
-        #[arg(short = 'F', long, action = clap::ArgAction::Append)]
-        features: Vec<VerusFeatures>,
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
 
         #[command(flatten)]
         build_options: BuildOptions,
 
         #[arg(allow_hyphen_values = true)]
         nextest_args: Vec<String>,
-
-        #[arg(last = true, allow_hyphen_values = true)]
-        verus_args: Vec<String>,
     },
 }
 
@@ -379,73 +347,53 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
             VargoParsedSubcommand::Build {
                 package,
                 exclude,
-                release,
-                features,
-                no_default_features,
+                feature_options,
                 build_options,
                 verus_args,
             } => VargoSubcommand::Build(VargoBuild {
                 package,
                 exclude: exclude.into_iter().collect(),
-                no_default_features,
-                features,
-                release,
+                feature_options,
                 build_options,
                 verus_args,
             }),
             VargoParsedSubcommand::Test {
                 package,
                 exclude,
-                release,
-                no_default_features,
-                features,
+                feature_options,
                 build_options,
                 test_args,
-                verus_args,
             } => VargoSubcommand::Test(VargoTest {
                 package,
                 exclude: exclude.into_iter().collect(),
-                no_default_features,
-                features,
-                release,
+                feature_options,
                 build_options,
                 test_args,
-                verus_args,
             }),
             VargoParsedSubcommand::Nextest {
                 command:
                     NexTestCommand::Run {
                         package,
                         exclude,
-                        release,
-                        no_default_features,
-                        features,
+                        feature_options,
                         build_options,
                         nextest_args,
-                        verus_args,
                     },
             } => VargoSubcommand::NextestRun(VargoNextestRun {
                 package,
                 exclude: exclude.into_iter().collect(),
-                no_default_features,
-                features,
-                release,
+                feature_options,
                 build_options,
                 nextest_args,
-                verus_args,
             }),
             VargoParsedSubcommand::Run {
                 package,
-                no_default_features,
-                features,
-                release,
+                feature_options,
                 build_options,
                 verus_args,
             } => VargoSubcommand::Run(VargoRun {
                 package,
-                no_default_features,
-                features,
-                release,
+                feature_options,
                 build_options,
                 verus_args,
             }),
@@ -453,12 +401,10 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 VargoSubcommand::Clean(VargoClean { package, release })
             }
             VargoParsedSubcommand::Metadata {
-                no_default_features,
-                features,
+                feature_options,
                 format_version,
             } => VargoSubcommand::Metadata(VargoMetadata {
-                no_default_features,
-                features,
+                feature_options,
                 format_version,
             }),
             VargoParsedSubcommand::Fmt {
