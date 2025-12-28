@@ -11,14 +11,7 @@ impl VargoMetadata {
         cargo.arg("metadata");
         cargo.args(["--format-version", self.format_version.as_str()]);
 
-        if self.no_default_features {
-            cargo.arg("--no-default-features");
-        }
-
-        for feature in &self.features {
-            cargo.arg("--features");
-            cargo.arg(format!("{feature}"));
-        }
+        self.feature_options.add_options(cargo);
     }
 }
 

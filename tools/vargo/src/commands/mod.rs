@@ -1,8 +1,7 @@
-#![allow(unused_variables)]
-use std::collections::HashSet;
 use std::path::Path;
 use std::process::Command;
 
+use crate::cli::FeaturesOptions;
 use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::macros::info;
@@ -57,17 +56,6 @@ pub(crate) fn cargo_command(options: &VargoOptions, context: &VargoContext) -> C
     cargo
 }
 
-pub(crate) fn filter_feature_list(
-    features: &[VerusFeatures],
-    accepted: HashSet<VerusFeatures>,
-) -> Vec<VerusFeatures> {
-    features
-        .iter()
-        .filter(|f| accepted.contains(f))
-        .copied()
-        .collect()
-}
-
 fn test_rust_min_stack() -> String {
     (20 * 1024 * 1024).to_string()
 }
@@ -111,4 +99,21 @@ pub(crate) fn clean_vstd(target_verus_dir: impl AsRef<Path>) -> VargoResult<()> 
         }
     }
     Ok(())
+}
+
+impl FeaturesOptions {
+    pub(crate) fn add_options(&self, cargo: &mut std::process::Command) {
+        if self.no_default_features {
+            cargo.arg("--no-default-features");
+        }
+
+        for feature in &self.features {
+            cargo.arg("--features");
+            cargo.arg(format!("{feature}"));
+        }
+    }
+
+    pub(crate) fn filter_feature_list(&mut self, accepted: &[VerusFeatures]) {
+        self.features.retain(|f| accepted.contains(f));
+    }
 }
