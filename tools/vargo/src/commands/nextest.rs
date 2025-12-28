@@ -4,7 +4,6 @@ use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::commands::build;
 use crate::commands::cargo_command;
-use crate::commands::filter_feature_list;
 use crate::commands::log_command;
 use crate::macros::info;
 use crate::VargoContext;
@@ -12,55 +11,35 @@ use crate::VargoResult;
 
 impl VargoNextestRun {
     pub fn add_options(&self, cargo: &mut std::process::Command) {
+        dbg!(self);
         cargo.args(["nextest", "run"]);
         cargo.env("VARGO_IN_NEXTEST", "1");
 
-        if self.release {
+        if self.build_options.release {
             cargo.arg("--release");
         }
 
         cargo.args(["--package", self.package.as_str()]);
 
-        if self.no_default_features {
-            cargo.arg("--no-default-features");
-        }
-
-        for feature in &self.features {
-            cargo.arg("--features");
-            cargo.arg(format!("{feature}"));
-        }
+        self.feature_options.add_options(cargo);
 
         cargo.args(&self.nextest_args);
-
-        if !self.verus_args.is_empty() {
-            // This is to pass arguments to rust_verify_test
-            cargo.arg("--");
-            // This is to forward arguments to verus
-            cargo.arg("--");
-            cargo.args(&self.verus_args);
-        }
     }
 
     fn build_cmd(&self) -> VargoBuild {
         VargoBuild {
             package: None,
             exclude: Default::default(),
-            no_default_features: self.no_default_features,
-            features: self.features.clone(),
-            release: self.release,
+            feature_options: self.feature_options.clone(),
             build_options: self.build_options.clone(),
-            verus_args: self.verus_args.clone(),
+            verus_args: Default::default(),
         }
     }
 
     fn apply_feature_filter(&mut self) {
         if self.package.as_str() == "rust_verify_test" {
-            self.features = filter_feature_list(
-                &self.features,
-                [VerusFeatures::Singular, VerusFeatures::AxiomUsageInfo]
-                    .into_iter()
-                    .collect(),
-            );
+            self.feature_options
+                .filter_feature_list(&[VerusFeatures::Singular, VerusFeatures::AxiomUsageInfo]);
         }
     }
 }
@@ -83,7 +62,11 @@ pub fn nextest_run(
             build(options, context, &vargo_cmd.build_cmd())?;
             info!(
                 "rebuilding: done{}",
-                if vargo_cmd.release { " (release)" } else { "" }
+                if vargo_cmd.build_options.release {
+                    " (release)"
+                } else {
+                    ""
+                }
             );
         }
     }

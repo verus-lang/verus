@@ -63,7 +63,7 @@ pub fn fmt(
     )?;
 
     if !vargo_cmd.exclude.iter().any(|e| e.as_str() == "vstd") {
-        format_vstd(options, context, vargo_cmd)?;
+        format_vstd(options, vargo_cmd)?;
     }
 
     Ok(())
@@ -96,11 +96,7 @@ fn format_rust_dir(
     Ok(())
 }
 
-fn format_vstd(
-    options: &VargoOptions,
-    context: &VargoContext,
-    vargo_cmd: &VargoFmt,
-) -> VargoResult<()> {
+fn format_vstd(options: &VargoOptions, vargo_cmd: &VargoFmt) -> VargoResult<()> {
     let verusfmt_path: PathBuf = std::env::var("VARGO_VERUSFMT_PATH")
         .unwrap_or("verusfmt".to_string())
         .into();

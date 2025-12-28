@@ -7,7 +7,6 @@ use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::commands::cargo_command;
 use crate::commands::clean_vstd;
-use crate::commands::filter_feature_list;
 use crate::commands::log_command;
 use crate::context::VargoContext;
 use crate::lib_exe_names::EXE;
@@ -70,7 +69,7 @@ impl VargoBuild {
     fn add_options(&self, cargo: &mut std::process::Command) {
         cargo.arg("build");
 
-        if self.release {
+        if self.build_options.release {
             cargo.arg("--release");
         }
 
@@ -83,14 +82,7 @@ impl VargoBuild {
             cargo.args(["--exclude", e]);
         }
 
-        if self.no_default_features {
-            cargo.arg("--no-default-features");
-        }
-
-        for feature in &self.features {
-            cargo.arg("--features");
-            cargo.arg(format!("{feature}"));
-        }
+        self.feature_options.add_options(cargo);
     }
 
     fn cmd_for_package(&self, package: &str) -> Self {
@@ -103,21 +95,15 @@ impl VargoBuild {
     fn apply_feature_filter(&mut self) {
         match self.package.as_deref() {
             Some("rust_verify") => {
-                self.features = filter_feature_list(
-                    &self.features,
-                    [VerusFeatures::Singular, VerusFeatures::AxiomUsageInfo]
-                        .into_iter()
-                        .collect(),
-                );
+                self.feature_options
+                    .filter_feature_list(&[VerusFeatures::Singular, VerusFeatures::AxiomUsageInfo]);
             }
             Some("verus") => {
-                self.features = filter_feature_list(
-                    &self.features,
-                    [VerusFeatures::RecordHistory].into_iter().collect(),
-                );
+                self.feature_options
+                    .filter_feature_list(&[VerusFeatures::RecordHistory]);
             }
             _ => {
-                self.features = Vec::new();
+                self.feature_options.features = Vec::new();
             }
         }
     }
@@ -195,7 +181,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
     {
         let from_f = context
             .target_dir
-            .join(if vargo_cmd.release {
+            .join(if vargo_cmd.build_options.release {
                 "release"
             } else {
                 "debug"
@@ -459,7 +445,7 @@ fn rebuild_vstd(
 ) -> VargoResult<()> {
     let mut vstd_build = cargo_command(options, context);
     vstd_build.args(["run", "--package", "vstd_build"]);
-    if vargo_cmd.release {
+    if vargo_cmd.build_options.release {
         vstd_build.arg("--release");
     }
 
@@ -469,7 +455,7 @@ fn rebuild_vstd(
     // TODO(bsdinis): when vstd_build supports it, forward verus_args here
 
     // release is doubled because one is for cargo and the other for vstd_build
-    if vargo_cmd.release {
+    if vargo_cmd.build_options.release {
         vstd_build.arg("--release");
     }
     if vargo_cmd.build_options.vstd_no_verify {
