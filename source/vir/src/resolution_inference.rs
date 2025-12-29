@@ -175,13 +175,54 @@ are mentioned in the set. We then replace those temporaries with named Local nod
 Specifically, we can replace the place node `Temporary(expr)` with
 `WithExpr({ tmp = expr; }, Local("tmp"))` for a fresh `tmp` variable.
 We place the declaration `let tmp;` at a larger scope.
+
+### Closures
+
+A closure is its own function, so its gets its own CFG. However, we still have to deal
+with captured variables.
+
+(Verus doesn't support capturing variables by mut-ref at the time of writing,
+which makes things a bit easier for the time being.)
+
+Note that our job is a *bit* simpler than having to compute the exact same set of
+moves/references as rustc would for its MIR representation. For example,
+if we consider something like:
+
+```rust
+let x = ...;
+let foo = move || {
+    let y = &x;
+}
+```
+
+Technically, this moves `x` into the closure (since the closure is marked `move`) but because
+the interior only uses an immutable reference to `x`, we can ignore the move when doing
+analysis on the containing function.
+
+In a similar vein, if we have a closure that only pulls in one field:
+
+```rust
+let x = ...;
+let foo = move || {
+    let y = x.0;
+}
+```
+
+Rust might move the entirety of `x` instead of just `x.0` (this depends on the edition),
+but the point it is doesn't matter: either way, for the sake of our analysis, we can say
+that only `x.0` is getting moved (the semantics don't matter either way).
+(In Rust, the difference only matters for computing where the drops go.)
+
+Therefore, to determine what moves/mutations should represent the construction of the closure
+in our analysis, we only need to look at what moves/mutations happen *inside* the closure.
+(Though again, mutations of captured variables are currently disallowed.)
 */
 
 use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
-    VarIdent, VarIdentDisambiguate, VariantCheck,
+    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -190,6 +231,7 @@ use crate::messages::{AstId, Span};
 use crate::modes::ReadKindFinals;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
+use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -204,11 +246,6 @@ pub(crate) fn infer_resolution(
     var_modes: &HashMap<VarIdent, Mode>,
     temporary_modes: &HashMap<AstId, Mode>,
 ) -> Expr {
-    let mut var_modes = var_modes.clone();
-    for p in params.iter() {
-        var_modes.insert(p.x.name.clone(), p.x.mode);
-    }
-
     let cfg =
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes);
     //println!("{:}", pretty_cfg(&cfg));
@@ -263,7 +300,7 @@ struct LocalCollection<'a> {
     next_temp_id: u64,
 
     datatypes: &'a HashMap<Path, Datatype>,
-    var_modes: &'a HashMap<VarIdent, Mode>,
+    var_modes: HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
 }
 
@@ -284,13 +321,14 @@ struct FlattenedPlaceTyped {
 }
 
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 enum Projection {
     StructField((usize, usize)),
     DerefMut,
 }
 
-#[derive(Clone, Debug)]
+// note: sort_and_remove_redundant relies on sorting order
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FlattenedPlace {
     local: usize,
     projections: Vec<Projection>,
@@ -373,7 +411,10 @@ struct ResolutionToInsert {
 
 struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
+    /// Loop stack, outermost to innermost
     loops: Vec<LoopEntry>,
+    /// First element is the outermost fn, followed by closure stack, outermost to innermost
+    fns: Vec<FnScope>,
     locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
     functions: &'a HashMap<Fun, Function>,
@@ -388,6 +429,16 @@ struct LoopEntry {
     continue_bb: BBIndex,
     /// Vars that should be dropped before returning to the beginning
     drops: Rc<Vec<FlattenedPlace>>,
+}
+
+/// Represents the scope for either the top-level fn or for any closure inside it
+/// Tracks the "upvars", i.e., vars captured by the closure
+/// (any var declared outside the closure but referenced from within it)
+#[derive(Debug)]
+struct FnScope {
+    scope_map: ScopeMap<VarIdent, ()>,
+    upvars_mutated: Vec<FlattenedPlace>,
+    upvars_moved: Vec<FlattenedPlace>,
 }
 
 #[derive(Clone, Debug)]
@@ -420,9 +471,15 @@ fn new_cfg<'a>(
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
 ) -> CFG<'a> {
+    let mut var_modes = var_modes.clone();
+    for p in params.iter() {
+        var_modes.insert(p.x.name.clone(), p.x.mode);
+    }
+
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
+        fns: vec![],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
@@ -438,7 +495,11 @@ fn new_cfg<'a>(
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
     builder.basic_blocks[start_bb].is_entry = true;
 
+    builder.push_fn();
+    builder.push_scope();
+
     for param in params.iter() {
+        builder.scope_insert(&param.x.name);
         if param.x.mode != Mode::Spec {
             let local = FlattenedPlaceTyped {
                 local: LocalName::Named(param.x.name.clone()),
@@ -446,7 +507,7 @@ fn new_cfg<'a>(
                 projections: vec![],
             };
             let local_place = builder.locals.add_place(&local);
-            builder.push_instruction(
+            builder.push_instruction_raw(
                 start_bb,
                 AstPosition::Before(body.span.id),
                 InstructionKind::Overwrite(local_place),
@@ -456,6 +517,10 @@ fn new_cfg<'a>(
 
     let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
+
+    builder.pop_scope();
+    builder.pop_fn();
+    assert!(builder.fns.len() == 0);
 
     builder.compute_predecessors();
 
@@ -508,7 +573,33 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn push_instruction(
+    /// Push the instruction and update the recorded upvars if necessary
+    fn push_instruction_propagate(
+        &mut self,
+        bb: BBIndex,
+        post_instruction_position: AstPosition,
+        instr: InstructionKind,
+    ) {
+        match &instr {
+            InstructionKind::Overwrite(fp) | InstructionKind::Mutate(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_mutated.push(fp.clone());
+                }
+            }
+            InstructionKind::MoveFrom(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
+                }
+            }
+            InstructionKind::DropFrom(_) => {}
+        }
+        self.push_instruction_raw(bb, post_instruction_position, instr);
+    }
+
+    /// Just push the instruction
+    /// Usually use `push_instruction_propagate` instead of this; only use raw at
+    /// function/closure boundaries.
+    fn push_instruction_raw(
         &mut self,
         bb: BBIndex,
         post_instruction_position: AstPosition,
@@ -526,7 +617,7 @@ impl<'a> Builder<'a> {
         drops: &[FlattenedPlace],
     ) {
         for fp in drops.iter() {
-            self.push_instruction(
+            self.push_instruction_propagate(
                 bb,
                 post_instruction_position,
                 InstructionKind::DropFrom(fp.clone()),
@@ -610,7 +701,7 @@ impl<'a> Builder<'a> {
                 for p in two_phase_delayed_mutations.into_iter() {
                     // The point we mark here is after the arguments execute,
                     // but before the call executes.
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::AfterArguments(span_id),
                         InstructionKind::Mutate(p),
@@ -660,7 +751,7 @@ impl<'a> Builder<'a> {
                                 &self.locals.datatypes,
                             ));
                             let p = self.locals.add_place(&p);
-                            self.push_instruction(
+                            self.push_instruction_propagate(
                                 bb,
                                 AstPosition::After(place.span.id),
                                 InstructionKind::MoveFrom(p),
@@ -696,7 +787,7 @@ impl<'a> Builder<'a> {
                     // Conveniently, we can just put these mutations after the Ctor call itself
                     // since the Ctor is a trivial operation, i.e., we don't need a special
                     // place for the "post_args" like we do with calls.
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::After(span_id),
                         InstructionKind::Mutate(p),
@@ -768,8 +859,29 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::NonSpecClosure { .. } => {
-                todo!()
+            ExprX::NonSpecClosure {
+                params,
+                proof_fn_modes,
+                body,
+                requires: _,
+                ensures: _,
+                ret: _,
+                external_spec: _,
+            } => {
+                // Build the closure interior as a disconnected part of the CFG
+                let fn_scope = self.build_closure(params, proof_fn_modes, body);
+
+                // Emit instructions in the parent function that correspond to the
+                // construction of the closure.
+                for fp in fn_scope.upvars_moved.into_iter() {
+                    self.push_instruction_propagate(
+                        bb,
+                        AstPosition::After(expr.span.id),
+                        InstructionKind::MoveFrom(fp),
+                    );
+                }
+
+                Ok(bb)
             }
             ExprX::ArrayLiteral(es) => {
                 for e in es.iter() {
@@ -794,6 +906,9 @@ impl<'a> Builder<'a> {
                         AstPosition::Before(arm.x.body.span.id),
                     );
 
+                    self.push_scope();
+                    self.scope_insert_pattern(&arm.x.pattern);
+
                     for bound_var in pattern_all_bound_vars_with_ownership(
                         &arm.x.pattern,
                         &self.locals.var_modes,
@@ -806,7 +921,7 @@ impl<'a> Builder<'a> {
                             projections: vec![],
                         };
                         let fp = self.locals.add_place(&fpt);
-                        self.push_instruction(
+                        self.push_instruction_propagate(
                             arm_bb,
                             AstPosition::Before(arm.x.body.span.id),
                             InstructionKind::Overwrite(fp),
@@ -814,6 +929,9 @@ impl<'a> Builder<'a> {
                     }
 
                     let arm_bb_end = self.build(&arm.x.body, arm_bb);
+
+                    self.pop_scope();
+
                     if let Ok(arm_bb_end) = arm_bb_end {
                         arm_bb_ends.push(arm_bb_end);
                     }
@@ -952,7 +1070,7 @@ impl<'a> Builder<'a> {
                 let bb = self.build(rhs, bb)?;
                 match p {
                     ComputedPlace::Exact(p) => {
-                        self.push_instruction(
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             if op.is_some() {
@@ -963,7 +1081,7 @@ impl<'a> Builder<'a> {
                         );
                     }
                     ComputedPlace::Partial(Some(p)) => {
-                        self.push_instruction(
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::Mutate(p),
@@ -981,7 +1099,7 @@ impl<'a> Builder<'a> {
             ExprX::BorrowMut(p) => {
                 let (p, bb) = self.build_place_and_intern(p, bb)?;
                 if let Some(p) = p.get_place_for_mutation() {
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::After(span_id),
                         InstructionKind::Mutate(p),
@@ -1003,7 +1121,7 @@ impl<'a> Builder<'a> {
                     }
                     if let Some(p) = p.get_place_for_move() {
                         let p = self.locals.add_place(&p);
-                        self.push_instruction(
+                        self.push_instruction_propagate(
                             bb,
                             AstPosition::After(span_id),
                             InstructionKind::MoveFrom(p),
@@ -1015,11 +1133,35 @@ impl<'a> Builder<'a> {
                 }
             }
             ExprX::Block(stmts, e_opt) => {
+                let mut scope_count = 0;
                 for s in stmts.iter() {
-                    bb = self.build_stmt(s, bb)?;
+                    bb = match self.build_stmt(s, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0..scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+
+                    if let StmtX::Decl { .. } = &s.x {
+                        scope_count += 1;
+                    }
                 }
                 if let Some(e) = e_opt {
-                    bb = self.build(e, bb)?;
+                    bb = match self.build(e, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0..scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+                }
+                for _i in 0..scope_count {
+                    self.pop_scope();
                 }
                 Ok(bb)
             }
@@ -1032,8 +1174,10 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern: _, mode: _, init: None, els: None } => {
-                // do nothing
+            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 Ok(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
@@ -1044,6 +1188,10 @@ impl<'a> Builder<'a> {
                     bb,
                     AstPosition::After(stmt.span.id),
                 );
+
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 for bound_var in
                     pattern_all_bound_vars_with_ownership(pattern, &self.locals.var_modes)
                         .into_iter()
@@ -1054,7 +1202,7 @@ impl<'a> Builder<'a> {
                         projections: vec![],
                     };
                     let fp = self.locals.add_place(&fpt);
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::After(stmt.span.id),
                         InstructionKind::Overwrite(fp),
@@ -1148,7 +1296,7 @@ impl<'a> Builder<'a> {
                         projections: vec![],
                     };
                     let fp = self.locals.add_place(&fpt);
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         AstPosition::AfterTempAssignment(place.span.id),
                         InstructionKind::Overwrite(fp),
@@ -1219,7 +1367,7 @@ impl<'a> Builder<'a> {
                 );
                 for (fpt, by_ref) in places.into_iter() {
                     let fp = self.locals.add_place(&fpt);
-                    self.push_instruction(
+                    self.push_instruction_propagate(
                         bb,
                         position,
                         match by_ref {
@@ -1233,7 +1381,7 @@ impl<'a> Builder<'a> {
             ComputedPlaceTyped::Partial(Some(fpt)) => {
                 if crate::patterns::pattern_has_mut(pattern) {
                     let fp = self.locals.add_place(fpt);
-                    self.push_instruction(bb, position, InstructionKind::Mutate(fp));
+                    self.push_instruction_propagate(bb, position, InstructionKind::Mutate(fp));
                 }
             }
             ComputedPlaceTyped::Partial(None) => {
@@ -1242,6 +1390,130 @@ impl<'a> Builder<'a> {
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
                 }
             }
+        }
+    }
+
+    fn build_closure(
+        &mut self,
+        params: &VarBinders<Typ>,
+        proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
+        body: &Expr,
+    ) -> FnScope {
+        let closure_prologue = self.new_bb(AstPosition::Before(body.span.id), true);
+        self.basic_blocks[closure_prologue].is_entry = true;
+        let closure_start_bb = self.new_bb(AstPosition::Before(body.span.id), false);
+
+        self.push_fn();
+        self.push_scope();
+
+        for (i, param) in params.iter().enumerate() {
+            self.scope_insert(&param.name);
+
+            let mode = crate::ast_util::arg_mode_from_proof_fn_modes(proof_fn_modes, i);
+
+            let f = self.locals.var_modes.insert(param.name.clone(), mode);
+            assert!(f.is_none());
+
+            if mode != Mode::Spec {
+                let local = FlattenedPlaceTyped {
+                    local: LocalName::Named(param.name.clone()),
+                    typ: param.a.clone(),
+                    projections: vec![],
+                };
+                let local_place = self.locals.add_place(&local);
+                self.push_instruction_raw(
+                    closure_prologue,
+                    AstPosition::Before(body.span.id),
+                    InstructionKind::Overwrite(local_place),
+                );
+            }
+        }
+
+        let closure_normal_ret_bb = self.build(body, closure_start_bb);
+        self.optionally_exit(closure_normal_ret_bb);
+
+        self.pop_scope();
+        let mut fn_scope = self.pop_fn();
+
+        if fn_scope.upvars_mutated.len() > 0 {
+            // TODO(new_mut_ref): make this a real error
+            panic!("Verus unsupported: closure mutable references");
+        }
+
+        fn_scope.upvars_moved = sort_and_remove_redundant(fn_scope.upvars_moved);
+        for fp in fn_scope.upvars_moved.iter() {
+            self.push_instruction_raw(
+                closure_prologue,
+                AstPosition::Before(body.span.id),
+                InstructionKind::Overwrite(fp.clone()),
+            );
+        }
+        self.basic_blocks[closure_prologue].successors.push(closure_start_bb);
+
+        fn_scope
+    }
+
+    fn push_fn(&mut self) {
+        self.fns.push(FnScope {
+            scope_map: ScopeMap::new(),
+            upvars_mutated: vec![],
+            upvars_moved: vec![],
+        });
+    }
+
+    fn pop_fn(&mut self) -> FnScope {
+        let p = self.fns.pop().unwrap();
+        assert_eq!(p.scope_map.num_scopes(), 0);
+        p
+    }
+
+    fn push_scope(&mut self) {
+        // TODO(new_mut_ref): disallow shadowing
+        self.fns.last_mut().unwrap().scope_map.push_scope(true);
+    }
+
+    fn pop_scope(&mut self) {
+        self.fns.last_mut().unwrap().scope_map.pop_scope();
+    }
+
+    fn scope_insert(&mut self, id: &VarIdent) {
+        self.fns.last_mut().unwrap().scope_map.insert(id.clone(), ()).unwrap();
+    }
+
+    fn scope_insert_pattern(&mut self, pattern: &Pattern) {
+        match &pattern.x {
+            PatternX::Wildcard(_) | PatternX::Expr(_) | PatternX::Range(_, _) => {
+                // nothing to do
+            }
+            PatternX::Var(binding) => {
+                self.scope_insert(&binding.name);
+            }
+            PatternX::Binding { binding, sub_pat } => {
+                self.scope_insert(&binding.name);
+                self.scope_insert_pattern(sub_pat);
+            }
+            PatternX::Constructor(_dt, _variant, patterns) => {
+                for p in patterns.iter() {
+                    self.scope_insert_pattern(&p.a);
+                }
+            }
+            PatternX::Or(sub_pat, _) | PatternX::ImmutRef(sub_pat) | PatternX::MutRef(sub_pat) => {
+                self.scope_insert_pattern(sub_pat);
+            }
+        }
+    }
+
+    fn place_is_upvar(&self, fp: &FlattenedPlace) -> bool {
+        match &self.locals.locals[fp.local].name {
+            LocalName::Named(var_ident) => {
+                for i in (0..self.fns.len()).rev() {
+                    if self.fns[i].scope_map.contains_key(var_ident) {
+                        return i != self.fns.len() - 1;
+                    }
+                }
+                panic!("Verus Internal Error: place_is_upvar failed to find var");
+            }
+            LocalName::Temporary(..) => false,
         }
     }
 }
@@ -1874,6 +2146,23 @@ impl LocalName {
     }
 }
 
+fn sort_and_remove_redundant(v: Vec<FlattenedPlace>) -> Vec<FlattenedPlace> {
+    let mut v = v;
+    v.sort();
+    let mut w: Vec<FlattenedPlace> = vec![];
+    for fp in v.into_iter() {
+        if w.len() == 0 || !w[w.len() - 1].contains(&fp) {
+            w.push(fp);
+        }
+    }
+    for i in 0..w.len() {
+        for j in 0..i {
+            assert!(!w[i].intersects(&w[j]));
+        }
+    }
+    w
+}
+
 ////// CFG dataflow analysis
 
 /// Trait defining a lattice for dataflow analysis
@@ -1990,7 +2279,7 @@ fn join_predecessors<D: DataflowState + Clone>(
     empty: &D,
     entry: &D,
 ) -> D {
-    if bb == 0 {
+    if cfg.basic_blocks[bb].is_entry {
         let mut res = entry.clone();
         for pred in cfg.basic_blocks[bb].predecessors.iter().cloned() {
             res.join(&output.output[pred][output.output[pred].len() - 1]);
@@ -2129,6 +2418,7 @@ fn pretty_basic_blocks(
     let mut v = vec![];
     for (i, bb) in cfg.basic_blocks.iter().enumerate() {
         v.push(format!("BasicBlock {:}:\n", i));
+        v.push(format!("    is_entry = {:}\n", bb.is_entry));
         v.push(format!("    Predecessors: {:?}\n", &pretty_bb_list(&bb.predecessors)));
         v.push(format!(
             "    (always_add_resolution_at_start = {:?})\n",
