@@ -181,7 +181,7 @@ use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
     Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
-    VarIdent, VarIdentDisambiguate, VariantCheck,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VarBinders,
 };
 use crate::ast_util::{bool_typ, mk_bool, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -193,6 +193,7 @@ use air::ast_util::str_ident;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
+use air::scope_map::ScopeMap;
 
 /// Updates the given function body to include AssumeResolved nodes at the appropriate places.
 pub(crate) fn infer_resolution(
@@ -284,13 +285,14 @@ struct FlattenedPlaceTyped {
 }
 
 /// Untyped version of the ProjectionTyped. The indices are used to walk the PlaceTree.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 enum Projection {
     StructField((usize, usize)),
     DerefMut,
 }
 
-#[derive(Clone, Debug)]
+// note: sort_and_remove_redundant relies on sorting order
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FlattenedPlace {
     local: usize,
     projections: Vec<Projection>,
@@ -396,12 +398,10 @@ struct LoopEntry {
 /// Represents the scope for either the top-level fn or for any closure inside it
 /// Tracks the "upvars", i.e., vars captured by the closure
 /// (any var declared outside the closure but referenced from within it)
-#[derive(Clone)]
 struct FnScope {
-    scope: ScopeMap<VarIdent, ()>
-    upvars_mentioned: IndexSet<VarIdent>,
-    upvars_mutated: IndexSet<VarIdent>,
-    upvars_moved: IndexSet<VarIdent>,
+    scope_map: ScopeMap<VarIdent, ()>,
+    upvars_mutated: Vec<FlattenedPlace>,
+    upvars_moved: Vec<FlattenedPlace>,
 }
 
 #[derive(Clone, Debug)]
@@ -437,7 +437,7 @@ fn new_cfg<'a>(
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
-        fns: vec![FnScope::new()],
+        fns: vec![],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
@@ -453,9 +453,11 @@ fn new_cfg<'a>(
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
     builder.basic_blocks[start_bb].is_entry = true;
 
+    builder.push_fn();
     builder.push_scope();
 
     for param in params.iter() {
+        builder.scope_insert(&param.x.name);
         if param.x.mode != Mode::Spec {
             let local = FlattenedPlaceTyped {
                 local: LocalName::Named(param.x.name.clone()),
@@ -468,7 +470,6 @@ fn new_cfg<'a>(
                 AstPosition::Before(body.span.id),
                 InstructionKind::Overwrite(local_place),
             );
-            builder.scope_insert(&param.x.name);
         }
     }
 
@@ -482,17 +483,6 @@ fn new_cfg<'a>(
     builder.compute_predecessors();
 
     CFG { basic_blocks: builder.basic_blocks, locals: builder.locals }
-}
-
-impl FnScope {
-    fn new() -> Self {
-        FnScope {
-            scope: ScopeMap::new(),
-            upvars_mentioned: IndexSet::new(),
-            upvars_mutated: IndexSet::new(),
-            upvars_moved: IndexSet::new(),
-        }
-    }
 }
 
 impl<'a> Builder<'a> {
@@ -547,6 +537,20 @@ impl<'a> Builder<'a> {
         post_instruction_position: AstPosition,
         instr: InstructionKind,
     ) {
+        match &instr {
+            InstructionKind::Overwrite(fp) | InstructionKind::Mutate(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_mutated.push(fp.clone());
+                }
+            }
+            InstructionKind::MoveFrom(fp) => {
+                if self.place_is_upvar(fp) {
+                    self.fns.last_mut().unwrap().upvars_moved.push(fp.clone());
+                }
+            }
+            InstructionKind::DropFrom(_) => { }
+        }
+
         self.basic_blocks[bb]
             .instructions
             .push(Instruction { kind: instr, post_instruction_position });
@@ -801,8 +805,23 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::NonSpecClosure { .. } => {
-                todo!()
+            ExprX::NonSpecClosure {
+                params,
+                proof_fn_modes,
+                body,
+                requires: _,
+                ensures: _,
+                ret: _,
+                external_spec: _,
+            } => {
+                let fn_scope = self.build_closure(params, proof_fn_modes, body);
+
+                for fp in fn_scope.upvars_moved.into_iter() {
+                    self.push_instruction(bb, AstPosition::After(expr.span.id),
+                        InstructionKind::MoveFrom(fp));
+                }
+
+                Ok(bb)
             }
             ExprX::ArrayLiteral(es) => {
                 for e in es.iter() {
@@ -827,6 +846,9 @@ impl<'a> Builder<'a> {
                         AstPosition::Before(arm.x.body.span.id),
                     );
 
+                    self.push_scope();
+                    self.scope_insert_pattern(&arm.x.pattern);
+
                     for bound_var in pattern_all_bound_vars_with_ownership(
                         &arm.x.pattern,
                         &self.locals.var_modes,
@@ -847,6 +869,9 @@ impl<'a> Builder<'a> {
                     }
 
                     let arm_bb_end = self.build(&arm.x.body, arm_bb);
+
+                    self.pop_scope();
+
                     if let Ok(arm_bb_end) = arm_bb_end {
                         arm_bb_ends.push(arm_bb_end);
                     }
@@ -1048,11 +1073,35 @@ impl<'a> Builder<'a> {
                 }
             }
             ExprX::Block(stmts, e_opt) => {
+                let mut scope_count = 0;
                 for s in stmts.iter() {
-                    bb = self.build_stmt(s, bb)?;
+                    bb = match self.build_stmt(s, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0 .. scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+
+                    if let StmtX::Decl { .. } = &s.x {
+                        scope_count += 1;
+                    }
                 }
                 if let Some(e) = e_opt {
-                    bb = self.build(e, bb)?;
+                    bb = match self.build(e, bb) {
+                        Ok(bb) => bb,
+                        Err(()) => {
+                            for _i in 0 .. scope_count {
+                                self.pop_scope();
+                            }
+                            return Err(());
+                        }
+                    };
+                }
+                for _i in 0 .. scope_count {
+                    self.pop_scope();
                 }
                 Ok(bb)
             }
@@ -1065,8 +1114,10 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern: _, mode: _, init: None, els: None } => {
-                // do nothing
+            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 Ok(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els: None } => {
@@ -1077,6 +1128,10 @@ impl<'a> Builder<'a> {
                     bb,
                     AstPosition::After(stmt.span.id),
                 );
+
+                self.push_scope();
+                self.scope_insert_pattern(pattern);
+
                 for bound_var in
                     pattern_all_bound_vars_with_ownership(pattern, &self.locals.var_modes)
                         .into_iter()
@@ -1275,6 +1330,128 @@ impl<'a> Builder<'a> {
                     panic!("Verus Internal Error: mut refs found when matchee is ghost");
                 }
             }
+        }
+    }
+
+
+    fn build_closure(
+        &mut self,
+        params: &VarBinders<Typ>,
+        proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
+        body: &Expr,
+    ) -> FnScope {
+        let closure_prologue = self.new_bb(AstPosition::Before(body.span.id), true);
+        self.basic_blocks[closure_prologue].is_entry = true;
+        let closure_start_bb = self.new_bb(AstPosition::Before(body.span.id), false);
+
+        self.push_fn();
+        self.push_scope();
+
+        for (i, param) in params.iter().enumerate() {
+            let mode = crate::ast_util::arg_mode_from_proof_fn_modes(proof_fn_modes, i);
+            if mode != Mode::Spec {
+                let local = FlattenedPlaceTyped {
+                    local: LocalName::Named(param.name.clone()),
+                    typ: param.a.clone(),
+                    projections: vec![],
+                };
+                let local_place = self.locals.add_place(&local);
+                self.push_instruction(
+                    closure_prologue,
+                    AstPosition::Before(body.span.id),
+                    InstructionKind::Overwrite(local_place),
+                );
+            }
+        }
+
+        let closure_normal_ret_bb = self.build(body, closure_start_bb);
+        self.optionally_exit(closure_normal_ret_bb);
+
+        self.pop_scope();
+        let mut fn_scope = self.pop_fn();
+
+        if fn_scope.upvars_mutated.len() > 0 {
+            // TODO(new_mut_ref): make this a real error
+            panic!("Verus unsupported: closure mutable references");
+        }
+
+        fn_scope.upvars_moved = sort_and_remove_redundant(fn_scope.upvars_moved);
+        for fp in fn_scope.upvars_moved.iter() {
+            self.push_instruction(closure_prologue,
+                AstPosition::Before(body.span.id),
+                InstructionKind::Overwrite(fp.clone()));
+        }
+        self.basic_blocks[closure_prologue].successors.push(closure_start_bb);
+
+        fn_scope
+    }
+
+    fn push_fn(&mut self) {
+        self.fns.push(FnScope {
+            scope_map: ScopeMap::new(),
+            upvars_mutated: vec![],
+            upvars_moved: vec![],
+        });
+    }
+
+    fn pop_fn(&mut self) -> FnScope {
+        let p = self.fns.pop().unwrap();
+        assert_eq!(p.scope_map.num_scopes(), 0);
+        p
+    }
+
+    fn push_scope(&mut self) {
+        // TODO(new_mut_ref): disallow shadowing
+        self.fns.last_mut().unwrap().scope_map.push_scope(true);
+    }
+
+    fn pop_scope(&mut self) {
+        self.fns.last_mut().unwrap().scope_map.pop_scope();
+    }
+
+    fn scope_insert(&mut self, id: &VarIdent) {
+        self.fns.last_mut().unwrap().scope_map.insert(id.clone(), ()).unwrap();
+    }
+
+    fn scope_insert_pattern(&mut self, pattern: &Pattern) {
+        match &pattern.x {
+            PatternX::Wildcard(_)
+            | PatternX::Expr(_)
+            | PatternX::Range(_, _) => {
+                // nothing to do
+            }
+            PatternX::Var(binding) => {
+                self.scope_insert(&binding.name);
+            }
+            PatternX::Binding { binding, sub_pat } => {
+                self.scope_insert(&binding.name);
+                self.scope_insert_pattern(sub_pat);
+            }
+            PatternX::Constructor(_dt, _variant, patterns) => {
+                for p in patterns.iter() {
+                    self.scope_insert_pattern(&p.a);
+                }
+            }
+            PatternX::Or(sub_pat, _)
+            | PatternX::ImmutRef(sub_pat)
+            | PatternX::MutRef(sub_pat)
+            => {
+                self.scope_insert_pattern(sub_pat);
+            }
+        }
+    }
+
+    fn place_is_upvar(&self, fp: &FlattenedPlace) -> bool {
+        match &self.locals.locals[fp.local].name {
+            LocalName::Named(var_ident) => {
+                for i in (0 .. self.fns.len()).rev() {
+                    if self.fns[i].scope_map.contains_key(var_ident) {
+                        return i != self.fns.len() - 1;
+                    }
+                }
+                panic!("Verus Internal Error: place_is_upvar failed to find var");
+            }
+            LocalName::Temporary(..) => false,
         }
     }
 }
@@ -1905,6 +2082,23 @@ impl LocalName {
             LocalName::Temporary(..) => true,
         }
     }
+}
+
+fn sort_and_remove_redundant(v: Vec<FlattenedPlace>) -> Vec<FlattenedPlace> {
+    let mut v = v;
+    v.sort();
+    let mut w: Vec<FlattenedPlace> = vec![];
+    for fp in v.into_iter() {
+        if w.len() == 0 || !w[w.len() - 1].contains(&fp) {
+            w.push(fp);
+        }
+    }
+    for i in 0 .. w.len() {
+        for j in 0 .. i {
+            assert!(!w[i].intersects(&w[j]));
+        }
+    }
+    w
 }
 
 ////// CFG dataflow analysis
