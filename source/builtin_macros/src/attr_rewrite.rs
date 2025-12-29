@@ -765,10 +765,14 @@ fn rewrite_with_expr(
     } else {
         vec![]
     };
-    if let Some((_, follow)) = follows {
-        let follow: TokenStream =
-            syntax::rewrite_expr(erase.clone(), false, follow.into_token_stream().into()).into();
-        *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+    if let Some((_, follows_pats)) = follows {
+        let mut follow_expr = quote_spanned!(expr.span() => #expr);
+        for pat in follows_pats {
+            let follow: TokenStream =
+                syntax::rewrite_expr(erase.clone(), false, pat.into_token_stream().into()).into();
+            follow_expr = quote_spanned!(expr.span() => (#follow_expr, #follow));
+        }
+        *expr = Expr::Verbatim(follow_expr);
     }
     x_declares
 }
