@@ -1,6 +1,3 @@
-#[cfg(not(feature = "integration-tests"))]
-compile_error!("Enable the `integration-tests` feature to run these tests.");
-
 #[path = "src/utils.rs"]
 mod utils;
 
@@ -238,8 +235,8 @@ fn workspace_manifest_package_optin() {
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.arg("verify");
-        cmd.arg("--package").arg(optin);
         cmd.arg("--manifest-path").arg(&manifest_path);
+        cmd.arg("--package").arg(optin);
     });
 
     assert!(status.success());
@@ -247,10 +244,10 @@ fn workspace_manifest_package_optin() {
         data.args,
         vec![
             "build",
+            "--manifest-path",
+            manifest_path.to_str().expect("manifest path to string"),
             "--package",
             optin,
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string")
         ]
     );
 
@@ -288,8 +285,8 @@ fn workspace_manifest_package_hasdeps() {
 
     let (status, data) = run_cargo_verus(|cmd| {
         cmd.arg("verify");
-        cmd.arg("--package").arg(hasdeps);
         cmd.arg("--manifest-path").arg(&manifest_path);
+        cmd.arg("--package").arg(hasdeps);
     });
 
     assert!(status.success());
@@ -297,10 +294,10 @@ fn workspace_manifest_package_hasdeps() {
         data.args,
         vec![
             "build",
+            "--manifest-path",
+            manifest_path.to_str().expect("manifest path to string"),
             "--package",
             hasdeps,
-            "--manifest-path",
-            manifest_path.to_str().expect("manifest path to string")
         ]
     );
 

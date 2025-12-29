@@ -89,6 +89,20 @@ test_verify_one_file! {
         {
             x.set(0, 5); // FAILS
         }
+
+        fn test_is_empty<T>(x: &[T], y: &[T])
+            requires
+                x@.len() == 0,
+                y@.len() > 0,
+        {
+            assert(x.is_empty());
+            assert(!y.is_empty());
+            let xb = x.is_empty();
+            let yb = y.is_empty();
+            assert(xb);
+            assert(!yb);
+        }
+
     } => Err(err) => assert_fails(err, 6)
 }
 

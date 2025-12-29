@@ -604,6 +604,14 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
     expr
 }
 
+pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &unit_typ(),
+        ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
+    )
+}
+
 pub fn const_int_from_u128(u: u128) -> Constant {
     Constant::Int(BigInt::from(u))
 }
@@ -1353,6 +1361,7 @@ impl PlaceX {
             PlaceX::Temporary(_) => true,
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1365,6 +1374,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
     }
 }
 
@@ -1391,6 +1401,10 @@ pub fn place_to_expr(place: &Place) -> Expr {
                 Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
                 Some(e2),
             )
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let e = place_to_expr(p);
+            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
@@ -1420,4 +1434,15 @@ impl ModeWrapperMode {
             ModeWrapperMode::Proof => Mode::Proof,
         }
     }
+}
+
+pub(crate) fn place_to_spec_expr(place: &Place) -> Expr {
+    SpannedTyped::new(
+        &place.span,
+        &place.typ,
+        ExprX::ReadPlace(
+            place.clone(),
+            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
+        ),
+    )
 }

@@ -2769,6 +2769,9 @@ impl Verifier {
                 .collect()
         } else {
             other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::ignore_mut_ref_only_fns(krate))
+                .collect()
         };
 
         let vir_crate =

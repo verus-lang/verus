@@ -1,4 +1,5 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
+use crate::config::Vstd;
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
@@ -31,11 +32,11 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BuiltinSpecFun,
-    CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr,
-    HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode,
-    MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
+    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration,
+    TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -599,12 +600,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &Arc::new(TypX::Bool),
                     ExprX::Const(Constant::Bool(false)),
                 );
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f })
+                mk_expr(ExprX::AssertAssume { is_assume: true, expr: f, msg: None })
             }
             SpecItem::Assume => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
+                mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
             }
         },
         VerusItem::Quant(quant_item) => {
@@ -731,7 +732,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir_consume(bctx, arg1, ExprModifier::REGULAR)
                             .expect("invalid parameter for verus_builtin::array_index at arg1; arg1 must be an integer");
-                        mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
+                        mk_expr(ExprX::Binary(
+                            BinaryOp::Index(ArrayKind::Array, BoundsCheck::Allow),
+                            arg0,
+                            arg1,
+                        ))
                     }
                     _ => panic!(
                         "Expected a call for verus_builtin::array_index with two argument but did not receive it"
@@ -1066,7 +1071,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 AssertItem::Assert => {
                     unsupported_err_unless!(args_len == 1, expr.span, "expected assert", &args);
                     let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
-                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp })
+                    mk_expr(ExprX::AssertAssume { is_assume: false, expr: exp, msg: None })
                 }
                 AssertItem::AssertBy => {
                     unsupported_err_unless!(args_len == 2, expr.span, "expected assert_by", &args);
@@ -1462,7 +1467,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))
         | VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)
-            if bctx.ctxt.cmd_line_args.new_mut_ref =>
+            if bctx.new_mut_ref =>
         {
             let tracked_mode =
                 matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut));
@@ -1569,8 +1574,25 @@ fn verus_item_to_vir<'tcx, 'a>(
                     return Err(vir_err_span_str(expr.span, "mismatched types; types must be compatible to use == or !=")
                         .secondary_label(&crate::spans::err_air_span(args[0].span), format!("this is `{}`", typ_to_diagnostic_str(&t1)))
                         .secondary_label(&crate::spans::err_air_span(args[1].span), format!("this is `{}`", typ_to_diagnostic_str(&t2)))
-                        .help("decorations (like &,&mut,Ghost,Tracked,Box,Rc,...) are transparent for == or != in spec code"));
+                        .help("decorations (like &,Ghost,Tracked,Box,Rc,...) are transparent for == or != in spec code"));
                 }
+            }
+
+            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+                let check = &|ty: rustc_middle::ty::Ty, span| match ty.kind() {
+                    TyKind::Ref(_, _, rustc_middle::ty::Mutability::Mut) => {
+                        let mut diagnostics = bctx.ctxt.diagnostics.borrow_mut();
+                        diagnostics.push(vir::ast::VirErrAs::Warning(crate::util::err_span_bare(
+                                span,
+                                format!("Dereference this mutable reference to compare the value via Verus spec equality. In the future, this will be a hard error or not work as expected."),
+                            )));
+                    }
+                    _ => {}
+                };
+                let ty = bctx.types.expr_ty_adjusted(&args[0]);
+                check(ty, args[0].span);
+                let ty = bctx.types.expr_ty_adjusted(&args[1]);
+                check(ty, args[1].span);
             }
 
             let vir_args = mk_vir_args_auto_skip_mut_refs(bctx, node_substs, f, &args)?;
@@ -1759,8 +1781,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 format!("this builtin item should not appear in user code",),
             );
         }
-        VerusItem::HasResolved | VerusItem::HasResolvedUnsized => {
-            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+        item @ (VerusItem::HasResolved | VerusItem::HasResolvedUnsized) => {
+            if !bctx.new_mut_ref
+                && !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore)
+            {
                 unsupported_err!(expr.span, "resolve/has_resolved without '-V new-mut-ref'", &args);
             }
             record_spec_fn_no_proof_args(bctx, expr);
@@ -1769,11 +1793,21 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
             let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
+            let arg_typ = match item {
+                VerusItem::HasResolved => arg_typ,
+                VerusItem::HasResolvedUnsized => match arg_typ.kind() {
+                    TyKind::Ref(_, t, rustc_middle::ty::Mutability::Not) => *t,
+                    _ => {
+                        return err_span(expr.span, "has_resolved_unsized expects shared ref");
+                    }
+                },
+                _ => unreachable!(),
+            };
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
         VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
-            if !bctx.ctxt.cmd_line_args.new_mut_ref {
+            if !bctx.new_mut_ref {
                 unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
             }
             record_spec_fn_no_proof_args(bctx, expr);
@@ -2256,7 +2290,7 @@ fn mk_vir_args<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+            let is_mut_ref_param = !bctx.new_mut_ref
                 && match raw_param.kind() {
                     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
                     _ => false,
@@ -2289,7 +2323,7 @@ fn mk_vir_args_auto_skip_mut_refs<'tcx>(
     args.iter()
         .zip(raw_inputs)
         .map(|(arg, raw_param)| {
-            let is_mut_ref_param = !bctx.ctxt.cmd_line_args.new_mut_ref
+            let is_mut_ref_param = !bctx.new_mut_ref
                 && match raw_param.kind() {
                     TyKind::Ref(_, _, rustc_hir::Mutability::Mut) => true,
                     _ => false,
