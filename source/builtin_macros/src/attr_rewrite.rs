@@ -766,11 +766,14 @@ fn rewrite_with_expr(
     };
     if let Some((_, follows_pats)) = follows {
         if !follows_pats.is_empty() {
-            // Collect all follow expressions  
-            let follow_exprs: Vec<proc_macro2::TokenStream> = follows_pats.iter().map(|pat| {
-                syntax::rewrite_expr(erase.clone(), false, pat.into_token_stream().into()).into()
-            }).collect();
-            
+            let follow_exprs: Vec<proc_macro2::TokenStream> = follows_pats
+                .iter()
+                .map(|pat| {
+                    syntax::rewrite_expr(erase.clone(), false, pat.into_token_stream().into())
+                        .into()
+                })
+                .collect();
+
             // Create tuple: (expr, follow1, follow2, ...)
             *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #(#follow_exprs),*)));
         }

@@ -1212,7 +1212,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_multi_return_simple code!{
         use vstd::prelude::*;
-        
+
         #[verus_spec(ret =>
             with
                 Tracked(w): Tracked<u32> -> z: Tracked<u32>, h: Ghost<u32>,
@@ -1233,7 +1233,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_multi_return_complex code!{
         use vstd::prelude::*;
-        
+
         #[verus_spec(ret =>
             with
                 Ghost(a): Ghost<&mut u32>, Tracked(b): Tracked<u64> -> w: Ghost<u32>, y: Tracked<u64>, z: Ghost<u64>,
@@ -1257,7 +1257,7 @@ test_verify_one_file! {
             proof_with!{ |= Ghost(x_snapshot), Tracked(b), Ghost(0)}
             (x + 1)
         }
-    
+
         #[verus_spec(ret =>
             with Tracked(t): Tracked<u64>,
             requires
@@ -1272,7 +1272,7 @@ test_verify_one_file! {
                 let ghost mut z = 1u64;
                 let tracked mut y = 0u64;
             }
-            
+
             let res = (#[verus_spec(with Ghost(&mut v), Tracked(t) => Ghost(g), Tracked(y), Ghost(z))] complex_multi_return(x + 1));
 
             proof!{
@@ -1287,4 +1287,3 @@ test_verify_one_file! {
 
     } => Ok(())
 }
-
