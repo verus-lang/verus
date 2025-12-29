@@ -2064,7 +2064,42 @@ fn pretty_cfg(cfg: &CFG) -> String {
 }
 
 fn pretty_locals(locals: &LocalCollection) -> String {
-    format!("{:#?}", &locals.locals)
+    let mut v = vec![];
+    for l in locals.locals.iter() {
+        v.push(pretty_local(l, locals.datatypes));
+    }
+    v.join("\n")
+}
+
+fn pretty_local(l: &Local, datatypes: &HashMap<Path, Datatype>) -> String {
+    format!(
+        "{:}{:} : {:}",
+        pretty_local_name(&l.name),
+        pretty_tree(&l.tree, datatypes),
+        crate::ast_util::typ_to_diagnostic_str(l.tree.typ())
+    )
+}
+
+fn pretty_tree(pt: &PlaceTree, datatypes: &HashMap<Path, Datatype>) -> String {
+    match pt {
+        PlaceTree::Leaf(_) => "".to_string(),
+        PlaceTree::MutRef(_, pt) => format!(".*{:}", pretty_tree(&pt, datatypes)),
+        PlaceTree::Struct(_, dt, variants) => {
+            let mut v = vec![];
+            for (variant_idx, fields) in variants.iter().enumerate() {
+                for (field_idx, field) in fields.iter().enumerate() {
+                    match field {
+                        Some(child) => {
+                            let name = pretty_field_name(dt, variant_idx, field_idx, datatypes);
+                            v.push(format!("{:}{:}", name, pretty_tree(child, datatypes)));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            format!(".{{{:}}}", v.join(", "))
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -2139,7 +2174,7 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
 fn pretty_local_name(l: &LocalName) -> String {
     match l {
         LocalName::Named(i) => (*i.0).clone(),
-        LocalName::Temporary(_ast_id, TempId(i)) => format!("{i}"),
+        LocalName::Temporary(_ast_id, TempId(i)) => format!("Temp_{i}"),
     }
 }
 
@@ -2160,15 +2195,8 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                     PlaceTree::Struct(_, dt, trees) => (dt, &trees[*variant_idx][*field_idx]),
                     _ => unreachable!(),
                 };
-                let x = match dt {
-                    Dt::Tuple(_) => {
-                        format!(".{:}", field_idx)
-                    }
-                    Dt::Path(p) => {
-                        let datatype = &locals.datatypes[p];
-                        format!(".{:}", datatype.x.variants[*variant_idx].fields[*field_idx].name)
-                    }
-                };
+                let x = pretty_field_name(dt, *variant_idx, *field_idx, &locals.datatypes);
+                let x = format!(".{:}", x);
                 (x, inner_tree.as_ref().unwrap())
             }
         };
@@ -2176,6 +2204,31 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
         tree = t;
     }
     s
+}
+
+fn pretty_field_name(
+    dt: &Dt,
+    variant_idx: usize,
+    field_idx: usize,
+    datatypes: &HashMap<Path, Datatype>,
+) -> String {
+    match dt {
+        Dt::Tuple(_) => {
+            format!("{:}", field_idx)
+        }
+        Dt::Path(p) => {
+            let datatype = &datatypes[p];
+            if datatype.x.variants.len() > 1 {
+                format!(
+                    "{:}_{:}",
+                    datatype.x.variants[variant_idx].name,
+                    datatype.x.variants[variant_idx].fields[field_idx].name
+                )
+            } else {
+                format!("{:}", datatype.x.variants[variant_idx].fields[field_idx].name)
+            }
+        }
+    }
 }
 
 ////// Analysis: Initialization
