@@ -32,7 +32,7 @@ pub struct ScopeEntry {
 }
 
 impl ScopeEntry {
-    fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
+    pub(crate) fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
         ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
     }
     fn new_outer_param_ret(typ: &Typ, is_mut: bool, init: bool) -> Self {

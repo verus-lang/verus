@@ -213,7 +213,7 @@ pub(crate) fn infer_resolution(
         new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes);
     //println!("{:}", pretty_cfg(&cfg));
     let resolutions = get_resolutions(&cfg);
-    apply_resolutions(&cfg, body, resolutions)
+    apply_resolutions(&cfg, params, body, resolutions)
 }
 
 /// Represents the tree structure of "places" under consideration.
@@ -439,17 +439,19 @@ fn new_cfg<'a>(
     builder.basic_blocks[start_bb].is_entry = true;
 
     for param in params.iter() {
-        let local = FlattenedPlaceTyped {
-            local: LocalName::Named(param.x.name.clone()),
-            typ: param.x.typ.clone(),
-            projections: vec![],
-        };
-        let local_place = builder.locals.add_place(&local);
-        builder.push_instruction(
-            start_bb,
-            AstPosition::Before(body.span.id),
-            InstructionKind::Overwrite(local_place),
-        );
+        if param.x.mode != Mode::Spec {
+            let local = FlattenedPlaceTyped {
+                local: LocalName::Named(param.x.name.clone()),
+                typ: param.x.typ.clone(),
+                projections: vec![],
+            };
+            let local_place = builder.locals.add_place(&local);
+            builder.push_instruction(
+                start_bb,
+                AstPosition::Before(body.span.id),
+                InstructionKind::Overwrite(local_place),
+            );
+        }
     }
 
     let end_bb = builder.build(body, start_bb);
@@ -2442,7 +2444,12 @@ fn get_resolutions_for_place(
 ////// Modify the AST Expr with the new resolutions
 
 /// Returns the given expression with AssumeResolved expressions inserted.
-fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert>) -> Expr {
+fn apply_resolutions(
+    cfg: &CFG,
+    params: &Params,
+    body: &Expr,
+    resolutions: Vec<ResolutionToInsert>,
+) -> Expr {
     // All the resolutions that apply to PlaceX::Temporary nodes
     let mut temp_map = HashMap::<AstId, (Vec<FlattenedPlace>, bool)>::new();
 
@@ -2508,9 +2515,20 @@ fn apply_resolutions(cfg: &CFG, body: &Expr, resolutions: Vec<ResolutionToInsert
 
     let mut maps = (id_map, temp_map);
 
+    let mut scope_map = VisitorScopeMap::new();
+    scope_map.push_scope(true);
+    for param in params.iter() {
+        scope_map
+            .insert(
+                param.x.name.clone(),
+                crate::ast_visitor::ScopeEntry::new(&param.x.typ, false, true),
+            )
+            .unwrap();
+    }
+
     let result = crate::ast_visitor::map_expr_visitor_env(
         body,
-        &mut VisitorScopeMap::new(),
+        &mut scope_map,
         &mut maps,
         &|(id_map, _), scope_map, expr: &Expr| {
             if let Some((befores, afters, after_args, after_f, after_t, seen_yet)) =
