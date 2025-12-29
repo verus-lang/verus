@@ -742,7 +742,6 @@ fn rewrite_with_expr(
         let mut elems =
             verus_syn::punctuated::Punctuated::<verus_syn::Pat, verus_syn::Token![,]>::new();
         elems.push(tmp_pat.clone());
-        // Add all the extra patterns
         for pat in extra_pats {
             elems.push(pat);
         }
@@ -766,13 +765,15 @@ fn rewrite_with_expr(
         vec![]
     };
     if let Some((_, follows_pats)) = follows {
-        let mut follow_expr = quote_spanned!(expr.span() => #expr);
-        for pat in follows_pats {
-            let follow: TokenStream =
-                syntax::rewrite_expr(erase.clone(), false, pat.into_token_stream().into()).into();
-            follow_expr = quote_spanned!(expr.span() => (#follow_expr, #follow));
+        if !follows_pats.is_empty() {
+            // Collect all follow expressions  
+            let follow_exprs: Vec<proc_macro2::TokenStream> = follows_pats.iter().map(|pat| {
+                syntax::rewrite_expr(erase.clone(), false, pat.into_token_stream().into()).into()
+            }).collect();
+            
+            // Create tuple: (expr, follow1, follow2, ...)
+            *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #(#follow_exprs),*)));
         }
-        *expr = Expr::Verbatim(follow_expr);
     }
     x_declares
 }

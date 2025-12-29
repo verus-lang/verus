@@ -2528,7 +2528,7 @@ impl parse::Parse for WithSpecOnExpr {
                 }
                 let fork = input.fork();
                 let _comma: Token![,] = fork.parse()?;
-                let has_next_pat = fork.parse::<Pat>().is_ok();
+                let has_next_pat = Pat::parse_single(&fork).is_ok();
                 let _comma: Token![,] = input.parse()?;
                 if !has_next_pat {
                     break;
@@ -2549,7 +2549,7 @@ impl parse::Parse for WithSpecOnExpr {
                 }
                 let fork = input.fork();
                 let _comma: Token![,] = fork.parse()?;
-                let has_next_pat = fork.parse::<Pat>().is_ok();
+                let has_next_pat = Pat::parse_single(&fork).is_ok();
                 let _comma: Token![,] = input.parse()?;
                 if !has_next_pat {
                     break;

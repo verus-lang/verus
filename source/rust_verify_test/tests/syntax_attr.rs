@@ -1208,3 +1208,83 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_multi_return_simple code!{
+        use vstd::prelude::*;
+        
+        #[verus_spec(ret =>
+            with
+                Tracked(w): Tracked<u32> -> z: Tracked<u32>, h: Ghost<u32>,
+            requires
+                x < 100,
+            ensures
+                ret == x,
+                z@ == x,
+                h@ == 42,
+        )]
+        fn test_multi_return(x: u32) -> u32 {
+            #[verus_spec(with |=Tracked(x), Ghost(42))]
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_multi_return_complex code!{
+        use vstd::prelude::*;
+        
+        #[verus_spec(ret =>
+            with
+                Ghost(a): Ghost<&mut u32>, Tracked(b): Tracked<u64> -> w: Ghost<u32>, y: Tracked<u64>, z: Ghost<u64>,
+            requires
+                x < 1000,
+                x == *old(a),
+            ensures
+                *a == x + 1,
+                w@ == x,
+                y@ == b,
+                z@ == 0,
+                ret == x + 1,
+        )]
+        fn complex_multi_return(x: u32) -> u32 {
+            proof_decl!{
+                let ghost x_snapshot = x;
+            }
+            proof!{
+                *a = (*a + 1) as u32;
+            }
+            proof_with!{ |= Ghost(x_snapshot), Tracked(b), Ghost(0)}
+            (x + 1)
+        }
+    
+        #[verus_spec(ret =>
+            with Tracked(t): Tracked<u64>,
+            requires
+                x < 999,
+            ensures
+                ret == x + 2,
+        )]
+        fn caller_function(x: u32) -> u32 {
+            proof_decl!{
+                let ghost mut v = (x + 1) as u32;
+                let ghost mut g = 0u32;
+                let ghost mut z = 1u64;
+                let tracked mut y = 0u64;
+            }
+            
+            let res = (#[verus_spec(with Ghost(&mut v), Tracked(t) => Ghost(g), Tracked(y), Ghost(z))] complex_multi_return(x + 1));
+
+            proof!{
+                assert(g == x + 1);
+                assert(v == x + 2);
+                assert(y@ == t@);
+                assert(z == 0);
+            }
+
+            res
+        }
+
+    } => Ok(())
+}
+
