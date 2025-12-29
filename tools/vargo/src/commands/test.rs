@@ -29,9 +29,7 @@ impl VargoTest {
             cargo.arg(format!("{feature}"));
         }
 
-        if let Some(test) = self.testname.as_deref() {
-            cargo.arg(test);
-        }
+        cargo.args(&self.test_args);
 
         if !self.verus_args.is_empty() {
             // This is to pass arguments to rust_verify_test
@@ -49,6 +47,7 @@ impl VargoTest {
             no_default_features: self.no_default_features,
             features: self.features.clone(),
             release: self.release,
+            build_options: self.build_options.clone(),
             verus_args: self.verus_args.clone(),
         }
     }

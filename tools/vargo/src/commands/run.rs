@@ -42,6 +42,7 @@ impl VargoRun {
             no_default_features: self.no_default_features,
             features: self.features.clone(),
             release: self.release,
+            build_options: self.build_options.clone(),
             verus_args: self.verus_args.clone(),
         }
     }

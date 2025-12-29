@@ -30,7 +30,7 @@ impl VargoNextestRun {
             cargo.arg(format!("{feature}"));
         }
 
-        cargo.args(&self.filters_and_args);
+        cargo.args(&self.nextest_args);
 
         if !self.verus_args.is_empty() {
             // This is to pass arguments to rust_verify_test
@@ -48,6 +48,7 @@ impl VargoNextestRun {
             no_default_features: self.no_default_features,
             features: self.features.clone(),
             release: self.release,
+            build_options: self.build_options.clone(),
             verus_args: self.verus_args.clone(),
         }
     }

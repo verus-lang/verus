@@ -63,7 +63,7 @@ pub fn fmt(
     )?;
 
     if !vargo_cmd.exclude.iter().any(|e| e.as_str() == "vstd") {
-        format_vstd(options, context, &vargo_cmd.rustfmt_args)?;
+        format_vstd(options, context, vargo_cmd)?;
     }
 
     Ok(())
@@ -99,13 +99,13 @@ fn format_rust_dir(
 fn format_vstd(
     options: &VargoOptions,
     context: &VargoContext,
-    rustfmt_args: &[impl AsRef<OsStr>],
+    vargo_cmd: &VargoFmt,
 ) -> VargoResult<()> {
     let verusfmt_path: PathBuf = std::env::var("VARGO_VERUSFMT_PATH")
         .unwrap_or("verusfmt".to_string())
         .into();
 
-    if !options.vstd_no_verusfmt {
+    if !vargo_cmd.vstd_no_verusfmt {
         let Some(verusfmt_version) = verusfmt_get_version(&verusfmt_path, options.vargo_verbose)?
         else {
             return Ok(());
@@ -124,7 +124,7 @@ fn format_vstd(
             .collect::<Vec<_>>();
 
         let mut verusfmt = std::process::Command::new(&verusfmt_path);
-        verusfmt.args(rustfmt_args);
+        verusfmt.args(&vargo_cmd.rustfmt_args);
         verusfmt.args(all_vstd_files);
         log_command(&verusfmt, options.vargo_verbose);
         let verusfmt_status = verusfmt

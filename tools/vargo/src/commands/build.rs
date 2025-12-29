@@ -309,8 +309,8 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             let current_fingerprint = Fingerprint {
                 dependencies_mtime,
                 vstd_mtime,
-                vstd_no_std: options.vstd_no_std,
-                vstd_no_alloc: options.vstd_no_alloc,
+                vstd_no_std: vargo_cmd.build_options.vstd_no_std,
+                vstd_no_alloc: vargo_cmd.build_options.vstd_no_alloc,
             };
 
             if stored_fingerprint
@@ -472,19 +472,19 @@ fn rebuild_vstd(
     if vargo_cmd.release {
         vstd_build.arg("--release");
     }
-    if options.vstd_no_verify {
+    if vargo_cmd.build_options.vstd_no_verify {
         vstd_build.arg("--no-verify");
     }
-    if options.vstd_no_std {
+    if vargo_cmd.build_options.vstd_no_std {
         vstd_build.arg("--no-std");
     }
-    if options.vstd_no_alloc {
+    if vargo_cmd.build_options.vstd_no_alloc {
         vstd_build.arg("--no-alloc");
     }
-    if options.vstd_trace {
+    if vargo_cmd.build_options.vstd_trace {
         vstd_build.arg("--trace");
     }
-    if options.vstd_log_all {
+    if vargo_cmd.build_options.vstd_log_all {
         vstd_build.arg("--log-all");
     }
     if options.vargo_verbose {
