@@ -343,6 +343,9 @@ struct BasicBlock {
     predecessors: Vec<BBIndex>,
     /// Basic blocks that we might jump to after the end
     successors: Vec<BBIndex>,
+    /// Can we enter here?
+    /// (Should be one entry for the whole function, and one entry for every closure)
+    is_entry: bool,
     /// Is it possible to return from the function at the end of this basic block
     /// (i.e., as opposed to jumping to another basic block)
     is_exit: bool,
@@ -433,6 +436,7 @@ fn new_cfg<'a>(
         functions,
     };
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
+    builder.basic_blocks[start_bb].is_entry = true;
 
     for param in params.iter() {
         let local = FlattenedPlaceTyped {
@@ -476,6 +480,7 @@ impl<'a> Builder<'a> {
             instructions: vec![],
             predecessors: vec![],
             successors: vec![],
+            is_entry: false,
             is_exit: false,
             always_add_resolution_at_start,
             position_of_start: start_position,
@@ -1910,9 +1915,10 @@ fn do_dataflow<D: DataflowState + Clone + Eq>(
 
     match dir {
         Direction::Forward => {
-            output.output[0][0] = entry_or_exit.clone();
-
             for i in 0..cfg.basic_blocks.len() {
+                if cfg.basic_blocks[i].is_entry {
+                    *output.output[i].last_mut().unwrap() = entry_or_exit.clone();
+                }
                 worklist.push_back(i);
                 in_worklist[i] = true;
             }
