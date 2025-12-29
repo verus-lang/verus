@@ -179,7 +179,7 @@ We place the declaration `let tmp;` at a larger scope.
 
 use crate::ast::{
     BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
-    Mode, ModeWrapperMode, Param, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
     VarIdent, VarIdentDisambiguate, VariantCheck,
 };
@@ -249,7 +249,6 @@ enum LocalName {
 #[derive(Debug)]
 struct Local {
     name: LocalName,
-    is_param: bool,
     tree: PlaceTree,
 }
 
@@ -436,8 +435,19 @@ fn new_cfg<'a>(
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
 
     for param in params.iter() {
-        builder.locals.add_param(param);
+        let local = FlattenedPlaceTyped {
+            local: LocalName::Named(param.x.name.clone()),
+            typ: param.x.typ.clone(),
+            projections: vec![],
+        };
+        let local_place = builder.locals.add_place(&local);
+        builder.push_instruction(
+            start_bb,
+            AstPosition::Before(body.span.id),
+            InstructionKind::Overwrite(local_place),
+        );
     }
+
     let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
 
@@ -642,7 +652,7 @@ impl<'a> Builder<'a> {
                                 field_name,
                                 &self.locals.datatypes,
                             ));
-                            let p = self.locals.add_place(&p, false);
+                            let p = self.locals.add_place(&p);
                             self.push_instruction(
                                 bb,
                                 AstPosition::After(place.span.id),
@@ -788,7 +798,7 @@ impl<'a> Builder<'a> {
                             typ: bound_var.typ,
                             projections: vec![],
                         };
-                        let fp = self.locals.add_place(&fpt, false);
+                        let fp = self.locals.add_place(&fpt);
                         self.push_instruction(
                             arm_bb,
                             AstPosition::Before(arm.x.body.span.id),
@@ -985,7 +995,7 @@ impl<'a> Builder<'a> {
                         )
                     }
                     if let Some(p) = p.get_place_for_move() {
-                        let p = self.locals.add_place(&p, false);
+                        let p = self.locals.add_place(&p);
                         self.push_instruction(
                             bb,
                             AstPosition::After(span_id),
@@ -1036,7 +1046,7 @@ impl<'a> Builder<'a> {
                         typ: bound_var.typ,
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(&fpt, false);
+                    let fp = self.locals.add_place(&fpt);
                     self.push_instruction(
                         bb,
                         AstPosition::After(stmt.span.id),
@@ -1130,7 +1140,7 @@ impl<'a> Builder<'a> {
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    let fp = self.locals.add_place(&fpt, false);
+                    let fp = self.locals.add_place(&fpt);
                     self.push_instruction(
                         bb,
                         AstPosition::AfterTempAssignment(place.span.id),
@@ -1180,7 +1190,7 @@ impl<'a> Builder<'a> {
                     typ: bv.typ.clone(),
                     projections: vec![],
                 };
-                self.locals.add_place(&fpt, false)
+                self.locals.add_place(&fpt)
             })
             .collect()
     }
@@ -1201,7 +1211,7 @@ impl<'a> Builder<'a> {
                     &self.locals.var_modes,
                 );
                 for (fpt, by_ref) in places.into_iter() {
-                    let fp = self.locals.add_place(&fpt, false);
+                    let fp = self.locals.add_place(&fpt);
                     self.push_instruction(
                         bb,
                         position,
@@ -1215,7 +1225,7 @@ impl<'a> Builder<'a> {
             }
             ComputedPlaceTyped::Partial(Some(fpt)) => {
                 if crate::patterns::pattern_has_mut(pattern) {
-                    let fp = self.locals.add_place(fpt, false);
+                    let fp = self.locals.add_place(fpt);
                     self.push_instruction(bb, position, InstructionKind::Mutate(fp));
                 }
             }
@@ -1428,27 +1438,14 @@ impl<'a> LocalCollection<'a> {
         LocalName::Temporary(ast_id, temp_id)
     }
 
-    fn add_param(&mut self, p: &Param) {
-        if p.x.mode != Mode::Spec {
-            self.add_place(
-                &FlattenedPlaceTyped {
-                    local: LocalName::Named(p.x.name.clone()),
-                    typ: p.x.typ.clone(),
-                    projections: vec![],
-                },
-                true,
-            );
-        }
-    }
-
     fn add_computed_place(&mut self, p: ComputedPlaceTyped) -> ComputedPlace {
         match p {
             ComputedPlaceTyped::Exact(fpi) => {
-                let sp = self.add_place(&fpi, false);
+                let sp = self.add_place(&fpi);
                 ComputedPlace::Exact(sp)
             }
             ComputedPlaceTyped::Partial(Some(fpi)) => {
-                let sp = self.add_place(&fpi, false);
+                let sp = self.add_place(&fpi);
                 ComputedPlace::Partial(Some(sp))
             }
             ComputedPlaceTyped::Partial(None) => ComputedPlace::Partial(None),
@@ -1457,13 +1454,9 @@ impl<'a> LocalCollection<'a> {
 
     /// Given a FlattenedPlaceTyped, we extend the tree if necessary so that it is deep enough
     /// to incorporate the given place. Returns a FlattenedPlace which indexes into the tree.
-    fn add_place(&mut self, p: &FlattenedPlaceTyped, is_param: bool) -> FlattenedPlace {
+    fn add_place(&mut self, p: &FlattenedPlaceTyped) -> FlattenedPlace {
         if !self.ident_to_idx.contains_key(&p.local) {
-            self.locals.push(Local {
-                name: p.local.clone(),
-                tree: PlaceTree::Leaf(p.typ.clone()),
-                is_param,
-            });
+            self.locals.push(Local { name: p.local.clone(), tree: PlaceTree::Leaf(p.typ.clone()) });
             self.ident_to_idx.insert(p.local.clone(), self.locals.len() - 1);
         }
         let idx = self.ident_to_idx[&p.local];
@@ -2283,9 +2276,8 @@ impl InitializationPossibilities {
         InitializationPossibilities { can_be_uninit: false }
     }
 
-    fn entry(local: &Local) -> Self {
-        // Params are initialized at the start, nothing else is
-        InitializationPossibilities { can_be_uninit: !local.is_param }
+    fn entry() -> Self {
+        InitializationPossibilities { can_be_uninit: true }
     }
 }
 
@@ -2350,7 +2342,7 @@ fn get_resolutions(cfg: &CFG) -> Vec<ResolutionToInsert> {
                 do_dataflow::<InitializationPossibilities>(
                     cfg,
                     InitializationPossibilities::empty(),
-                    InitializationPossibilities::entry(&cfg.locals.locals[place.local]),
+                    InitializationPossibilities::entry(),
                     place,
                     Direction::Forward,
                 )
