@@ -5098,7 +5098,8 @@ where
     crate::WithSpecOnExpr {
         with: node.with,
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_expr),
-        outputs: (node.outputs).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
+        outputs: (node.outputs)
+            .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_pat))),
         follows: (node.follows).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
     }
 }

@@ -735,14 +735,17 @@ fn rewrite_with_expr(
         }
         _ => {}
     };
-    let x_declares = if let Some((_, extra_pat)) = outputs {
+    let x_declares = if let Some((_, extra_pats)) = outputs {
         // The expected pat.
         let tmp_pat =
             verus_syn::Pat::Verbatim(quote_spanned! {expr.span() => __verus_tmp_expr_var__});
         let mut elems =
             verus_syn::punctuated::Punctuated::<verus_syn::Pat, verus_syn::Token![,]>::new();
         elems.push(tmp_pat.clone());
-        elems.push(extra_pat);
+        // Add all the extra patterns
+        for pat in extra_pats {
+            elems.push(pat);
+        }
         // The actual pat.
         let mut pat = verus_syn::Pat::Tuple(verus_syn::PatTuple {
             attrs: vec![],

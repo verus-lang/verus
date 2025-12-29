@@ -251,7 +251,7 @@ ast_struct! {
     pub struct WithSpecOnExpr {
         pub with: Token![with],
         pub inputs: Punctuated<Expr, Token![,]>,
-        pub outputs: Option<(Token![=>], Pat)>,
+        pub outputs: Option<(Token![=>], Punctuated<Pat, Token![,]>)>,
         pub follows: Option<(Token![|=], Pat)>,
     }
 }
@@ -2519,7 +2519,20 @@ impl parse::Parse for WithSpecOnExpr {
         }
         let outputs = if input.peek(Token![=>]) {
             let token = input.parse()?;
-            let outs = Pat::parse_single(&input)?;
+            let mut outs = Punctuated::new();
+            loop {
+                let pat = Pat::parse_single(&input)?;
+                outs.push(pat);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let _comma: Token![,] = input.parse()?;
+                if !input.peek(Token![|=]) && input.peek2(Token![,]) {
+                    // Continue parsing more patterns
+                } else {
+                    break;
+                }
+            }
             Some((token, outs))
         } else {
             None
