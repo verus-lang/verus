@@ -373,7 +373,10 @@ struct ResolutionToInsert {
 
 struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
+    /// Loop stack, outermost to innermost
     loops: Vec<LoopEntry>,
+    /// First element is the outermost fn, followed by closure stack, outermost to innermost
+    fns: Vec<FnScope>,
     locals: LocalCollection<'a>,
     read_kind_finals: &'a ReadKindFinals,
     functions: &'a HashMap<Fun, Function>,
@@ -388,6 +391,17 @@ struct LoopEntry {
     continue_bb: BBIndex,
     /// Vars that should be dropped before returning to the beginning
     drops: Rc<Vec<FlattenedPlace>>,
+}
+
+/// Represents the scope for either the top-level fn or for any closure inside it
+/// Tracks the "upvars", i.e., vars captured by the closure
+/// (any var declared outside the closure but referenced from within it)
+#[derive(Clone)]
+struct FnScope {
+    scope: ScopeMap<VarIdent, ()>
+    upvars_mentioned: IndexSet<VarIdent>,
+    upvars_mutated: IndexSet<VarIdent>,
+    upvars_moved: IndexSet<VarIdent>,
 }
 
 #[derive(Clone, Debug)]
@@ -423,6 +437,7 @@ fn new_cfg<'a>(
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
+        fns: vec![FnScope::new()],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
@@ -438,6 +453,8 @@ fn new_cfg<'a>(
     let start_bb = builder.new_bb(AstPosition::Before(body.span.id), true);
     builder.basic_blocks[start_bb].is_entry = true;
 
+    builder.push_scope();
+
     for param in params.iter() {
         if param.x.mode != Mode::Spec {
             let local = FlattenedPlaceTyped {
@@ -451,15 +468,31 @@ fn new_cfg<'a>(
                 AstPosition::Before(body.span.id),
                 InstructionKind::Overwrite(local_place),
             );
+            builder.scope_insert(&param.x.name);
         }
     }
 
     let end_bb = builder.build(body, start_bb);
     builder.optionally_exit(end_bb);
 
+    builder.pop_scope();
+    builder.pop_fn();
+    assert!(builder.fns.len() == 0);
+
     builder.compute_predecessors();
 
     CFG { basic_blocks: builder.basic_blocks, locals: builder.locals }
+}
+
+impl FnScope {
+    fn new() -> Self {
+        FnScope {
+            scope: ScopeMap::new(),
+            upvars_mentioned: IndexSet::new(),
+            upvars_mutated: IndexSet::new(),
+            upvars_moved: IndexSet::new(),
+        }
+    }
 }
 
 impl<'a> Builder<'a> {
