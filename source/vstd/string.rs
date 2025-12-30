@@ -258,6 +258,14 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
         s.is_ascii() == res.is_ascii(),
 ;
 
+// same as above
+#[cfg(feature = "alloc")]
+pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a String) -> (res: &'a str)
+    ensures
+        res@ == s@,
+        s.is_ascii() == res.is_ascii(),
+;
+
 #[cfg(feature = "alloc")]
 pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures

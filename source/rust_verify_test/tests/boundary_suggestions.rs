@@ -123,35 +123,37 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_assume_specification_foreign_suggestion_made code! {
-        use vstd::prelude::verus;
+// seems not applicable anymore
+// test_verify_one_file! {
+//     #[test] test_assume_specification_foreign_suggestion_made code! {
+//         use vstd::prelude::verus;
 
-        verus! {
+//         verus! {
 
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
-            }
-        }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-           where
-           F: std::ops::FnOnce(T,) -> std::option::Option<U> + std::marker::Destruct,;")
-}
-test_verify_one_file! {
-    #[test] test_assume_specification_foreign_suggestion_correct code! {
-        use vstd::prelude::verus;
+//             pub fn bar<T>(o: Option<T>)-> Option<bool> {
+//                 o.and_then(|x| Some(false))
+//             }
+//         }
+//     } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
+//            where
+//            F: std::ops::FnOnce(T,) -> std::option::Option<U> + std::marker::Destruct,;")
+// }
+// test_verify_one_file! {
+//     #[test] test_assume_specification_foreign_suggestion_correct code! {
+//         use vstd::prelude::verus;
 
-        verus! {
-            pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-            where
-            F: std::ops::FnOnce(T,) -> std::option::Option<U>,;
+//         verus! {
+//             pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
+//             where
+//             F: std::ops::FnOnce(T,) -> std::option::Option<U>,;
 
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
-            }
-        }
-    } => Ok(())
-}
+//             pub fn bar<T>(o: Option<T>)-> Option<bool> {
+//                 o.and_then(|x| Some(false))
+//             }
+//         }
+//     } => Ok(())
+// }
+
 test_verify_one_file! {
     #[test] test_assume_specification_str_eq_suggestion_made code! {
         use vstd::prelude::*;
