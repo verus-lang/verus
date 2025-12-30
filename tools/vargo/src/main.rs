@@ -116,18 +116,18 @@ fn run(cli: VargoCli) -> VargoResult<()> {
     set_vargo_env(&cli, &context);
 
     match &cli.command {
-        VargoSubcommand::Clean(vargo_cmd) => commands::clean(&cli.options, &context, vargo_cmd),
-        VargoSubcommand::Fmt(vargo_cmd) => commands::fmt(&cli.options, &context, vargo_cmd),
-        VargoSubcommand::Test(vargo_cmd) => commands::test(&cli.options, &context, vargo_cmd),
-        VargoSubcommand::NextestRun(vargo_cmd) => {
-            commands::nextest_run(&cli.options, &context, vargo_cmd)
-        }
         VargoSubcommand::Build(vargo_cmd) => commands::build(&cli.options, &context, vargo_cmd),
-        VargoSubcommand::Run(vargo_cmd) => commands::run(&cli.options, &context, vargo_cmd),
-        VargoSubcommand::Update(vargo_cmd) => commands::update(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Clean(vargo_cmd) => commands::clean(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Cmd(vargo_cmd) => commands::cmd(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Fmt(vargo_cmd) => commands::fmt(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Metadata(vargo_cmd) => {
             commands::metadata(&cli.options, &context, vargo_cmd)
         }
-        VargoSubcommand::Cmd(vargo_cmd) => commands::cmd(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::NextestRun(vargo_cmd) => {
+            commands::nextest_run(&cli.options, &context, vargo_cmd)
+        }
+        VargoSubcommand::Run(vargo_cmd) => commands::run(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Test(vargo_cmd) => commands::test(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Update(vargo_cmd) => commands::update(&cli.options, &context, vargo_cmd),
     }
 }

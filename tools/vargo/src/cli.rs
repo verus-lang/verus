@@ -81,12 +81,28 @@ pub struct VargoBuild {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VargoTest {
-    pub package: String,
+pub struct VargoClean {
+    pub package: Option<String>,
+    pub release: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VargoCmd {
+    pub command: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VargoFmt {
+    pub package: Option<String>,
     pub exclude: HashSet<String>,
+    pub rustfmt_args: Vec<String>,
+    pub vstd_no_verusfmt: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VargoMetadata {
     pub feature_options: FeaturesOptions,
-    pub build_options: BuildOptions,
-    pub test_args: Vec<String>,
+    pub format_version: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,28 +123,12 @@ pub struct VargoRun {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VargoClean {
-    pub package: Option<String>,
-    pub release: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VargoMetadata {
-    pub feature_options: FeaturesOptions,
-    pub format_version: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VargoFmt {
-    pub package: Option<String>,
+pub struct VargoTest {
+    pub package: String,
     pub exclude: HashSet<String>,
-    pub rustfmt_args: Vec<String>,
-    pub vstd_no_verusfmt: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VargoCmd {
-    pub command: Vec<String>,
+    pub feature_options: FeaturesOptions,
+    pub build_options: BuildOptions,
+    pub test_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -141,8 +141,17 @@ pub enum VargoSubcommand {
     /// Build Verus
     Build(VargoBuild),
 
-    /// Run Verus tests
-    Test(VargoTest),
+    /// Clean current build
+    Clean(VargoClean),
+
+    /// Run an arbitrary command in vargo's environment
+    Cmd(VargoCmd),
+
+    /// Run the formatter on the codebase
+    Fmt(VargoFmt),
+
+    /// Get resolved dependencies with concrete used versions in a machine-readable format
+    Metadata(VargoMetadata),
 
     /// Run Verus tests using nextest
     NextestRun(VargoNextestRun),
@@ -150,16 +159,8 @@ pub enum VargoSubcommand {
     /// Run a binary package
     Run(VargoRun),
 
-    /// Clean current build
-    Clean(VargoClean),
-
-    Metadata(VargoMetadata),
-
-    /// Run the formatter on the codebase
-    Fmt(VargoFmt),
-
-    /// Run an arbitrary command in vargo's environment
-    Cmd(VargoCmd),
+    /// Run Verus tests
+    Test(VargoTest),
 
     /// Update packages
     Update(VargoUpdate),
@@ -171,13 +172,13 @@ impl VargoSubcommand {
     pub fn release(&self) -> bool {
         match self {
             VargoSubcommand::Build(c) => c.build_options.release,
-            VargoSubcommand::Test(c) => c.build_options.release,
+            VargoSubcommand::Clean(c) => c.release,
+            VargoSubcommand::Cmd(_) => false,
+            VargoSubcommand::Fmt(_) => false,
+            VargoSubcommand::Metadata(_) => false,
             VargoSubcommand::NextestRun(c) => c.build_options.release,
             VargoSubcommand::Run(c) => c.build_options.release,
-            VargoSubcommand::Clean(c) => c.release,
-            VargoSubcommand::Metadata(_) => false,
-            VargoSubcommand::Fmt(_) => false,
-            VargoSubcommand::Cmd(_) => false,
+            VargoSubcommand::Test(c) => c.build_options.release,
             VargoSubcommand::Update(_) => false,
         }
     }
@@ -203,34 +204,34 @@ pub struct VargoParsedCli {
 
 #[derive(Clone, Debug, ValueEnum, PartialEq, Eq, Hash, Copy)]
 pub enum VerusFeatures {
-    Singular,
     AxiomUsageInfo,
     RecordHistory,
+    Singular,
 }
 
 impl std::fmt::Display for VerusFeatures {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VerusFeatures::Singular => f.write_str("singular"),
             VerusFeatures::AxiomUsageInfo => f.write_str("axiom-usage-info"),
             VerusFeatures::RecordHistory => f.write_str("record-history"),
+            VerusFeatures::Singular => f.write_str("singular"),
         }
     }
 }
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum CargoColor {
-    Auto,
     Always,
+    Auto,
     Never,
 }
 
 impl std::fmt::Display for CargoColor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CargoColor::Never => f.write_str("never"),
             CargoColor::Always => f.write_str("always"),
             CargoColor::Auto => f.write_str("auto"),
+            CargoColor::Never => f.write_str("never"),
         }
     }
 }
@@ -246,6 +247,76 @@ pub enum VargoParsedSubcommand {
         /// Exclude packages from building
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
+
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
+
+        #[command(flatten)]
+        build_options: BuildOptions,
+
+        /// Arguments to pass on to verus (in case verification is needed)
+        #[arg(last = true, allow_hyphen_values = true)]
+        verus_args: Vec<String>,
+    },
+
+    /// Clean current build
+    Clean {
+        /// Package to clean
+        #[arg(short, long)]
+        package: Option<String>,
+
+        /// Whether to clean debug or release artifacts
+        #[arg(short, long)]
+        release: bool,
+    },
+
+    /// Run an arbitrary command in vargo's environment
+    Cmd {
+        /// Command to run
+        command: Vec<String>,
+    },
+
+    /// Run the formatter on the codebase
+    Fmt {
+        /// Package to format
+        #[arg(short, long)]
+        package: Option<String>,
+
+        /// Exclude packages from formatting
+        #[arg(long, action = clap::ArgAction::Append)]
+        exclude: Vec<String>,
+
+        /// Whether to skip formatting vstd
+        #[arg(long)]
+        vstd_no_verusfmt: bool,
+
+        /// Options passed to rustfmt
+        #[arg(last = true, allow_hyphen_values = true)]
+        rustfmt_args: Vec<String>,
+    },
+
+    /// Get metadata from cargo
+    Metadata {
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
+
+        /// Format version
+        #[arg(long, default_value = "1")]
+        format_version: String,
+    },
+
+    /// Run Verus tests with nextest
+    Nextest {
+        /// Build and run Verus tests
+        #[command(subcommand)]
+        command: NexTestCommand,
+    },
+
+    /// Run a binary package
+    Run {
+        /// Package to run
+        #[arg(short, long)]
+        package: Option<String>,
 
         #[command(flatten)]
         feature_options: FeaturesOptions,
@@ -277,76 +348,6 @@ pub enum VargoParsedSubcommand {
         /// Other options (`cargo test --help` for more info)
         #[arg(allow_hyphen_values = true)]
         test_args: Vec<String>,
-    },
-
-    /// Run Verus tests with nextest
-    Nextest {
-        /// Build and run Verus tests
-        #[command(subcommand)]
-        command: NexTestCommand,
-    },
-
-    /// Run a binary package
-    Run {
-        /// Package to run
-        #[arg(short, long)]
-        package: Option<String>,
-
-        #[command(flatten)]
-        feature_options: FeaturesOptions,
-
-        #[command(flatten)]
-        build_options: BuildOptions,
-
-        /// Arguments to pass on to verus (in case verification is needed)
-        #[arg(last = true, allow_hyphen_values = true)]
-        verus_args: Vec<String>,
-    },
-
-    /// Clean current build
-    Clean {
-        /// Package to clean
-        #[arg(short, long)]
-        package: Option<String>,
-
-        /// Whether to clean debug or release artifacts
-        #[arg(short, long)]
-        release: bool,
-    },
-
-    /// Get metadata from cargo
-    Metadata {
-        #[command(flatten)]
-        feature_options: FeaturesOptions,
-
-        /// Format version
-        #[arg(long, default_value = "1")]
-        format_version: String,
-    },
-
-    /// Run the formatter on the codebase
-    Fmt {
-        /// Package to format
-        #[arg(short, long)]
-        package: Option<String>,
-
-        /// Exclude packages from formatting
-        #[arg(long, action = clap::ArgAction::Append)]
-        exclude: Vec<String>,
-
-        /// Whether to skip formatting vstd
-        #[arg(long)]
-        vstd_no_verusfmt: bool,
-
-        /// Options passed to rustfmt
-        #[arg(last = true, allow_hyphen_values = true)]
-        rustfmt_args: Vec<String>,
-    },
-
-    /// Run an arbitrary command in vargo's environment
-    Cmd {
-        /// Command to run
-        command: Vec<String>,
     },
 
     /// Update dependencies
@@ -395,18 +396,27 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 build_options,
                 verus_args,
             }),
-            VargoParsedSubcommand::Test {
+            VargoParsedSubcommand::Clean { package, release } => {
+                VargoSubcommand::Clean(VargoClean { package, release })
+            }
+            VargoParsedSubcommand::Cmd { command } => VargoSubcommand::Cmd(VargoCmd { command }),
+            VargoParsedSubcommand::Fmt {
                 package,
                 exclude,
-                feature_options,
-                build_options,
-                test_args,
-            } => VargoSubcommand::Test(VargoTest {
+                rustfmt_args,
+                vstd_no_verusfmt,
+            } => VargoSubcommand::Fmt(VargoFmt {
                 package,
                 exclude: exclude.into_iter().collect(),
+                vstd_no_verusfmt,
+                rustfmt_args,
+            }),
+            VargoParsedSubcommand::Metadata {
                 feature_options,
-                build_options,
-                test_args,
+                format_version,
+            } => VargoSubcommand::Metadata(VargoMetadata {
+                feature_options,
+                format_version,
             }),
             VargoParsedSubcommand::Nextest {
                 command:
@@ -435,28 +445,19 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 build_options,
                 verus_args,
             }),
-            VargoParsedSubcommand::Clean { package, release } => {
-                VargoSubcommand::Clean(VargoClean { package, release })
-            }
-            VargoParsedSubcommand::Metadata {
-                feature_options,
-                format_version,
-            } => VargoSubcommand::Metadata(VargoMetadata {
-                feature_options,
-                format_version,
-            }),
-            VargoParsedSubcommand::Fmt {
+            VargoParsedSubcommand::Test {
                 package,
                 exclude,
-                rustfmt_args,
-                vstd_no_verusfmt,
-            } => VargoSubcommand::Fmt(VargoFmt {
+                feature_options,
+                build_options,
+                test_args,
+            } => VargoSubcommand::Test(VargoTest {
                 package,
                 exclude: exclude.into_iter().collect(),
-                vstd_no_verusfmt,
-                rustfmt_args,
+                feature_options,
+                build_options,
+                test_args,
             }),
-            VargoParsedSubcommand::Cmd { command } => VargoSubcommand::Cmd(VargoCmd { command }),
             VargoParsedSubcommand::Update { packages } => {
                 VargoSubcommand::Update(VargoUpdate { packages })
             }
