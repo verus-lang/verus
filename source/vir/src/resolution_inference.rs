@@ -765,8 +765,6 @@ impl<'a> Builder<'a> {
             ExprX::Ctor(_dt, _id, binders, None) => {
                 let mut two_phase_delayed_mutations = vec![];
 
-                // TODO(new_mut_ref): tests for two-phase borrows
-
                 for b in binders.iter() {
                     let e = &b.a;
                     match &e.x {
@@ -1569,8 +1567,6 @@ pub fn pattern_all_bound_vars_with_ownership(
     pattern: &Pattern,
     modes: &HashMap<VarIdent, Mode>,
 ) -> Vec<BoundVar> {
-    // TODO(new_mut_ref) the mode-checking here needs to be exercised in test cases
-
     fn pattern_all_bound_vars_rec(
         pattern: &Pattern,
         out: &mut Vec<BoundVar>,
@@ -1627,8 +1623,6 @@ fn moves_and_muts_for_place_being_matched(
     datatypes: &HashMap<Path, Datatype>,
     modes: &HashMap<VarIdent, Mode>,
 ) -> Vec<(FlattenedPlaceTyped, ByRef)> {
-    // TODO(new_mut_ref) need to check if stuff is copy vs move
-    // TODO(new_mut_ref) need to account for pattern-ergonomics
     let projs = moves_and_muts_for_pattern(pattern, datatypes, modes);
     projs
         .into_iter()

@@ -2317,6 +2317,54 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] no_resolve_ghost_binders ["new-mut-ref"] => verus_code! {
+        proof fn test1<T>(x: (T, T)) {
+            match x {
+                (y, z) => {
+                    assert(has_resolved(y)); // FAILS
+                }
+            }
+        }
+
+        proof fn test2<T>(x: (T, T)) {
+            let (y, z) = x;
+            assert(has_resolved(y)); // FAILS
+        }
+
+        tracked struct TG<T, G> {
+            tracked t: T,
+            ghost g: G,
+        }
+
+        proof fn test_tg1<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(g)); // FAILS
+                }
+            }
+        }
+
+        proof fn test_tg2<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(t));
+                }
+            }
+        }
+
+        proof fn test_tg1_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        proof fn test_tg2_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(t));
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_binder_forbidden ["new-mut-ref"] => verus_code! {
         struct X {
             a: u64
