@@ -97,42 +97,44 @@ fn format_rust_dir(
 }
 
 fn format_vstd(options: &VargoOptions, vargo_cmd: &VargoFmt) -> VargoResult<()> {
+    if vargo_cmd.vstd_no_verusfmt {
+        return Ok(());
+    }
+
     let verusfmt_path: PathBuf = std::env::var("VARGO_VERUSFMT_PATH")
         .unwrap_or("verusfmt".to_string())
         .into();
 
-    if !vargo_cmd.vstd_no_verusfmt {
-        let Some(verusfmt_version) = verusfmt_get_version(&verusfmt_path, options.vargo_verbose)?
-        else {
-            return Ok(());
-        };
-        verusfmt_check_version(verusfmt_version)?;
+    let Some(verusfmt_version) = verusfmt_get_version(&verusfmt_path, options.vargo_verbose)?
+    else {
+        return Ok(());
+    };
+    verusfmt_check_version(verusfmt_version)?;
 
-        info!("formatting vstd");
+    info!("formatting vstd");
 
-        let vstd_path = std::path::Path::new("vstd");
-        let all_vstd_files = walkdir::WalkDir::new(vstd_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|x| x.path().extension() == Some(std::ffi::OsStr::new("rs")))
-            .map(|x| x.path().to_owned())
-            .collect::<Vec<_>>();
+    let vstd_path = std::path::Path::new("vstd");
+    let all_vstd_files = walkdir::WalkDir::new(vstd_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|x| x.path().extension() == Some(std::ffi::OsStr::new("rs")))
+        .map(|x| x.path().to_owned())
+        .collect::<Vec<_>>();
 
-        let mut verusfmt = std::process::Command::new(&verusfmt_path);
-        verusfmt.args(&vargo_cmd.rustfmt_args);
-        verusfmt.args(all_vstd_files);
-        log_command(&verusfmt, options.vargo_verbose);
-        let verusfmt_status = verusfmt
-            .status()
-            .map_err(|e| format!("failed to run verusfmt on vstd: {e}"))?;
+    let mut verusfmt = std::process::Command::new(&verusfmt_path);
+    verusfmt.args(&vargo_cmd.rustfmt_args);
+    verusfmt.args(all_vstd_files);
+    log_command(&verusfmt, options.vargo_verbose);
+    let verusfmt_status = verusfmt
+        .status()
+        .map_err(|e| format!("failed to run verusfmt on vstd: {e}"))?;
 
-        if !verusfmt_status.success() {
-            return Err(format!(
-                "verusfmt returned status code {:?}",
-                verusfmt_status.code()
-            ));
-        }
+    if !verusfmt_status.success() {
+        return Err(format!(
+            "verusfmt returned status code {:?}",
+            verusfmt_status.code()
+        ));
     }
 
     Ok(())

@@ -20,42 +20,53 @@ pub struct VargoOptions {
 
 #[derive(Clone, Debug, Args)]
 pub struct CargoOptions {
+    /// Run without accessing the network
     #[arg(long)]
     pub offline: bool,
 
+    /// Use verbose output
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Coloring
     #[arg(long, value_enum, default_value_t = CargoColor::Auto)]
     pub color: CargoColor,
 }
 
 #[derive(Clone, Debug, Args, PartialEq, Eq)]
 pub struct BuildOptions {
+    /// Build artifacts in release mode, with optimizations
     #[arg(short, long)]
     pub release: bool,
 
+    /// Do not verify vstd when building
     #[arg(long)]
     pub vstd_no_verify: bool,
 
+    /// Build vstd in `no-std` mode
     #[arg(long)]
     pub vstd_no_std: bool,
 
+    /// Build vstd in `no-alloc` mode
     #[arg(long, requires = "vstd_no_std")]
     pub vstd_no_alloc: bool,
 
+    /// Turn tracing on when building vstd
     #[arg(long)]
     pub vstd_trace: bool,
 
+    /// Turn verbose logging on when building vstd
     #[arg(long)]
     pub vstd_log_all: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq, Eq)]
 pub struct FeaturesOptions {
+    /// Do not activate the default features
     #[arg(long)]
     pub no_default_features: bool,
 
+    /// Features to activate
     #[arg(short = 'F', long, action = clap::ArgAction::Append)]
     pub features: Vec<VerusFeatures>,
 }
@@ -117,7 +128,7 @@ pub struct VargoFmt {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoCmd {
-    pub args: Vec<String>,
+    pub command: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,9 +189,11 @@ pub struct VargoParsedCli {
     #[command(flatten)]
     pub cargo_options: CargoOptions,
 
+    /// Turn on `vargo`s verbose logging
     #[arg(long)]
     pub vargo_verbose: bool,
 
+    /// Skip checking that the server's solver version is correct
     #[arg(long)]
     pub no_solver_version_check: bool,
 
@@ -226,9 +239,11 @@ impl std::fmt::Display for CargoColor {
 pub enum VargoParsedSubcommand {
     /// Build Verus
     Build {
+        /// Package to build
         #[arg(short, long)]
         package: Option<String>,
 
+        /// Exclude packages from building
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
@@ -238,15 +253,18 @@ pub enum VargoParsedSubcommand {
         #[command(flatten)]
         build_options: BuildOptions,
 
+        /// Arguments to pass on to verus (in case verification is needed)
         #[arg(last = true, allow_hyphen_values = true)]
         verus_args: Vec<String>,
     },
 
     /// Run Verus tests
     Test {
+        /// Package to test
         #[arg(short, long)]
         package: String,
 
+        /// Exclude packages from testing
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
@@ -256,18 +274,21 @@ pub enum VargoParsedSubcommand {
         #[command(flatten)]
         build_options: BuildOptions,
 
+        /// Other options (`cargo test --help` for more info)
         #[arg(allow_hyphen_values = true)]
         test_args: Vec<String>,
     },
 
     /// Run Verus tests with nextest
     Nextest {
+        /// Build and run Verus tests
         #[command(subcommand)]
         command: NexTestCommand,
     },
 
     /// Run a binary package
     Run {
+        /// Package to run
         #[arg(short, long)]
         package: Option<String>,
 
@@ -277,15 +298,18 @@ pub enum VargoParsedSubcommand {
         #[command(flatten)]
         build_options: BuildOptions,
 
+        /// Arguments to pass on to verus (in case verification is needed)
         #[arg(last = true, allow_hyphen_values = true)]
         verus_args: Vec<String>,
     },
 
     /// Clean current build
     Clean {
+        /// Package to clean
         #[arg(short, long)]
         package: Option<String>,
 
+        /// Whether to clean debug or release artifacts
         #[arg(short, long)]
         release: bool,
     },
@@ -295,38 +319,51 @@ pub enum VargoParsedSubcommand {
         #[command(flatten)]
         feature_options: FeaturesOptions,
 
+        /// Format version
         #[arg(long, default_value = "1")]
         format_version: String,
     },
 
     /// Run the formatter on the codebase
     Fmt {
+        /// Package to format
         #[arg(short, long)]
         package: Option<String>,
 
+        /// Exclude packages from formatting
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
+        /// Whether to skip formatting vstd
         #[arg(long)]
         vstd_no_verusfmt: bool,
 
+        /// Options passed to rustfmt
         #[arg(last = true, allow_hyphen_values = true)]
         rustfmt_args: Vec<String>,
     },
 
     /// Run an arbitrary command in vargo's environment
-    Cmd { args: Vec<String> },
+    Cmd {
+        /// Command to run
+        command: Vec<String>,
+    },
 
-    /// Update packages
-    Update { packages: Vec<String> },
+    /// Update dependencies
+    Update {
+        /// Package to update
+        packages: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum NexTestCommand {
     Run {
+        /// Package to test
         #[arg(short, long)]
         package: String,
 
+        /// Exclude packages from testing
         #[arg(long, action = clap::ArgAction::Append)]
         exclude: Vec<String>,
 
@@ -336,6 +373,7 @@ pub enum NexTestCommand {
         #[command(flatten)]
         build_options: BuildOptions,
 
+        /// Other options (`cargo nextest run --help` for more info)
         #[arg(allow_hyphen_values = true)]
         nextest_args: Vec<String>,
     },
@@ -418,7 +456,7 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 vstd_no_verusfmt,
                 rustfmt_args,
             }),
-            VargoParsedSubcommand::Cmd { args } => VargoSubcommand::Cmd(VargoCmd { args }),
+            VargoParsedSubcommand::Cmd { command } => VargoSubcommand::Cmd(VargoCmd { command }),
             VargoParsedSubcommand::Update { packages } => {
                 VargoSubcommand::Update(VargoUpdate { packages })
             }
