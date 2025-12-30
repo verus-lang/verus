@@ -242,7 +242,7 @@ pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
         option.is_some() ==> res == Ok::<T, E>(option.unwrap()),
         option.is_none() ==> {
             &&& res.is_err()
-            &&& exists|v: E| err.ensures((), v) && res == Err::<T, E>(v)
+            &&& exists|v: E| #![auto] err.ensures((), v) && res == Err::<T, E>(v)
         },
 ;
 

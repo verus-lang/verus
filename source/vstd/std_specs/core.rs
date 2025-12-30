@@ -99,6 +99,13 @@ pub trait ExStructural {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDefault: Sized {
+    type ExternalTraitSpecificationFor: core::default::Default;
+
+    fn default() -> Self;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExMetaSized {
     type ExternalTraitSpecificationFor: core::marker::MetaSized;
 }
