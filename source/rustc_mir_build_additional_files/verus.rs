@@ -175,7 +175,7 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
 
 /// Per-body context (i.e., one for each function or closure).
 pub(crate) struct VerusThirBuildCtxt {
-    ctxt: Option<Arc<VerusErasureCtxt>>,
+    pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
     pub(crate) expr_is_spec: HashMap<HirId, bool>,
     local_def_id: LocalDefId,
