@@ -246,15 +246,6 @@ pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
         },
 ;
 
-// unwrap_or_default
-pub uninterp spec fn spec_default<T: Default>() -> T;
-
-pub assume_specification<T: Default>[ Option::<T>::unwrap_or_default ](option: Option<T>) -> (res: T)
-    ensures
-        option.is_some() ==> res == option.unwrap(),
-        option.is_none() ==> res == spec_default::<T>(),
-;
-
 // unwrap_or_else
 pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
     option: Option<T>,

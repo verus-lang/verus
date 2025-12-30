@@ -45,27 +45,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_unwrap_or_default verus_code! {
-        use vstd::prelude::*;
-        use vstd::std_specs::option::spec_default;
-
-        fn test_unwrap_or_default_some() {
-            let opt: Option<u32> = Some(42);
-            let val: u32 = opt.unwrap_or_default();
-            assert(val == 42);
-        }
-        
-        // TODO: this is still not a desired use case
-        // currently we can not prove val == 0, because spec_default is uninterpreted
-        fn test_unwrap_or_default_none() {
-            let opt: Option<u32> = None;
-            let val: u32 = opt.unwrap_or_default();
-            assert(val == spec_default::<u32>());
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] test_and_then verus_code! {
         use vstd::prelude::*;
 
