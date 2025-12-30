@@ -83,7 +83,7 @@ mod lib_exe_names {
 
 fn main() {
     let cli: VargoCli = VargoParsedCli::parse().into();
-    match run(dbg!(cli)) {
+    match run(cli) {
         Ok(()) => (),
         Err(err) => {
             use yansi::Paint;
