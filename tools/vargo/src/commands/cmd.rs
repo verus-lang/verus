@@ -14,7 +14,7 @@ pub fn cmd(
     cmd.env("RUST_MIN_STACK", test_rust_min_stack())
         .arg("run")
         .arg(context.rust_toolchain.as_ref().expect("not in nextest"))
-        .args(&vargo_cmd.args)
+        .args(&vargo_cmd.command)
         .stderr(std::process::Stdio::inherit())
         .stdout(std::process::Stdio::inherit());
 
