@@ -3,15 +3,14 @@ use crate::cli::VargoNextestRun;
 use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::commands::build;
-use crate::commands::cargo_command;
-use crate::commands::log_command;
+use crate::commands::cargo_run;
+use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::VargoContext;
 use crate::VargoResult;
 
-impl VargoNextestRun {
-    pub fn add_options(&self, cargo: &mut std::process::Command) {
-        dbg!(self);
+impl AddOptions for VargoNextestRun {
+    fn add_options(&self, cargo: &mut std::process::Command) {
         cargo.args(["nextest", "run"]);
         cargo.env("VARGO_IN_NEXTEST", "1");
 
@@ -26,6 +25,12 @@ impl VargoNextestRun {
         cargo.args(&self.nextest_args);
     }
 
+    fn cmd_name(&self) -> &str {
+        "nextest run"
+    }
+}
+
+impl VargoNextestRun {
     fn build_cmd(&self) -> VargoBuild {
         VargoBuild {
             package: None,
@@ -73,21 +78,5 @@ pub fn nextest_run(
 
     let mut vargo_cmd = vargo_cmd.clone();
     vargo_cmd.apply_feature_filter();
-
-    let mut cargo = cargo_command(options, context);
-    vargo_cmd.add_options(&mut cargo);
-    log_command(&cargo, options.vargo_verbose);
-
-    let status = cargo
-        .status()
-        .map_err(|x| format!("could not execute cargo ({})", x))?;
-
-    if !status.success() {
-        return Err(format!(
-            "`cargo nextest run` returned status code {:?}",
-            status.code()
-        ));
-    }
-
-    Ok(())
+    cargo_run(options, context, &vargo_cmd)
 }

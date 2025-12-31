@@ -167,7 +167,7 @@ pub enum VargoSubcommand {
 }
 
 impl VargoSubcommand {
-    // if the subcommnad supports a --release flag, return that
+    // if the subcommand supports a --release flag, return that
     // otherwise, return false
     pub fn release(&self) -> bool {
         match self {

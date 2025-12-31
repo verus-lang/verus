@@ -2,14 +2,14 @@ use crate::cli::VargoBuild;
 use crate::cli::VargoOptions;
 use crate::cli::VargoRun;
 use crate::commands::build;
-use crate::commands::cargo_command;
-use crate::commands::log_command;
+use crate::commands::cargo_run;
+use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::VargoContext;
 use crate::VargoResult;
 
-impl VargoRun {
-    pub fn add_options(&self, cargo: &mut std::process::Command) {
+impl AddOptions for VargoRun {
+    fn add_options(&self, cargo: &mut std::process::Command) {
         cargo.arg("run");
 
         if self.build_options.release {
@@ -28,6 +28,12 @@ impl VargoRun {
         }
     }
 
+    fn cmd_name(&self) -> &str {
+        "run"
+    }
+}
+
+impl VargoRun {
     fn build_cmd(&self) -> VargoBuild {
         VargoBuild {
             package: None,
@@ -74,23 +80,5 @@ pub fn run(
         );
     }
 
-    if context.in_nextest {
-        return Ok(());
-    }
-
-    let mut cargo = cargo_command(options, context);
-    vargo_cmd.add_options(&mut cargo);
-    log_command(&cargo, options.vargo_verbose);
-    let status = cargo
-        .status()
-        .map_err(|x| format!("could not execute cargo ({})", x))?;
-
-    if !status.success() {
-        return Err(format!(
-            "`cargo run` returned status code {:?}",
-            status.code()
-        ));
-    }
-
-    Ok(())
+    cargo_run(options, context, vargo_cmd)
 }
