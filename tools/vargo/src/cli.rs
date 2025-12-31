@@ -167,7 +167,7 @@ pub enum VargoSubcommand {
 }
 
 impl VargoSubcommand {
-    // if the subcommnad supports a --release flag, return that
+    // if the subcommand supports a --release flag, return that
     // otherwise, return false
     pub fn release(&self) -> bool {
         match self {
@@ -204,7 +204,6 @@ pub struct VargoParsedCli {
 
 #[derive(Clone, Debug, ValueEnum, PartialEq, Eq, Hash, Copy)]
 pub enum VerusFeatures {
-    AxiomUsageInfo,
     RecordHistory,
     Singular,
 }
@@ -212,7 +211,6 @@ pub enum VerusFeatures {
 impl std::fmt::Display for VerusFeatures {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VerusFeatures::AxiomUsageInfo => f.write_str("axiom-usage-info"),
             VerusFeatures::RecordHistory => f.write_str("record-history"),
             VerusFeatures::Singular => f.write_str("singular"),
         }

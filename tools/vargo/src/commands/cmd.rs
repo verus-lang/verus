@@ -22,11 +22,13 @@ pub fn cmd(
 
     cmd.status()
         .map_err(|x| format!("vargo could not execute rustup ({})", x))
-        .and_then(|x| {
-            if x.success() {
+        .and_then(|status| {
+            if status.success() {
                 Ok(())
+            } else if let Some(code) = status.code() {
+                Err(format!("`rustup run` returned status code {}", code))
             } else {
-                Err(format!("vargo returned status code {:?}", x.code()))
+                Err("`rustup run` was terminated by a signal".to_owned())
             }
         })
 }
