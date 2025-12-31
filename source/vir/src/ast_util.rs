@@ -645,7 +645,7 @@ pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExprX::Unary(op, expr.clone()))
 }
 
@@ -1454,5 +1454,14 @@ pub(crate) fn arg_mode_from_proof_fn_modes(
     match proof_fn_modes {
         Some((modes, _ret_mode)) => modes[i],
         None => Mode::Exec,
+    }
+}
+
+impl MutRefFutureSourceName {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
+            MutRefFutureSourceName::Final => "fin",
+        }
     }
 }

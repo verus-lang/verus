@@ -474,9 +474,10 @@ impl ExpX {
                 UnaryOp::MutRefCurrent => {
                     (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
                 }
+                UnaryOp::MutRefFinal => (format!("fin({})", exp.x.to_string_prec(global, 99)), 0),
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
@@ -812,7 +813,7 @@ pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(crate::ast::MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
 }
 

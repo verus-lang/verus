@@ -360,7 +360,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }
-            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal => {
                 panic!("mut-ref operation not allowed in bitvector query")
             }
             UnaryOp::Length(_) => {

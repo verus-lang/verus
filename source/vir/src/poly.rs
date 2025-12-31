@@ -591,9 +591,12 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
                 }
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                }
+                UnaryOp::MutRefFinal => {
+                    panic!("internal error: MustBeFinalized in SST")
                 }
             }
         }

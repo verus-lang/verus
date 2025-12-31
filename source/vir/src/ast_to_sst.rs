@@ -2768,7 +2768,8 @@ fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Borrow
 
     // phase 2
 
-    let future_expx = ExpX::Unary(UnaryOp::MutRefFuture, mut_ref_exp.clone());
+    let sn = crate::ast::MutRefFutureSourceName::MutRefFuture;
+    let future_expx = ExpX::Unary(UnaryOp::MutRefFuture(sn), mut_ref_exp.clone());
     let t = match &*expr.typ {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),

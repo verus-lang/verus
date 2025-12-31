@@ -433,9 +433,22 @@ pub enum UnaryOp {
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
-    MutRefFuture,
+    MutRefFuture(MutRefFutureSourceName),
+    /// The `final` keyword. `*final(e)` should be replaced with `mut_ref_future(e)`
+    /// and `final` on its own is unsupported.
+    MutRefFinal,
+
     /// Length of an array or slice
     Length(ArrayKind),
+}
+
+/// Which builtin source name does this come from
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum MutRefFutureSourceName {
+    /// This comes from a direct use of the `mut_ref_future` built-in
+    MutRefFuture,
+    /// Simplified from `*final(e)`
+    Final,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]

@@ -112,6 +112,11 @@ test_verify_one_file_with_options! {
         spec fn test2<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
+
+        #[verifier::prophetic]
+        spec fn test3<T>(x: &mut T) -> T {
+            *fin(x)
+        }
     } => Ok(())
 }
 
@@ -121,6 +126,14 @@ test_verify_one_file_with_options! {
             mut_ref_future(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
+        spec fn test<T>(x: &mut T) -> T {
+            *fin(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `fin` in prophecy-independent context")
 }
 
 test_verify_one_file_with_options! {
@@ -2699,4 +2712,20 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut u64) {
+            assert(mut_ref_future(x) == *fin(x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut bool) {
+            assert(mut_ref_current(fin(x)));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
 }

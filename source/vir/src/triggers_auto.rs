@@ -403,7 +403,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::IntToReal => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => 1,
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {

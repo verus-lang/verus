@@ -685,6 +685,12 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
+        ExprX::Unary(UnaryOp::MutRefFinal, _) => {
+            return Err(error(
+                &expr.span,
+                "The result of `fin` must be dereferenced (e.g., `*fin(x)`)",
+            ));
+        }
         _ => {}
     }
     Ok(())

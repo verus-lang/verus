@@ -67,10 +67,10 @@ pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
     requires
         i < vec.view().len(),
     ensures
-        mut_ref_current(element) == mut_ref_current(vec).view().index(i as int),
-        mut_ref_future(vec)@ == mut_ref_current(vec)@.update(i as int, mut_ref_future(element)),
+        *element == (*vec).view().index(i as int),
+        fin(vec)@ == vec@.update(i as int, *fin(element)),
 
-        mut_ref_future(element) == mut_ref_future(vec).view().index(i as int),
+        *fin(element) == fin(vec).view().index(i as int),
     no_unwind
 {
     &mut vec[i]
