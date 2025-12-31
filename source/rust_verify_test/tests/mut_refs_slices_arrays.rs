@@ -994,3 +994,115 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] slices_lib_first_last_mut ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_emp() {
+            let v: Vec<u64> = vec![];
+            let f = v.first();
+            assert(f === None);
+            let l = v.last();
+            assert(l === None);
+        }
+
+        fn test_non_emp() {
+            let v = vec![1, 2, 3];
+            let f = v.first();
+            assert(f === Some(&1));
+            let l = v.last();
+            assert(l === Some(&3));
+        }
+
+        fn test_emp_first_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().first_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+        }
+
+        fn test_emp_last_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().last_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+        }
+
+        fn test_non_emp_first_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().first_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 1);
+            *m = 10;
+            assert(v@ === seq![10, 2, 3]);
+        }
+
+        fn test_non_emp_last_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().last_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 3);
+            *m = 10;
+            assert(v@ === seq![1, 2, 10]);
+        }
+
+        fn fail_emp() {
+            let v: Vec<u64> = vec![];
+            let f = v.first();
+            assert(f === None);
+            let l = v.last();
+            assert(l === None);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp() {
+            let v = vec![1, 2, 3];
+            let f = v.first();
+            assert(f === Some(&1));
+            let l = v.last();
+            assert(l === Some(&3));
+            assert(false); // FAILS
+        }
+
+        fn fail_emp_first_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().first_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_emp_last_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().last_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp_first_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().first_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 1);
+            *m = 10;
+            assert(v@ === seq![10, 2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp_last_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().last_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 3);
+            *m = 10;
+            assert(v@ === seq![1, 2, 10]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}

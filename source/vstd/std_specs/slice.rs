@@ -169,6 +169,36 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
         }),
 ;
 
+pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0]
+;
+
+pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last()
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        slice.len() == 0 ==> res.is_none() && fin(slice)@ === seq![],
+        slice.len() != 0 ==> res.is_some() && *res.unwrap() == slice[0]
+            && fin(slice)@ === slice@.update(0, *fin(res.unwrap()))
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        slice.len() == 0 ==> res.is_none() && fin(slice)@ === seq![],
+        slice.len() != 0 ==> res.is_some() && *res.unwrap() == slice@.last()
+            && fin(slice)@ === slice@.update(slice.len() - 1, *fin(res.unwrap()))
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_slice_iter,
 }

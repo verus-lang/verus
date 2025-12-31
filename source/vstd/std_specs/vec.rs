@@ -231,6 +231,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
         slice@ == vec@,
 ;
 
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
+    ensures
+        slice@ == vec@,
+        fin(slice)@ == fin(vec)@,
+;
+
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](
     vec: &Vec<T, A>,
 ) -> (slice: &[T])
