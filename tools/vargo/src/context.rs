@@ -32,13 +32,13 @@ fn get_repo_root() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("current dir does not have a parent\nrun vargo in `source`"))
 }
 
-fn vargo_source_changed(repo_root: impl AsRef<Path>) -> bool {
-    let files = crate::util::vargo_file_contents(&repo_root.as_ref().join("tools").join("vargo"));
+fn vargo_source_changed(repo_root: impl AsRef<Path>) -> anyhow::Result<bool> {
+    let files = crate::util::vargo_file_contents(&repo_root.as_ref().join("tools").join("vargo"))?;
     // set at compile time
     let build_hash = &crate::util::hash_file_contents(VARGO_SOURCE_FILES.to_vec());
     let cur_hash =
         &crate::util::hash_file_contents(files.iter().map(|(f, n)| (f.as_str(), &n[..])).collect());
-    build_hash != cur_hash
+    Ok(build_hash != cur_hash)
 }
 
 fn get_rust_toolchain(
@@ -153,7 +153,7 @@ impl VargoContext {
         let in_nextest = std::env::var("VARGO_IN_NEXTEST").is_ok();
         let rust_toolchain = get_rust_toolchain(&repo_root, in_nextest)?;
 
-        if vargo_nest == 0 && vargo_source_changed(&repo_root) {
+        if vargo_nest == 0 && vargo_source_changed(&repo_root)? {
             anyhow::bail!(
                 "vargo sources have changed since it was last built, please re-build vargo"
             );
