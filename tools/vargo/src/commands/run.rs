@@ -6,7 +6,6 @@ use crate::commands::cargo_run;
 use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::VargoContext;
-use crate::VargoResult;
 
 impl AddOptions for VargoRun {
     fn add_options(&self, cargo: &mut std::process::Command) {
@@ -49,7 +48,7 @@ pub fn run(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoRun,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     if context.in_nextest {
         return Ok(());
     }
@@ -57,14 +56,11 @@ pub fn run(
     if vargo_cmd.package.as_deref() != Some("air")
         && vargo_cmd.package.as_deref() != Some("rust_verify")
     {
-        return Err(format!(
-            "unexpected package for `vargo run`{}",
-            if let Some(p) = vargo_cmd.package.as_deref() {
-                format!(": {p}")
-            } else {
-                "".to_owned()
-            }
-        ));
+        if let Some(p) = vargo_cmd.package.as_deref() {
+            anyhow::bail!("unexpected package for `vargo run`: {p}")
+        } else {
+            anyhow::bail!("unexpected package for `vargo run`")
+        }
     }
 
     // may need to rebuild rust_verify

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use anyhow::Context;
 use filetime::FileTime as FFileTime;
 
 use crate::cli::VargoBuild;
@@ -16,7 +17,6 @@ use crate::lib_exe_names::LIB_DL;
 use crate::lib_exe_names::LIB_PRE;
 use crate::macros::info;
 use crate::util;
-use crate::VargoResult;
 use crate::VERUS_ROOT_FILE;
 use crate::VSTD_FILES;
 
@@ -122,7 +122,7 @@ pub fn build(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoBuild,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     const PACKAGES: &[&str; 7] = &[
         "rust_verify",
         "verus_builtin",
@@ -147,7 +147,7 @@ pub fn build(
         } else if package == "vstd" {
             true
         } else {
-            return Err(format!("unknown package {package}"));
+            anyhow::bail!("unknown package {package}");
         }
     } else {
         true
@@ -199,7 +199,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
         if from_f.exists() {
             let from_f_meta = from_f
                 .metadata()
-                .map_err(|x| format!("cannot obtain metadata for {from_f_name} ({x:?})"))?;
+                .with_context(|| format!("cannot obtain metadata for {from_f_name}"))?;
             dependencies_mtime = Some(
                 dependencies_mtime
                     .unwrap_or(FFileTime::zero())
@@ -221,14 +221,20 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 std::fs::remove_file(&to_f).unwrap();
             }
 
-            std::fs::copy(&from_f, &to_f).map_err(|x| format!("could not copy file ({})", x))?;
+            std::fs::copy(&from_f, &to_f).with_context(|| {
+                format!(
+                    "could not copy file {} to {}",
+                    from_f.display(),
+                    to_f.display()
+                )
+            })?;
 
             writeln!(
                 &mut macos_prepare_script,
                 "xattr -d com.apple.quarantine {}",
                 from_f_name
             )
-            .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+            .context("could not write to macos prepare script")?;
         } else {
             dependency_missing = true;
         }
@@ -257,9 +263,8 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             && fingerprint_path.exists()
         {
             info!("removing {}", fingerprint_path.display());
-            std::fs::remove_file(&fingerprint_path).map_err(|x| {
-                format!("could not delete file {} ({x})", fingerprint_path.display())
-            })?;
+            std::fs::remove_file(&fingerprint_path)
+                .with_context(|| format!("could not delete file {}", fingerprint_path.display()))?;
         }
     }
 
@@ -270,16 +275,21 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
         if to_d.exists() {
             std::fs::remove_dir_all(&to_d).unwrap();
         }
-        copy_dir(from_d, &to_d, &[std::path::Path::new("target")])
-            .map_err(|_| format!("could not copy source directory {src}"))?;
+        copy_dir(from_d, &to_d, &[std::path::Path::new("target")]).with_context(|| {
+            format!(
+                "could not copy source directory {} to {}",
+                from_d.display(),
+                to_d.display()
+            )
+        })?;
     }
 
     let stored_fingerprint = if fingerprint_path.exists() {
         let s = std::fs::read_to_string(&fingerprint_path)
-            .map_err(|x| format!("cannot read {} ({x:?})", fingerprint_path.display()))?;
-        let f = toml::from_str::<Fingerprint>(&s).map_err(|x| {
+            .with_context(|| format!("cannot read {}", fingerprint_path.display()))?;
+        let f = toml::from_str::<Fingerprint>(&s).with_context(|| {
             format!(
-                "cannot parse {}, try `vargo clean -p vstd` (first), or `vargo clean` ({x})",
+                "cannot parse {}, try `vargo clean -p vstd` (first), or `vargo clean`",
                 fingerprint_path.display()
             )
         })?;
@@ -338,20 +348,26 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             .target_verus_artifact_dir_absolute
             .join("macos_allow_gatekeeper.sh");
         std::fs::write(&macos_prepare_script_path, macos_prepare_script)
-            .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+            .map_err(|x| anyhow::anyhow!("could not write to macos prepare script ({})", x))?;
         std::fs::set_permissions(
             &macos_prepare_script_path,
             <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
         )
-        .map_err(|x| format!("could not set permissions on macos prepare script ({})", x))?;
+        .map_err(|x| {
+            anyhow::anyhow!("could not set permissions on macos prepare script ({})", x)
+        })?;
     }
 
     if let Some(version_info) = &context.verus_version {
         let version_info_path = context
             .target_verus_artifact_dir_absolute
             .join("version.txt");
-        std::fs::write(&version_info_path, version_info.version.as_str())
-            .map_err(|x| format!("could not write to version file ({})", x))?;
+        std::fs::write(&version_info_path, version_info.version.as_str()).with_context(|| {
+            format!(
+                "could not write to version file {}",
+                version_info_path.display()
+            )
+        })?;
     }
 
     let verus_root_path = context
@@ -365,9 +381,8 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
     {
         if verus_root_path.exists() {
             info!("removing {}", verus_root_path.display());
-            std::fs::remove_file(&verus_root_path).map_err(|x| {
-                format!("could not delete file {} ({x})", verus_root_path.display())
-            })?;
+            std::fs::remove_file(&verus_root_path)
+                .with_context(|| format!("could not delete file {}", verus_root_path.display()))?;
         }
     } else {
         std::fs::OpenOptions::new()
@@ -375,7 +390,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             .write(true)
             .truncate(false)
             .open(&verus_root_path)
-            .map_err(|x| format!("could not touch file {} ({x})", verus_root_path.display()))?;
+            .with_context(|| format!("could not touch file {}", verus_root_path.display()))?;
     }
     Ok(())
 }
@@ -384,7 +399,7 @@ fn build_target(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoBuild,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     assert!(vargo_cmd.package.is_some());
     info!(
         "building {}",
@@ -438,7 +453,7 @@ fn rebuild_vstd(
     vargo_cmd: &VargoBuild,
     fingerprint_path: &Path,
     current_fingerprint: &Fingerprint,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     let mut vstd_build = cargo_command(options, context);
     vstd_build.args(["run", "--package", "vstd_build"]);
     if vargo_cmd.build_options.release {
@@ -479,12 +494,14 @@ fn rebuild_vstd(
 
     vstd_build
         .status()
-        .map_err(|x| format!("could not execute cargo ({})", x))
+        .context("could not execute cargo")
         .and_then(|x| {
             if x.success() {
                 Ok(())
+            } else if let Some(code) = x.code() {
+                Err(anyhow::anyhow!("vstd_build returned status code {code}"))
             } else {
-                Err(format!("vstd_build returned status code {:?}", x.code()))
+                Err(anyhow::anyhow!("vstd_build was terminated by a signal"))
             }
         })?;
 
@@ -492,5 +509,10 @@ fn rebuild_vstd(
         fingerprint_path,
         toml::to_string(&current_fingerprint).expect("failed to serialize fingerprint"),
     )
-    .map_err(|x| format!("cannot write fingerprint file ({x})"))
+    .with_context(|| {
+        format!(
+            "cannot write fingerprint file {}",
+            fingerprint_path.display()
+        )
+    })
 }

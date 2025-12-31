@@ -7,7 +7,6 @@ use crate::commands::cargo_run;
 use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::VargoContext;
-use crate::VargoResult;
 
 impl AddOptions for VargoNextestRun {
     fn add_options(&self, cargo: &mut std::process::Command) {
@@ -54,12 +53,12 @@ pub fn nextest_run(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoNextestRun,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     if vargo_cmd.package != "air" && vargo_cmd.package != "rust_verify_test" {
-        return Err(format!(
+        anyhow::bail!(
             "unexpected package for `vargo nextest`: {}",
             vargo_cmd.package
-        ));
+        );
     }
 
     if !context.in_nextest {

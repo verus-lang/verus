@@ -1,15 +1,16 @@
+use anyhow::Context;
+
 use crate::cli::VargoCmd;
 use crate::cli::VargoOptions;
 use crate::commands::log_command;
 use crate::commands::test_rust_min_stack;
 use crate::VargoContext;
-use crate::VargoResult;
 
 pub fn cmd(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoCmd,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     let mut cmd = std::process::Command::new("rustup");
     cmd.env("RUST_MIN_STACK", test_rust_min_stack())
         .arg("run")
@@ -21,14 +22,14 @@ pub fn cmd(
     log_command(&cmd, options.vargo_verbose);
 
     cmd.status()
-        .map_err(|x| format!("vargo could not execute rustup ({})", x))
+        .context("vargo could not execute rustup")
         .and_then(|status| {
             if status.success() {
                 Ok(())
             } else if let Some(code) = status.code() {
-                Err(format!("`rustup run` returned status code {}", code))
+                Err(anyhow::anyhow!("`rustup run` returned status code {code}"))
             } else {
-                Err("`rustup run` was terminated by a signal".to_owned())
+                Err(anyhow::anyhow!("`rustup run` was terminated by a signal"))
             }
         })
 }
