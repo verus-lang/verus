@@ -6,8 +6,10 @@ use crate::cli::VargoBuild;
 use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::commands::cargo_command;
+use crate::commands::cargo_run;
 use crate::commands::clean_vstd;
 use crate::commands::log_command;
+use crate::commands::AddOptions;
 use crate::context::VargoContext;
 use crate::lib_exe_names::EXE;
 use crate::lib_exe_names::LIB_DL;
@@ -65,7 +67,7 @@ impl PartialOrd for Fingerprint {
     }
 }
 
-impl VargoBuild {
+impl AddOptions for VargoBuild {
     fn add_options(&self, cargo: &mut std::process::Command) {
         cargo.arg("build");
 
@@ -85,6 +87,12 @@ impl VargoBuild {
         self.feature_options.add_options(cargo);
     }
 
+    fn cmd_name(&self) -> &str {
+        "build"
+    }
+}
+
+impl VargoBuild {
     fn cmd_for_package(&self, package: &str) -> Self {
         let mut cpy = self.clone();
         cpy.package = Some(package.to_owned());
@@ -384,21 +392,8 @@ fn build_target(
             .as_deref()
             .expect("when building a particular target, package is set")
     );
-    let mut cargo = cargo_command(options, context);
-    vargo_cmd.add_options(&mut cargo);
 
-    log_command(&cargo, options.vargo_verbose);
-    let status = cargo
-        .status()
-        .map_err(|x| format!("could not execute cargo ({})", x))?;
-    if !status.success() {
-        return Err(format!(
-            "`cargo build` returned status code {:?}",
-            status.code()
-        ));
-    }
-
-    Ok(())
+    cargo_run(options, context, vargo_cmd)
 }
 
 fn copy_dir(

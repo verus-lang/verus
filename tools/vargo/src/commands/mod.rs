@@ -30,6 +30,11 @@ pub use run::run;
 pub use test::test;
 pub use update::update;
 
+pub(crate) trait AddOptions {
+    fn add_options(&self, cargo: &mut std::process::Command);
+    fn cmd_name(&self) -> &str;
+}
+
 pub(crate) fn cargo_command(options: &VargoOptions, context: &VargoContext) -> Command {
     let mut cargo = std::process::Command::new("cargo");
     cargo
@@ -54,6 +59,37 @@ pub(crate) fn cargo_command(options: &VargoOptions, context: &VargoContext) -> C
     cargo.args(["--color", &format!("{}", options.cargo_options.color)]);
 
     cargo
+}
+
+pub(crate) fn cargo_run<Cmd: AddOptions>(
+    options: &VargoOptions,
+    context: &VargoContext,
+    cmd: &Cmd,
+) -> VargoResult<()> {
+    let mut cargo = cargo_command(options, context);
+    cmd.add_options(&mut cargo);
+    log_command(&cargo, options.vargo_verbose);
+
+    let status = cargo
+        .status()
+        .map_err(|x| format!("could not execute `cargo {}` ({})", cmd.cmd_name(), x))?;
+
+    if !status.success() {
+        if let Some(code) = status.code() {
+            return Err(format!(
+                "`cargo {}` returned status code {}",
+                cmd.cmd_name(),
+                code
+            ));
+        } else {
+            return Err(format!(
+                "`cargo {}` was terminated by a signal",
+                cmd.cmd_name(),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn test_rust_min_stack() -> String {

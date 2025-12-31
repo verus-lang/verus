@@ -6,8 +6,9 @@ use regex::Regex;
 
 use crate::cli::VargoFmt;
 use crate::cli::VargoOptions;
-use crate::commands::cargo_command;
+use crate::commands::cargo_run;
 use crate::commands::log_command;
+use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::macros::warning;
 use crate::VargoContext;
@@ -15,7 +16,7 @@ use crate::VargoResult;
 
 const MINIMUM_VERUSFMT_VERSION: (u64, u64, u64) = (0, 5, 0);
 
-impl VargoFmt {
+impl AddOptions for VargoFmt {
     fn add_options(&self, cargo: &mut std::process::Command) {
         cargo.arg("fmt");
 
@@ -25,6 +26,10 @@ impl VargoFmt {
 
         cargo.args(["--", "--config", "style_edition=2024"]);
         cargo.args(&self.rustfmt_args);
+    }
+
+    fn cmd_name(&self) -> &str {
+        "fmt"
     }
 }
 
@@ -37,19 +42,7 @@ pub fn fmt(
         return Ok(());
     }
 
-    let mut cargo = cargo_command(options, context);
-    vargo_cmd.add_options(&mut cargo);
-    log_command(&cargo, options.vargo_verbose);
-
-    let status = cargo
-        .status()
-        .map_err(|x| format!("could not execute cargo ({})", x))?;
-    if !status.success() {
-        return Err(format!(
-            "`cargo fmt` returned status code {:?}",
-            status.code()
-        ));
-    }
+    cargo_run(options, context, vargo_cmd)?;
 
     format_rust_dir(
         Path::new("../dependencies/syn"),
