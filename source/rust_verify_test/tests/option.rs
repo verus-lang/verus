@@ -45,6 +45,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_unwrap_or_default verus_code! {
+        use vstd::prelude::*;
+
+        fn test_unwrap_or_default_some() {
+            let opt: Option<u32> = Some(42);
+            let val: u32 = opt.unwrap_or_default();
+            assert(val == 42);
+        }
+
+        fn test_unwrap_or_default_none() {
+            let opt: Option<u32> = None;
+            let val: u32 = opt.unwrap_or_default();
+            assert(val == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_and_then verus_code! {
         use vstd::prelude::*;
 

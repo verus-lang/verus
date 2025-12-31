@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
+use super::core::DefaultSpec;
 use core::option::Option;
 
 verus! {
@@ -244,6 +245,13 @@ pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
             &&& res.is_err()
             &&& exists|v: E| #![auto] err.ensures((), v) && res == Err::<T, E>(v)
         },
+;
+
+// unwrap_or_default
+pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](option: Option<T>) -> (res: T)
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() && T::obeys_default_spec() ==> res == T::default_spec(),
 ;
 
 // unwrap_or_else
