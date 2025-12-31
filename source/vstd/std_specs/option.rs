@@ -228,8 +228,8 @@ pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then
     requires
         option.is_some() ==> f.requires((option.unwrap(),)),
     ensures
-        res.is_some() == option.is_some(),
-        res.is_some() ==> f.ensures((option.unwrap(),), res),
+        option.is_none() ==> res.is_none(),
+        option.is_some() ==> f.ensures((option.unwrap(),), res),
 ;
 
 // ok_or_else
