@@ -1,6 +1,9 @@
 use anyhow::Context;
 use regex::Regex;
 
+use std::fmt::Display;
+use std::path::Path;
+
 use crate::consts;
 use crate::macros::warning;
 
@@ -11,7 +14,7 @@ pub enum SmtSolverType {
 }
 
 impl SmtSolverType {
-    pub fn executable_name(&self) -> String {
+    fn executable_name(&self) -> String {
         let base = match self {
             SmtSolverType::Z3 => "z3",
             SmtSolverType::Cvc5 => "cvc5",
@@ -23,21 +26,14 @@ impl SmtSolverType {
         }
     }
 
-    pub fn env_var_name(&self) -> &str {
+    fn env_var_name(&self) -> &str {
         match self {
             SmtSolverType::Z3 => "VERUS_Z3_PATH",
             SmtSolverType::Cvc5 => "VERUS_CVC5_PATH",
         }
     }
 
-    pub fn to_str(&self) -> &str {
-        match self {
-            SmtSolverType::Z3 => "Z3",
-            SmtSolverType::Cvc5 => "cvc5",
-        }
-    }
-
-    pub fn version_re(&self) -> Regex {
+    fn version_re(&self) -> Regex {
         match self {
             SmtSolverType::Z3 => Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
                 .expect("failed to compile Z3 version regex"),
@@ -46,10 +42,19 @@ impl SmtSolverType {
         }
     }
 
-    pub fn expected_version(&self) -> String {
+    fn expected_version(&self) -> String {
         match self {
             SmtSolverType::Z3 => consts::EXPECTED_Z3_VERSION.to_string(),
             SmtSolverType::Cvc5 => consts::EXPECTED_CVC5_VERSION.to_string(),
+        }
+    }
+}
+
+impl Display for SmtSolverType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SmtSolverType::Cvc5 => f.write_str("cvc5"),
+            SmtSolverType::Z3 => f.write_str("z3"),
         }
     }
 }
@@ -99,12 +104,12 @@ impl SmtSolverBinary {
         let output = std::process::Command::new(&self.path)
             .arg("--version")
             .output()
-            .with_context(|| format!("could not execute {}", self.stype.to_str()))?;
+            .with_context(|| format!("could not execute {}", self.stype))?;
         if !output.status.success() {
-            anyhow::bail!("{} returned non-zero exit code", self.stype.to_str());
+            anyhow::bail!("{} returned non-zero exit code", self.stype);
         }
         let stdout_str = std::str::from_utf8(&output.stdout)
-            .with_context(|| format!("{} version output is not valid utf8", self.stype.to_str(),))?
+            .with_context(|| format!("{} version output is not valid utf8", self.stype))?
             .to_string();
 
         let version = self
@@ -115,27 +120,22 @@ impl SmtSolverBinary {
                 let mut captures = captures.iter();
                 let _ = captures.next()?;
                 let version = captures.next()?;
-                if captures.next() != None {
-                    return None;
+                if captures.next().is_some() {
+                    None
+                } else {
+                    Some(version?.as_str())
                 }
-                Some(version?.as_str())
             })
             .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unexpected {} version output ({})",
-                    self.stype.to_str(),
-                    stdout_str
-                )
+                anyhow::anyhow!("unexpected {} version output ({})", self.stype, stdout_str)
             })?;
         if version != self.stype.expected_version() {
-            let name = self.stype.to_str().to_lowercase();
-
             anyhow::bail!(
-                "Verus expects {name} version \"{}\", found version \"{}\"\n\
+                 "Verus expects {name} version \"{expected}\", found version \"{version}\"\n\
             Run ./tools/get-{name}.(sh|ps1) to update {name} first.\n\
             If you need a build with a custom {name} version, re-run with --no-solver-version-check.",
-                self.stype.expected_version(),
-                version
+                name=self.stype,
+                expected=self.stype.expected_version(),
             );
         } else {
             Ok(())
@@ -144,9 +144,10 @@ impl SmtSolverBinary {
 
     pub fn copy_to_target_dir(
         &self,
-        target_verus_dir: &std::path::PathBuf,
+        target_verus_dir: impl AsRef<Path>,
         macos_prepare_script: &mut String,
     ) -> anyhow::Result<()> {
+        let target_verus_dir = target_verus_dir.as_ref();
         if self.path.is_file() {
             let from_f = &self.path;
             let to_f = target_verus_dir.join(self.stype.executable_name());
@@ -156,7 +157,7 @@ impl SmtSolverBinary {
                 // delete the old file first before moving the new one.
                 std::fs::remove_file(&to_f).unwrap();
             }
-            std::fs::copy(&from_f, &to_f).with_context(|| {
+            std::fs::copy(from_f, &to_f).with_context(|| {
                 format!(
                     "could not copy file {} to {}",
                     from_f.display(),
@@ -164,9 +165,9 @@ impl SmtSolverBinary {
                 )
             })?;
 
-            let dest_file_name = to_f.file_name().ok_or_else(|| {
-                anyhow::anyhow!("could not get file name for {}", self.stype.to_str())
-            })?;
+            let dest_file_name = to_f
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("could not get file name for {}", self.stype))?;
             macos_prepare_script.push_str(
                 format!(
                     "\nxattr -d com.apple.quarantine {}\n",
