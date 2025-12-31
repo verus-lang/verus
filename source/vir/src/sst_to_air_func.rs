@@ -682,7 +682,11 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
-            let ParX { name, typ, .. } = &function.x.ret.x;
+            let ParX { name, typ, .. } = if function.x.attrs.is_async {
+                &function.x.async_ret.as_ref().expect("Async function has no return type").x
+            } else {
+                &function.x.ret.x
+            };
             ens_typs.push(typ_to_air(ctx, &typ));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);

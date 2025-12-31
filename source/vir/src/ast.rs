@@ -1007,16 +1007,32 @@ pub enum ExprX {
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
+    Choose {
+        params: VarBinders<Typ>,
+        cond: Expr,
+        body: Expr,
+    },
     /// Manually supply triggers for body of quantifier
-    WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
+    WithTriggers {
+        triggers: Arc<Vec<Exprs>>,
+        body: Expr,
+    },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     /// Not used when new-mut-refs is enabled.
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign {
+        init_not_mut: bool,
+        lhs: Expr,
+        rhs: Expr,
+        op: Option<BinaryOp>,
+    },
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
+    AssignToPlace {
+        place: Place,
+        rhs: Expr,
+        op: Option<BinaryOp>,
+    },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1026,14 +1042,32 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message> },
+    AssertAssume {
+        is_assume: bool,
+        expr: Expr,
+        msg: Option<Message>,
+    },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
-    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
+    AssertAssumeUserDefinedTypeInvariant {
+        is_assume: bool,
+        expr: Expr,
+        fun: Fun,
+    },
     /// Assert-forall or assert-by statement
-    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    AssertBy {
+        vars: VarBinders<Typ>,
+        require: Expr,
+        ensure: Expr,
+        proof: Expr,
+    },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    AssertQuery {
+        requires: Exprs,
+        ensures: Exprs,
+        proof: Expr,
+        mode: AssertQueryMode,
+    },
     /// Assertion discharged via computation
     AssertCompute(Expr, ComputeMode),
     /// If-else
@@ -1055,13 +1089,20 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue {
+        label: Option<String>,
+        is_break: bool,
+    },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
+    Ghost {
+        alloc_wrapper: bool,
+        tracked: bool,
+        expr: Expr,
+    },
     /// Enter a proof block from inside spec-mode code
     ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end
@@ -1099,6 +1140,8 @@ pub enum ExprX {
     /// The right side MUST NOT have any assigns it, this lets us avoid creating temporary
     /// vars that would clutter everything up.
     UseLeftWhereRightCanHaveNoAssignments(Expr, Expr),
+
+    Await(Expr),
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]
@@ -1328,6 +1371,8 @@ pub struct FunctionAttrsX {
     pub exec_allows_no_decreases_clause: bool,
     /// Is this only for the new_mut_ref experiment
     pub ignore_outside_new_mut_ref: bool,
+    /// Whether the function is an async function
+    pub is_async: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1475,6 +1520,12 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
+    /// The async function body is desugared into a special async closure, in which
+    /// the parameters of the function are rebound again in the closure with the same name but different
+    /// identifier, here we record and later resolve them
+    pub async_params_mode_binding: Option<Arc<Vec<(VarIdent, Mode)>>>,
+    /// The return type of the async function i.e., impl Future<Output>.
+    pub async_ret: Option<Param>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

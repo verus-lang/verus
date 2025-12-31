@@ -1754,6 +1754,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     BuiltinSpecFun::ClosureEns
                 }
                 BuiltinFunctionItem::ConstrainType => unreachable!(),
+                BuiltinFunctionItem::GetFutureType => unreachable!(),
             };
 
             let vir_args = args
@@ -1831,7 +1832,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::BuiltinTrait(_)
         | VerusItem::External(_)
         | VerusItem::Global(_)
-        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
+        | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureType) => unreachable!(),
     }
 }
 

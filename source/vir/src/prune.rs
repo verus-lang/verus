@@ -552,6 +552,19 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 state.reached_types.iter().chain(vec![ReachedType::None].iter()).map(|t| (t, &f)),
             );
             reach_methods(ctxt, state, methods);
+            if function.x.attrs.is_async {
+                reach_typ(
+                    ctxt,
+                    state,
+                    &function
+                        .x
+                        .async_ret
+                        .as_ref()
+                        .expect("Async function has no return type")
+                        .x
+                        .typ,
+                );
+            }
             continue;
         }
         if let Some(f) = state.worklist_reveal_groups.pop() {
@@ -986,6 +999,39 @@ pub fn prune_krate_for_module_or_krate(
             if is_root_function(f) {
                 // our function
                 reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+
+                // an async function, we need to include async related functions
+                if f.x.attrs.is_async {
+                    reach(
+                        &mut state.reached_functions,
+                        &mut state.worklist_functions,
+                        &Arc::new(crate::ast::FunX {
+                            path: Arc::new(crate::ast::PathX {
+                                krate: Some(Arc::new("vstd".to_string())),
+                                segments: Arc::new(vec![
+                                    Arc::new("future".to_string()),
+                                    Arc::new("FutureAdditionalSpecFns".to_string()),
+                                    Arc::new("view".to_string()),
+                                ]),
+                            }),
+                        }),
+                    );
+
+                    reach(
+                        &mut state.reached_functions,
+                        &mut state.worklist_functions,
+                        &Arc::new(crate::ast::FunX {
+                            path: Arc::new(crate::ast::PathX {
+                                krate: Some(Arc::new("vstd".to_string())),
+                                segments: Arc::new(vec![
+                                    Arc::new("future".to_string()),
+                                    Arc::new("FutureAdditionalSpecFns".to_string()),
+                                    Arc::new("exec_await".to_string()),
+                                ]),
+                            }),
+                        }),
+                    );
+                }
             }
             continue;
         }

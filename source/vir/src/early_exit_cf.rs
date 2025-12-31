@@ -94,7 +94,8 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertBy { .. }
             | ExprX::AssumeResolved(..)
             | ExprX::RevealString(_)
-            | ExprX::AirStmt(_) => VisitorControlFlow::Return,
+            | ExprX::AirStmt(_)
+            | ExprX::Await(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::Loop { cond, body, .. } => {
                 if let Some(cond) = cond {
