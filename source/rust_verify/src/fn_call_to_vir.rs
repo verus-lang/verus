@@ -1806,7 +1806,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ, false)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
-        VerusItem::MutRefCurrent | VerusItem::MutRefFuture => {
+        VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
             if !bctx.new_mut_ref {
                 unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
             }
@@ -1820,7 +1820,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             let exp = expr_to_vir_consume(bctx, &args[0], ExprModifier::REGULAR)?;
             let op = match verus_item {
                 VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
-                VerusItem::MutRefFuture => UnaryOp::MutRefFuture,
+                VerusItem::MutRefFuture => {
+                    UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::MutRefFuture)
+                }
+                VerusItem::Final => UnaryOp::MutRefFinal,
                 _ => unreachable!(),
             };
             mk_expr(ExprX::Unary(op, exp))

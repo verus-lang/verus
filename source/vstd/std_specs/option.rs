@@ -355,16 +355,59 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
         res == spec_ok_or(option, err),
 ;
 
-#[verifier::ignore_outside_new_mut_ref_experiment]
 #[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
-        (match mut_ref_current(option) {
-            None => mut_ref_future(option).is_none() && res.is_none(),
-            Some(r) => mut_ref_future(option).is_some() && res.is_some() && mut_ref_current(
+        (match *option {
+            None => fin(option).is_none() && res.is_none(),
+            Some(r) => fin(option).is_some() && res.is_some() && *res.unwrap() === r && *fin(
                 res.unwrap(),
-            ) === r && mut_ref_future(res.unwrap()) === mut_ref_future(option).unwrap(),
+            ) === fin(option).unwrap(),
         }),
+;
+
+pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T])
+    ensures
+        res@ == (match *option {
+            Some(x) => seq![x],
+            None => seq![],
+        }),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
+    ensures
+        res@ == (match *option {
+            Some(x) => seq![x],
+            None => seq![],
+        }),
+        fin(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
+        fin(option)@ == (match *option {
+            Some(_) => Some(fin(res)@[0]),
+            None => None,
+        }),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
+    ensures
+        *res == value,
+        *fin(option) == Some(*fin(res)),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
+    &mut T)
+    ensures
+        *res == (match *option {
+            Some(x) => x,
+            None => value,
+        }),
+        *fin(option) == Some(*fin(res)),
 ;
 
 } // verus!

@@ -1341,11 +1341,14 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Unary(UnaryOp::MutRefFuture, e1) => {
+        ExprX::Unary(UnaryOp::MutRefFuture(source_name), e1) => {
             if !typing.allow_prophecy_dependence {
                 return Err(error(
                     &expr.span,
-                    "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context",
+                    format!(
+                        "cannot use prophecy-dependent function `{:}` in prophecy-independent context",
+                        source_name.as_str()
+                    ),
                 ));
             }
             check_expr(ctxt, record, typing, Mode::Spec, e1)?;
