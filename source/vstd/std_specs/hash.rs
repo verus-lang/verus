@@ -24,6 +24,7 @@
 /// `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
+use super::core::{DefaultSpec, DefaultSpecImpl};
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::marker::PhantomData;
@@ -832,6 +833,34 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: Hash
         m@ == Map::<Key, Value>::empty(),
 ;
 
+pub uninterp spec fn default_hash_map<Key, Value, S>() -> HashMap<Key, Value, S>;
+
+pub broadcast proof fn axiom_default_hash_map<Key, Value, S>()
+    ensures
+        #[trigger] default_hash_map::<Key, Value, S>()@ == Map::<Key, Value>::empty(),
+{
+    admit();
+}
+
+pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
+    K,
+    V,
+    S,
+> as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
+    ensures
+        m == default_hash_map::<K, V, S>(),
+;
+
+impl<K, V, S: core::default::Default> DefaultSpecImpl for HashMap<K, V, S> {
+    open spec fn obeys_default_spec() -> bool {
+        true
+    }
+
+    open spec fn default_spec() -> Self {
+        default_hash_map()
+    }
+}
+
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
     ensures
@@ -1228,6 +1257,33 @@ pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, Rando
         m@ == Set::<Key>::empty(),
 ;
 
+pub uninterp spec fn default_hash_set<Key, S>() -> HashSet<Key, S>;
+
+pub broadcast proof fn axiom_default_hash_set<Key, S>()
+    ensures
+        #[trigger] default_hash_set::<Key, S>()@ == Set::<Key>::empty(),
+{
+    admit();
+}
+
+pub assume_specification<T, S: core::default::Default>[ <HashSet<
+    T,
+    S,
+> as core::default::Default>::default ]() -> (m: HashSet<T, S>)
+    ensures
+        m == default_hash_set::<T, S>(),
+;
+
+impl<T, S: core::default::Default> DefaultSpecImpl for HashSet<T, S> {
+    open spec fn obeys_default_spec() -> bool {
+        true
+    }
+
+    open spec fn default_spec() -> Self {
+        default_hash_set()
+    }
+}
+
 pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
     Key,
     RandomState,
@@ -1450,6 +1506,8 @@ pub broadcast group group_hash_axioms {
     axiom_spec_hash_map_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
+    axiom_default_hash_map,
+    axiom_default_hash_set,
 }
 
 } // verus!

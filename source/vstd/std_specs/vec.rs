@@ -1,6 +1,7 @@
 use super::super::prelude::*;
 use verus_builtin::*;
 
+use super::core::{DefaultSpec, DefaultSpecImpl};
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
@@ -100,6 +101,30 @@ pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
+
+pub uninterp spec fn default_vec<T>() -> Vec<T>;
+
+pub broadcast proof fn axiom_default_vec<T>()
+    ensures
+        #[trigger] default_vec::<T>()@ == Seq::<T>::empty(),
+{
+    admit();
+}
+
+pub assume_specification<T>[ <Vec<T> as core::default::Default>::default ]() -> (v: Vec<T>)
+    ensures
+        v == default_vec::<T>(),
+;
+
+impl<T> DefaultSpecImpl for Vec<T> {
+    open spec fn obeys_default_spec() -> bool {
+        true
+    }
+
+    open spec fn default_spec() -> Self {
+        default_vec()
+    }
+}
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::new_in ](alloc: A) -> (v: Vec<T, A>)
     ensures
@@ -526,6 +551,7 @@ pub broadcast group group_vec_axioms {
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
     axiom_vec_has_resolved,
+    axiom_default_vec,
 }
 
 } // verus!

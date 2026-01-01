@@ -218,6 +218,7 @@ pub broadcast group group_string_axioms {
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
+    axiom_default_string,
 }
 
 #[cfg(feature = "alloc")]
@@ -277,6 +278,44 @@ pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String
     ensures
         res == (s@ == other@),
 ;
+
+#[cfg(feature = "alloc")]
+pub uninterp spec fn default_string() -> String;
+
+#[cfg(feature = "alloc")]
+pub broadcast proof fn axiom_default_string()
+    ensures
+        #[trigger] default_string()@.len() == 0,
+        string_is_ascii(&default_string()),
+{
+    admit();
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ String::new ]() -> (res: String)
+    ensures
+        res == default_string(),
+;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
+    ensures
+        r == default_string(),
+;
+
+#[cfg(all(feature = "alloc", verus_keep_ghost))]
+use crate::std_specs::core::DefaultSpecImpl;
+
+#[cfg(all(feature = "alloc", verus_keep_ghost))]
+impl DefaultSpecImpl for String {
+    open spec fn obeys_default_spec() -> bool {
+        true
+    }
+
+    open spec fn default_spec() -> Self {
+        default_string()
+    }
+}
 
 #[cfg(feature = "alloc")]
 #[verifier::external]

@@ -2,6 +2,7 @@
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
 
+use super::core::{DefaultSpec, DefaultSpecImpl};
 use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
 use core::alloc::Allocator;
@@ -80,6 +81,32 @@ pub assume_specification<T>[ VecDeque::<T>::new ]() -> (v: VecDeque<T>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
+
+pub uninterp spec fn default_vec_deque<T>() -> VecDeque<T>;
+
+pub broadcast proof fn axiom_default_vec_deque<T>()
+    ensures
+        #[trigger] default_vec_deque::<T>()@ == Seq::<T>::empty(),
+{
+    admit();
+}
+
+pub assume_specification<T>[ <VecDeque<T> as core::default::Default>::default ]() -> (v: VecDeque<
+    T,
+>)
+    ensures
+        v == default_vec_deque::<T>(),
+;
+
+impl<T> DefaultSpecImpl for VecDeque<T> {
+    open spec fn obeys_default_spec() -> bool {
+        true
+    }
+
+    open spec fn default_spec() -> Self {
+        default_vec_deque()
+    }
+}
 
 pub assume_specification<T>[ VecDeque::<T>::with_capacity ](capacity: usize) -> (v: VecDeque<T>)
     ensures
@@ -372,6 +399,7 @@ pub broadcast group group_vec_dequeue_axioms {
     axiom_spec_len,
     axiom_vec_dequeue_index_decreases,
     axiom_spec_iter,
+    axiom_default_vec_deque,
 }
 
 } // verus!

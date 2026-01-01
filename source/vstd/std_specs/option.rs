@@ -214,7 +214,8 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
 ;
 
 // cloned
-pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res: Option<T>)
+pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
+    Option<T>)
     ensures
         opt.is_none() ==> res.is_none(),
         opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
@@ -248,7 +249,9 @@ pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
 ;
 
 // unwrap_or_default
-pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](option: Option<T>) -> (res: T)
+pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](
+    option: Option<T>,
+) -> (res: T)
     ensures
         option.is_some() ==> res == option.unwrap(),
         option.is_none() && T::obeys_default_spec() ==> res == T::default_spec(),

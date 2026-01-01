@@ -261,7 +261,8 @@ impl_default_spec!(usize, 0usize);
 // manually implementation for Option<T>, &str, PhantomData<T>, (U, T), (V, U, T)
 verus! {
 
-pub assume_specification<T>[ <Option<T> as core::default::Default>::default ]() -> (r: Option<T>);
+pub assume_specification<T>[ <Option<T> as core::default::Default>::default ]() -> (r: Option<T>)
+;
 
 impl<T> DefaultSpecImpl for Option<T> {
     open spec fn obeys_default_spec() -> bool {
@@ -273,7 +274,8 @@ impl<T> DefaultSpecImpl for Option<T> {
     }
 }
 
-pub assume_specification<'a>[ <&'a str as core::default::Default>::default ]() -> (r: &'a str);
+pub assume_specification<'a>[ <&'a str as core::default::Default>::default ]() -> (r: &'a str)
+;
 
 impl<'a> DefaultSpecImpl for &'a str {
     open spec fn obeys_default_spec() -> bool {
@@ -285,7 +287,10 @@ impl<'a> DefaultSpecImpl for &'a str {
     }
 }
 
-pub assume_specification<T: PointeeSized>[ <core::marker::PhantomData<T> as core::default::Default>::default ]() -> (r: core::marker::PhantomData<T>);
+pub assume_specification<T: PointeeSized>[ <core::marker::PhantomData<
+    T,
+> as core::default::Default>::default ]() -> (r: core::marker::PhantomData<T>)
+;
 
 impl<T: PointeeSized> DefaultSpecImpl for core::marker::PhantomData<T> {
     open spec fn obeys_default_spec() -> bool {
@@ -297,13 +302,13 @@ impl<T: PointeeSized> DefaultSpecImpl for core::marker::PhantomData<T> {
     }
 }
 
-pub assume_specification<U: core::default::Default, T: core::default::Default>[ <(U, T) as core::default::Default>::default ]() -> (r: (U, T));
+pub assume_specification<U: core::default::Default, T: core::default::Default>[ <(
+    U,
+    T,
+) as core::default::Default>::default ]() -> (r: (U, T))
+;
 
-impl<U, T> DefaultSpecImpl for (U, T)
-    where
-        U: core::default::Default,
-        T: core::default::Default,
-{
+impl<U, T> DefaultSpecImpl for (U, T) where U: core::default::Default, T: core::default::Default {
     open spec fn obeys_default_spec() -> bool {
         U::obeys_default_spec() && T::obeys_default_spec()
     }
@@ -313,14 +318,18 @@ impl<U, T> DefaultSpecImpl for (U, T)
     }
 }
 
-pub assume_specification<V: core::default::Default, U: core::default::Default, T: core::default::Default>[ <(V, U, T) as core::default::Default>::default ]() -> (r: (V, U, T));
+pub assume_specification<
+    V: core::default::Default,
+    U: core::default::Default,
+    T: core::default::Default,
+>[ <(V, U, T) as core::default::Default>::default ]() -> (r: (V, U, T))
+;
 
-impl<V, U, T> DefaultSpecImpl for (V, U, T)
-    where
-        V: core::default::Default,
-        U: core::default::Default,
-        T: core::default::Default,
-{
+impl<V, U, T> DefaultSpecImpl for (V, U, T) where
+    V: core::default::Default,
+    U: core::default::Default,
+    T: core::default::Default,
+ {
     open spec fn obeys_default_spec() -> bool {
         V::obeys_default_spec() && U::obeys_default_spec() && T::obeys_default_spec()
     }
@@ -330,4 +339,4 @@ impl<V, U, T> DefaultSpecImpl for (V, U, T)
     }
 }
 
-}
+} // verus!

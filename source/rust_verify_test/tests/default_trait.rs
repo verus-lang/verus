@@ -58,45 +58,93 @@ test_default_ok!(
 test_default_ok!(test_default_tuple2_ok, (u32, bool), (0u32, false));
 test_default_ok!(test_default_tuple3_ok, (u32, bool, char), (0u32, false, '\0'));
 
-// more complex usages
-
 test_verify_one_file! {
-  #[test] test_default_u32_through_wrapper verus_code! {
+  #[test] test_default_string_ok verus_code! {
     use vstd::prelude::*;
-    use core::default::Default;
-
-    fn wrap() -> (r: u32)
-      ensures r == 0
-    {
-      <u32 as Default>::default()
-    }
-
     fn test() {
-      let x = wrap();
-      assert(x == 0);
+      let a = String::default();
+      assert(a@.len() == 0);
+      assert(a.is_ascii());
     }
   } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_default_in_struct verus_code! {
-        use vstd::prelude::*;
-
-        struct MyStruct {
-            x: u32,
-            y: bool,
-        }
-
-        fn create_with_defaults() -> (r: MyStruct)
-            ensures r.x == 0 && r.y == false
-        {
-            MyStruct {
-                x: u32::default(),
-                y: bool::default(),
-            }
-        }
-    } => Ok(())
+  #[test] test_default_vec_u32_ok verus_code! {
+    use vstd::prelude::*;
+    fn test() {
+      let v: Vec<u32> = Vec::default();
+      assert(v@.len() == 0);
+    }
+  } => Ok(())
 }
+
+test_verify_one_file! {
+  #[test] test_default_hash_map_u32_ok verus_code! {
+    use vstd::prelude::*;
+    use std::collections::HashMap;
+    fn test() {
+      let m: HashMap<u32, u32> = HashMap::default();
+      assert(m@.len() == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_default_hash_set_u32_ok verus_code! {
+    use vstd::prelude::*;
+    use std::collections::HashSet;
+    fn test() {
+      let s: HashSet<u32> = HashSet::default();
+      assert(s@.len() == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_default_box_u32_ok verus_code! {
+    use vstd::prelude::*;
+    fn test() {
+      let b: Box<u32> = Box::default();
+      assert(*b == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_default_rc_u32_ok verus_code! {
+    use vstd::prelude::*;
+    use std::rc::Rc;
+    fn test() {
+      let r: Rc<u32> = Rc::default();
+      assert(*r == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_default_arc_u32_ok verus_code! {
+    use vstd::prelude::*;
+    use std::sync::Arc;
+    fn test() {
+      let a: Arc<u32> = Arc::default();
+      assert(*a == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
+  #[test] test_default_vec_deque_u32_ok verus_code! {
+    use vstd::prelude::*;
+    use std::collections::VecDeque;
+    fn test() {
+      let v: VecDeque<u32> = VecDeque::default();
+      assert(v@.len() == 0);
+    }
+  } => Ok(())
+}
+
+// more complex usages
 
 test_verify_one_file! {
     #[test] test_default_arithmetic verus_code! {
@@ -127,6 +175,50 @@ test_verify_one_file! {
       let y: bool = mk::<bool>();
       assert(x == 0);
       assert(y == false);
+    }
+  } => Ok(())
+}
+
+// note: because of orphan rule, we can only implement DefaultSpecImpl for MyType
+// which is defined in the same crate
+// if you want to implement DefaultSpecImpl for unsupportted std types or 3rd party types,
+// you need to newtype it
+test_verify_one_file! {
+  #[test] test_default_custom_type_spec verus_code! {
+    use vstd::prelude::*;
+    use vstd::std_specs::core::{DefaultSpec, DefaultSpecImpl};
+
+    pub struct MyType {
+        pub x: u32,
+        pub y: bool,
+    }
+
+    impl Default for MyType {
+        fn default() -> MyType {
+            MyType { x: 10, y: true }
+        }
+    }
+
+    impl DefaultSpecImpl for MyType {
+        open spec fn obeys_default_spec() -> bool {
+            true
+        }
+
+        open spec fn default_spec() -> Self {
+            MyType { x: 10, y: true }
+        }
+    }
+
+    fn mk() -> (r: MyType)
+        ensures r == <MyType as DefaultSpec>::default_spec()
+    {
+        MyType::default()
+    }
+
+    fn test() {
+        let v = mk();
+        assert(v.x == 10);
+        assert(v.y == true);
     }
   } => Ok(())
 }
