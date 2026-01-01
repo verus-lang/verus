@@ -285,7 +285,7 @@ pub uninterp spec fn default_string() -> String;
 #[cfg(feature = "alloc")]
 pub broadcast proof fn axiom_default_string()
     ensures
-        #[trigger] default_string()@.len() == 0,
+        #[trigger] default_string()@ == Seq::<char>::empty(),
         string_is_ascii(&default_string()),
 {
     admit();
@@ -294,7 +294,8 @@ pub broadcast proof fn axiom_default_string()
 #[cfg(feature = "alloc")]
 pub assume_specification[ String::new ]() -> (res: String)
     ensures
-        res == default_string(),
+        res@ == Seq::<char>::empty(),
+        string_is_ascii(&res),
 ;
 
 #[cfg(feature = "alloc")]

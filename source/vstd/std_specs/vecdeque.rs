@@ -2,7 +2,7 @@
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
 
-use super::core::{DefaultSpec, DefaultSpecImpl};
+use super::core::DefaultSpecImpl;
 use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
 use core::alloc::Allocator;

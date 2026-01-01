@@ -24,7 +24,7 @@
 /// `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
-use super::core::{DefaultSpec, DefaultSpecImpl};
+use super::core::DefaultSpecImpl;
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::marker::PhantomData;
