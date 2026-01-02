@@ -506,8 +506,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::ArrayLiteral(..) if ctxt.assert_by_compute => {
                         reach_seq_funs(ctxt, state);
                     }
-                    ExprX::UnaryOpr(UnaryOpr::HasResolved(typ), _)
-                    | ExprX::AssumeResolved(_, typ) => {
+                    ExprX::UnaryOpr(UnaryOpr::HasResolved(typ), _) => {
                         if let Some(res) = &mut state.resolve_typs {
                             res.visit_type(typ);
                         }

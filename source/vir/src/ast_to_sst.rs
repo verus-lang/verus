@@ -2556,15 +2556,6 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::TwoPhaseBorrowMut(_place) => {
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
-        ExprX::AssumeResolved(e, typ) => {
-            let (mut stms, exp) = expr_to_stm_opt(ctx, state, e)?;
-            let exp = unwrap_or_return_never!(exp, stms);
-            let expx = ExpX::UnaryOpr(UnaryOpr::HasResolved(typ.clone()), exp.clone());
-            let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
-            let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
-            stms.push(assume_stm);
-            Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
-        }
         ExprX::ReadPlace(place, _read_type) => {
             let expr = place_to_expr(place);
             expr_to_stm_opt(ctx, state, &expr)

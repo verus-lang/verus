@@ -635,11 +635,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
             }
-            ExprX::AssumeResolved(e, t) => {
-                let e = self.visit_expr(e)?;
-                let t = self.visit_typ(t)?;
-                R::ret(|| expr_new(ExprX::AssumeResolved(R::get(e), R::get(t))))
-            }
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))

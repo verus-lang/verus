@@ -1987,14 +1987,6 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Exec)
         }
-        ExprX::AssumeResolved(e, _t) => {
-            if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use `resolve` in exec mode"));
-            }
-            let mut typing = typing.push_allow_prophecy_dependence(true);
-            check_expr_has_mode(ctxt, record, &mut typing, Mode::Proof, e, Mode::Proof)?;
-            Ok(outer_mode)
-        }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use `has_resolved` in exec mode"));

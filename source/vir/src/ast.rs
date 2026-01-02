@@ -1098,11 +1098,6 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
-    /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
-    /// (resolution_inference.rs)
-    /// Used only when new-mut-refs is enabled.
-    /// TODO(new_mut_ref): this might be unused now; can be deleted
-    AssumeResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
