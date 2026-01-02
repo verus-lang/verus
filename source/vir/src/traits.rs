@@ -609,6 +609,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
+                    async_params_mode_binding: None,
+                    async_ret: None,
                 };
                 kratex.functions.push(default_function.new_x(inherit_functionx));
             }

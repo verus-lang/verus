@@ -527,6 +527,7 @@ impl Visitor {
         ident: impl ToTokens, // function name.
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
+        is_async_fn: bool,                              // is the function an async function
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -662,7 +663,11 @@ impl Visitor {
                                         }
                                     }
                                 };
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                if is_async_fn {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #verus_builtin::get_future_type(#receiver_token#ident#generics_token(#args))))
+                                } else {
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#p, #receiver_token#ident#generics_token(#args)))
+                                }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
                             spec_stmts.push(Stmt::Expr(
@@ -1025,6 +1030,7 @@ impl Visitor {
             sig.ident.clone(),
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
+            sig.asyncness.is_some(),
         );
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
@@ -4965,6 +4971,7 @@ pub(crate) fn sig_specs_attr(
         sig.ident.clone(),
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
+        sig.asyncness.is_some(),
     ));
     spec_stmts
 }
@@ -5432,7 +5439,7 @@ fn check_return_ident(
 }
 
 /// In VIR there's the same check, but Rustc will complain first, and throw out
-/// some errors about "constrain_type", which ar confusing and the users should not see.
+/// some errors about "constrain_type", which are confusing and the users should not see.
 /// Instead we give an early error with nice error msg here.
 fn check_verus_return_ident(
     ret_pat: &Pat,
@@ -5450,3 +5457,80 @@ fn check_verus_return_ident(
     }
     None
 }
+
+// ///
+// fn check_async_fn_open_invariants(sig: &mut Signature) -> Option<Stmt> {
+//     if sig.asyncness.is_none() {
+//         return None;
+//     }
+//     match &sig.spec.invariants {
+//         Some(invs) => {
+//             if matches!(
+//                 invs.set,
+//                 InvariantNameSet::Any(..) | InvariantNameSet::Set(..) | InvariantNameSet::List(..)
+//             ) {
+//                 return Some(stmt_with_semi!(
+//                     invs.span() =>
+//                     compile_error!("async functions cannot open any invariants")
+//                 ));
+//             } else {
+//                 return None;
+//             }
+//         }
+//         None => {
+//             sig.spec.invariants = Some(SignatureInvariants {
+//                 token: Token![opens_invariants](sig.asyncness.span()),
+//                 set: InvariantNameSet::None(verus_syn::InvariantNameSetNone {
+//                     token: Token![none](sig.asyncness.span()),
+//                 }),
+//             });
+//             return None;
+//         }
+//     }
+// }
+
+// ///
+// fn check_async_fn_ret_ensures(
+//     sig: &Signature,
+//     ret_pat: &Option<(Pat, Box<Type>, Option<Pat>)>,
+// ) -> Option<Stmt> {
+//     if sig.asyncness.is_none() {
+//         return None;
+//     } else if sig.asyncness.is_some() && ret_pat.is_none() {
+//         return Some(stmt_with_semi!(
+//             sig.asyncness.unwrap().span() =>
+//             compile_error!("async functions must name their return values")
+//         ));
+//     }
+
+//     let ret_pat = &ret_pat.as_ref().unwrap().0;
+//     let async_ensures_error = |span| {
+//         Some(stmt_with_semi!(
+//             span =>
+//             compile_error!("async functions ensures clause must have form return_value.awaited() ==> { xxx }")
+//         ))
+//     };
+
+//     if let Some(ensures) = &sig.spec.ensures {
+//         for ensure in &ensures.exprs.exprs {
+//             if let Expr::Binary(b) = &ensure {
+//                 if let Expr::MethodCall(call) = b.left.as_ref() {
+//                     if *call.receiver.to_token_stream().to_string()
+//                         != ret_pat.to_token_stream().to_string()
+//                         || *call.method.to_string() != "awaited".to_string()
+//                         || call.turbofish.is_some()
+//                         || call.args.len() != 0
+//                     {
+//                         return async_ensures_error(ensure.span());
+//                     }
+//                 } else {
+//                     return async_ensures_error(ensure.span());
+//                 }
+//             } else {
+//                 return async_ensures_error(ensure.span());
+//             }
+//         }
+//     }
+
+//     None
+// }

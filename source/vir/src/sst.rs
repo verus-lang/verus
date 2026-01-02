@@ -317,6 +317,8 @@ pub struct FuncDeclSst {
     pub reqs: Exps,
     /// (regular ensures, trait-default ensures)
     pub enss: (Exps, Exps),
+    // pub async_ens_pars: Option<Pars>,
+    // pub async_enss: Option<Exps>,
     pub inv_masks: Arc<Vec<Exps>>,
     pub unwind_condition: Option<Exp>,
     pub fndef_axioms: Exps,
@@ -380,6 +382,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
+    pub async_ret: Option<Par>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

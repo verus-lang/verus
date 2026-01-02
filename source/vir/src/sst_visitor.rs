@@ -618,8 +618,25 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             let es = self.visit_exps(es)?;
             R::push(&mut inv_masks, R::ret(|| R::get_vec_a(es))?);
         }
-        let unwind_condition =
+        let unwind_condition: <R as Returner>::Opt<Arc<SpannedTyped<ExpX>>> =
             R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+        // let async_ens_pars: <R as Returner>::Opt<Arc<Vec<Arc<Spanned<ParX>>>>> =
+        //     R::map_opt(&func_decl.async_ens_pars, &mut |pars: &Arc<Vec<Arc<Spanned<ParX>>>>|
+        //             R::ret_result(||
+        //             Ok(R::get_vec_a(
+        //                 self.visit_pars(&**pars)?
+        //             ))
+        //             )
+        //         )?;
+        // let async_enss: <R as Returner>::Opt<Arc<Vec<Arc<SpannedTyped<ExpX>>>>> =
+        //     R::map_opt(&func_decl.async_enss, &mut |enss: &Arc<Vec<Arc<SpannedTyped<ExpX>>>>|
+        //         R::ret_result(||
+        //             Ok(R::get_vec_a(
+        //                 self.visit_exps(&**enss)?
+        //             ))
+        //             )
+        //     )?;
+
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
@@ -628,6 +645,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
             fndef_axioms: R::get_vec_a(fndef_axioms),
+            // async_ens_pars: R::get_opt(async_ens_pars),
+            // async_enss: R::get_opt(async_enss),
         })
     }
 
@@ -698,6 +717,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
+        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -721,6 +741,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
+                    async_ret: R::get_opt(async_ret).map(|c| c),
                 },
             )
         })

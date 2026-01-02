@@ -1165,6 +1165,10 @@ impl<'a> Builder<'a> {
             ExprX::UseLeftWhereRightCanHaveNoAssignments(..) => {
                 panic!("UseLeftWhereRightCanHaveNoAssignments shouldn't be created yet");
             }
+            ExprX::Await(e) => {
+                bb = self.build(e, bb)?;
+                Ok(bb)
+            }
         }
     }
 
