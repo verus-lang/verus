@@ -35,6 +35,7 @@ pub enum CompilableOperator {
     TrackedBorrowMut,
     UseTypeInvariant,
     ClosureToFnProof(Mode),
+    GhostBorrowMut,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -217,6 +218,7 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedGet
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
+            | CompilableOperator::GhostBorrowMut
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
     })
