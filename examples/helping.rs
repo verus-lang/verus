@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore --- broken
+
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;

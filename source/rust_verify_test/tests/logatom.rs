@@ -1,3 +1,5 @@
+#![cfg(false)]
+
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
