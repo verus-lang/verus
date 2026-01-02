@@ -494,6 +494,7 @@ pub(crate) fn translate_impl<'tcx>(
                         &vir_ty,
                         &body_id,
                         false,
+                        false,
                     )?;
                 } else {
                     unsupported_err!(item.span, "unsupported item ref in impl", impl_item_id);

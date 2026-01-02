@@ -56,6 +56,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) loop_isolation: bool,
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
     pub(crate) au_pred_args: Option<vir::ast::Exprs>,
+    pub(crate) new_mut_ref: bool,
 }
 
 pub(crate) struct AtomicallyCtxt {

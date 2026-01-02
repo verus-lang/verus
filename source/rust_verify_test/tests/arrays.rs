@@ -121,6 +121,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_array_clone verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = [0u8; 16];
+            let _b = a.clone();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_set verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;

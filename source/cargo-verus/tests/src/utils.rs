@@ -1,3 +1,6 @@
+#[cfg(not(feature = "integration-tests"))]
+compile_error!("Enable the `integration-tests` feature to run these tests.");
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,6 +13,8 @@ pub const MEMBER_UNSET: &str = "member-unset";
 pub const MEMBER_HASDEPS: &str = "member-hasdeps";
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+
+pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 
 #[derive(Debug, Deserialize)]
 pub struct CargoData {
@@ -47,6 +52,11 @@ impl CargoData {
             "Cargo env MUST NOT have a key with prefix {}*",
             key_prefix,
         );
+    }
+
+    pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
+        let encoded_args = self.env.get(key).expect(&format!("retrieve env var `{}`", key));
+        encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 }
 

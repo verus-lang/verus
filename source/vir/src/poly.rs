@@ -584,7 +584,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::HeightTrigger => {
+                UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
@@ -602,9 +602,12 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
                 }
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1.clone()))
+                }
+                UnaryOp::MutRefFinal => {
+                    panic!("internal error: MustBeFinalized in SST")
                 }
             }
         }
@@ -658,13 +661,13 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
             }
         }
-        ExpX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+        ExpX::Binary(BinaryOp::Index(kind, bc), e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
             let e2 = visit_exp(ctx, state, e2);
             let e1 = coerce_exp_to_native(ctx, &e1);
             let e2 = coerce_exp_to_poly(ctx, &e2);
             let typ = coerce_typ_to_poly(ctx, &exp.typ);
-            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::ArrayIndex, e1, e2))
+            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind, *bc), e1, e2))
         }
         ExpX::Binary(op, e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
@@ -678,7 +681,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),
-                BinaryOp::ArrayIndex => unreachable!("ArrayIndex"),
+                BinaryOp::Index(..) => unreachable!("Index"),
             };
             if native {
                 let e1 = coerce_exp_to_native(ctx, &e1);

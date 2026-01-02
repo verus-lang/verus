@@ -6,8 +6,8 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt, Fun, FunX,
-    Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
+    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, Div0Behavior, Dt,
+    Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
     OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent,
     VarIdentDisambiguate, VirErr,
 };
@@ -1058,7 +1058,11 @@ fn eval_array_index(
     use InterpExp::*;
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
-    let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
+    let ok = Ok(exp_new(Binary(
+        crate::ast::BinaryOp::Index(ArrayKind::Array, crate::ast::BoundsCheck::Allow),
+        arr.clone(),
+        index_exp.clone(),
+    )));
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => match &index_exp.x {
@@ -1174,9 +1178,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | ToDyn
                         | StrLen
+                        | Length(..)
                         | StrIsAscii
                         | MutRefCurrent
-                        | MutRefFuture
+                        | MutRefFuture(_)
+                        | MutRefFinal
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -1292,9 +1298,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | CoerceMode { .. }
                         | ToDyn
                         | StrLen
+                        | Length(..)
                         | StrIsAscii
                         | MutRefCurrent
-                        | MutRefFuture
+                        | MutRefFuture(_)
+                        | MutRefFinal
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }
@@ -1610,11 +1618,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                ArrayIndex => {
+                Index(ArrayKind::Array, _) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(state, exp, &e1, &e2)
                 }
-                HeightCompare { .. } | StrGetChar | RealArith(..) => ok_e2(e2.clone()),
+                Index(ArrayKind::Slice, _) | HeightCompare { .. } | StrGetChar | RealArith(..) => {
+                    ok_e2(e2.clone())
+                }
             }
         }
         BinaryOpr(op, e1, e2) => {

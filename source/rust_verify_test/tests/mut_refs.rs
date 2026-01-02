@@ -112,6 +112,11 @@ test_verify_one_file_with_options! {
         spec fn test2<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
+
+        #[verifier::prophetic]
+        spec fn test3<T>(x: &mut T) -> T {
+            *fin(x)
+        }
     } => Ok(())
 }
 
@@ -121,6 +126,14 @@ test_verify_one_file_with_options! {
             mut_ref_future(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
+        spec fn test<T>(x: &mut T) -> T {
+            *fin(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `fin` in prophecy-independent context")
 }
 
 test_verify_one_file_with_options! {
@@ -2209,7 +2222,7 @@ test_verify_one_file_with_options! {
                 mut_ref_current(j)[0] == (X { a: 0, b: 1 }),
         {
             j[0].method_call(j[0].a);
-            assert(mut_ref_current(j)[0] == (X { a: 20, b: 0 }));
+            assert(mut_ref_current(j)[0] == (X { a: 0, b: 0 }));
         }
 
         fn test_array_fail(j: &mut [X; 2])
@@ -2217,7 +2230,7 @@ test_verify_one_file_with_options! {
                 mut_ref_current(j)[0] == (X { a: 0, b: 1 }),
         {
             j[0].method_call(j[0].a);
-            assert(mut_ref_current(j)[0] == (X { a: 20, b: 0 }));
+            assert(mut_ref_current(j)[0] == (X { a: 0, b: 0 }));
             assert(false); // FAILS
         }
 
@@ -2227,7 +2240,7 @@ test_verify_one_file_with_options! {
                 X { a: 5, b: 10 },
             ];
 
-            j[0].method_call(j[0].a);
+            j[0].method_call(j[0].a + 20);
             assert(j[0] == (X { a: 20, b: 0 }));
         }
 
@@ -2237,7 +2250,7 @@ test_verify_one_file_with_options! {
                 X { a: 5, b: 10 },
             ];
 
-            j[0].method_call(j[0].a);
+            j[0].method_call(j[0].a + 20);
             assert(j[0] == (X { a: 20, b: 0 }));
             assert(false); // FAILS
         }
@@ -2249,7 +2262,7 @@ test_verify_one_file_with_options! {
             ];
             let j_ref = &mut j;
 
-            j_ref[0].method_call(j_ref[0].a);
+            j_ref[0].method_call(j_ref[0].a + 20);
             assert(j[0] == (X { a: 20, b: 0 }));
         }
 
@@ -2260,12 +2273,11 @@ test_verify_one_file_with_options! {
             ];
             let j_ref = &mut j;
 
-            j_ref[0].method_call(j_ref[0].a);
+            j_ref[0].method_call(j_ref[0].a + 20);
             assert(j[0] == (X { a: 20, b: 0 }));
             assert(false); // FAILS
         }
-    //} => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
+    } => Err(err) => assert_fails(err, 6) // TODO(new_mut_ref)
 }
 
 test_verify_one_file_with_options! {
@@ -2294,8 +2306,7 @@ test_verify_one_file_with_options! {
             // two-phase borrow.
             j[0].method_call(j[0].a);
         }
-    //} => Err(err) => assert_rust_error_msg(err, "cannot use `j` because it was mutably borrowed")
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `*j` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
@@ -2701,4 +2712,20 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut u64) {
+            assert(mut_ref_future(x) == *fin(x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut bool) {
+            assert(mut_ref_current(fin(x)));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
 }

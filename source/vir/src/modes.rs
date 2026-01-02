@@ -912,6 +912,31 @@ fn check_place_rec_inner(
                 &format!("Verus Internal Error: WithExpr node shouldn't exist yet"),
             ));
         }
+        PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
+            let place_mode = check_place_rec(ctxt, record, typing, outer_mode, p, access)?;
+            let idx_mode = check_expr(ctxt, record, typing, outer_mode, idx)?;
+
+            if ctxt.check_ghost_blocks
+                && matches!(typing.block_ghostness, Ghost::Exec)
+                && idx_mode != Mode::Exec
+            {
+                return Err(error(
+                    &place.span,
+                    format!("cannot use {idx_mode}-mode expression in executable context"),
+                ));
+            }
+
+            // Why not return mode_join(place_mode, idx_mode)?
+            // This function returns the mode of the place itself, not the mode of the
+            // expression, so the mode of the indexed place is the same as the mode
+            // of the slice/array place.
+            // e.g.,
+            //   tracked[spec] -> tracked
+            //   exec[spec] -> exec
+            // If we try to do `exec[spec]` outside a ghost block, it will get caught by
+            // the above check.
+            Ok(place_mode)
+        }
     }
 }
 
@@ -1292,11 +1317,14 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Unary(UnaryOp::MutRefFuture, e1) => {
+        ExprX::Unary(UnaryOp::MutRefFuture(source_name), e1) => {
             if !typing.allow_prophecy_dependence {
                 return Err(error(
                     &expr.span,
-                    "cannot use prophecy-dependent function `mut_ref_future` in prophecy-independent context",
+                    format!(
+                        "cannot use prophecy-dependent function `{:}` in prophecy-independent context",
+                        source_name.as_str()
+                    ),
                 ));
             }
             check_expr(ctxt, record, typing, Mode::Spec, e1)?;
@@ -1595,7 +1623,7 @@ fn check_expr_handle_mut_arg(
         ExprX::AssertAssumeUserDefinedTypeInvariant { .. } => {
             panic!("internal error: AssertAssumeUserDefinedTypeInvariant shouldn't exist here")
         }
-        ExprX::AssertAssume { is_assume: _, expr: e } => {
+        ExprX::AssertAssume { is_assume: _, expr: e, msg: _ } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert or assume in exec mode"));
             }
@@ -2011,14 +2039,6 @@ fn check_expr_handle_mut_arg(
                 ));
             }
             Ok(Mode::Exec)
-        }
-        ExprX::AssumeResolved(e, _t) => {
-            if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return Err(error(&expr.span, "cannot use `resolve` in exec mode"));
-            }
-            let mut typing = typing.push_allow_prophecy_dependence(true);
-            check_expr_has_mode(ctxt, record, &mut typing, Mode::Proof, e, Mode::Proof)?;
-            Ok(outer_mode)
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {

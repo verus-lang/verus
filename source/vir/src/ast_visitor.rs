@@ -32,7 +32,7 @@ pub struct ScopeEntry {
 }
 
 impl ScopeEntry {
-    fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
+    pub(crate) fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
         ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
     }
     fn new_outer_param_ret(typ: &Typ, is_mut: bool, init: bool) -> Self {
@@ -476,10 +476,14 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 // don't descend into Headers
                 R::ret(|| expr_new(expr.x.clone()))
             }
-            ExprX::AssertAssume { is_assume, expr } => {
+            ExprX::AssertAssume { is_assume, expr, msg } => {
                 let expr = self.visit_expr(expr)?;
                 R::ret(|| {
-                    expr_new(ExprX::AssertAssume { is_assume: *is_assume, expr: R::get(expr) })
+                    expr_new(ExprX::AssertAssume {
+                        is_assume: *is_assume,
+                        expr: R::get(expr),
+                        msg: msg.clone(),
+                    })
                 })
             }
             ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => {
@@ -675,11 +679,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
             }
-            ExprX::AssumeResolved(e, t) => {
-                let e = self.visit_expr(e)?;
-                let t = self.visit_typ(t)?;
-                R::ret(|| expr_new(ExprX::AssumeResolved(R::get(e), R::get(t))))
-            }
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::ReadPlace(R::get(p), *read_type)))
@@ -852,6 +851,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 let p = self.visit_place(p)?;
                 R::ret(|| place_new(PlaceX::WithExpr(R::get(e), R::get(p))))
+            }
+            PlaceX::Index(p, idx, kind, needs_bounds_check) => {
+                let p = self.visit_place(p)?;
+                let idx = self.visit_expr(idx)?;
+                R::ret(|| {
+                    place_new(PlaceX::Index(R::get(p), R::get(idx), *kind, *needs_bounds_check))
+                })
             }
         }
     }
