@@ -1783,7 +1783,7 @@ impl<'a> LocalCollection<'a> {
         let idx = self.ident_to_idx[&p.local];
 
         let projections =
-            Self::extend_tree(&mut self.locals[idx].tree, &p.projections, &self.datatypes);
+            Self::extend_tree(&mut self.locals[idx].tree, &p.typ, &p.projections, &self.datatypes);
 
         FlattenedPlace { local: idx, projections: projections }
     }
@@ -1792,10 +1792,14 @@ impl<'a> LocalCollection<'a> {
         tree: &mut PlaceTree,
         projections: &[ProjectionTyped],
         datatypes: &HashMap<Path, Datatype>,
+        normalized_typ: &Typ,
     ) -> Vec<Projection> {
         let mut tree: &mut PlaceTree = tree;
         let mut output_projections: Vec<Projection> = vec![];
+        let mut normalized_typ = normalized_typ.clone();
         for projection_typed in projections.iter() {
+            tree.ensure_typ_head_normalized(normalized_typ);
+
             if let PlaceTree::Leaf(typ) = tree {
                 let typ = undecorate_box_trk_decorations(typ);
                 match &**typ {
@@ -1886,6 +1890,8 @@ impl<'a> LocalCollection<'a> {
                     }
                 },
             }
+
+            normalized_typ = projection_typed.typ();
         }
         output_projections
     }
@@ -2043,6 +2049,8 @@ impl PlaceTree {
             PlaceTree::MutRef(t, _) => t,
         }
     }
+
+    fn ensure_typ_head_normalized(
 }
 
 impl FlattenedPlace {
@@ -2173,6 +2181,13 @@ impl ProjectionTyped {
             },
             field_typ,
         )
+    }
+
+    fn typ(&self) -> Typ {
+        match self {
+            ProjectionTyped::StructField(_, typ) => typ.clone(),
+            ProjectionTyped::DerefMut(typ) => typ.clone(),
+        }
     }
 }
 
