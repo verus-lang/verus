@@ -7,7 +7,9 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, bool_typ, place_to_expr, types_equal, undecorate_typ, unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
@@ -1253,7 +1255,9 @@ pub(crate) fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::AssignToPlace { place, rhs, op: Some(binary_op) } => {
+        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve } => {
+            assert!(resolve.is_none());
+
             // No support for short-circuit ops here
             assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
 
@@ -1280,14 +1284,21 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::AssignToPlace { place, rhs, op: None } => {
+        ExprX::AssignToPlace { place, rhs, op: None, resolve } => {
             let (mut stms1, exps) = place_to_exp_pair(ctx, state, place)?;
-            let (lhs_exp, _e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
+            let (lhs_exp, e1) = exps.unwrap(); // TODO(new_mut_ref): fix this
 
             let (mut stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
             stms1.append(&mut stms2);
 
             let e2 = unwrap_or_return_never!(e2, stms1);
+
+            if let Some(t) = resolve {
+                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e1.clone());
+                let res = SpannedTyped::new(&expr.span, &bool_typ(), resx);
+                let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res));
+                stms1.push(assume_stm);
+            }
 
             let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e2 };
             stms1.push(Spanned::new(expr.span.clone(), assign));

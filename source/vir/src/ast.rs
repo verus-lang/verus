@@ -1026,10 +1026,17 @@ pub enum ExprX {
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
+    ///
     /// Not used when new-mut-refs is enabled.
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    /// Assign to the given place.
+    ///
+    /// If `resolve` is set, then we also emit
+    /// `assume(has_resolved(place))` immediately before the mutation.
+    /// This flag may be set by resolution analysis.
+    ///
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string

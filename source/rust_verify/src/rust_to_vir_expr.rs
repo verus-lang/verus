@@ -3057,7 +3057,12 @@ fn expr_assign_to_vir_innermost<'tcx>(
             None => None,
         };
 
-        return mk_expr(ExprX::AssignToPlace { place: vir_lhs, rhs: vir_rhs, op: op });
+        return mk_expr(ExprX::AssignToPlace {
+            place: vir_lhs,
+            rhs: vir_rhs,
+            op: op,
+            resolve: None,
+        });
     }
 
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {

@@ -1564,7 +1564,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::AssignToPlace { place, rhs, op: _ } => {
+        ExprX::AssignToPlace { place, rhs, op: _, resolve: _ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,

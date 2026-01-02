@@ -952,7 +952,7 @@ test_verify_one_file_with_options! {
 
             assert(a == 10);
             assert(b == 11);
-            //assert(c == 12); // TODO(new_mut_ref)
+            assert(c == 12);
             assert(d == 13);
         }
     } => Ok(())
@@ -989,7 +989,7 @@ test_verify_one_file_with_options! {
 
             assert(a == 10);
             assert(b == 11);
-            //assert(c == 12); // TODO(new_mut_ref)
+            assert(c == 12);
             assert(d == 13);
         }
     } => Ok(())
@@ -1191,4 +1191,85 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 6)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slices_assign_resolving_basic ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        spec fn id<A>(a: A) -> A { a }
+
+        fn test_slice0(x: Box<[&mut u64]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+
+            // In principle this is fine, but the current alg won't put it this early
+            // for index places.
+            assert(has_resolved(x[0])); // FAILS
+
+            x[0] = &mut a;
+        }
+
+        fn test_slice1(x: Box<[&mut u64]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0]);
+            x[0] = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice2(x: Box<[[&mut u64; 2]]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0][1]);
+            x[0][1] = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice_field(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0].1);
+            x[0].1 = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice_field_fails(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0].0);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        fn test_slice_field_fails2(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0]);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        fn test_slice_field_fails3(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }

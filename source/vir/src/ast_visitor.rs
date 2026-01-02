@@ -124,6 +124,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
+        R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
+    }
+
     fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
         R::map_opt(expr_opt, &mut |e| self.visit_expr(e))
     }
@@ -461,14 +465,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::AssignToPlace { place, rhs, op } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
+                let resolve = self.visit_opt_typ(resolve)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
+                        resolve: R::get_opt(resolve),
                     })
                 })
             }
