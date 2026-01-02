@@ -2729,3 +2729,37 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
 }
+
+test_verify_one_file_with_options! {
+    #[test] resolve_places_with_projection_types ["new-mut-ref"] => verus_code! {
+        trait Tr {
+            type AssocType;
+        }
+
+        struct P<T: Tr> {
+            a: T::AssocType,
+            b: u64,
+        }
+
+        struct X<'a> { a: &'a u64 }
+
+        impl<'a> Tr for X<'a> {
+            type AssocType = (&'a mut u64, &'a mut u64);
+        }
+
+        fn test<'a>(p: P<X<'a>>) {
+            let mut p = p;
+            assert(has_resolved(p.a.1));
+            p.b = 20;
+            *p.a.0 = 30;
+            assert(has_resolved(p.a.0));
+        }
+
+        fn test2<'a>(p: P<X<'a>>) {
+            let mut p = p;
+            p.b = 20;
+            assert(has_resolved(p.a.0)); // FAILS
+            *p.a.0 = 30;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

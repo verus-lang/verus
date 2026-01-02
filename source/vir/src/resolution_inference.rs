@@ -1783,21 +1783,31 @@ impl<'a> LocalCollection<'a> {
         let idx = self.ident_to_idx[&p.local];
 
         let projections =
-            Self::extend_tree(&mut self.locals[idx].tree, &p.projections, &self.datatypes);
+            Self::extend_tree(&mut self.locals[idx].tree, &p.typ, &p.projections, &self.datatypes);
 
         FlattenedPlace { local: idx, projections: projections }
     }
 
     fn extend_tree(
         tree: &mut PlaceTree,
+        root_typ: &Typ,
         projections: &[ProjectionTyped],
         datatypes: &HashMap<Path, Datatype>,
     ) -> Vec<Projection> {
         let mut tree: &mut PlaceTree = tree;
         let mut output_projections: Vec<Projection> = vec![];
+        let mut cur_typ = root_typ.clone();
         for projection_typed in projections.iter() {
-            if let PlaceTree::Leaf(typ) = tree {
-                let typ = undecorate_box_trk_decorations(typ);
+            if let PlaceTree::Leaf(_typ) = tree {
+                // Note: the type off the PlaceTree::Leaf might not be head-normalized
+                // (i.e., it might be a TypX::Projection instead of something concrete
+                // like TypX::MutRef or TypX::Datatype).
+                // (Note: TypX::Projection shouldn't be confused with the notion of
+                // 'place projection' common in this file.)
+                // Anyway, the `cur_typ` should be equivalent and should also be
+                // head-normalized, so use that instead.
+                let typ = undecorate_box_trk_decorations(&cur_typ);
+
                 match &**typ {
                     TypX::MutRef(inner_typ) => {
                         *tree = PlaceTree::MutRef(
@@ -1886,6 +1896,8 @@ impl<'a> LocalCollection<'a> {
                     }
                 },
             }
+
+            cur_typ = projection_typed.typ();
         }
         output_projections
     }
@@ -2173,6 +2185,13 @@ impl ProjectionTyped {
             },
             field_typ,
         )
+    }
+
+    fn typ(&self) -> Typ {
+        match self {
+            ProjectionTyped::StructField(_, typ) => typ.clone(),
+            ProjectionTyped::DerefMut(typ) => typ.clone(),
+        }
     }
 }
 
