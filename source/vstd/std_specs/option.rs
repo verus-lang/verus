@@ -254,7 +254,7 @@ pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_defa
 ) -> (res: T)
     ensures
         option.is_some() ==> res == option.unwrap(),
-        option.is_none() && T::obeys_default_spec() ==> res == T::default_spec(),
+        option.is_none() ==> call_ensures(T::default, (), res),
 ;
 
 // unwrap_or_else
