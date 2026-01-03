@@ -630,6 +630,7 @@ impl Visitor {
             ensures,
             outer_mask,
             inner_mask,
+            no_abort,
             ..
         } = atomic_spec;
 
@@ -783,6 +784,14 @@ impl Visitor {
                 open spec fn inner_mask(self) -> #vstd::set::Set<vstd::prelude::int> {
                     #mask_expr
                 }
+            );
+
+            fn_tokens.to_tokens(&mut impl_members);
+        }
+
+        if let Some(no_abort) = no_abort {
+            let fn_tokens = &quote_spanned!(no_abort.token.span =>
+                open spec fn may_abort(self) -> bool { false }
             );
 
             fn_tokens.to_tokens(&mut impl_members);
@@ -3607,9 +3616,10 @@ impl Visitor {
                     let name = format!("yield_fn_{unique_id:x}");
                     yield_binder = Ident::new(&name, span);
 
-                    let ident = bind.ident;
+                    let var = bind.ident;
                     header.append_all(quote_spanned!(span =>
-                        let #ident = #yield_binder();
+                        #[verus::internal(proof)]
+                        let #var = #yield_binder();
                     ));
                 }
 
@@ -3623,7 +3633,7 @@ impl Visitor {
             }
 
             _ => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(::core::mem::drop)
+                #vstd::atomic::atomically(|_, _| ())
             ),
         };
 

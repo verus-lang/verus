@@ -92,6 +92,7 @@ a.struct[title="struct syn::token::Move"],
 a.struct[title="struct syn::token::Mut"],
 a.struct[title="struct syn::token::Ne"],
 a.struct[title="struct syn::token::NeEq"],
+a.struct[title="struct syn::token::NoAbort"],
 a.struct[title="struct syn::token::NoUnwind"],
 a.struct[title="struct syn::token::Not"],
 a.struct[title="struct syn::token::Open"],
@@ -260,6 +261,7 @@ a.struct[title="struct syn::token::Move"]::before,
 a.struct[title="struct syn::token::Mut"]::before,
 a.struct[title="struct syn::token::Ne"]::before,
 a.struct[title="struct syn::token::NeEq"]::before,
+a.struct[title="struct syn::token::NoAbort"]::before,
 a.struct[title="struct syn::token::NoUnwind"]::before,
 a.struct[title="struct syn::token::Not"]::before,
 a.struct[title="struct syn::token::Open"]::before,
@@ -709,6 +711,10 @@ a.struct[title="struct syn::token::Ne"]::before {
 
 a.struct[title="struct syn::token::NeEq"]::before {
 	content: "Token![!==]";
+}
+
+a.struct[title="struct syn::token::NoAbort"]::before {
+	content: "Token![no_abort]";
 }
 
 a.struct[title="struct syn::token::NoUnwind"]::before {
@@ -1177,6 +1183,7 @@ a.struct[title="struct syn::token::AssumeSpecification"]::after,
 a.struct[title="struct syn::token::DefaultEnsures"]::after,
 a.struct[title="struct syn::token::InnerMask"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,
+a.struct[title="struct syn::token::NoAbort"]::after,
 a.struct[title="struct syn::token::NoUnwind"]::after,
 a.struct[title="struct syn::token::OpensInvariants"]::after,
 a.struct[title="struct syn::token::OuterMask"]::after,

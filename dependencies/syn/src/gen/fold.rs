@@ -855,6 +855,9 @@ pub trait Fold {
     fn fold_mode_tracked(&mut self, i: crate::ModeTracked) -> crate::ModeTracked {
         fold_mode_tracked(self, i)
     }
+    fn fold_no_abort(&mut self, i: crate::NoAbort) -> crate::NoAbort {
+        fold_no_abort(self, i)
+    }
     fn fold_open(&mut self, i: crate::Open) -> crate::Open {
         fold_open(self, i)
     }
@@ -1485,6 +1488,7 @@ where
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         outer_mask: (node.outer_mask).map(|it| f.fold_outer_mask(it)),
         inner_mask: (node.inner_mask).map(|it| f.fold_inner_mask(it)),
+        no_abort: (node.no_abort).map(|it| f.fold_no_abort(it)),
         comma_token: node.comma_token,
     }
 }
@@ -3955,6 +3959,15 @@ where
         tracked_token: node.tracked_token,
     }
 }
+pub fn fold_no_abort<F>(f: &mut F, node: crate::NoAbort) -> crate::NoAbort
+where
+    F: Fold + ?Sized,
+{
+    crate::NoAbort {
+        token: node.token,
+        comma_token: node.comma_token,
+    }
+}
 pub fn fold_open<F>(f: &mut F, node: crate::Open) -> crate::Open
 where
     F: Fold + ?Sized,
@@ -5271,7 +5284,7 @@ where
     crate::YieldLet {
         token1: node.token1,
         token2: node.token2,
-        expr: f.fold_ident(node.expr),
+        ident: f.fold_ident(node.ident),
         comma_token: node.comma_token,
     }
 }

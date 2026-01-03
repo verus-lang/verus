@@ -109,7 +109,7 @@ impl PartialEq for crate::AtomicSpec {
             && self.perm_clause == other.perm_clause
             && self.yield_type == other.yield_type && self.requires == other.requires
             && self.ensures == other.ensures && self.outer_mask == other.outer_mask
-            && self.inner_mask == other.inner_mask
+            && self.inner_mask == other.inner_mask && self.no_abort == other.no_abort
             && self.comma_token == other.comma_token
     }
 }
@@ -2037,6 +2037,14 @@ impl Eq for crate::ModeTracked {}
 impl PartialEq for crate::ModeTracked {
     fn eq(&self, _other: &Self) -> bool {
         true
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::NoAbort {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::NoAbort {
+    fn eq(&self, other: &Self) -> bool {
+        self.comma_token == other.comma_token
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

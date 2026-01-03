@@ -143,6 +143,7 @@ impl Clone for crate::AtomicSpec {
             ensures: self.ensures.clone(),
             outer_mask: self.outer_mask.clone(),
             inner_mask: self.inner_mask.clone(),
+            no_abort: self.no_abort.clone(),
             comma_token: self.comma_token.clone(),
         }
     }
@@ -2091,6 +2092,15 @@ impl Clone for crate::ModeTracked {
     fn clone(&self) -> Self {
         crate::ModeTracked {
             tracked_token: self.tracked_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::NoAbort {
+    fn clone(&self) -> Self {
+        crate::NoAbort {
+            token: self.token.clone(),
+            comma_token: self.comma_token.clone(),
         }
     }
 }

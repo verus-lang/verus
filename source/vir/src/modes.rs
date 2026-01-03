@@ -1997,9 +1997,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Proof, e, Mode::Proof)?;
             Ok(Mode::Proof)
         }
-        ExprX::Yield(_info) => {
-            Ok(Mode::Proof)
-        }
+        ExprX::Yield(_info) => Ok(Mode::Proof),
         ExprX::InvMask(mask_spec) => {
             for expr in mask_spec.exprs().iter() {
                 let mut typing = typing.push_block_ghostness(Ghost::Ghost);

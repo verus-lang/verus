@@ -135,6 +135,7 @@ impl Hash for crate::AtomicSpec {
         self.ensures.hash(state);
         self.outer_mask.hash(state);
         self.inner_mask.hash(state);
+        self.no_abort.hash(state);
         self.comma_token.hash(state);
     }
 }
@@ -2613,6 +2614,15 @@ impl Hash for crate::ModeTracked {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::NoAbort {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.comma_token.hash(state);
+    }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Open {

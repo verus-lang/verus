@@ -150,6 +150,7 @@ impl Debug for crate::AtomicSpec {
         formatter.field("ensures", &self.ensures);
         formatter.field("outer_mask", &self.outer_mask);
         formatter.field("inner_mask", &self.inner_mask);
+        formatter.field("no_abort", &self.no_abort);
         formatter.field("comma_token", &self.comma_token);
         formatter.finish()
     }
@@ -2963,6 +2964,15 @@ impl Debug for crate::ModeTracked {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::NoAbort {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("NoAbort");
+        formatter.field("token", &self.token);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Open {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Open");
@@ -4380,7 +4390,7 @@ impl Debug for crate::YieldLet {
         let mut formatter = formatter.debug_struct("YieldLet");
         formatter.field("token1", &self.token1);
         formatter.field("token2", &self.token2);
-        formatter.field("expr", &self.ident);
+        formatter.field("ident", &self.ident);
         formatter.field("comma_token", &self.comma_token);
         formatter.finish()
     }

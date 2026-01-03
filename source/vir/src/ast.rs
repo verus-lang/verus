@@ -1030,32 +1030,16 @@ pub enum ExprX {
     /// Executable function (declared with 'fn' and referred to by name)
     ExecFnByName(Fun),
     /// Choose specification values satisfying a condition, compute body
-    Choose {
-        params: VarBinders<Typ>,
-        cond: Expr,
-        body: Expr,
-    },
+    Choose { params: VarBinders<Typ>, cond: Expr, body: Expr },
     /// Manually supply triggers for body of quantifier
-    WithTriggers {
-        triggers: Arc<Vec<Exprs>>,
-        body: Expr,
-    },
+    WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     /// Not used when new-mut-refs is enabled.
-    Assign {
-        init_not_mut: bool,
-        lhs: Expr,
-        rhs: Expr,
-        op: Option<BinaryOp>,
-    },
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace {
-        place: Place,
-        rhs: Expr,
-        op: Option<BinaryOp>,
-    },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1065,32 +1049,14 @@ pub enum ExprX {
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
     /// Assert or assume
-    AssertAssume {
-        is_assume: bool,
-        expr: Expr,
-        msg: Option<Message>,
-    },
+    AssertAssume { is_assume: bool, expr: Expr, msg: Option<Message> },
     /// Assert or assume user-defined type invariant for `expr` and return `expr`
     /// These are added in user_defined_type_invariants.rs
-    AssertAssumeUserDefinedTypeInvariant {
-        is_assume: bool,
-        expr: Expr,
-        fun: Fun,
-    },
+    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
     /// Assert-forall or assert-by statement
-    AssertBy {
-        vars: VarBinders<Typ>,
-        require: Expr,
-        ensure: Expr,
-        proof: Expr,
-    },
+    AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
-    AssertQuery {
-        requires: Exprs,
-        ensures: Exprs,
-        proof: Expr,
-        mode: AssertQueryMode,
-    },
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
     AssertCompute(Expr, ComputeMode),
     /// If-else
@@ -1127,20 +1093,13 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue {
-        label: Option<String>,
-        is_break: bool,
-    },
+    BreakOrContinue { label: Option<String>, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost {
-        alloc_wrapper: bool,
-        tracked: bool,
-        expr: Expr,
-    },
+    Ghost { alloc_wrapper: bool, tracked: bool, expr: Expr },
     /// Enter a proof block from inside spec-mode code
     ProofInSpec(Expr),
     /// Sequence of statements, optionally including an expression at the end

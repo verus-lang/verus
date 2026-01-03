@@ -441,6 +441,8 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         // invariant masks
         "inner_mask",
         "outer_mask",
+        // no_abort flag
+        "may_abort",
     ];
 
     for &method in AU_METHOD_NAMES {

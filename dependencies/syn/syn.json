@@ -419,6 +419,11 @@
             "syn": "InnerMask"
           }
         },
+        "no_abort": {
+          "option": {
+            "syn": "NoAbort"
+          }
+        },
         "comma_token": {
           "option": {
             "token": "Comma"
@@ -5304,6 +5309,22 @@
       }
     },
     {
+      "ident": "NoAbort",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "NoAbort"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "Open",
       "features": {
         "any": []
@@ -7892,7 +7913,7 @@
         "token2": {
           "token": "Let"
         },
-        "expr": {
+        "ident": {
           "proc_macro2": "Ident"
         },
         "comma_token": {
@@ -8020,6 +8041,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "NoAbort": "no_abort",
     "NoUnwind": "no_unwind",
     "Not": "!",
     "Open": "open",

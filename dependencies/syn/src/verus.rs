@@ -671,6 +671,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct NoAbort {
+        pub token: Token![no_abort],
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct AtomicSpec {
         pub atomically_token: Token![atomically],
         pub paren_token: token::Paren,
@@ -683,6 +690,7 @@ ast_struct! {
         pub ensures: Option<Ensures>,
         pub outer_mask: Option<OuterMask>,
         pub inner_mask: Option<InnerMask>,
+        pub no_abort: Option<NoAbort>,
         pub comma_token: Option<Token![,]>,
     }
 }
@@ -1882,6 +1890,27 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for NoAbort {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self {
+                token: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<NoAbort> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![no_abort]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let parens;
@@ -1898,6 +1927,7 @@ pub mod parsing {
                 ensures: curlys.parse()?,
                 outer_mask: curlys.parse()?,
                 inner_mask: curlys.parse()?,
+                no_abort: curlys.parse()?,
                 comma_token: input.parse()?,
             })
         }

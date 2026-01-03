@@ -729,6 +729,11 @@ impl<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>> AtomicUpdate<X, Y, Z, Pred> {
     pub open spec fn inner_mask(self) -> Set<int> {
         self.pred().inner_mask()
     }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::may_abort"]
+    pub open spec fn may_abort(self) -> bool {
+        self.pred().may_abort()
+    }
 }
 
 pub trait UpdatePredicate<X, Y, Z>: Sized {
@@ -742,6 +747,10 @@ pub trait UpdatePredicate<X, Y, Z>: Sized {
 
     open spec fn inner_mask(self) -> Set<int> {
         Set::empty()
+    }
+
+    open spec fn may_abort(self) -> bool {
+        true
     }
 }
 
@@ -964,8 +973,8 @@ macro_rules! try_open_atomic_update_in_proof {
 
 #[macro_export]
 macro_rules! try_open_atomic_update_internal {
-    ($au:expr, $x:pat => $body:block, @EXEC, $wrap_fn:ident) => {
-        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+    ($au:expr, $x:pat $(, yield $z:expr)? => $body:block, @EXEC, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x $(, yield $z)? => {
             #[verifier::exec]
             let v = $body;
 
@@ -979,8 +988,8 @@ macro_rules! try_open_atomic_update_internal {
         })
     };
 
-    ($au:expr, $x:pat => $body:block, @PROOF, $wrap_fn:ident) => {
-        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+    ($au:expr, $x:pat $(, yield $z:expr)? => $body:block, @PROOF, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x $(, yield $z)? => {
             #[verifier::proof]
             let v = $body;
 

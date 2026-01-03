@@ -784,6 +784,9 @@ pub trait VisitMut {
     fn visit_mode_tracked_mut(&mut self, i: &mut crate::ModeTracked) {
         visit_mode_tracked_mut(self, i);
     }
+    fn visit_no_abort_mut(&mut self, i: &mut crate::NoAbort) {
+        visit_no_abort_mut(self, i);
+    }
     fn visit_open_mut(&mut self, i: &mut crate::Open) {
         visit_open_mut(self, i);
     }
@@ -1386,6 +1389,9 @@ where
     }
     if let Some(it) = &mut node.inner_mask {
         v.visit_inner_mask_mut(it);
+    }
+    if let Some(it) = &mut node.no_abort {
+        v.visit_no_abort_mut(it);
     }
     skip!(node.comma_token);
 }
@@ -3803,6 +3809,13 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.tracked_token);
+}
+pub fn visit_no_abort_mut<V>(v: &mut V, node: &mut crate::NoAbort)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.comma_token);
 }
 pub fn visit_open_mut<V>(v: &mut V, node: &mut crate::Open)
 where

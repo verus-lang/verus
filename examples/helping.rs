@@ -1,5 +1,8 @@
 // rust_verify/tests/example.rs ignore --- broken
 
+#![verifier::exec_allows_no_decreases_clause]
+#![verifier::loop_isolation(false)]
+
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;
@@ -7,7 +10,7 @@ use vstd::tokens::frac::*;
 
 verus! {
 
-type FlipAU = AtomicUpdate<FlagToken, FlagToken, FlipPred>;
+type FlipAU = AtomicUpdate<FlagToken, FlagToken, OpenInvariantCredit, FlipPred>;
 
 pub enum Protocol {
     Empty(GhostVarAuth<Option<FlipAU>>),
@@ -125,21 +128,25 @@ impl Flag {
     pub fn read(&self) -> (out: bool)
         atomically (atomic_update) {
             (old_token: FlagToken) -> (new_token: FlagToken),
+            yield type OpenInvariantCredit,
             requires old_token.id() == self.token_id(),
             ensures new_token == old_token,
             outer_mask any,
             inner_mask none,
+            no_abort,
         },
         requires self.wf(),
         ensures out == old_token.value@,
     {
+        let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+
         let out;
         open_atomic_invariant!(self.inv.borrow() => v => {
             let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             out = self.value.load(Tracked(&value_perm));
 
             proof {
-                open_atomic_update!(atomic_update, token => {
+                open_atomic_update!(atomic_update, token, yield credit => {
                     auth.agree(&token.value);
                     assert(value_perm.value() == token.value@);
                     Tracked(token)
@@ -152,12 +159,11 @@ impl Flag {
         return out;
     }
 
-    #[verifier::exec_allows_no_decreases_clause]
-    #[verifier::loop_isolation(false)]
     pub fn flip(&self)
         atomically (atomic_update) {
             type FlipPred,
             (old_token: FlagToken) -> (new_token: FlagToken),
+            yield type OpenInvariantCredit,
             requires
                 old_token.id() == self.token_id(),
             ensures
@@ -165,6 +171,7 @@ impl Flag {
                 new_token.id() == old_token.id(),
             outer_mask any,
             inner_mask none,
+            no_abort,
         },
         requires self.wf(),
     {
@@ -204,6 +211,9 @@ impl Flag {
         let tracked mut maybe_au = Some(au);
         let res;
 
+        let Tracked(credit1) = vstd::invariant::create_open_invariant_credit();
+        let Tracked(credit2) = vstd::invariant::create_open_invariant_credit();
+
         open_atomic_invariant!(self.inv.borrow() => v => {
             let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.pending.compare_exchange(Tracked(&mut pend_perm), 1, 2);
@@ -216,13 +226,13 @@ impl Flag {
                     assert(gv@ is Some);
                     assert(gv@->0 == other_au);
 
-                    open_atomic_update!(au, mut token => {
+                    open_atomic_update!(au, mut token, yield credit1 => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
                         Tracked(token)
                     });
 
-                    open_atomic_update!(other_au.get(), mut token => {
+                    open_atomic_update!(other_au.get(), mut token, yield credit2 => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
                         Tracked(token)
@@ -258,13 +268,16 @@ impl Flag {
         let tracked mut maybe_au = Some(au);
         let res;
 
+        let Tracked(credit1) = vstd::invariant::create_open_invariant_credit();
+        let Tracked(credit2) = vstd::invariant::create_open_invariant_credit();
+
         open_atomic_invariant!(self.inv.borrow() => v => {
             let tracked (mut value_perm, mut pend_perm, mut auth, mut gv, mut proto) = v;
             res = self.value.compare_exchange(Tracked(&mut value_perm), true, false);
             proof {
                 if res.is_ok() {
                     let tracked au = maybe_au.tracked_take();
-                    open_atomic_update!(au, mut token => {
+                    open_atomic_update!(au, mut token, yield credit1 => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
                         Tracked(token)
@@ -287,7 +300,7 @@ impl Flag {
             proof {
                 if res.is_ok() {
                     let tracked au = maybe_au.tracked_take();
-                    open_atomic_update!(au, mut token => {
+                    open_atomic_update!(au, mut token, yield credit2 => {
                         let ghost old_auth = auth@;
                         auth.update(&mut token.value, !old_auth);
                         Tracked(token)
@@ -417,20 +430,21 @@ fn main() {
 
     let tracked inv = AtomicInvariant::<int, FlagToken, UserInv>::new(token.id(), token, 5);
 
-    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
-    flag.flip() atomically |update| {
+    flag.flip() atomically |update| yield let credit {
         open_atomic_invariant!(credit => &inv => token => {
             let prev = token.value@;
-            token = update(token);
+            token = update(token).tracked_unwrap();
             assert(token.value@ != prev);
         });
+        break;
     };
 
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
-    let out = flag.read() atomically |update| {
+    let out = flag.read() atomically |update| yield let credit {
         open_atomic_invariant!(credit => &inv => token => {
-            token = update(token);
+            token = update(token).tracked_unwrap();
         });
+        break;
     };
 }
 

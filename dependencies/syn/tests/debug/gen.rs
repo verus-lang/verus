@@ -419,6 +419,20 @@ impl Debug for Lite<syn::AtomicSpec> {
             }
             formatter.field("inner_mask", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.no_abort {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::NoAbort);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("no_abort", Print::ref_cast(val));
+        }
         if self.value.comma_token.is_some() {
             formatter.field("comma_token", &Present);
         }
@@ -5100,6 +5114,15 @@ impl Debug for Lite<syn::ModeTracked> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::NoAbort> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("NoAbort");
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Open> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Open");
@@ -7408,7 +7431,7 @@ impl Debug for Lite<syn::WithSpecOnFn> {
 impl Debug for Lite<syn::YieldLet> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("YieldLet");
-        formatter.field("expr", Lite(&self.value.expr));
+        formatter.field("ident", Lite(&self.value.ident));
         if self.value.comma_token.is_some() {
             formatter.field("comma_token", &Present);
         }
@@ -7893,6 +7916,11 @@ impl Debug for Lite<syn::token::Ne> {
 impl Debug for Lite<syn::token::NeEq> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![!==]")
+    }
+}
+impl Debug for Lite<syn::token::NoAbort> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![no_abort]")
     }
 }
 impl Debug for Lite<syn::token::NoUnwind> {

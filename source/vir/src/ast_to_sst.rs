@@ -2474,6 +2474,8 @@ pub(crate) fn expr_to_stm_opt(
             // let $mut $x = x_tmp;
             // let res = $body;
             //
+            // assert(may_abort(au_tmp) || is_variant(res, Ok));
+            //
             // if is_variant(res, Ok) {
             //     let y = field(res, Ok);
             //     assert(ens(au_tmp, x_tmp, y));
@@ -2583,7 +2585,7 @@ pub(crate) fn expr_to_stm_opt(
             let res_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
             let res_typ = undecorate_typ(&res_var_exp.typ);
 
-            // generate condition
+            // generate `no_abort` assertion
 
             let TypX::Datatype(res_dt, ..) = &*res_typ else {
                 return crate::util::err_span(
@@ -2596,14 +2598,47 @@ pub(crate) fn expr_to_stm_opt(
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
 
-            let cond = ReturnValue::Some(SpannedTyped::new(
+            let res_is_ok = SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::UnaryOpr(
                     UnaryOpr::IsVariant { datatype: res_dt.clone(), variant: ok_variant.clone() },
                     res_var_exp.clone(),
                 ),
+            );
+
+            let res_is_ok = state.make_tmp_var_for_exp(&mut stms, res_is_ok);
+
+            let may_abort = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::may_abort"),
+                    typ_args.clone(),
+                    Arc::new(vec![au_temp_var_exp.clone()]),
+                ),
+            );
+
+            let disj_exp = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Binary(BinaryOp::Or, res_is_ok.clone(), may_abort),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assert(
+                    state.next_assert_id(),
+                    Some(error(&expr.span, "cannot show atomic update always commits").help(
+                        "this atomic update must always commit, since it is marked as `no_abort`",
+                    )),
+                    disj_exp,
+                ),
             ));
+
+            // generate condition
+
+            let cond = ReturnValue::Some(res_is_ok);
 
             let (ok_arm_stms, ok_arm_ret_val) = {
                 let mut stms = Vec::new();
@@ -2925,6 +2960,8 @@ pub(crate) fn expr_to_stm_opt(
             //
             // assert(req(au, x));
             //
+            // assume(may_abort(au_tmp) || is_variant(res, Ok));
+            //
             // if is_variant(res, Ok) {
             //     let y = field(res, Ok);
             //     assume(ens(au_tmp, x_tmp, y));
@@ -3050,14 +3087,39 @@ pub(crate) fn expr_to_stm_opt(
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
 
-            let cond = ReturnValue::Some(SpannedTyped::new(
+            let res_is_ok = SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::UnaryOpr(
                     UnaryOpr::IsVariant { datatype: res_dt.clone(), variant: ok_variant.clone() },
                     res_var_exp.clone(),
                 ),
+            );
+
+            let res_is_ok = state.make_tmp_var_for_exp(&mut stms, res_is_ok);
+
+            let may_abort = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::may_abort"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            );
+
+            stms.push(Spanned::new(
+                expr.span.clone(),
+                StmX::Assume(SpannedTyped::new(
+                    &expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExpX::Binary(BinaryOp::Or, res_is_ok.clone(), may_abort),
+                )),
             ));
+
+            // generate condition
+
+            let cond = ReturnValue::Some(res_is_ok);
 
             let (ok_arm_stms, ok_arm_ret_val) = {
                 let mut stms = Vec::new();
