@@ -145,6 +145,7 @@ impl Debug for crate::AtomicSpec {
         formatter.field("block_token", &self.block_token);
         formatter.field("type_clause", &self.type_clause);
         formatter.field("perm_clause", &self.perm_clause);
+        formatter.field("yield_type", &self.yield_type);
         formatter.field("requires", &self.requires);
         formatter.field("ensures", &self.ensures);
         formatter.field("outer_mask", &self.outer_mask);
@@ -161,9 +162,10 @@ impl Debug for crate::AtomicallyBlock {
         formatter.field("or1_token", &self.or1_token);
         formatter.field("update_binder", &self.update_binder);
         formatter.field("or2_token", &self.or2_token);
-        formatter.field("invariant_except_break", &self.invariant_except_breaks);
-        formatter.field("invariant", &self.invariants);
+        formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
+        formatter.field("invariants", &self.invariants);
         formatter.field("ensures", &self.ensures);
+        formatter.field("yield_let", &self.yield_let);
         formatter.field("body", &self.body);
         formatter.finish()
     }
@@ -4369,6 +4371,28 @@ impl Debug for crate::WithSpecOnFn {
         formatter.field("with", &self.with);
         formatter.field("inputs", &self.inputs);
         formatter.field("outputs", &self.outputs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::YieldLet {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("YieldLet");
+        formatter.field("token1", &self.token1);
+        formatter.field("token2", &self.token2);
+        formatter.field("expr", &self.ident);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::YieldType {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("YieldType");
+        formatter.field("token1", &self.token1);
+        formatter.field("token2", &self.token2);
+        formatter.field("ty", &self.ty);
+        formatter.field("comma_token", &self.comma_token);
         formatter.finish()
     }
 }

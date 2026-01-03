@@ -589,6 +589,15 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct YieldLet {
+        pub token1: Token![yield],
+        pub token2: Token![let],
+        pub ident: Ident,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct AtomicallyBlock {
         pub atomically_token: Token![atomically],
         pub or1_token: Token![|],
@@ -597,6 +606,7 @@ ast_struct! {
         pub invariant_except_breaks: Option<InvariantExceptBreak>,
         pub invariants: Option<Invariant>,
         pub ensures: Option<Ensures>,
+        pub yield_let: Option<YieldLet>,
         pub body: Box<Block>,
     }
 }
@@ -652,6 +662,15 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct YieldType {
+        pub token1: Token![yield],
+        pub token2: Token![type],
+        pub ty: Type,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
     pub struct AtomicSpec {
         pub atomically_token: Token![atomically],
         pub paren_token: token::Paren,
@@ -659,6 +678,7 @@ ast_struct! {
         pub block_token: token::Brace,
         pub type_clause: Option<PredTypeClause>,
         pub perm_clause: PermClause,
+        pub yield_type: Option<YieldType>,
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
         pub outer_mask: Option<OuterMask>,
@@ -792,7 +812,8 @@ pub mod parsing {
                 || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants])
                 || input.peek(Token![outer_mask])
-                || input.peek(Token![inner_mask]))
+                || input.peek(Token![inner_mask])
+                || input.peek(Token![yield]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -1673,6 +1694,29 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for YieldLet {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self {
+                token1: input.parse()?,
+                token2: input.parse()?,
+                ident: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<YieldLet> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![yield]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicallyBlock {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(AtomicallyBlock {
@@ -1683,6 +1727,7 @@ pub mod parsing {
                 invariant_except_breaks: input.parse()?,
                 invariants: input.parse()?,
                 ensures: input.parse()?,
+                yield_let: input.parse()?,
                 body: input.parse()?,
             })
         }
@@ -1814,6 +1859,29 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for YieldType {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self {
+                token1: input.parse()?,
+                token2: input.parse()?,
+                ty: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<YieldType> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![yield]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let parens;
@@ -1825,6 +1893,7 @@ pub mod parsing {
                 block_token: braced!(curlys in input),
                 type_clause: curlys.parse()?,
                 perm_clause: curlys.parse()?,
+                yield_type: curlys.parse()?,
                 requires: curlys.parse()?,
                 ensures: curlys.parse()?,
                 outer_mask: curlys.parse()?,

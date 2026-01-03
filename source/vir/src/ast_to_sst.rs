@@ -1,5 +1,10 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr
+    ArithOp, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr,
+    ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec,
+    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{QUANT_FORALL, place_to_expr, types_equal, undecorate_typ, unit_typ};
@@ -2501,10 +2506,10 @@ pub(crate) fn expr_to_stm_opt(
                 );
             };
 
-            let [x_typ, y_typ, _pred_typ] = typ_args.as_slice() else {
+            let [x_typ, y_typ, _yield_typ, _pred_typ] = typ_args.as_slice() else {
                 return crate::util::err_span(
                     expr.span.clone(),
-                    "malformed atomic update block; atomic update should have three type params",
+                    "malformed atomic update block; atomic update should have four type params",
                 );
             };
 
@@ -2879,7 +2884,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let value = exp.expect_value();
             let TypX::Datatype(Dt::Tuple(0), ..) = value.typ.as_ref() else {
-                panic!("malformed atomic function call, body does not return unit");
+                panic!("malformed atomic function call; body does not return unit");
             };
 
             // assert atomic update resolves
@@ -2893,8 +2898,11 @@ pub(crate) fn expr_to_stm_opt(
 
                 let call_resolves =
                     SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
-                let err = error(&expr.span, "atomic function call might not allow atomic update to resolve")
-                    .help("make sure to `break` this loop only if the update function succeeded");
+                let err = error(
+                    &expr.span,
+                    "atomic function call might not allow atomic update to resolve",
+                )
+                .help("make sure to `break` this loop only if the update function succeeded");
 
                 stms.push(Spanned::new(
                     expr.span.clone(),
@@ -3152,6 +3160,12 @@ pub(crate) fn expr_to_stm_opt(
                 err_arm_stms,
                 &err_arm_ret_val,
             ));
+        }
+        ExprX::Yield(_info) => {
+            let (var_ident, exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::Nondeterministic);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+            Ok((vec![stm], ReturnValue::Some(exp)))
         }
         ExprX::InvMask(mask_spec) => {
             let (span, exprs, compl) = match mask_spec {

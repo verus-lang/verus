@@ -394,6 +394,11 @@
         "perm_clause": {
           "syn": "PermClause"
         },
+        "yield_type": {
+          "option": {
+            "syn": "YieldType"
+          }
+        },
         "requires": {
           "option": {
             "syn": "Requires"
@@ -439,12 +444,12 @@
         "or2_token": {
           "token": "Or"
         },
-        "invariant_except_break": {
+        "invariant_except_breaks": {
           "option": {
             "syn": "InvariantExceptBreak"
           }
         },
-        "invariant": {
+        "invariants": {
           "option": {
             "syn": "Invariant"
           }
@@ -452,6 +457,11 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "yield_let": {
+          "option": {
+            "syn": "YieldLet"
           }
         },
         "body": {
@@ -7866,6 +7876,50 @@
                 }
               }
             ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "YieldLet",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token1": {
+          "token": "Yield"
+        },
+        "token2": {
+          "token": "Let"
+        },
+        "expr": {
+          "proc_macro2": "Ident"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "YieldType",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token1": {
+          "token": "Yield"
+        },
+        "token2": {
+          "token": "Type"
+        },
+        "ty": {
+          "syn": "Type"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
           }
         }
       }

@@ -1175,6 +1175,12 @@ pub trait Visit<'ast> {
     fn visit_with_spec_on_fn(&mut self, i: &'ast crate::WithSpecOnFn) {
         visit_with_spec_on_fn(self, i);
     }
+    fn visit_yield_let(&mut self, i: &'ast crate::YieldLet) {
+        visit_yield_let(self, i);
+    }
+    fn visit_yield_type(&mut self, i: &'ast crate::YieldType) {
+        visit_yield_type(self, i);
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1362,6 +1368,9 @@ where
         v.visit_pred_type_clause(it);
     }
     v.visit_perm_clause(&node.perm_clause);
+    if let Some(it) = &node.yield_type {
+        v.visit_yield_type(it);
+    }
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
@@ -1392,6 +1401,9 @@ where
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
+    }
+    if let Some(it) = &node.yield_let {
+        v.visit_yield_let(it);
     }
     full!(v.visit_block(& * node.body));
 }
@@ -5317,4 +5329,22 @@ where
             full!(v.visit_pat_type(it));
         }
     }
+}
+pub fn visit_yield_let<'ast, V>(v: &mut V, node: &'ast crate::YieldLet)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token1);
+    skip!(node.token2);
+    v.visit_ident(&node.ident);
+    skip!(node.comma_token);
+}
+pub fn visit_yield_type<'ast, V>(v: &mut V, node: &'ast crate::YieldType)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token1);
+    skip!(node.token2);
+    v.visit_type(&node.ty);
+    skip!(node.comma_token);
 }

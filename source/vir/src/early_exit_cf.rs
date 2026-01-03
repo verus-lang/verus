@@ -77,6 +77,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Nondeterministic { .. }
             | ExprX::Atomically(..)
             | ExprX::Update(..)
+            | ExprX::Yield(..)
             | ExprX::InvMask(..)
             | ExprX::TwoPhaseBorrowMut(_)
             | ExprX::BorrowMut(_)

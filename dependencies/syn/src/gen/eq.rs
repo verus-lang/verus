@@ -106,7 +106,8 @@ impl PartialEq for crate::AtomicSpec {
     fn eq(&self, other: &Self) -> bool {
         self.atomic_update == other.atomic_update
             && self.type_clause == other.type_clause
-            && self.perm_clause == other.perm_clause && self.requires == other.requires
+            && self.perm_clause == other.perm_clause
+            && self.yield_type == other.yield_type && self.requires == other.requires
             && self.ensures == other.ensures && self.outer_mask == other.outer_mask
             && self.inner_mask == other.inner_mask
             && self.comma_token == other.comma_token
@@ -120,7 +121,7 @@ impl PartialEq for crate::AtomicallyBlock {
         self.update_binder == other.update_binder
             && self.invariant_except_breaks == other.invariant_except_breaks
             && self.invariants == other.invariants && self.ensures == other.ensures
-            && self.body == other.body
+            && self.yield_let == other.yield_let && self.body == other.body
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3129,5 +3130,21 @@ impl Eq for crate::WithSpecOnFn {}
 impl PartialEq for crate::WithSpecOnFn {
     fn eq(&self, other: &Self) -> bool {
         self.inputs == other.inputs && self.outputs == other.outputs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::YieldLet {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::YieldLet {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident && self.comma_token == other.comma_token
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::YieldType {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::YieldType {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.comma_token == other.comma_token
     }
 }

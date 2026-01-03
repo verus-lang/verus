@@ -349,6 +349,20 @@ impl Debug for Lite<syn::AtomicSpec> {
             formatter.field("type_clause", Print::ref_cast(val));
         }
         formatter.field("perm_clause", Lite(&self.value.perm_clause));
+        if let Some(val) = &self.value.yield_type {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::YieldType);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("yield_type", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.requires {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -415,7 +429,7 @@ impl Debug for Lite<syn::AtomicallyBlock> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
         formatter.field("update_binder", Lite(&self.value.update_binder));
-        if let Some(val) = &self.value.invariant_except_break {
+        if let Some(val) = &self.value.invariant_except_breaks {
             #[derive(RefCast)]
             #[repr(transparent)]
             struct Print(syn::InvariantExceptBreak);
@@ -427,9 +441,9 @@ impl Debug for Lite<syn::AtomicallyBlock> {
                     Ok(())
                 }
             }
-            formatter.field("invariant_except_break", Print::ref_cast(val));
+            formatter.field("invariant_except_breaks", Print::ref_cast(val));
         }
-        if let Some(val) = &self.value.invariant {
+        if let Some(val) = &self.value.invariants {
             #[derive(RefCast)]
             #[repr(transparent)]
             struct Print(syn::Invariant);
@@ -441,7 +455,7 @@ impl Debug for Lite<syn::AtomicallyBlock> {
                     Ok(())
                 }
             }
-            formatter.field("invariant", Print::ref_cast(val));
+            formatter.field("invariants", Print::ref_cast(val));
         }
         if let Some(val) = &self.value.ensures {
             #[derive(RefCast)]
@@ -456,6 +470,20 @@ impl Debug for Lite<syn::AtomicallyBlock> {
                 }
             }
             formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.yield_let {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::YieldLet);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("yield_let", Print::ref_cast(val));
         }
         formatter.field("body", Lite(&self.value.body));
         formatter.finish()
@@ -7373,6 +7401,26 @@ impl Debug for Lite<syn::WithSpecOnFn> {
                 }
             }
             formatter.field("outputs", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::YieldLet> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("YieldLet");
+        formatter.field("expr", Lite(&self.value.expr));
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::YieldType> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("YieldType");
+        formatter.field("ty", Lite(&self.value.ty));
+        if self.value.comma_token.is_some() {
+            formatter.field("comma_token", &Present);
         }
         formatter.finish()
     }

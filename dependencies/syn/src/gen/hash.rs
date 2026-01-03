@@ -130,6 +130,7 @@ impl Hash for crate::AtomicSpec {
         self.atomic_update.hash(state);
         self.type_clause.hash(state);
         self.perm_clause.hash(state);
+        self.yield_type.hash(state);
         self.requires.hash(state);
         self.ensures.hash(state);
         self.outer_mask.hash(state);
@@ -147,6 +148,7 @@ impl Hash for crate::AtomicallyBlock {
         self.invariant_except_breaks.hash(state);
         self.invariants.hash(state);
         self.ensures.hash(state);
+        self.yield_let.hash(state);
         self.body.hash(state);
     }
 }
@@ -3931,5 +3933,25 @@ impl Hash for crate::WithSpecOnFn {
     {
         self.inputs.hash(state);
         self.outputs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::YieldLet {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ident.hash(state);
+        self.comma_token.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::YieldType {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ty.hash(state);
+        self.comma_token.hash(state);
     }
 }

@@ -12,6 +12,7 @@ pub fn atomic_function<T>(x: i32, _s: &str, _t: T) -> (y: i32)
     atomically (au) {
         type FunPred,
         (z: i32) -> (w: i32),
+        yield type u8,
         requires z == 5,
         ensures w == 7,
         outer_mask [ 2_int, 3_int ],
@@ -20,7 +21,7 @@ pub fn atomic_function<T>(x: i32, _s: &str, _t: T) -> (y: i32)
     requires x == 2,
     ensures y == 3,
 {
-    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, FunPred<T>> = au;
+    let tracked _: vstd::atomic::AtomicUpdate<i32, i32, u8, FunPred<T>> = au;
     assume(au.resolves());
     return x + 1;
 }
@@ -29,6 +30,7 @@ pub fn middle(x: i32) -> (y: i32)
     atomically (atom_upd) {
         type MiddlePred,
         (z: i32) -> (w: i32),
+        yield type u16,
         requires z == 5,
         ensures w == 7,
         outer_mask any,
@@ -42,8 +44,11 @@ pub fn middle(x: i32) -> (y: i32)
 
     atomic_function(x, "hi", ()) atomically |upd|
         invariant au == atom_upd,
+        yield let stuff,
     {
-        let tracked Tracked(res) = try_open_atomic_update!(au, a => {
+        let _foo: u8 = stuff;
+
+        let tracked Tracked(res) = try_open_atomic_update!(au, a, yield 37_u16 => {
             assert(a == 5);
             let tracked res = upd(a);
             Tracked(res)

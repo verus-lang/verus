@@ -1052,6 +1052,9 @@ impl<'a> Builder<'a> {
                 bb = self.build(e, bb)?;
                 Ok(bb)
             }
+            ExprX::Yield(_i) => {
+                Ok(bb)
+            }
             ExprX::InvMask(_m) => Ok(bb),
             ExprX::Return(e_opt) => {
                 if let Some(e) = e_opt {

@@ -561,7 +561,8 @@ pub use crate::verus::{
     ModeSpecChecked, ModeTracked, Open, OpenRestricted, OuterMask, PermClause, PermTuple,
     PermTupleField, PredTypeClause, Prover, Publish, Recommends, Requires, Returns, RevealHide,
     SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
-    Specification, TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn,
+    Specification, TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn, YieldLet,
+    YieldType,
 };
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/6176

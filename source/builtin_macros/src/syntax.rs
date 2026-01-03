@@ -2,7 +2,7 @@ use crate::rustdoc::env_rustdoc;
 use crate::{EraseGhost, VstdKind, vstd_kind};
 use convert_case::{Case, Casing};
 use proc_macro2::{Group, Span, TokenStream, TokenTree};
-use quote::{ToTokens, format_ident, quote, quote_spanned};
+use quote::{ToTokens, TokenStreamExt, format_ident, quote, quote_spanned};
 use syn::token::Comma;
 use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::parse_quote_spanned;
@@ -625,6 +625,7 @@ impl Visitor {
             atomic_update,
             type_clause,
             perm_clause,
+            yield_type,
             requires,
             ensures,
             outer_mask,
@@ -644,6 +645,11 @@ impl Visitor {
                 pred_name.push_str("AtomicUpdatePredicate");
                 Ident::new(&pred_name, sig.ident.span())
             }
+        };
+
+        let yield_ty = match yield_type {
+            Some(clause) => clause.ty,
+            None => parse_quote_spanned!(full_span => ()),
         };
 
         let mut args_ty_tokens = TokenStream::new();
@@ -706,7 +712,7 @@ impl Visitor {
 
         let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
             tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #pred_ident #generics >
+                < #old_ty, #new_ty, #yield_ty, #pred_ident #generics >
         );
 
         let mut old_pat = TokenStream::new();
@@ -783,7 +789,7 @@ impl Visitor {
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
+            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty, #yield_ty>
             for #pred_ident #generics #where_clause { #impl_members }
         ));
 
@@ -3552,6 +3558,7 @@ impl Visitor {
             mut invariant_except_breaks,
             mut invariants,
             mut ensures,
+            yield_let,
             ..
         } = atomically;
 
@@ -3587,16 +3594,30 @@ impl Visitor {
                     None,
                 );
 
-                let mut loop_specs = TokenStream::new();
+                let mut header = TokenStream::new();
                 for stmt in stmts {
-                    stmt.to_tokens(&mut loop_specs)
+                    stmt.to_tokens(&mut header)
+                }
+
+                let mut yield_binder = Ident::new("_", span);
+                if let Some(bind) = yield_let {
+                    // This is a cryptographically secure way to prevent users
+                    // from guessing the name of this function
+                    let unique_id = rand::random::<u64>();
+                    let name = format!("yield_fn_{unique_id:x}");
+                    yield_binder = Ident::new(&name, span);
+
+                    let ident = bind.ident;
+                    header.append_all(quote_spanned!(span =>
+                        let #ident = #yield_binder();
+                    ));
                 }
 
                 quote_spanned_vstd!(vstd, span =>
-                    #vstd::atomic::atomically(|#update_binder|
+                    #vstd::atomic::atomically(|#yield_binder, #update_binder|
                         #[verus::internal(proof)]
                         #[verifier::assume_termination]
-                        loop { #loop_specs #body }
+                        loop { #header #body }
                     )
                 )
             }

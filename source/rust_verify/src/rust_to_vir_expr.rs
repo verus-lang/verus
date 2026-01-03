@@ -1130,7 +1130,7 @@ fn open_au_block_to_vir<'tcx>(
 ) -> Result<ExprOrPlace, VirErr> {
     // ```
     // #[verifier::open_au_block] {
-    //     let (guard, $x) = try_open_atomic_update_begin($au);
+    //     let (guard, $x) = try_open_atomic_update_begin($au, $z);
     //     let res = $body;
     //     match res {
     //         res => try_open_atomic_update_end(guard, res),
@@ -1148,7 +1148,7 @@ fn open_au_block_to_vir<'tcx>(
     };
 
     // ```
-    // let $x = try_open_atomic_update_begin($au);
+    // let (guard, $x) = try_open_atomic_update_begin($au, $z);
     // ```
     let StmtKind::Let(LetStmt {
         pat:
@@ -1194,7 +1194,7 @@ fn open_au_block_to_vir<'tcx>(
                                 )),
                             ..
                         },
-                        [au_arg],
+                        [au_arg, ..],
                     ),
                 ..
             }),
@@ -2125,6 +2125,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                         ExprX::Update(actx.info.clone(), arg),
                                     ))
                                 }
+
+                                Some(actx) if actx.yield_binder == local_hir_id => {
+                                    Some(bctx.spanned_typed_new(
+                                        fun.span,
+                                        &expr_typ()?,
+                                        ExprX::Yield(actx.info.clone()),
+                                    ))
+                                }
+
                                 // dynamically computed function, see below
                                 _ => None,
                             }

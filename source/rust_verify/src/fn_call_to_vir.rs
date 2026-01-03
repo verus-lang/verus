@@ -32,7 +32,12 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr
+    ArithOp, ArrayKind, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp,
+    BitshiftBehavior, BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode,
+    Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
+    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
+    PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -691,8 +696,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::atomically` should return an atomic update")
                 };
 
-                let [x_typ, y_typ, pred_typ] = au_typ_args.as_slice() else {
-                    panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
+                let [x_typ, y_typ, yield_typ, pred_typ] = au_typ_args.as_slice() else {
+                    panic!("`vstd::atomic::AtomicUpdate` should take four type arguments")
                 };
 
                 let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
@@ -700,8 +705,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param] = body.params else {
-                    panic!("the closure should take exactly one argument")
+                let [yield_param, update_param] = body.params else {
+                    panic!("the closure should take exactly two argument")
                 };
 
                 let Some(args) = &bctx.au_pred_args else {
@@ -722,6 +727,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     au_typ_args: au_typ_args.clone(),
                     x_typ: x_typ.clone(),
                     y_typ: y_typ.clone(),
+                    yield_typ: yield_typ.clone(),
                     pred_typ: pred_typ.clone(),
                     call_span: expr_span,
                 });
@@ -729,6 +735,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let (tx, rx) = std::sync::mpsc::channel();
                 let actx = Arc::new(AtomicallyCtxt {
                     update_binder: update_param.pat.hir_id,
+                    yield_binder: yield_param.pat.hir_id,
                     call_spans: tx,
                     info: info.clone(),
                 });

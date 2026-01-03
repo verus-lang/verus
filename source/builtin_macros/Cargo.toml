@@ -16,6 +16,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0.39"
 convert_case = "0.4"
+rand = "0.9.2"
 quote = "1.0"
 synstructure = "0.13.2"
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }

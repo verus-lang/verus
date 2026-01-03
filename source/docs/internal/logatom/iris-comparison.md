@@ -299,6 +299,8 @@ In Verus, we artificially force the user to resolve the AU using the `resolves` 
 ### Atomic function call
 
 ```rs
+let tracked phi;
+
 // assert private pre `function`
 function(args) atomically |update| {
     // ...
@@ -306,8 +308,11 @@ function(args) atomically |update| {
     let new_perm = update(old_perm);
     // assume atomic post `function`
     // ...
+    phi = ...;
 }
 // assume private post `function`
+
+stuff(phi);
 ```
 
 ### Open atomic update
@@ -399,7 +404,7 @@ pub fn increment(var: &PAtomicU64) -> (out: u64)
         let next = curr.wrapping_add(1);
 
         let res;
-        let maybe_au = try_open_atomic_update!(au, mut perm => {
+        let maybe_au: Tracked<Result<(), AtomicUpdate<_, _, _>>> = try_open_atomic_update!(au, mut perm => {
             let ghost prev = perm;
 
             res = var.compare_exchange_weak(Tracked(&mut perm), curr, next);
