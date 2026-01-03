@@ -243,7 +243,7 @@ pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
         option.is_some() ==> res == Ok::<T, E>(option.unwrap()),
         option.is_none() ==> {
             &&& res.is_err()
-            &&& exists|v: E| #![auto] err.ensures((), v) && res == Err::<T, E>(v)
+            &&& err.ensures((), res->Err_0)
         },
 ;
 
@@ -253,7 +253,7 @@ pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_defa
 ) -> (res: T)
     ensures
         option.is_some() ==> res == option.unwrap(),
-        option.is_none() ==> call_ensures(T::default, (), res),
+        option.is_none() ==> T::default.ensures((), res),
 ;
 
 // unwrap_or_else
@@ -265,7 +265,7 @@ pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
         option.is_none() ==> f.requires(()),
     ensures
         option.is_some() ==> res == option.unwrap(),
-        option.is_none() ==> exists|v: T| f.ensures((), v) && res == v,
+        option.is_none() ==> f.ensures((), res),
 ;
 
 // clone

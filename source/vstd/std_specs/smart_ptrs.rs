@@ -23,7 +23,7 @@ pub assume_specification<T: core::default::Default>[ <Box<
     T,
 > as core::default::Default>::default ]() -> (res: Box<T>)
     ensures
-        call_ensures(T::default, (), *res),
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T>[ Rc::<T>::new ](t: T) -> (v: Rc<T>)
@@ -35,7 +35,7 @@ pub assume_specification<T: core::default::Default>[ <Rc<
     T,
 > as core::default::Default>::default ]() -> (res: Rc<T>)
     ensures
-        call_ensures(T::default, (), *res),
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T>[ Arc::<T>::new ](t: T) -> (v: Arc<T>)
@@ -47,7 +47,7 @@ pub assume_specification<T: core::default::Default>[ <Arc<
     T,
 > as core::default::Default>::default ]() -> (res: Arc<T>)
     ensures
-        call_ensures(T::default, (), *res),
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](
