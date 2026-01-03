@@ -21,6 +21,9 @@ pub enum VerusSubcommand {
     /// Verify the current crate with 'cargo build'
     Verify(VerifyCommand),
 
+    /// Verify only crate contents, without dependencies.
+    Focus(VerifyCommand),
+
     /// Verify and build the current crate with 'cargo build'
     Build(VerifyCommand),
 
@@ -95,6 +98,7 @@ impl CargoVerusCli {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
         match &mut self.command {
             VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
                 let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
