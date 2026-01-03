@@ -1,7 +1,6 @@
 use super::super::prelude::*;
 use verus_builtin::*;
 
-use super::core::DefaultSpecImpl;
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;

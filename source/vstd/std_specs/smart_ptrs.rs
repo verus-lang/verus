@@ -1,5 +1,4 @@
 use super::super::prelude::*;
-use super::core::{DefaultSpec, DefaultSpecImpl};
 
 use alloc::boxed::Box;
 use alloc::rc::Rc;

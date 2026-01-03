@@ -1,7 +1,6 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
-use super::core::DefaultSpec;
 use core::option::Option;
 
 verus! {

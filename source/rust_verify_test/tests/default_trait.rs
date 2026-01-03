@@ -162,7 +162,7 @@ test_verify_one_file! {
   #[test] test_default_generic_instantiation verus_code! {
     use vstd::prelude::*;
     use core::default::Default;
-    use vstd::std_specs::core::DefaultSpec;
+    use vstd::std_specs::default::DefaultSpec;
 
     fn mk<T: Default>() -> (r: T)
         ensures T::obeys_default_spec() ==> r == T::default_spec()
@@ -186,7 +186,7 @@ test_verify_one_file! {
 test_verify_one_file! {
   #[test] test_default_custom_type_spec verus_code! {
     use vstd::prelude::*;
-    use vstd::std_specs::core::{DefaultSpec, DefaultSpecImpl};
+    use vstd::std_specs::default::{DefaultSpec, DefaultSpecImpl};
 
     pub struct MyType {
         pub x: u32,
