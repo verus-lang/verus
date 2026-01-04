@@ -393,24 +393,34 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
 
                 arg_idx = next_comma_or_rparen(&full_text, arg_idx);
 
-                // skip of the comma and space
-                arg_idx += 2;
+                // Check if we hit a comma (middle arg) or paren (last arg)
+                if arg_idx < full_text.len() && full_text.as_bytes()[arg_idx] == b',' {
+                    // skip comma and space
+                    arg_idx += 2;
+                } else {
+                    // closing paren, just skip it
+                    arg_idx += 1;
+                }
             }
 
             match info.ret_mode {
                 ParamMode::Default => {}
                 ParamMode::Tracked => {
-                    let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-                    let type_idx = arrow_idx + 3;
-                    splices.push((type_idx, 0, "tracked ".to_string(), true));
+                    if let Some(rel_arrow) = full_text[arg_idx..].find("->") {
+                        let arrow_idx = rel_arrow + arg_idx;
+                        let type_idx = arrow_idx + 3;
+                        splices.push((type_idx, 0, "tracked ".to_string(), true));
+                    }
                 }
             };
 
             if info.ret_name.len() > 0 {
                 let string_to_insert = format!("{:} : ", info.ret_name);
-                let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-                let type_idx = arrow_idx + 3;
-                splices.push((type_idx, 0, string_to_insert, false));
+                if let Some(rel_arrow) = full_text[arg_idx..].find("->") {
+                    let arrow_idx = rel_arrow + arg_idx;
+                    let type_idx = arrow_idx + 3;
+                    splices.push((type_idx, 0, string_to_insert, false));
+                }
             }
         }
         UpdateSigMode::BroadcastGroup => {
