@@ -1,106 +1,64 @@
 use super::super::prelude::*;
 use core::marker::PointeeSized;
 
-use verus as verus_;
-
-verus_! {
+verus! {
 
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(DefaultSpec via DefaultSpecImpl)]
 pub trait ExDefault: Sized {
     type ExternalTraitSpecificationFor: core::default::Default;
 
-    spec fn obeys_default_spec() -> bool;
-
-    spec fn default_spec() -> Self;
-
-    fn default() -> (r: Self)
-        ensures
-            Self::obeys_default_spec() ==> r == Self::default_spec(),
-    ;
+    fn default() -> (r: Self);
 }
 
 } // verus!
-
-macro_rules! impl_default_spec {
+macro_rules! assume_default_value {
     ($t:ty, $default_value:expr) => {
-        verus_! {
-            pub assume_specification [ <$t as core::default::Default>::default ]() -> (r: $t);
-
-            impl DefaultSpecImpl for $t {
-                open spec fn obeys_default_spec() -> bool {
-                    true
-                }
-
-                open spec fn default_spec() -> Self {
-                    $default_value
-                }
-            }
+        verus! {
+            pub assume_specification [ <$t as core::default::Default>::default ]() -> (r: $t)
+                ensures
+                    r == $default_value,
+            ;
         }
     };
 }
 
-impl_default_spec!(bool, false);
-impl_default_spec!(char, '\0');
-impl_default_spec!(f32, 0.0f32);
-impl_default_spec!(f64, 0.0f64);
-impl_default_spec!(i8, 0i8);
-impl_default_spec!(i16, 0i16);
-impl_default_spec!(i32, 0i32);
-impl_default_spec!(i64, 0i64);
-impl_default_spec!(i128, 0i128);
-impl_default_spec!(isize, 0isize);
-impl_default_spec!(u8, 0u8);
-impl_default_spec!(u16, 0u16);
-impl_default_spec!(u32, 0u32);
-impl_default_spec!(u64, 0u64);
-impl_default_spec!(u128, 0u128);
-impl_default_spec!((), ());
-impl_default_spec!(usize, 0usize);
+assume_default_value!(bool, false);
+assume_default_value!(char, '\0');
+assume_default_value!(f32, 0.0f32);
+assume_default_value!(f64, 0.0f64);
+assume_default_value!(i8, 0i8);
+assume_default_value!(i16, 0i16);
+assume_default_value!(i32, 0i32);
+assume_default_value!(i64, 0i64);
+assume_default_value!(i128, 0i128);
+assume_default_value!(isize, 0isize);
+assume_default_value!(u8, 0u8);
+assume_default_value!(u16, 0u16);
+assume_default_value!(u32, 0u32);
+assume_default_value!(u64, 0u64);
+assume_default_value!(u128, 0u128);
+assume_default_value!((), ());
+assume_default_value!(usize, 0usize);
 
 // manually implementation for Option<T>, &str, PhantomData<T>, (U, T), (V, U, T)
 verus! {
 
 pub assume_specification<T>[ <Option<T> as core::default::Default>::default ]() -> (r: Option<T>)
+    ensures
+        r == Option::<T>::None,
 ;
-
-impl<T> DefaultSpecImpl for Option<T> {
-    open spec fn obeys_default_spec() -> bool {
-        true
-    }
-
-    open spec fn default_spec() -> Self {
-        None
-    }
-}
 
 pub assume_specification<'a>[ <&'a str as core::default::Default>::default ]() -> (r: &'a str)
+    ensures
+        r == "",
 ;
-
-impl<'a> DefaultSpecImpl for &'a str {
-    open spec fn obeys_default_spec() -> bool {
-        true
-    }
-
-    open spec fn default_spec() -> Self {
-        ""
-    }
-}
 
 pub assume_specification<T: PointeeSized>[ <core::marker::PhantomData<
     T,
 > as core::default::Default>::default ]() -> (r: core::marker::PhantomData<T>)
+    ensures
+        r == core::marker::PhantomData::<T>,
 ;
-
-impl<T: PointeeSized> DefaultSpecImpl for core::marker::PhantomData<T> {
-    open spec fn obeys_default_spec() -> bool {
-        true
-    }
-
-    open spec fn default_spec() -> Self {
-        core::marker::PhantomData
-    }
-}
 
 pub assume_specification<U: core::default::Default, T: core::default::Default>[ <(
     U,
@@ -110,20 +68,6 @@ pub assume_specification<U: core::default::Default, T: core::default::Default>[ 
         call_ensures(U::default, (), r.0),
         call_ensures(T::default, (), r.1),
 ;
-
-impl<U, T> DefaultSpecImpl for (U, T)
-where
-    U: core::default::Default,
-    T: core::default::Default,
-{
-    open spec fn obeys_default_spec() -> bool {
-        U::obeys_default_spec() && T::obeys_default_spec()
-    }
-
-    open spec fn default_spec() -> Self {
-        (U::default_spec(), T::default_spec())
-    }
-}
 
 pub assume_specification<
     V: core::default::Default,
@@ -135,20 +79,5 @@ pub assume_specification<
         call_ensures(U::default, (), r.1),
         call_ensures(T::default, (), r.2),
 ;
-
-impl<V, U, T> DefaultSpecImpl for (V, U, T)
-where
-    V: core::default::Default,
-    U: core::default::Default,
-    T: core::default::Default,
-{
-    open spec fn obeys_default_spec() -> bool {
-        V::obeys_default_spec() && U::obeys_default_spec() && T::obeys_default_spec()
-    }
-
-    open spec fn default_spec() -> Self {
-        (V::default_spec(), U::default_spec(), T::default_spec())
-    }
-}
 
 } // verus!

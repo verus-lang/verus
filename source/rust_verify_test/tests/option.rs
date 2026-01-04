@@ -94,7 +94,7 @@ test_verify_one_file! {
             let val: u32 = 42;
             let opt: Option<&u32> = Some(&val);
             let res: Option<u32> = opt.cloned();
-            assert(res.is_some());
+            assert(res == Some(42u32));
         }
 
         fn test_cloned_none() {

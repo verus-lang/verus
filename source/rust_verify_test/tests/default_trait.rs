@@ -112,6 +112,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+  #[test] test_default_box_vec_u32_ok verus_code! {
+    use vstd::prelude::*;
+    fn test() {
+      let b: Box<Vec<u32>> = Box::default();
+      let v: Vec<u32> = *b;
+      assert(v@.len() == 0);
+    }
+  } => Ok(())
+}
+
+test_verify_one_file! {
   #[test] test_default_rc_u32_ok verus_code! {
     use vstd::prelude::*;
     use std::rc::Rc;
@@ -162,10 +173,10 @@ test_verify_one_file! {
   #[test] test_default_generic_instantiation verus_code! {
     use vstd::prelude::*;
     use core::default::Default;
-    use vstd::std_specs::default::DefaultSpec;
 
     fn mk<T: Default>() -> (r: T)
-        ensures T::obeys_default_spec() ==> r == T::default_spec()
+        ensures
+            T::default.ensures((), r),
     {
       T::default()
     }
@@ -179,14 +190,10 @@ test_verify_one_file! {
   } => Ok(())
 }
 
-// note: because of orphan rule, we can only implement DefaultSpecImpl for MyType
-// which is defined in the same crate
-// if you want to implement DefaultSpecImpl for unsupportted std types or 3rd party types,
-// you need to newtype it
+// establish a simple determinstic value
 test_verify_one_file! {
   #[test] test_default_custom_type_spec verus_code! {
     use vstd::prelude::*;
-    use vstd::std_specs::default::{DefaultSpec, DefaultSpecImpl};
 
     pub struct MyType {
         pub x: u32,
@@ -194,23 +201,19 @@ test_verify_one_file! {
     }
 
     impl Default for MyType {
-        fn default() -> MyType {
-            MyType { x: 10, y: true }
-        }
-    }
-
-    impl DefaultSpecImpl for MyType {
-        open spec fn obeys_default_spec() -> bool {
-            true
-        }
-
-        open spec fn default_spec() -> Self {
+        fn default() -> (r: MyType)
+            ensures
+                r.x == 10,
+                r.y == true,
+        {
             MyType { x: 10, y: true }
         }
     }
 
     fn mk() -> (r: MyType)
-        ensures r == <MyType as DefaultSpec>::default_spec()
+        ensures
+            r.x == 10,
+            r.y == true,
     {
         MyType::default()
     }
@@ -219,6 +222,44 @@ test_verify_one_file! {
         let v = mk();
         assert(v.x == 10);
         assert(v.y == true);
+    }
+  } => Ok(())
+}
+
+// establish arbitrary default ensures for custom types, and use it in smart pointers
+test_verify_one_file! {
+  #[test] test_default_custom_type_ensures_in_smart_ptrs verus_code! {
+    use vstd::prelude::*;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    pub struct MyType {
+        pub x: u32,
+        pub y: u32,
+    }
+
+    impl Default for MyType {
+        fn default() -> (r: MyType)
+            ensures
+                r.y == r.x + 1,
+                r.x < 100,
+        {
+            MyType { x: 7, y: 8 }
+        }
+    }
+
+    fn test() {
+      let b: Box<MyType> = Box::default();
+      assert((*b).y == (*b).x + 1);
+      assert((*b).x < 100);
+
+      let r: Rc<MyType> = Rc::default();
+      assert((*r).y == (*r).x + 1);
+      assert((*r).x < 100);
+
+      let a: Arc<MyType> = Arc::default();
+      assert((*a).y == (*a).x + 1);
+      assert((*a).x < 100);
     }
   } => Ok(())
 }
