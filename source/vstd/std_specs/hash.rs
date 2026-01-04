@@ -832,6 +832,15 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: Hash
         m@ == Map::<Key, Value>::empty(),
 ;
 
+pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
+    K,
+    V,
+    S,
+> as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
+    ensures
+        m@ == Map::<K, V>::empty(),
+;
+
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
     ensures
@@ -1226,6 +1235,14 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key,
 pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
     ensures
         m@ == Set::<Key>::empty(),
+;
+
+pub assume_specification<T, S: core::default::Default>[ <HashSet<
+    T,
+    S,
+> as core::default::Default>::default ]() -> (m: HashSet<T, S>)
+    ensures
+        m@ == Set::<T>::empty(),
 ;
 
 pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<

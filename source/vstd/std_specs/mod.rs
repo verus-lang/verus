@@ -9,6 +9,7 @@ pub mod cmp;
 pub mod control_flow;
 pub mod convert;
 pub mod core;
+pub mod default;
 pub mod manually_drop;
 pub mod ops;
 

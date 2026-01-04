@@ -212,6 +212,62 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// cloned
+pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
+    Option<T>)
+    ensures
+        opt.is_none() ==> res.is_none(),
+        opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
+;
+
+// and_then
+pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then ](
+    option: Option<T>,
+    f: F,
+) -> (res: Option<U>)
+    requires
+        option.is_some() ==> f.requires((option.unwrap(),)),
+    ensures
+        option.is_none() ==> res.is_none(),
+        option.is_some() ==> f.ensures((option.unwrap(),), res),
+;
+
+// ok_or_else
+pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
+    option: Option<T>,
+    err: F,
+) -> (res: Result<T, E>)
+    requires
+        option.is_none() ==> err.requires(()),
+    ensures
+        option.is_some() ==> res == Ok::<T, E>(option.unwrap()),
+        option.is_none() ==> {
+            &&& res.is_err()
+            &&& err.ensures((), res->Err_0)
+        },
+;
+
+// unwrap_or_default
+pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](
+    option: Option<T>,
+) -> (res: T)
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> T::default.ensures((), res),
+;
+
+// unwrap_or_else
+pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
+    option: Option<T>,
+    f: F,
+) -> (res: T)
+    requires
+        option.is_none() ==> f.requires(()),
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> f.ensures((), res),
+;
+
 // clone
 pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T>) -> (res: Option<
     T,

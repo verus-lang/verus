@@ -355,14 +355,15 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
     // collected all in the 'splices' vec.
     // Then we add the content.
 
-    let mut splices: Vec<(usize, usize, String, bool)> = vec![];
+    let mut splices: Vec<(usize, usize, NodeRef)> = vec![];
 
     match info {
         UpdateSigMode::DocSigInfo(info) => {
             // TODO: separate these if possible
             let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
             let fn_mode = format!("{:} ", info.fn_mode);
-            splices.push((fn_idx, 0, broadcast + &fn_mode, true));
+            let mode_str = broadcast + &fn_mode;
+            splices.push((fn_idx, 0, mk_sig_keyword_node(&mode_str)));
 
             let arg0_idx = get_arg0_idx(&full_text, fn_idx);
 
@@ -372,7 +373,7 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
                 match info.param_modes[i] {
                     ParamMode::Default => {}
                     ParamMode::Tracked => {
-                        splices.push((arg_idx, 0, "tracked ".to_string(), true));
+                        splices.push((arg_idx, 0, mk_sig_keyword_node("tracked ")));
                     }
                 }
 
@@ -381,13 +382,13 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
                     let is_tracked = full_text[arg_idx + name.len() + 2..].starts_with("Tracked");
                     let is_ghost = full_text[arg_idx + name.len() + 2..].starts_with("Ghost");
                     if is_tracked {
-                        splices.push((arg_idx, 0, "Tracked".to_string(), true));
-                        splices.push((arg_idx, 10, "(".to_string(), false));
-                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
+                        splices.push((arg_idx, 0, mk_sig_keyword_node("Tracked")));
+                        splices.push((arg_idx, 10, NodeRef::new_text("(")));
+                        splices.push((arg_idx + name.len(), 0, NodeRef::new_text(")")));
                     } else if is_ghost {
-                        splices.push((arg_idx, 0, "Ghost".to_string(), true));
-                        splices.push((arg_idx, 10, "(".to_string(), false));
-                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
+                        splices.push((arg_idx, 0, mk_sig_keyword_node("Ghost")));
+                        splices.push((arg_idx, 10, NodeRef::new_text("(")));
+                        splices.push((arg_idx + name.len(), 0, NodeRef::new_text(")")));
                     }
                 }
 
@@ -397,36 +398,82 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
                 arg_idx += 2;
             }
 
-            match info.ret_mode {
-                ParamMode::Default => {}
-                ParamMode::Tracked => {
-                    let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-                    let type_idx = arrow_idx + 3;
-                    splices.push((type_idx, 0, "tracked ".to_string(), true));
-                }
-            };
+            let needs_return_annotation =
+                matches!(info.ret_mode, ParamMode::Tracked) || !info.ret_name.is_empty();
 
-            if info.ret_name.len() > 0 {
-                let string_to_insert = format!("{:} : ", info.ret_name);
-                let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-                let type_idx = arrow_idx + 3;
-                splices.push((type_idx, 0, string_to_insert, false));
+            // rustdoc commonly omits `-> ()` from signatures; if we need to insert return
+            // annotations but can't find an arrow, treat it as `-> ()`.
+            if needs_return_annotation && full_text[arg_idx..].find("->").is_none() {
+                let rparen_idx = find_end_of_arg_list(full_text, arg0_idx - 1);
+                let insert_idx = rparen_idx + 1;
+
+                let qual_name = QualName::new(None, ns!(html), local_name!("span"));
+                let container = NodeRef::new_element(qual_name, vec![]);
+                container.append(NodeRef::new_text(" -> "));
+                if matches!(info.ret_mode, ParamMode::Tracked) {
+                    container.append(mk_sig_keyword_node("tracked "));
+                }
+                if !info.ret_name.is_empty() {
+                    let ret_name_str = format!("{:} : ", info.ret_name);
+                    container.append(mk_ret_name_node(&ret_name_str));
+                }
+                container.append(NodeRef::new_text("()"));
+                splices.push((insert_idx, 0, container));
+            } else {
+                match info.ret_mode {
+                    ParamMode::Default => {}
+                    ParamMode::Tracked => {
+                        if let Some(arrow_rel) = full_text[arg_idx..].find("->") {
+                            let arrow_idx = arrow_rel + arg_idx;
+                            let type_idx = arrow_idx + 3;
+                            splices.push((type_idx, 0, mk_sig_keyword_node("tracked ")));
+                        }
+                    }
+                };
+
+                if !info.ret_name.is_empty() {
+                    let string_to_insert = format!("{:} : ", info.ret_name);
+                    if let Some(arrow_rel) = full_text[arg_idx..].find("->") {
+                        let arrow_idx = arrow_rel + arg_idx;
+                        let type_idx = arrow_idx + 3;
+                        splices.push((type_idx, 0, mk_ret_name_node(&string_to_insert)));
+                    }
+                }
             }
         }
         UpdateSigMode::BroadcastGroup => {
-            splices.push((fn_idx, 0, "broadcast group ".to_owned(), true));
+            splices.push((fn_idx, 0, mk_sig_keyword_node("broadcast group ")));
         }
     }
 
     // Reverse order since inserting text should invalidate later indices
-    for (idx, cut_len, s, is_kw) in splices.into_iter().rev() {
+    for (idx, cut_len, new_node) in splices.into_iter().rev() {
         if cut_len > 0 {
             do_text_cut(&node, idx, cut_len);
         }
 
         let mut idx = idx;
-        let new_node = if is_kw { mk_sig_keyword_node(&s) } else { mk_ret_name_node(&s) };
         do_text_splice(&node, &new_node, &mut idx, true);
+    }
+}
+
+fn find_end_of_arg_list(s: &str, open_paren_idx: usize) -> usize {
+    let s: &[u8] = s.as_bytes();
+
+    let mut depth: usize = 0;
+    let mut i = open_paren_idx;
+    loop {
+        if s[i] == b'(' || s[i] == b'[' || s[i] == b'{' || s[i] == b'<' {
+            depth += 1;
+        } else if s[i] == b')' || s[i] == b']' || s[i] == b'}' || (s[i] == b'>' && s[i - 1] != b'-')
+        {
+            depth -= 1;
+            if depth == 0 {
+                return i;
+            }
+        }
+
+        i += 1;
     }
 }
 
@@ -733,4 +780,66 @@ pre.verus-body-code {
             .as_bytes(),
         )
         .expect("write css file");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run_sig_update(input_sig: &str, info: DocSigInfo) -> String {
+        let html = format!(r#"<h4 class="code-header">{}</h4>"#, input_sig);
+        let document = kuchiki::parse_html().one(html);
+        let node = document.select_first("h4").unwrap().as_node().clone();
+
+        let full_text = node.text_contents();
+        let fn_idx = full_text.find("fn").unwrap();
+        do_splices_for_info(&node, &full_text, fn_idx, &UpdateSigMode::DocSigInfo(&info));
+
+        node.text_contents()
+    }
+
+    #[test]
+    fn inserts_unit_return_arrow_when_missing_and_ret_name_present() {
+        let out = run_sig_update(
+            "pub fn foo()",
+            DocSigInfo {
+                fn_mode: "exec".to_string(),
+                ret_mode: ParamMode::Default,
+                ret_name: "r".to_string(),
+                param_modes: vec![],
+                broadcast: false,
+            },
+        );
+        assert!(out.contains("foo() -> r : ()"), "out: {}", out);
+    }
+
+    #[test]
+    fn inserts_unit_return_arrow_when_missing_and_ret_mode_tracked() {
+        let out = run_sig_update(
+            "pub fn foo()",
+            DocSigInfo {
+                fn_mode: "exec".to_string(),
+                ret_mode: ParamMode::Tracked,
+                ret_name: "".to_string(),
+                param_modes: vec![],
+                broadcast: false,
+            },
+        );
+        assert!(out.contains("foo() -> tracked ()"), "out: {}", out);
+    }
+
+    #[test]
+    fn does_not_insert_arrow_when_missing_and_no_return_annotations() {
+        let out = run_sig_update(
+            "pub fn foo()",
+            DocSigInfo {
+                fn_mode: "exec".to_string(),
+                ret_mode: ParamMode::Default,
+                ret_name: "".to_string(),
+                param_modes: vec![],
+                broadcast: false,
+            },
+        );
+        assert!(!out.contains("->"), "out: {}", out);
+    }
 }
