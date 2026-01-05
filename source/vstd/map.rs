@@ -431,8 +431,7 @@ pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
     pub proof fn tracked_map_keys_in_place(
-        #[verifier::proof]
-        &mut self,
+        tracked &mut self,
         key_map: Map<K, K>,
     )
         requires
@@ -449,11 +448,9 @@ impl<K, V> Map<K, V> {
                 key_map.dom().contains(j) ==> self.dom().contains(j) && #[trigger] self.index(j)
                     == old(self).index(key_map.index(j)),
     {
-        #[verifier::proof]
-        let mut tmp = Self::tracked_empty();
+        let tracked mut tmp = Self::tracked_empty();
         super::modes::tracked_swap(&mut tmp, self);
-        #[verifier::proof]
-        let mut tmp = Self::tracked_map_keys(tmp, key_map);
+        let tracked mut tmp = Self::tracked_map_keys(tmp, key_map);
         super::modes::tracked_swap(&mut tmp, self);
     }
 }
