@@ -430,10 +430,7 @@ pub use assert_maps_equal_internal;
 pub use assert_maps_equal;
 
 impl<K, V> Map<K, V> {
-    pub proof fn tracked_map_keys_in_place(
-        tracked &mut self,
-        key_map: Map<K, K>,
-    )
+    pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: Map<K, K>)
         requires
             forall|j|
                 #![auto]
