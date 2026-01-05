@@ -30,7 +30,7 @@ pub fn pattern_to_exprs(
             PlaceX::temporary(SpannedTyped::new(
                 &place.span,
                 &Arc::new(TypX::MutRef(place.typ.clone(), MutRefMode::Exec)),
-                ExprX::BorrowMut(place.clone()),
+                ExprX::BorrowMut(place.clone(), MutRefMode::Exec),
             ))
         } else {
             place

@@ -701,7 +701,7 @@ fn expr_get_call(
                     let kind = LocalDeclKind::StmCallArg { native: !poly };
 
                     match &arg.x {
-                        ExprX::TwoPhaseBorrowMut(_) => {
+                        ExprX::TwoPhaseBorrowMut(_, _) => {
                             let bor_sst = borrow_mut_to_sst(ctx, state, arg)?;
                             let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
                             let early_return =
@@ -1520,7 +1520,7 @@ pub(crate) fn expr_to_stm_opt(
                 let arg = &binder.a;
                 let kind = LocalDeclKind::TempViaAssign;
                 match &arg.x {
-                    ExprX::TwoPhaseBorrowMut(_) => {
+                    ExprX::TwoPhaseBorrowMut(_, _) => {
                         let bor_sst = borrow_mut_to_sst(ctx, state, arg)?;
                         let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
                         let early_return =
@@ -2557,14 +2557,14 @@ pub(crate) fn expr_to_stm_opt(
             let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
             Ok((vec![stm], ReturnValue::Some(exp)))
         }
-        ExprX::BorrowMut(_place) => {
+        ExprX::BorrowMut(_place, _mode) => {
             let bor_sst = borrow_mut_to_sst(ctx, state, expr)?;
             let BorrowMutSst { phase1_stms, phase2_stm, mut_ref_exp } = bor_sst;
             let mut stms = phase1_stms;
             stms.push(phase2_stm);
             Ok((stms, ReturnValue::Some(mut_ref_exp)))
         }
-        ExprX::TwoPhaseBorrowMut(_place) => {
+        ExprX::TwoPhaseBorrowMut(_place, _mode) => {
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
         ExprX::ReadPlace(place, _read_type) => {
@@ -2747,8 +2747,8 @@ struct BorrowMutSst {
 
 fn borrow_mut_to_sst(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<BorrowMutSst, VirErr> {
     let place = match &expr.x {
-        ExprX::BorrowMut(p) => p,
-        ExprX::TwoPhaseBorrowMut(p) => p,
+        ExprX::BorrowMut(p, _mode) => p,
+        ExprX::TwoPhaseBorrowMut(p, _mode) => p,
         _ => panic!("borrow_mut_to_sst must be called for BorrowMut or TwoPhaseBorrowMut"),
     };
 

@@ -1100,7 +1100,7 @@ pub enum ExprX {
     Nondeterministic,
     /// Creates a mutable borrow from the given place
     /// Used only when new-mut-refs is enabled.
-    BorrowMut(Place),
+    BorrowMut(Place, MutRefMode),
     /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
     /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
     ///
@@ -1110,7 +1110,7 @@ pub enum ExprX {
     /// of the borrow is.
     ///
     /// Used only when new-mut-refs is enabled.
-    TwoPhaseBorrowMut(Place),
+    TwoPhaseBorrowMut(Place, MutRefMode),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).

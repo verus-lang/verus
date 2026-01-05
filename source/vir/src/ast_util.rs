@@ -110,6 +110,13 @@ impl fmt::Display for Mode {
     }
 }
 
+impl fmt::Display for MutRefMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_mode().fmt(f)
+    }
+}
+
+
 impl<X: fmt::Display> fmt::Display for SpannedTyped<X> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.x)
@@ -1439,6 +1446,16 @@ impl ModeWrapperMode {
         }
     }
 }
+
+impl MutRefMode {
+    pub fn to_mode(&self) -> Mode {
+        match self {
+            MutRefMode::Exec => Mode::Exec,
+            MutRefMode::Proof => Mode::Proof,
+        }
+    }
+}
+
 
 pub(crate) fn place_to_spec_expr(place: &Place) -> Expr {
     SpannedTyped::new(

@@ -2680,7 +2680,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let mut tgt_typ_vir = undecorate_typ(&tgt_vir.typ);
                     if mutbl {
                         tgt_typ_vir = match &*tgt_typ_vir {
-                            TypX::MutRef(t) => t.clone(),
+                            TypX::MutRef(t, MutRefMode::Exec) => t.clone(),
                             _ => crate::internal_err!(
                                 expr.span,
                                 "Index operator expected TypX::MutRef"
@@ -2718,7 +2718,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
                 let x = ExprX::Call(call_target, args, None);
                 let call_ret_typ = if mutbl {
-                    Arc::new(TypX::MutRef(expr_typ()?))
+                    Arc::new(TypX::MutRef(expr_typ()?, MutRefMode::Exec))
                 } else {
                     Arc::new(TypX::Decorate(TypDecoration::Ref, None, expr_typ()?))
                 };
@@ -3911,12 +3911,12 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
 
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
-            ExprX::BorrowMut(place) => {
+            ExprX::BorrowMut(place, MutRefMode::Exec) => {
                 return place.clone();
             }
             ExprX::Unary(UnaryOp::MutRefFinal, arg) => {
                 let t = match &*undecorate_typ(&place.typ) {
-                    TypX::MutRef(t) => t.clone(),
+                    TypX::MutRef(t, _) => t.clone(),
                     _ => panic!("expected mut ref"),
                 };
 
@@ -3945,10 +3945,10 @@ pub(crate) fn deref_mut_allow_cancelling_two_phase(
 ) -> Place {
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
-            ExprX::BorrowMut(place) => {
+            ExprX::BorrowMut(place, MutRefMode::Exec) => {
                 return place.clone();
             }
-            ExprX::TwoPhaseBorrowMut(place) => {
+            ExprX::TwoPhaseBorrowMut(place, MutRefMode::Exec) => {
                 return place.clone();
             }
             _ => {}
@@ -3987,12 +3987,12 @@ pub(crate) fn borrow_mut_vir(
     let x = match allow_two_phase {
         AllowTwoPhase::Yes => {
             if place.x.uses_unnamed_temporary() {
-                ExprX::BorrowMut(place.clone())
+                ExprX::BorrowMut(place.clone(), mode)
             } else {
-                ExprX::TwoPhaseBorrowMut(place.clone())
+                ExprX::TwoPhaseBorrowMut(place.clone(), mode)
             }
         }
-        AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
+        AllowTwoPhase::No => ExprX::BorrowMut(place.clone(), mode),
     };
     let typ = Arc::new(TypX::MutRef(place.typ.clone(), mode));
     bctx.spanned_typed_new(span, &typ, x)

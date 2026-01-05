@@ -1969,7 +1969,7 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
-        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
+        ExprX::BorrowMut(place, mut_ref_mode) | ExprX::TwoPhaseBorrowMut(place, mut_ref_mode) => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -1982,14 +1982,22 @@ fn check_expr_handle_mut_arg(
 
             let mode =
                 check_place(ctxt, record, typing, outer_mode, place, PlaceAccess::MutBorrow)?;
-            if mode != Mode::Exec {
-                return Err(error(
+            if mode != mut_ref_mode.to_mode() {
+                let mut e = error(
                     &place.span,
                     format!(
-                        "can only take mutable borrow of an exec-mode place; found {:}-mode place",
+                        "mutable borrow expects {:}-mode place; found {:}-mode place",
+                        mut_ref_mode,
                         mode
                     ),
-                ));
+                );
+                if mode == Mode::Exec {
+                    e = e.help("Use `&mut exec ...` to take a mutable borrow to an exec-mode place");
+                }
+                if mode == Mode::Proof {
+                    e = e.help("Use `&mut tracked ...` to take a mutable borrow to a tracked-mode place");
+                }
+                return Err(e);
             }
             Ok(Mode::Exec)
         }

@@ -706,7 +706,7 @@ impl<'a> Builder<'a> {
 
                 for e in es.iter() {
                     match &e.x {
-                        ExprX::TwoPhaseBorrowMut(p) => {
+                        ExprX::TwoPhaseBorrowMut(p, _mode) => {
                             let (p, bb1) = self.build_place_and_intern(p, bb)?;
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
@@ -789,7 +789,7 @@ impl<'a> Builder<'a> {
                 for b in binders.iter() {
                     let e = &b.a;
                     match &e.x {
-                        ExprX::TwoPhaseBorrowMut(p) => {
+                        ExprX::TwoPhaseBorrowMut(p, _mode) => {
                             let (p, bb1) = self.build_place_and_intern(p, bb)?;
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
@@ -1122,12 +1122,15 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::TwoPhaseBorrowMut(_p) => {
+            ExprX::TwoPhaseBorrowMut(_p, _) => {
                 // These must be handled contextually, so the recursion should skip over
                 // these nodes.
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
             }
-            ExprX::BorrowMut(p) => {
+            ExprX::BorrowMut(p, mode) => {
+                // Only modes are Exec and Proof, so no need to handle spec modes
+                match mode { MutRefMode::Exec | MutRefMode::Proof => { } }
+
                 let (p, bb) = self.build_place_and_intern(p, bb)?;
                 if let Some(p) = p.get_place_for_mutation() {
                     self.push_instruction_propagate(
