@@ -2434,9 +2434,7 @@ where
     }
     skip!(node.and_token);
     skip!(node.mutability);
-    if let Some(it) = &node.mode {
-        v.visit_data_mode(it);
-    }
+    v.visit_data_mode(&node.mode);
     v.visit_expr(&*node.expr);
 }
 #[cfg(feature = "full")]
@@ -4917,6 +4915,7 @@ where
         v.visit_lifetime(it);
     }
     skip!(node.mutability);
+    v.visit_data_mode(&node.mode);
     v.visit_type(&*node.elem);
 }
 #[cfg(any(feature = "derive", feature = "full"))]

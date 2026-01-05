@@ -2461,9 +2461,7 @@
           }
         },
         "mode": {
-          "option": {
-            "syn": "DataMode"
-          }
+          "syn": "DataMode"
         },
         "expr": {
           "box": {
@@ -7130,6 +7128,9 @@
           "option": {
             "token": "Mut"
           }
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "elem": {
           "box": {

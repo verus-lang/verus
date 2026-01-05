@@ -201,6 +201,7 @@ ast_struct! {
         pub and_token: Token![&],
         pub lifetime: Option<Lifetime>,
         pub mutability: Option<Token![mut]>,
+        pub mode: crate::verus::DataMode,
         pub elem: Box<Type>,
     }
 }
@@ -688,10 +689,19 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for TypeReference {
         fn parse(input: ParseStream) -> Result<Self> {
+            let and_token = input.parse()?;
+            let lifetime = input.parse()?;
+            let mutability: Option<Token![mut]> = input.parse()?;
+            let mode = if mutability.is_some() {
+                input.parse()?
+            } else {
+                crate::verus::DataMode::Default
+            };
             Ok(TypeReference {
-                and_token: input.parse()?,
-                lifetime: input.parse()?,
-                mutability: input.parse()?,
+                and_token,
+                lifetime,
+                mutability,
+                mode,
                 // & binds tighter than +, so we don't allow + here.
                 elem: Box::new(input.call(Type::without_plus)?),
             })
@@ -1207,6 +1217,7 @@ mod printing {
             self.and_token.to_tokens(tokens);
             self.lifetime.to_tokens(tokens);
             self.mutability.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.elem.to_tokens(tokens);
         }
     }

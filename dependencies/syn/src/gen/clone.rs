@@ -2840,6 +2840,7 @@ impl Clone for crate::TypeReference {
             and_token: self.and_token.clone(),
             lifetime: self.lifetime.clone(),
             mutability: self.mutability.clone(),
+            mode: self.mode.clone(),
             elem: self.elem.clone(),
         }
     }

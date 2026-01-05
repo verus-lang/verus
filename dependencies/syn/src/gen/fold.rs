@@ -2395,7 +2395,7 @@ where
         attrs: f.fold_attributes(node.attrs),
         and_token: node.and_token,
         mutability: node.mutability,
-        mode: (node.mode).map(|it| f.fold_data_mode(it)),
+        mode: f.fold_data_mode(node.mode),
         expr: Box::new(f.fold_expr(*node.expr)),
     }
 }
@@ -4852,6 +4852,7 @@ where
         and_token: node.and_token,
         lifetime: (node.lifetime).map(|it| f.fold_lifetime(it)),
         mutability: node.mutability,
+        mode: f.fold_data_mode(node.mode),
         elem: Box::new(f.fold_type(*node.elem)),
     }
 }

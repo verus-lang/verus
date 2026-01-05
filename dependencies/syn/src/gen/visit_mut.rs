@@ -2354,9 +2354,7 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     skip!(node.and_token);
     skip!(node.mutability);
-    if let Some(it) = &mut node.mode {
-        v.visit_data_mode_mut(it);
-    }
+    v.visit_data_mode_mut(&mut node.mode);
     v.visit_expr_mut(&mut *node.expr);
 }
 #[cfg(feature = "full")]
@@ -4704,6 +4702,7 @@ where
         v.visit_lifetime_mut(it);
     }
     skip!(node.mutability);
+    v.visit_data_mode_mut(&mut node.mode);
     v.visit_type_mut(&mut *node.elem);
 }
 #[cfg(any(feature = "derive", feature = "full"))]

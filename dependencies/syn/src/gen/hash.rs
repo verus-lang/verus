@@ -3570,6 +3570,7 @@ impl Hash for crate::TypeReference {
     {
         self.lifetime.hash(state);
         self.mutability.hash(state);
+        self.mode.hash(state);
         self.elem.hash(state);
     }
 }

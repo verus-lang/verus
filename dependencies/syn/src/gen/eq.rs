@@ -2816,7 +2816,7 @@ impl Eq for crate::TypeReference {}
 impl PartialEq for crate::TypeReference {
     fn eq(&self, other: &Self) -> bool {
         self.lifetime == other.lifetime && self.mutability == other.mutability
-            && self.elem == other.elem
+            && self.mode == other.mode && self.elem == other.elem
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

@@ -3970,6 +3970,7 @@ impl crate::TypeReference {
         formatter.field("and_token", &self.and_token);
         formatter.field("lifetime", &self.lifetime);
         formatter.field("mutability", &self.mutability);
+        formatter.field("mode", &self.mode);
         formatter.field("elem", &self.elem);
         formatter.finish()
     }

@@ -1859,6 +1859,7 @@ pub(crate) mod parsing {
                         and_token: Token![&](ampersand.span),
                         lifetime: lifetime.clone(),
                         mutability: mutability.as_ref().map(|m| Token![mut](m.span)),
+                        mode: crate::verus::DataMode::Default,
                         elem: Box::new(ty),
                     });
                 }
