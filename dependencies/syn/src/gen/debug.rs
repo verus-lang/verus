@@ -161,7 +161,10 @@ impl Debug for crate::AtomicallyBlock {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
         formatter.field("atomically_token", &self.atomically_token);
         formatter.field("or1_token", &self.or1_token);
-        formatter.field("update_binder", &self.update_binder);
+        formatter.field("update_fn_binder", &self.update_fn_binder);
+        formatter.field("comma1_token", &self.comma1_token);
+        formatter.field("spec_au_binder", &self.spec_au_binder);
+        formatter.field("comma2_token", &self.comma2_token);
         formatter.field("or2_token", &self.or2_token);
         formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
         formatter.field("invariants", &self.invariants);

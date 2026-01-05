@@ -443,8 +443,23 @@
         "or1_token": {
           "token": "Or"
         },
-        "update_binder": {
+        "update_fn_binder": {
           "proc_macro2": "Ident"
+        },
+        "comma1_token": {
+          "option": {
+            "token": "Comma"
+          }
+        },
+        "spec_au_binder": {
+          "option": {
+            "proc_macro2": "Ident"
+          }
+        },
+        "comma2_token": {
+          "option": {
+            "token": "Comma"
+          }
         },
         "or2_token": {
           "token": "Or"

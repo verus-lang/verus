@@ -442,7 +442,27 @@ impl Debug for Lite<syn::AtomicSpec> {
 impl Debug for Lite<syn::AtomicallyBlock> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
-        formatter.field("update_binder", Lite(&self.value.update_binder));
+        formatter.field("update_fn_binder", Lite(&self.value.update_fn_binder));
+        if self.value.comma1_token.is_some() {
+            formatter.field("comma1_token", &Present);
+        }
+        if let Some(val) = &self.value.spec_au_binder {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(proc_macro2::Ident);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("spec_au_binder", Print::ref_cast(val));
+        }
+        if self.value.comma2_token.is_some() {
+            formatter.field("comma2_token", &Present);
+        }
         if let Some(val) = &self.value.invariant_except_breaks {
             #[derive(RefCast)]
             #[repr(transparent)]

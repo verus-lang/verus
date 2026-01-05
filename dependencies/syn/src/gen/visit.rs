@@ -1397,7 +1397,12 @@ where
 {
     skip!(node.atomically_token);
     skip!(node.or1_token);
-    v.visit_ident(&node.update_binder);
+    v.visit_ident(&node.update_fn_binder);
+    skip!(node.comma1_token);
+    if let Some(it) = &node.spec_au_binder {
+        v.visit_ident(it);
+    }
+    skip!(node.comma2_token);
     skip!(node.or2_token);
     if let Some(it) = &node.invariant_except_breaks {
         v.visit_invariant_except_break(it);

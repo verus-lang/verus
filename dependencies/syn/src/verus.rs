@@ -601,7 +601,10 @@ ast_struct! {
     pub struct AtomicallyBlock {
         pub atomically_token: Token![atomically],
         pub or1_token: Token![|],
-        pub update_binder: Ident,
+        pub update_fn_binder: Ident,
+        pub comma1_token: Option<Token![,]>,
+        pub spec_au_binder: Option<Ident>,
+        pub comma2_token: Option<Token![,]>,
         pub or2_token: Token![|],
         pub invariant_except_breaks: Option<InvariantExceptBreak>,
         pub invariants: Option<Invariant>,
@@ -821,7 +824,8 @@ pub mod parsing {
                 || input.peek(Token![opens_invariants])
                 || input.peek(Token![outer_mask])
                 || input.peek(Token![inner_mask])
-                || input.peek(Token![yield]))
+                || input.peek(Token![yield])
+                || input.peek(Token![no_abort]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -1727,10 +1731,23 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicallyBlock {
         fn parse(input: ParseStream) -> Result<Self> {
+            let atomically_token = input.parse()?;
+            let or1_token = input.parse()?;
+            let update_fn_binder = input.parse()?;
+            let comma1_token: Option<Token![,]> = input.parse()?;
+            let (au_spec_binder, comma2_token) = if comma1_token.is_some() && input.peek(Ident) {
+                (Some(input.parse()?), input.parse()?)
+            } else {
+                (None, None)
+            };
+
             Ok(AtomicallyBlock {
-                atomically_token: input.parse()?,
-                or1_token: input.parse()?,
-                update_binder: input.parse()?,
+                atomically_token,
+                or1_token,
+                update_fn_binder,
+                comma1_token,
+                spec_au_binder: au_spec_binder,
+                comma2_token,
                 or2_token: input.parse()?,
                 invariant_except_breaks: input.parse()?,
                 invariants: input.parse()?,
@@ -2556,7 +2573,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.atomically_token.to_tokens(tokens);
             self.or1_token.to_tokens(tokens);
-            self.update_binder.to_tokens(tokens);
+            self.update_fn_binder.to_tokens(tokens);
             self.or2_token.to_tokens(tokens);
             self.body.to_tokens(tokens);
         }

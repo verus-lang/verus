@@ -775,7 +775,7 @@ pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
 #[doc(hidden)]
 #[verifier::external_body]
 pub fn atomically<X, Y, Z, P>(
-    _body: impl FnOnce(fn () -> Z, fn (X) -> Result<Y, X>),
+    _body: impl FnOnce(fn (X) -> Result<Y, X>, fn () -> Z, Ghost<AtomicUpdate<X, Y, Z, P>>),
 ) -> AtomicUpdate<X, Y, Z, P> {
     arbitrary()
 }

@@ -1401,7 +1401,12 @@ where
 {
     skip!(node.atomically_token);
     skip!(node.or1_token);
-    v.visit_ident_mut(&mut node.update_binder);
+    v.visit_ident_mut(&mut node.update_fn_binder);
+    skip!(node.comma1_token);
+    if let Some(it) = &mut node.spec_au_binder {
+        v.visit_ident_mut(it);
+    }
+    skip!(node.comma2_token);
     skip!(node.or2_token);
     if let Some(it) = &mut node.invariant_except_breaks {
         v.visit_invariant_except_break_mut(it);

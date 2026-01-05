@@ -2803,7 +2803,7 @@ pub(crate) fn expr_to_stm_opt(
                 &err_arm_ret_val,
             ));
         }
-        ExprX::Atomically(info, args_expr, body_expr) => {
+        ExprX::Atomically(info, au_var_id, args_expr, body_expr) => {
             // ```
             // let pred = $pred_expr;
             // let au = new existential;
@@ -2852,9 +2852,14 @@ pub(crate) fn expr_to_stm_opt(
 
             // construct atomic update
 
-            let (au_var_id, au_var_exp) =
-                state.declare_temp_var_stm(&expr.span, au_typ, LocalDeclKind::Nondeterministic);
+            state.local_decls.push(Arc::new(LocalDeclX {
+                ident: au_var_id.clone(),
+                typ: au_typ.clone(),
+                kind: LocalDeclKind::Param { mutable: false },
+            }));
+
             stms.push(assume_has_typ(&au_var_id, au_typ, &expr.span));
+            let au_var_exp = SpannedTyped::new(&expr.span, au_typ, ExpX::Var(au_var_id.clone()));
 
             let call_au_pred = SpannedTyped::new(
                 &expr.span,

@@ -1079,7 +1079,7 @@ pub enum ExprX {
     /// Open Atomic Update
     TryOpenAtomicUpdate(Expr, VarBinder<Typ>, bool, Expr),
     /// Atomic function call
-    Atomically(AtomicCallInfo, Expr, Expr),
+    Atomically(AtomicCallInfo, VarIdent, Expr, Expr),
     /// Atomic function call update marker
     Update(AtomicCallInfo, Expr),
     /// Atomic function call yield helper

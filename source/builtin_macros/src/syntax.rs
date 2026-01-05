@@ -3562,7 +3562,8 @@ impl Visitor {
 
         let span = atomically.span();
         let AtomicallyBlock {
-            update_binder,
+            update_fn_binder,
+            spec_au_binder,
             mut body,
             mut invariant_except_breaks,
             mut invariants,
@@ -3608,14 +3609,13 @@ impl Visitor {
                     stmt.to_tokens(&mut header)
                 }
 
-                let mut yield_binder = Ident::new("_", span);
-                if let Some(bind) = yield_let {
-                    // This is a cryptographically secure way to prevent users
-                    // from guessing the name of this function
-                    let unique_id = rand::random::<u64>();
-                    let name = format!("yield_fn_{unique_id:x}");
-                    yield_binder = Ident::new(&name, span);
+                // This is a cryptographically secure way to prevent users
+                // from guessing the name of this function
+                let unique_id = rand::random::<u64>();
+                let name = format!("yield_fn_internal_{unique_id:x}");
+                let yield_binder = Ident::new(&name, span);
 
+                if let Some(bind) = yield_let {
                     let var = bind.ident;
                     header.append_all(quote_spanned!(span =>
                         #[verus::internal(proof)]
@@ -3623,12 +3623,24 @@ impl Visitor {
                     ));
                 }
 
-                quote_spanned_vstd!(vstd, span =>
-                    #vstd::atomic::atomically(|#yield_binder, #update_binder|
+                let unique_id = rand::random::<u64>();
+                let name = format!("atomic_update_internal_{unique_id:x}");
+                let temp_au_binder = Ident::new(&name, span);
+
+                let au_binder = match spec_au_binder {
+                    Some(ident) => ident,
+                    None => Ident::new("_", span),
+                };
+
+                quote_spanned_builtin_builtin_macros_vstd!(buildin, _macros, vstd, span =>
+                    #vstd::atomic::atomically(|#update_fn_binder, #yield_binder, #temp_au_binder| {
+                        #[verus::internal(spec)]
+                        let #au_binder = #buildin::Ghost::view(#temp_au_binder);
+
                         #[verus::internal(proof)]
                         #[verifier::assume_termination]
                         loop { #header #body }
-                    )
+                    })
                 )
             }
 

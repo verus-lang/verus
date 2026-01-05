@@ -325,10 +325,14 @@ use typing::Typing;
 
 impl State {
     fn get(&self, x: &VarIdent, span: &Span) -> Result<Mode, VirErr> {
-        if let VarMode::Mode(mode) = self.vars.get(x).expect("internal error: missing mode") {
-            Ok(*mode)
-        } else {
-            return Err(error(span, "uninitialized infer-mode variable"));
+        let Some(var_mode) = self.vars.get(x) else {
+            dbg!(x);
+            panic!("internal error: missing mode")
+        };
+
+        match var_mode {
+            VarMode::Mode(mode) => Ok(*mode),
+            _ => Err(error(span, "uninitialized infer-mode variable")),
         }
     }
 }
@@ -1958,13 +1962,34 @@ fn check_expr_handle_mut_arg(
 
             Ok(Mode::Exec)
         }
-        ExprX::Atomically(_info, _p, e) => {
-            let (expr, loop_is_infinite) = match &e.x {
+        ExprX::Atomically(_info, au, _p, e) => {
+            // REVIEW: This is rather complicated since the atomic function call is encoded
+            // using a loop in proof mode, which is currently not allowed in Verus.
+            // We get around this by partially destructing the body of the atomic function call,
+            // finding the loop and mode checking it manually.
+
+            let ExprX::Block(stmts, Some(e)) = &e.x else {
+                return Err(error(
+                    &expr.span,
+                    "malformed atomic function call; please do not use `vstd::atomic::atomically` directly",
+                ));
+            };
+
+            typing.insert_var_mode(au, VarMode::Mode(Mode::Spec));
+            let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+            let mut typing = typing.push_var_multi_scope();
+
+            for stmt in stmts.iter() {
+                typing.add_var_multi_scope();
+                check_stmt(ctxt, record, &mut typing, outer_mode, stmt)?;
+            }
+
+            let (e, loop_is_infinite) = match &e.x {
                 ExprX::NeverToAny(e) => (e, true),
                 _ => (e, false),
             };
 
-            let ExprX::Loop { body, invs, .. } = &expr.x else {
+            let ExprX::Loop { body, invs, .. } = &e.x else {
                 return Err(error(
                     &expr.span,
                     "malformed atomic function call; please do not use `vstd::atomic::atomically` directly",

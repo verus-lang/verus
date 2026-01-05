@@ -1502,7 +1502,10 @@ where
     crate::AtomicallyBlock {
         atomically_token: node.atomically_token,
         or1_token: node.or1_token,
-        update_binder: f.fold_ident(node.update_binder),
+        update_fn_binder: f.fold_ident(node.update_fn_binder),
+        comma1_token: node.comma1_token,
+        spec_au_binder: (node.spec_au_binder).map(|it| f.fold_ident(it)),
+        comma2_token: node.comma2_token,
         or2_token: node.or2_token,
         invariant_except_breaks: (node.invariant_except_breaks)
             .map(|it| f.fold_invariant_except_break(it)),

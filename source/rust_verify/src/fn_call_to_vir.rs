@@ -684,7 +684,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
                     err_span(
                         expr.span,
-                        "malformed atomic call; please do not use `vstd::atomic::atomically` directly",
+                        "malformed atomic call; please do not use `vstd::atomic::atomically` directly (2)",
                     )
                 }
 
@@ -705,8 +705,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [yield_param, update_param] = body.params else {
-                    panic!("the closure should take exactly two argument")
+                let [update_param, yield_param, spec_au_param] = body.params else {
+                    panic!("the closure should take exactly three argument")
                 };
 
                 let Some(args) = &bctx.au_pred_args else {
@@ -721,6 +721,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let tup_typ = mk_tuple_typ(&Arc::new(typs));
                     SpannedTyped::new(&expr_span, &tup_typ, mk_tuple_x(args))
                 };
+
+                let spec_au_var = pat_to_var(spec_au_param.pat)?;
 
                 let info = Arc::new(AtomicCallInfoX {
                     au_typ: au_typ.clone(),
@@ -747,7 +749,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
                     0 => err_span(arg.span, "function must be called in `atomically` block"),
-                    1 => mk_expr(ExprX::Atomically(info, args_expr, value)),
+                    1 => mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,
                         note: "function must be called exactly once in `atomically` block".into(),

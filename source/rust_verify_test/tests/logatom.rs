@@ -1,4 +1,4 @@
-#![cfg(false)]
+//#![cfg(false)]
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
@@ -10,7 +10,7 @@ const CUSTOM_PREDICATE: &'static str = verus_code_str! {
     use vstd::atomic::*;
 
     struct MyPredicate;
-    impl UpdatePredicate<i32, i32> for MyPredicate {
+    impl UpdatePredicate<i32, i32, ()> for MyPredicate {
         open spec fn req(self, x: i32) -> bool { x == 2 }
         open spec fn ens(self, x: i32, y: i32) -> bool { y == 5 }
     }
@@ -19,7 +19,7 @@ const CUSTOM_PREDICATE: &'static str = verus_code_str! {
 test_verify_one_file! {
     #[test] open_atomic_update_proof_simple_ok
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        proof fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, x => {
                 assert(x == 2);
                 let tracked y = (x + 3) as i32;
@@ -33,7 +33,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_proof_simple_err
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        proof fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, n => {
                 assert(n == 2);
                 Tracked(Ok((n + 7) as i32))
@@ -45,7 +45,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] #[ignore = "weird error"] open_atomic_update_proof_immutable_binding
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        proof fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, n => {
                 n += 3_i32;
                 Tracked(Ok(n))
@@ -57,7 +57,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_proof_mutable_binding
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        proof fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, mut n => {
                 n += 3_i32;
                 Tracked(Ok(n))
@@ -69,7 +69,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_exec_simple_ok
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        exec fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, x => {
                 assert(x == 2);
                 let tracked y = (x + 3) as i32;
@@ -83,7 +83,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_exec_simple_err
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        exec fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, n => {
                 assert(n == 2);
                 Tracked(Ok((n + 7) as i32))
@@ -95,7 +95,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] #[ignore = "weird error"] open_atomic_update_exec_immutable_binding
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        exec fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, n => {
                 assert(n == 2);
                 proof { n += 3_i32; }
@@ -109,7 +109,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_exec_mutable_binding
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        exec fn function(tracked au: AtomicUpdate<i32, i32, MyPredicate>) {
+        exec fn function(tracked au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, mut n => {
                 assert(n == 2);
                 proof { n += 3_i32; }
@@ -123,7 +123,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_atomic_update_spec_fail
     CUSTOM_PREDICATE.to_owned() + verus_code_str! {
-        spec fn function(au: AtomicUpdate<i32, i32, MyPredicate>) {
+        spec fn function(au: AtomicUpdate<i32, i32, (), MyPredicate>) {
             try_open_atomic_update!(au, x => {
                 assert(x == 2);
                 let tracked y = (x + 3) as i32;
@@ -134,7 +134,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot open atomic update in spec mode")
 }
 
-const ATOMIC_FUNCTION: &'static str = verus_code_str! {
+const ATOMIC_FUNCTION: &'static str = concat!(verus_code_str! {
     use vstd::*;
     use vstd::prelude::*;
     use vstd::atomic::*;
@@ -145,6 +145,7 @@ const ATOMIC_FUNCTION: &'static str = verus_code_str! {
             (x: u32) -> (y: u32),
             requires x == 2,
             ensures y == 5,
+            no_abort,
         },
     {
         try_open_atomic_update!(au, mut n => {
@@ -154,12 +155,12 @@ const ATOMIC_FUNCTION: &'static str = verus_code_str! {
             Tracked(Ok(n))
         });
     }
-};
+});
 
 test_verify_one_file! {
     #[test] atomic_spec_predicate_type
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
+        proof fn function(tracked au: AtomicUpdate<u32, u32, (), FunctionPred>) {
             assert forall |a: u32| au.req(a) <==> a == 2 by {}
             assert forall |a: u32, b: u32| au.ens(a, b) <==> b == 5 by {}
             assert (au.outer_mask().is_empty()) by {}
@@ -171,12 +172,16 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] atomic_call_simple
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
         exec fn function() {
             let tracked mut num = 2;
-            atomic_function() atomically |update| {
+            atomic_function() atomically |update|
+                invariant num == 2,
+            {
                 assert(num == 2);
-                num = update(num);
+                num = update(num).tracked_unwrap();
                 assert(num == 5);
+                break;
             };
             assert(num == 5);
         }
@@ -200,6 +205,7 @@ test_verify_one_file! {
                     assert(snd == 5);
                     Tracked(Ok(snd))
                 });
+                break;
             }
         }
     } => Ok(())
@@ -220,6 +226,7 @@ test_verify_one_file! {
                     num = upd(num);
                     Tracked(Ok(num))
                 });
+                break;
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
@@ -236,6 +243,7 @@ const ATOMIC_FUNCTION_ARGS: &'static str = verus_code_str! {
             (x: u32) -> (y: u32),
             requires x == a,
             ensures y == x + 3,
+            no_abort,
         },
         requires a == 2,
     {
@@ -254,7 +262,7 @@ const ATOMIC_FUNCTION_ARGS: &'static str = verus_code_str! {
 test_verify_one_file! {
     #[test] atomic_spec_predicate_type_args
     ATOMIC_FUNCTION_ARGS.to_owned() + verus_code_str! {
-        proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
+        proof fn function(tracked au: AtomicUpdate<u32, u32, (), FunctionPred>) {
             let ghost n: u32 = vstd::atomic::pred_args(au.pred());
             assert(au.pred().args(n));
             assert forall |a: u32| au.req(a) <==> a == n by {}
@@ -311,6 +319,7 @@ test_verify_one_file! {
                 assert(num == 2);
                 num = update(num);
                 assert(num == 5);
+                break;
             };
             assert(num == 5);
         }
@@ -437,7 +446,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn function(tracked au: AtomicUpdate<u32, u32, FunctionPred>) {
+        proof fn function(tracked au: AtomicUpdate<u32, u32, (), FunctionPred>) {
             assert forall |a: u32| au.req(a) <==> a == 2 by {}
             assert forall |a: u32, b: u32| au.ens(a, b) <==> b == 5 by {}
             assert (au.outer_mask() == set![1_int, 2_int, 3_int]) by {}
