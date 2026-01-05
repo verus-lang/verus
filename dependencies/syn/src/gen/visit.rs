@@ -2434,6 +2434,9 @@ where
     }
     skip!(node.and_token);
     skip!(node.mutability);
+    if let Some(it) = &node.mode {
+        v.visit_data_mode(it);
+    }
     v.visit_expr(&*node.expr);
 }
 #[cfg(feature = "full")]

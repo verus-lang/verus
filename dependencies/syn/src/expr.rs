@@ -631,6 +631,7 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub and_token: Token![&],
         pub mutability: Option<Token![mut]>,
+        pub mode: crate::verus::DataMode,
         pub expr: Box<Expr>,
     }
 }
@@ -1675,6 +1676,11 @@ pub(crate) mod parsing {
             } else {
                 None
             };
+            let mode: crate::verus::DataMode = if raw.is_none() && mutability.is_some() {
+                input.parse()?
+            } else {
+                crate::verus::DataMode::Default
+            };
             let expr = Box::new(unary_expr(input, allow_struct)?);
             if let Some(raw) = raw {
                 Ok(Expr::RawAddr(ExprRawAddr {
@@ -1692,6 +1698,7 @@ pub(crate) mod parsing {
                     attrs,
                     and_token,
                     mutability,
+                    mode,
                     expr,
                 }))
             }
@@ -1718,6 +1725,7 @@ pub(crate) mod parsing {
                 attrs: Vec::new(),
                 and_token: input.parse()?,
                 mutability: input.parse()?,
+                mode: crate::verus::DataMode::Default,
                 expr: Box::new(unary_expr(input)?),
             }))
         } else if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
@@ -2704,10 +2712,18 @@ pub(crate) mod parsing {
     impl Parse for ExprReference {
         fn parse(input: ParseStream) -> Result<Self> {
             let allow_struct = AllowStruct(true);
+            let and_token = input.parse()?;
+            let mutability: Option<Token![mut]> = input.parse()?;
+            let mode = if mutability.is_some() {
+                input.parse()?
+            } else {
+                crate::verus::DataMode::Default
+            };
             Ok(ExprReference {
                 attrs: Vec::new(),
-                and_token: input.parse()?,
-                mutability: input.parse()?,
+                and_token,
+                mutability,
+                mode,
                 expr: Box::new(unary_expr(input, allow_struct)?),
             })
         }
@@ -4232,6 +4248,7 @@ pub(crate) mod printing {
         outer_attrs_to_tokens(&e.attrs, tokens);
         e.and_token.to_tokens(tokens);
         e.mutability.to_tokens(tokens);
+        e.mode.to_tokens(tokens);
         let (right_prec, right_fixup) = fixup.rightmost_subexpression(
             &e.expr,
             #[cfg(feature = "full")]

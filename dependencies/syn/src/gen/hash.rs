@@ -1224,6 +1224,7 @@ impl Hash for crate::ExprReference {
     {
         self.attrs.hash(state);
         self.mutability.hash(state);
+        self.mode.hash(state);
         self.expr.hash(state);
     }
 }

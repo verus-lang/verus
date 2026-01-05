@@ -919,6 +919,7 @@ impl Clone for crate::ExprReference {
             attrs: self.attrs.clone(),
             and_token: self.and_token.clone(),
             mutability: self.mutability.clone(),
+            mode: self.mode.clone(),
             expr: self.expr.clone(),
         }
     }

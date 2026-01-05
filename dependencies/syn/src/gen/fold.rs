@@ -2395,6 +2395,7 @@ where
         attrs: f.fold_attributes(node.attrs),
         and_token: node.and_token,
         mutability: node.mutability,
+        mode: (node.mode).map(|it| f.fold_data_mode(it)),
         expr: Box::new(f.fold_expr(*node.expr)),
     }
 }

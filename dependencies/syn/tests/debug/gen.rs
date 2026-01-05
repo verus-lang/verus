@@ -1427,6 +1427,20 @@ impl Debug for Lite<syn::Expr> {
                 if _val.mutability.is_some() {
                     formatter.field("mutability", &Present);
                 }
+                if let Some(val) = &_val.mode {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::DataMode);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("mode", Print::ref_cast(val));
+                }
                 formatter.field("expr", Lite(&_val.expr));
                 formatter.finish()
             }
@@ -2521,6 +2535,20 @@ impl Debug for Lite<syn::ExprReference> {
         }
         if self.value.mutability.is_some() {
             formatter.field("mutability", &Present);
+        }
+        if let Some(val) = &self.value.mode {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::DataMode);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("mode", Print::ref_cast(val));
         }
         formatter.field("expr", Lite(&self.value.expr));
         formatter.finish()

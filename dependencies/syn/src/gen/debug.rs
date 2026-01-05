@@ -1391,6 +1391,7 @@ impl crate::ExprReference {
         formatter.field("attrs", &self.attrs);
         formatter.field("and_token", &self.and_token);
         formatter.field("mutability", &self.mutability);
+        formatter.field("mode", &self.mode);
         formatter.field("expr", &self.expr);
         formatter.finish()
     }

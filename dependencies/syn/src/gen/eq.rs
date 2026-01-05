@@ -888,7 +888,7 @@ impl Eq for crate::ExprReference {}
 impl PartialEq for crate::ExprReference {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.mutability == other.mutability
-            && self.expr == other.expr
+            && self.mode == other.mode && self.expr == other.expr
     }
 }
 #[cfg(feature = "full")]
