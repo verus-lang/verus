@@ -35,7 +35,7 @@ use verus_syn::{
     ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType,
     Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
     SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input, TypeReference,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -94,6 +94,8 @@ pub(crate) struct Visitor {
     inside_arith: InsideArith,
     // assign_to == true means we're an expression being assigned to by Assign
     assign_to: bool,
+    // Inside a Tracked<...> type constructor or inside the type of a 'tracked-mode' binding
+    inside_tracked_ty: u32,
 
     // Add extra verus signature information to the docstring
     pub(crate) rustdoc: bool,
@@ -827,8 +829,6 @@ impl Visitor {
 
             // Check for Ghost(x) or Tracked(x) argument
             unwrap_ghost_tracked.extend(rewrite_args_unwrap_ghost_tracked(&self.erase_ghost, arg));
-
-            arg.tracked = None;
         }
         let ret_pat = match &mut sig.output {
             ReturnType::Default => None,
@@ -1726,6 +1726,10 @@ impl Visitor {
             false,
         );
 
+        for arg in &mut item_fn.sig.inputs {
+            arg.tracked = None;
+        }
+
         if self.rustdoc && matches!(vstd_kind(), VstdKind::IsVstd) {
             let mut block = (*item_fn.block).clone();
             block.stmts.push(Stmt::Expr(Expr::Verbatim(quote! { ::core::unimplemented!() }), None));
@@ -2363,6 +2367,80 @@ impl Visitor {
         true
     }
 
+    fn handle_reference(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Reference(expr_reference) = expr else {
+            return false;
+        };
+
+        if !matches!(expr_reference.mode, DataMode::Default)
+            && expr_reference.mutability.is_none()
+        {
+            *expr = Expr::Verbatim(
+                quote_spanned! { expr.span() => compile_error!("reference with a mode is only supported for `&mut` references") },
+            );
+            return true;
+        }
+
+        let trk = match expr_reference.mode {
+            DataMode::Exec(_) => false,
+            DataMode::Tracked(_) => true,
+            DataMode::Ghost(_) => {
+                *expr = Expr::Verbatim(quote_spanned! { expr.span() => compile_error!("mutable reference to a `ghost` location is not supported") });
+                return true;
+            }
+            DataMode::Default => expr_reference.mutability.is_some() && self.inside_ghost > 0,
+        };
+        expr_reference.mode = DataMode::Default;
+
+        self.visit_expr_with_arith(expr, InsideArith::None);
+
+        if trk {
+            *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, expr.span() =>
+                #builtin::borrow_mut_tracked(#expr)));
+        }
+
+        true
+    }
+
+    fn handle_reference_ty(&mut self, ty: &mut Type) {
+        let span = ty.span();
+        let Type::Reference(type_ref) = ty else { panic!("handle_reference_ty"); };
+        let TypeReference { and_token: _, lifetime, mutability, mode, elem } = type_ref;
+
+        if !matches!(mode, DataMode::Default)
+            && mutability.is_none()
+        {
+            *ty = Type::Verbatim(
+                quote_spanned! { span => compile_error!("reference with a mode is only supported for `&mut` references") },
+            );
+            return;
+        }
+
+        let trk = match mode {
+            DataMode::Exec(_) => false,
+            DataMode::Tracked(_) => true,
+            DataMode::Ghost(_) => {
+                *ty = Type::Verbatim(quote_spanned! { span => compile_error!("mutable reference to a `ghost` location is not supported") });
+                return;
+            }
+            DataMode::Default => mutability.is_some() && self.inside_tracked_ty > 0,
+        };
+        *mode = DataMode::Default;
+
+        if trk {
+            match lifetime {
+                Some(lifetime) => {
+                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
+                        #builtin::ref_mut_tracked<#lifetime, #elem>));
+                }
+                None => {
+                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
+                        #builtin::ref_mut_tracked<#elem>));
+                }
+            }
+        }
+    }
+
     /// Handle UnaryOp expressions Neg and Sub
     fn handle_unary_ops(&mut self, expr: &mut Expr) -> bool {
         let Expr::Unary(unary) = expr else {
@@ -2973,6 +3051,8 @@ impl Visitor {
             }
         };
 
+        let (_, is_tracked) = mode_block;
+
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
@@ -2980,7 +3060,6 @@ impl Visitor {
         let is_inside_ghost = self.inside_ghost > 0;
 
         if let Expr::Call(call) = expr {
-            let (_, is_tracked) = mode_block;
             let span = call.span();
             if is_tracked {
                 // Tracked(...)
@@ -3652,6 +3731,7 @@ impl VisitMut for Visitor {
             || self.handle_unary_ops(expr)
             || self.handle_big_and_big_or(expr)
             || self.handle_spec_operators(expr)
+            || self.handle_reference(expr)
         {
             return;
         }
@@ -3948,6 +4028,9 @@ impl VisitMut for Visitor {
             self.inside_external_code += 1;
         }
         visit_item_fn_mut(self, fun);
+        for arg in &mut fun.sig.inputs {
+            arg.tracked = None;
+        }
         if is_external_code {
             self.inside_external_code -= 1;
         }
@@ -3973,6 +4056,9 @@ impl VisitMut for Visitor {
             self.inside_external_code += 1;
         }
         visit_impl_item_fn_mut(self, method);
+        for arg in &mut method.sig.inputs {
+            arg.tracked = None;
+        }
         if is_external_code {
             self.inside_external_code -= 1;
         }
@@ -4003,6 +4089,9 @@ impl VisitMut for Visitor {
             self.inside_external_code += 1;
         }
         visit_trait_item_fn_mut(self, method);
+        for arg in &mut method.sig.inputs {
+            arg.tracked = None;
+        }
         if is_external_code {
             self.inside_external_code -= 1;
         }
@@ -4092,6 +4181,29 @@ impl VisitMut for Visitor {
         self.filter_attrs(&mut item.attrs);
     }
 
+    fn visit_fn_arg_mut(&mut self, fn_arg: &mut FnArg) {
+        let trk = fn_arg.tracked.is_some();
+        if trk {
+            // Adding the colon_token forces verus_syn to print out the expanded form,
+            // `self: Self`, `self: &mut Self`.
+            // This is necessary in case the `&mut tracked Self` ends up expanded
+            if let FnArgKind::Receiver(receiver) = &mut fn_arg.kind {
+                if receiver.colon_token.is_none() {
+                    let span = receiver.self_token.span();
+                    receiver.colon_token = Some(verus_syn::token::Colon { spans: [span] });
+                    receiver.reference = None;
+                    receiver.mutability = None;
+                }
+            }
+
+            self.inside_tracked_ty += 1;
+        }
+        verus_syn::visit_mut::visit_fn_arg_mut(self, fn_arg);
+        if trk {
+            self.inside_tracked_ty -= 1;
+        }
+    }
+
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
         item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
         visit_item_struct_mut(self, item);
@@ -4102,9 +4214,23 @@ impl VisitMut for Visitor {
 
     #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     fn visit_type_mut(&mut self, ty: &mut Type) {
+        let is_tracked_ty_ctor = match ty {
+            Type::Path(TypePath { qself: None, path: Path { leading_colon: None, segments }}) => {
+                segments.len() == 1 && segments[0].ident == "Tracked"
+                    && matches!(segments[0].arguments, verus_syn::PathArguments::AngleBracketed(_))
+            }
+            _ => false
+        };
+
+        if is_tracked_ty_ctor {
+            self.inside_tracked_ty += 1;
+        }
         self.inside_type += 1;
         verus_syn::visit_mut::visit_type_mut(self, ty);
         self.inside_type -= 1;
+        if is_tracked_ty_ctor {
+            self.inside_tracked_ty -= 1;
+        }
 
         let span = ty.span();
         let tmp_ty = take_type(ty);
@@ -4248,6 +4374,10 @@ impl VisitMut for Visitor {
                         #verus_builtin::FnProof<#options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
                     ));
                 }
+            }
+            mut tmp_ty @ Type::Reference(_) => {
+                self.handle_reference_ty(&mut tmp_ty);
+                *ty = tmp_ty;
             }
             _ => {
                 *ty = tmp_ty;
@@ -4593,6 +4723,7 @@ pub(crate) fn rewrite_items(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_items_prefilter(&mut items.items);
@@ -4627,6 +4758,7 @@ pub(crate) fn rewrite_impl_items(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
@@ -4660,6 +4792,7 @@ pub(crate) fn rewrite_expr(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_expr_mut(&mut expr);
@@ -4691,6 +4824,7 @@ pub(crate) fn rewrite_proof_decl(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     for mut ss in stmts {
@@ -4744,6 +4878,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_expr_mut(expr);
@@ -4945,6 +5080,7 @@ pub(crate) fn sig_specs_attr(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
 
@@ -4982,6 +5118,7 @@ pub(crate) fn while_loop_spec_attr(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     let mut spec_attr = spec_attr;
@@ -5014,6 +5151,7 @@ pub(crate) fn for_loop_spec_attr(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     let mut spec_attr = spec_attr;
@@ -5070,6 +5208,7 @@ pub(crate) fn proof_block(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     visitor.visit_block_mut(&mut invoke);
@@ -5094,6 +5233,7 @@ pub(crate) fn proof_macro_exprs(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     for element in &mut invoke.elements.elements {
@@ -5123,6 +5263,7 @@ pub(crate) fn inv_macro_exprs(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
@@ -5158,6 +5299,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
+        inside_tracked_ty: 0,
         rustdoc: env_rustdoc(),
     };
     for element in &mut invoke.elements.elements {

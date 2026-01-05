@@ -1980,6 +1980,15 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&expr.span, "mutable borrow is not allowed in spec context"));
             }
 
+            match mut_ref_mode {
+                MutRefMode::Exec => {}
+                MutRefMode::Proof => {
+                    if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                        return Err(error(&expr.span, "mutable borrow to tracked location not allowed outside proof block"));
+                    }
+                }
+            }
+
             let mode =
                 check_place(ctxt, record, typing, outer_mode, place, PlaceAccess::MutBorrow)?;
             if mode != mut_ref_mode.to_mode() {

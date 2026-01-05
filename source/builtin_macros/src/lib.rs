@@ -49,7 +49,7 @@ pub fn verus_enum_synthesize(
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum EraseGhost {
     /// keep all ghost code
     Keep,

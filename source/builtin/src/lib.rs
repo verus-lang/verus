@@ -282,7 +282,7 @@ pub fn ext_equal_deep<A>(_: A, _: A) -> bool {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::old"]
 #[verifier::spec]
-pub fn old<A: ?Sized>(_: &mut A) -> &mut A {
+pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
