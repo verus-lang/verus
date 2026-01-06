@@ -146,33 +146,33 @@ fn pattern_to_exprs_rec(
             Ok(test)
         }
         PatternX::Or(_pat1, _pat2) => {
-            /*
-            let mut decls1 = vec![];
-            let mut decls2 = vec![];
+            let mut bindings1 = vec![];
+            let mut bindings2 = vec![];
 
-            let pat1_matches = pattern_to_exprs_rec(ctx, expr, pat1, &mut decls1)?;
-            let pat2_matches = pattern_to_exprs_rec(ctx, expr, pat2, &mut decls2)?;
+            let pat1_matches = pattern_to_exprs_rec(ctx, pat1, place, &mut bindings1)?;
+            let pat2_matches = pattern_to_exprs_rec(ctx, pat2, place, &mut bindings2)?;
 
             let matches = disjoin(&pattern.span, &vec![pat1_matches.clone(), pat2_matches]);
 
-            assert!(decls1.len() == decls2.len());
-            for d1 in decls1 {
-                let d2 = decls2
+            assert!(bindings1.len() == bindings2.len());
+            for d1 in bindings1 {
+                let d2 = bindings2
                     .iter()
                     .find(|d| d.name == d1.name)
                     .expect("both sides of 'or' pattern should bind the same variables");
                 assert!(d1.mutable == d2.mutable);
-                let combined_decl = PatternBoundDecl {
+                assert!(!d1.mut_ref);
+                assert!(!d2.mut_ref);
+                let combined_binding = ComputedPatternBinding {
                     name: d1.name,
                     mutable: d1.mutable,
+                    mut_ref: d1.mut_ref,
                     expr: if_then_else(&pattern.span, &pat1_matches, &d1.expr, &d2.expr),
                 };
-                decls.push(combined_decl);
+                bindings.push(combined_binding);
             }
 
             Ok(matches)
-            */
-            todo!(); // TODO(new_mut_ref)
         }
         PatternX::Expr(e) => {
             let expr = read_place(&place);
