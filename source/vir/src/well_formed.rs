@@ -1,8 +1,8 @@
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VirErr, VirErrAs, Visibility, Stmt, StmtX,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -729,10 +729,7 @@ fn check_one_expr<Emit: EmitError>(
     Ok(())
 }
 
-fn check_one_stmt(
-    _ctxt: &Ctxt,
-    stmt: &Stmt
-) -> Result<(), VirErr> {
+fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
     match &stmt.x {
         StmtX::Decl { pattern, .. } => {
             let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&pattern);
@@ -845,9 +842,7 @@ fn check_expr<Emit: EmitError>(
         &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
             check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_emit, _scope_map, stmt| {
-            check_one_stmt(ctxt, stmt)
-        },
+        &mut |_emit, _scope_map, stmt| check_one_stmt(ctxt, stmt),
         &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },
