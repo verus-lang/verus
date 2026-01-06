@@ -3,12 +3,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -96,19 +96,9 @@ pub fn run_cargo(
     verus_args: &[String],
     warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
-    let cargo_args = {
-        let for_cargo_metadata = false;
-        make_cargo_args(cargo_options, for_cargo_metadata)
-    };
-    let mut common_verus_driver_args: Vec<String> =
-        vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
-
-    if !warn_if_nothing_verified {
-        common_verus_driver_args.extend_from_slice(&[
-            "--VIA-CARGO".to_owned(),
-            "compile-when-primary-package".to_owned(),
-        ]);
-    }
+    /////////////////////////////////
+    // First, run `cargo metadata` //
+    /////////////////////////////////
 
     let metadata_args = {
         let for_cargo_metadata = true;
@@ -127,11 +117,20 @@ pub fn run_cargo(
     let packages_to_process = &all_packages;
     let packages_to_verify = if verify_deps { &all_packages } else { &root_packages };
 
-    common_verus_driver_args.extend(verus_args.iter().cloned());
+    //////////////////////////////////////
+    // Second, run `cargo {subcommand}` //
+    //////////////////////////////////////
+
+    let cargo_args = {
+        let for_cargo_metadata = false;
+        make_cargo_args(cargo_options, for_cargo_metadata)
+    };
+
     let (mut command, verified_something) = make_cargo_command(
         subcommand,
+        warn_if_nothing_verified,
         &cargo_args,
-        common_verus_driver_args,
+        &verus_args,
         &metadata_index,
         packages_to_process,
         packages_to_verify,
@@ -234,12 +233,25 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
 
 fn make_cargo_command(
     subcommand: &str,
+    warn_if_nothing_verified: bool,
     cargo_args: &[String],
-    common_verus_driver_args: Vec<String>,
+    verus_args: &[String],
     metadata_index: &MetadataIndex,
     packages_to_process: &Set<PackageId>,
     packages_to_verify: &Set<PackageId>,
 ) -> Result<(Command, bool)> {
+    let mut common_verus_driver_args: Vec<String> =
+        vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
+
+    if !warn_if_nothing_verified {
+        common_verus_driver_args.extend_from_slice(&[
+            "--VIA-CARGO".to_owned(),
+            "compile-when-primary-package".to_owned(),
+        ]);
+    }
+
+    common_verus_driver_args.extend(verus_args.iter().cloned());
+
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
