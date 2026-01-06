@@ -147,10 +147,15 @@ fn get_mut_fst_test() {
 
 We'll dive deeper into Verus's encoding later.
 
+## More examples
+
 ## Working with loops and locals
 
-In this example we'll see how mutable references can be used to build up a cons-list
-"from the root down".
+Here, let's do a more complex example to get deeper into the mindset of thinking about mutable
+references in terms of the relationships between the "final values".
+
+Specifically, we'll see how mutable references can be used to build up a cons-list
+"from the root down", and how to verify it.
 
 ```rust
 enum List {
@@ -170,7 +175,7 @@ fn build_zero_list(len: u64) {
             List::Cons(_, b) => {
                 // Replace `cur` with a reference to the newly-created List::Nil,
                 // the child of the previous `cur`.
-                cur = &mut b;
+                cur = &mut *b;
             }
             _ => { /* unreachable */ }
         }
@@ -180,7 +185,41 @@ fn build_zero_list(len: u64) {
 
     return list;
 }
+```
 
+We start with the list (`list`) equal to `Nil` and take a reference to it (`cur`).
+At each step, we replace the value pointed-to by `cur` with a `Cons` node, and then move
+the reference down to the child.
+Note that in this program, we both write through the cur pointer (to `*cur = ...`),
+_and_ we overwrite the pointer itself (`cur = ...`).
+Here, for example, we depict the state of the program at the beginning and through
+the first two iterations:
+
+<center>
+<img src="graphics/mut-ref-cons-example-1.png" alt="">
+</center>
+(TODO alt text)
+
+Now, let's verify this program; in particular, let us prove that the list at the end
+has length equal to the input argument, `len`.
+
+Thus, our primary goal is to prove something about the value of `list` after the initial
+borrow (`cur = &mut list`) expires. 
+Observe that, as the program progresses through the loop, the shape of this value
+becomes more and more "concrete".
+
+ * At the beginning of the loop, `cur` is borrowed from `list`. At this point, we have the
+   freedom to set `*cur` to anything we want, so we don't know anything about the final value
+   of `list`.
+ * After one iteration, we've assigned that location to be a `Cons` node and replaced
+   our `cur` reference with a reference to its child.
+   That `Cons` node is now "set in stone"; we don't have a reference to it anymore,
+   but we still have the freedom to set the child to whatever we want.
+ * And so on.
+
+<center>
+<img src="graphics/mut-ref-cons-example-2.png" alt="">
+</center>
 
 ## A closer look
 
