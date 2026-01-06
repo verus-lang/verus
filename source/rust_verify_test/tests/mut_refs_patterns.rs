@@ -3313,3 +3313,36 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_guard ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, 1);
+            match m {
+                (ref mut a, b) if b == 1 => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an if-guard and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, false);
+            match m {
+                (ref mut a, false) | (ref mut a, true) => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_let_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let x = Some((5, true));
+            let Some((ref mut i, true | false)) = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}

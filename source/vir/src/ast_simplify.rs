@@ -305,26 +305,6 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
     }
 }
 
-fn pattern_has_or(pattern: &Pattern) -> bool {
-    match &pattern.x {
-        PatternX::Wildcard(_) => false,
-        PatternX::Var(_binding) => false,
-        PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
-        PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                if pattern_has_or(&binder.a) {
-                    return true;
-                }
-            }
-            false
-        }
-        PatternX::Or(_pat1, _pat2) => true,
-        PatternX::Expr(_e) => false,
-        PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
-    }
-}
-
 fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarIdent {
     if let Some(rename) = state.rename_vars.get(x) {
         if scope_map[x].is_outer_param_or_ret {
@@ -628,7 +608,7 @@ fn simplify_one_expr(
             let mut if_expr: Option<Expr> = None;
             for arm in arms1.iter().rev() {
                 let mut decls: Vec<Stmt> = Vec::new();
-                let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
+                let has_guard = arm.x.has_guard();
 
                 let test_pattern = if ctx.new_mut_ref {
                     crate::patterns::pattern_to_exprs(
@@ -645,12 +625,7 @@ fn simplify_one_expr(
                 let test = if !has_guard {
                     test_pattern
                 } else {
-                    if pattern_has_or(&arm.x.pattern) {
-                        return Err(error(
-                            &arm.x.pattern.span,
-                            "Not supported: pattern containing both an or-pattern (|) and an if-guard",
-                        ));
-                    }
+                    assert!(!crate::patterns::pattern_has_or(&arm.x.pattern));
 
                     let guard = arm.x.guard.clone();
                     let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
