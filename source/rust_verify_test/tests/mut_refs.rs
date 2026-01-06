@@ -3008,3 +3008,38 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_with_implicit_box_deref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        enum List {
+            Cons(u64, Box<List>),
+            Nil,
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn build_zero_list(len: u64) -> List {
+            let mut list = List::Nil;
+            let mut cur = &mut list;
+
+            let mut i = 0;
+            while i < len {
+                *cur = List::Cons(0, Box::new(List::Nil));
+
+                match cur {
+                    List::Cons(_, b) => {
+                        // Replace `cur` with a reference to the newly-created List::Nil,
+                        // the child of the previous `cur`.
+                        cur = &mut *b;
+                    }
+                    _ => { /* clearly unreachable */ }
+                }
+
+                i += 1;
+            }
+
+            return list;
+        }
+    } => Ok(())
+}

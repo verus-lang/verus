@@ -1291,18 +1291,23 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
                 {
                     let inner_inner_ty = get_inner2_ty();
-                    if inner_inner_ty != adjustment.target {
-                        panic!("Verus Internal Error: Implicit &mut * expected the same type");
-                    }
-                    // TODO(new_mut_ref): we need to improve this condition to work for tracked code
-                    if bctx.in_ghost {
-                        return expr_to_vir_with_adjustments(
-                            bctx,
-                            expr,
-                            current_modifier,
-                            adjustments,
-                            adjustment_idx - 2,
-                        );
+                    if matches!(
+                        inner_inner_ty.kind(),
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut)
+                    ) {
+                        if inner_inner_ty != adjustment.target {
+                            panic!("Verus Internal Error: Implicit &mut * expected the same type");
+                        }
+                        // TODO(new_mut_ref): we need to improve this condition to work for tracked code
+                        if bctx.in_ghost {
+                            return expr_to_vir_with_adjustments(
+                                bctx,
+                                expr,
+                                current_modifier,
+                                adjustments,
+                                adjustment_idx - 2,
+                            );
+                        }
                     }
                 }
 
