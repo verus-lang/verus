@@ -929,6 +929,9 @@ pub trait Visit<'ast> {
     fn visit_return_type(&mut self, i: &'ast crate::ReturnType) {
         visit_return_type(self, i);
     }
+    fn visit_return_value(&mut self, i: &'ast crate::ReturnValue) {
+        visit_return_value(self, i);
+    }
     fn visit_returns(&mut self, i: &'ast crate::Returns) {
         visit_returns(self, i);
     }
@@ -1398,12 +1401,11 @@ where
     skip!(node.atomically_token);
     skip!(node.or1_token);
     v.visit_ident(&node.update_fn_binder);
-    skip!(node.comma1_token);
-    if let Some(it) = &node.spec_au_binder {
-        v.visit_ident(it);
-    }
-    skip!(node.comma2_token);
+    skip!(node.comma_token);
     skip!(node.or2_token);
+    if let Some(it) = &node.spec_au_binder {
+        v.visit_return_value(it);
+    }
     if let Some(it) = &node.invariant_except_breaks {
         v.visit_invariant_except_break(it);
     }
@@ -4492,6 +4494,13 @@ where
             v.visit_type(&**_binding_3);
         }
     }
+}
+pub fn visit_return_value<'ast, V>(v: &mut V, node: &'ast crate::ReturnValue)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    full!(v.visit_pat(& node.pat));
 }
 pub fn visit_returns<'ast, V>(v: &mut V, node: &'ast crate::Returns)
 where

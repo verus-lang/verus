@@ -559,10 +559,10 @@ pub use crate::verus::{
     InvariantNameSetList, InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec,
     MatchesOpExpr, MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeProofAxiom, ModeSpec,
     ModeSpecChecked, ModeTracked, NoAbort, Open, OpenRestricted, OuterMask, PermClause, PermTuple,
-    PermTupleField, PredTypeClause, Prover, Publish, Recommends, Requires, Returns, RevealHide,
-    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
-    Specification, TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn, YieldLet,
-    YieldType,
+    PermTupleField, PredTypeClause, Prover, Publish, Recommends, Requires, ReturnValue, Returns,
+    RevealHide, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    SignatureUnwind, Specification, TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr,
+    WithSpecOnFn, YieldLet, YieldType,
 };
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/6176

@@ -3628,8 +3628,8 @@ impl Visitor {
                 let temp_au_binder = Ident::new(&name, span);
 
                 let au_binder = match spec_au_binder {
-                    Some(ident) => ident,
-                    None => Ident::new("_", span),
+                    Some(ret_val) => ret_val.pat,
+                    None => parse_quote_spanned!(span => _),
                 };
 
                 quote_spanned_builtin_builtin_macros_vstd!(buildin, _macros, vstd, span =>
@@ -3645,7 +3645,7 @@ impl Visitor {
             }
 
             _ => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(|_, _| ())
+                #vstd::atomic::atomically(|_update_fn, _yield_fn, _atomic_update| ())
             ),
         };
 

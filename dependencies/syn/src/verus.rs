@@ -589,6 +589,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ReturnValue {
+        pub token: Token![->],
+        pub pat: Pat,
+    }
+}
+
+ast_struct! {
     pub struct YieldLet {
         pub token1: Token![yield],
         pub token2: Token![let],
@@ -602,10 +609,9 @@ ast_struct! {
         pub atomically_token: Token![atomically],
         pub or1_token: Token![|],
         pub update_fn_binder: Ident,
-        pub comma1_token: Option<Token![,]>,
-        pub spec_au_binder: Option<Ident>,
-        pub comma2_token: Option<Token![,]>,
+        pub comma_token: Option<Token![,]>,
         pub or2_token: Token![|],
+        pub spec_au_binder: Option<ReturnValue>,
         pub invariant_except_breaks: Option<InvariantExceptBreak>,
         pub invariants: Option<Invariant>,
         pub ensures: Option<Ensures>,
@@ -1706,6 +1712,27 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ReturnValue {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self {
+                token: input.parse()?,
+                pat: Pat::parse_single(&input)?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<ReturnValue> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![->]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for YieldLet {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Self {
@@ -1731,24 +1758,13 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicallyBlock {
         fn parse(input: ParseStream) -> Result<Self> {
-            let atomically_token = input.parse()?;
-            let or1_token = input.parse()?;
-            let update_fn_binder = input.parse()?;
-            let comma1_token: Option<Token![,]> = input.parse()?;
-            let (au_spec_binder, comma2_token) = if comma1_token.is_some() && input.peek(Ident) {
-                (Some(input.parse()?), input.parse()?)
-            } else {
-                (None, None)
-            };
-
             Ok(AtomicallyBlock {
-                atomically_token,
-                or1_token,
-                update_fn_binder,
-                comma1_token,
-                spec_au_binder: au_spec_binder,
-                comma2_token,
+                atomically_token: input.parse()?,
+                or1_token: input.parse()?,
+                update_fn_binder: input.parse()?,
+                comma_token: input.parse()?,
                 or2_token: input.parse()?,
+                spec_au_binder: input.parse()?,
                 invariant_except_breaks: input.parse()?,
                 invariants: input.parse()?,
                 ensures: input.parse()?,

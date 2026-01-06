@@ -1035,6 +1035,9 @@ pub trait Fold {
     fn fold_return_type(&mut self, i: crate::ReturnType) -> crate::ReturnType {
         fold_return_type(self, i)
     }
+    fn fold_return_value(&mut self, i: crate::ReturnValue) -> crate::ReturnValue {
+        fold_return_value(self, i)
+    }
     fn fold_returns(&mut self, i: crate::Returns) -> crate::Returns {
         fold_returns(self, i)
     }
@@ -1503,10 +1506,9 @@ where
         atomically_token: node.atomically_token,
         or1_token: node.or1_token,
         update_fn_binder: f.fold_ident(node.update_fn_binder),
-        comma1_token: node.comma1_token,
-        spec_au_binder: (node.spec_au_binder).map(|it| f.fold_ident(it)),
-        comma2_token: node.comma2_token,
+        comma_token: node.comma_token,
         or2_token: node.or2_token,
+        spec_au_binder: (node.spec_au_binder).map(|it| f.fold_return_value(it)),
         invariant_except_breaks: (node.invariant_except_breaks)
             .map(|it| f.fold_invariant_except_break(it)),
         invariants: (node.invariants).map(|it| f.fold_invariant(it)),
@@ -4455,6 +4457,15 @@ where
                 Box::new(f.fold_type(*_binding_3)),
             )
         }
+    }
+}
+pub fn fold_return_value<F>(f: &mut F, node: crate::ReturnValue) -> crate::ReturnValue
+where
+    F: Fold + ?Sized,
+{
+    crate::ReturnValue {
+        token: node.token,
+        pat: full!(f.fold_pat(node.pat)),
     }
 }
 pub fn fold_returns<F>(f: &mut F, node: crate::Returns) -> crate::Returns

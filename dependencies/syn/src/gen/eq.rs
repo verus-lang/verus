@@ -119,9 +119,8 @@ impl Eq for crate::AtomicallyBlock {}
 impl PartialEq for crate::AtomicallyBlock {
     fn eq(&self, other: &Self) -> bool {
         self.update_fn_binder == other.update_fn_binder
-            && self.comma1_token == other.comma1_token
+            && self.comma_token == other.comma_token
             && self.spec_au_binder == other.spec_au_binder
-            && self.comma2_token == other.comma2_token
             && self.invariant_except_breaks == other.invariant_except_breaks
             && self.invariants == other.invariants && self.ensures == other.ensures
             && self.yield_let == other.yield_let && self.body == other.body
@@ -2456,6 +2455,14 @@ impl PartialEq for crate::ReturnType {
             ) => self1 == other1 && self2 == other2 && self3 == other3,
             _ => false,
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ReturnValue {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ReturnValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.pat == other.pat
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

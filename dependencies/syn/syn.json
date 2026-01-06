@@ -446,23 +446,18 @@
         "update_fn_binder": {
           "proc_macro2": "Ident"
         },
-        "comma1_token": {
-          "option": {
-            "token": "Comma"
-          }
-        },
-        "spec_au_binder": {
-          "option": {
-            "proc_macro2": "Ident"
-          }
-        },
-        "comma2_token": {
+        "comma_token": {
           "option": {
             "token": "Comma"
           }
         },
         "or2_token": {
           "token": "Or"
+        },
+        "spec_au_binder": {
+          "option": {
+            "syn": "ReturnValue"
+          }
         },
         "invariant_except_breaks": {
           "option": {
@@ -6291,6 +6286,20 @@
             }
           }
         ]
+      }
+    },
+    {
+      "ident": "ReturnValue",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "RArrow"
+        },
+        "pat": {
+          "syn": "Pat"
+        }
       }
     },
     {

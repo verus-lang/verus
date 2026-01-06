@@ -42,7 +42,7 @@ pub fn middle(x: i32) -> (y: i32)
 
     loop invariant au == atom_upd { break }
 
-    atomic_function(x, "hi", ()) atomically |upd, final_au|
+    atomic_function(x, "hi", ()) atomically |upd| -> (final_au)
         invariant au == atom_upd,
         yield let stuff,
     {

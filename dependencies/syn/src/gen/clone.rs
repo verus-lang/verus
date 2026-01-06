@@ -155,10 +155,9 @@ impl Clone for crate::AtomicallyBlock {
             atomically_token: self.atomically_token.clone(),
             or1_token: self.or1_token.clone(),
             update_fn_binder: self.update_fn_binder.clone(),
-            comma1_token: self.comma1_token.clone(),
-            spec_au_binder: self.spec_au_binder.clone(),
-            comma2_token: self.comma2_token.clone(),
+            comma_token: self.comma_token.clone(),
             or2_token: self.or2_token.clone(),
+            spec_au_binder: self.spec_au_binder.clone(),
             invariant_except_breaks: self.invariant_except_breaks.clone(),
             invariants: self.invariants.clone(),
             ensures: self.ensures.clone(),
@@ -2513,6 +2512,15 @@ impl Clone for crate::ReturnType {
             crate::ReturnType::Type(v0, v1, v2, v3) => {
                 crate::ReturnType::Type(v0.clone(), v1.clone(), v2.clone(), v3.clone())
             }
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ReturnValue {
+    fn clone(&self) -> Self {
+        crate::ReturnValue {
+            token: self.token.clone(),
+            pat: self.pat.clone(),
         }
     }
 }

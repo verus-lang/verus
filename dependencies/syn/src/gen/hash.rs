@@ -146,9 +146,8 @@ impl Hash for crate::AtomicallyBlock {
         H: Hasher,
     {
         self.update_fn_binder.hash(state);
-        self.comma1_token.hash(state);
+        self.comma_token.hash(state);
         self.spec_au_binder.hash(state);
-        self.comma2_token.hash(state);
         self.invariant_except_breaks.hash(state);
         self.invariants.hash(state);
         self.ensures.hash(state);
@@ -3126,6 +3125,15 @@ impl Hash for crate::ReturnType {
                 v3.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ReturnValue {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.pat.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

@@ -162,10 +162,9 @@ impl Debug for crate::AtomicallyBlock {
         formatter.field("atomically_token", &self.atomically_token);
         formatter.field("or1_token", &self.or1_token);
         formatter.field("update_fn_binder", &self.update_fn_binder);
-        formatter.field("comma1_token", &self.comma1_token);
-        formatter.field("spec_au_binder", &self.spec_au_binder);
-        formatter.field("comma2_token", &self.comma2_token);
+        formatter.field("comma_token", &self.comma_token);
         formatter.field("or2_token", &self.or2_token);
+        formatter.field("spec_au_binder", &self.spec_au_binder);
         formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
         formatter.field("invariants", &self.invariants);
         formatter.field("ensures", &self.ensures);
@@ -3501,6 +3500,15 @@ impl Debug for crate::ReturnType {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ReturnValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ReturnValue");
+        formatter.field("token", &self.token);
+        formatter.field("pat", &self.pat);
+        formatter.finish()
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
