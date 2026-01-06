@@ -29,7 +29,7 @@ fn example1() {
         None => { }
     }
 
-    assert(a == 20);
+    assert(Some(a == 20));
 }
 ```
 
@@ -87,7 +87,7 @@ fn get_mut_fst<A, B>(pair: &mut (A, B)) -> (ret: &mut A)
     &mut pair.0
 }
 
-fn test() {
+fn get_mut_fst_test() {
     let mut p = (10, 20);
 
     let r = get_mut_fst(&mut p);
@@ -96,6 +96,91 @@ fn test() {
     assert(p == (100, 20));
 }
 ```
+
+Think for a moment about how you might write a specification for `get_mut_fst`.
+This is a little more challenging because the "final" value of `pair.0` isn't known concretely at
+the end of the function. Instead, this value can additionally be mutated by the caller who can
+manipulate the returned mutable reference, `ret`.
+Therefore, the final value of `pair` needs to be written _in terms of_ the final value of `ret`.
+
+Verus accepts the following specification for `get_mut_fst`, which can be used to prove `get_mut_fst_test`:
+
+```rust
+fn get_mut_fst<A, B>(pair: &mut (A, B)) -> (ret: &mut A)
+    ensures
+        *ret == old(pair).0,
+        *final(pair) == (*final(ret), old(pair).1),
+{
+    &mut pair.0
+}
+```
+
+Note that, even though `final(ret)` and `final(pair)` cannot be known concretely
+at the end of this function (they are not known until the caller is finished with `ret`,
+e.g., after the `*r = 100;` line in `get_mut_fst_test`),
+this _relation_ between `final(ret)` and `final(pair)` is known.
+
+To prove `get_mut_fst_test`, Verus reasons roughly as follows:
+
+```rust
+fn get_mut_fst_test() {
+    let mut p = (10, 20);
+
+    let r = get_mut_fst(&mut p);
+    //                  ^^^^^^ call this value `pair`
+    //
+    // From the postcondition of `get_mut_fst` we know that:
+    //    *final(pair) == (*final(r), 20)
+
+    *r = 100;
+
+    // Now we we know that:
+    //    *final(r) == 100
+    // So:
+    //    *final(pair) == (100, 20)
+
+    // Finally, since `pair` was borrowed from `p`, and the borrow has expired
+    // at this point, we can deduce that:
+    assert(p == (100, 20));
+}
+```
+
+We'll dive deeper into Verus's encoding later.
+
+## Working with loops and locals
+
+In this example we'll see how mutable references can be used to build up a cons-list
+"from the root down".
+
+```rust
+enum List {
+    Cons(u64, Box<List>),
+    Nil,
+}
+
+fn build_zero_list(len: u64) {
+    let mut list = List::Nil;
+    let mut cur = &mut list;
+
+    let mut i = 0;
+    while i < len {
+        *cur = List::Cons(0, Box::new(List::Nil));
+
+        match cur {
+            List::Cons(_, b) => {
+                // Replace `cur` with a reference to the newly-created List::Nil,
+                // the child of the previous `cur`.
+                cur = &mut b;
+            }
+            _ => { /* unreachable */ }
+        }
+
+        i += 1;
+    }
+
+    return list;
+}
+
 
 ## A closer look
 
