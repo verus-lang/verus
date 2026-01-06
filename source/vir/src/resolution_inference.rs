@@ -1274,12 +1274,9 @@ impl<'a> Builder<'a> {
                     let mode = field_opr_to_mode(field_opr, &self.locals.datatypes);
                     if mode == Mode::Spec {
                         Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
-                    } else if matches!(field_opr.check, VariantCheck::Union) {
-                        // TODO(new_mut_ref): not a good solution; revisit after enums are fixed
-                        Ok((ComputedPlaceTyped::Partial(fpt), bb))
                     } else {
                         fpt.projections.push(ProjectionTyped::StructField(
-                            field_opr.clone(),
+                            FieldOpr { check: VariantCheck::None, ..field_opr.clone() },
                             place.typ.clone(),
                         ));
                         Ok((ComputedPlaceTyped::Exact(fpt), bb))
