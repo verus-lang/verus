@@ -70,12 +70,12 @@ fn workspace_manifest() {
     data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
     let verify_hasdeps_args = data
         .parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{hasdeps}-0.1.0-"));
-    assert!(verify_hasdeps_args.contains(&"--no-verify"));
+    assert!(!verify_hasdeps_args.contains(&"--no-verify"));
 
     data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
     let verify_optin_args =
         data.parse_driver_args_for_key_prefix(&format!(" __VERUS_DRIVER_ARGS_FOR_{optin}-0.1.0-"));
-    assert!(verify_optin_args.contains(&"--no-verify"));
+    assert!(!verify_optin_args.contains(&"--no-verify"));
 
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
     data.assert_env_has_no_key_prefix(&verify_unset_prefix);
@@ -101,11 +101,13 @@ fn workspace_package_hasdeps() {
     let verify_hasdeps_prefix = format!("__VERUS_DRIVER_VERIFY_{hasdeps}-0.1.0-");
 
     let (status, data) = run_cargo_verus(|cmd| {
-        cmd.current_dir(&workspace_dir).arg("focus");
+        cmd.current_dir(&workspace_dir);
+        cmd.arg("focus");
+        cmd.arg("--package").arg(hasdeps);
     });
 
     assert!(status.success());
-    assert_eq!(data.args, vec!["build"]);
+    assert_eq!(data.args, vec!["build", "--package", "hasdeps"]);
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");
