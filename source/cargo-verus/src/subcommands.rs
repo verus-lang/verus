@@ -8,6 +8,7 @@ use cargo_metadata::{Metadata, PackageId};
 
 use crate::cli::CargoOptions;
 use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
+use crate::SubcommandConfig;
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -88,44 +89,37 @@ verify = true
     Ok(())
 }
 
-pub fn make_verus_plan(
-    subcommand: &str,
-    metadata: Metadata,
-    verify_deps: bool,
-    cargo_options: &CargoOptions,
-    verus_args: &[String],
-    warn_if_nothing_verified: bool,
-) -> Result<(Command, bool)> {
+pub fn make_verus_plan(cfg: SubcommandConfig, metadata: Metadata) -> Result<(Command, bool)> {
     let metadata_index = MetadataIndex::new(&metadata)?;
 
     let (included_packages, _excluded_packages) =
-        cargo_options.workspace.partition_packages(&metadata);
+        cfg.options.cargo_opts.workspace.partition_packages(&metadata);
 
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
 
     let packages_to_process = &all_packages;
-    let packages_to_verify = if verify_deps { &all_packages } else { &root_packages };
+    let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
 
     let cargo_args = {
         let for_cargo_metadata = false;
-        make_cargo_args(cargo_options, for_cargo_metadata)
+        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
     };
 
     let cfg = CargoCommandConfig {
-        subcommand,
+        subcommand: cfg.subcommand,
         metadata_index: &metadata_index,
         packages_to_process,
         packages_to_verify,
         cargo_args: &cargo_args,
-        verus_args: &verus_args,
-        warn_if_nothing_verified,
+        verus_args: &cfg.options.verus_args,
+        warn_if_nothing_verified: cfg.warn_if_nothing_verified,
     };
 
-    let (command, verified_something) = make_cargo_command(cfg)?;
+    let (command, verified_something) = make_cargo_command(&cfg)?;
 
-    let warn_nothing_verified = warn_if_nothing_verified && !verified_something;
+    let warn_nothing_verified = cfg.warn_if_nothing_verified && !verified_something;
 
     Ok((command, warn_nothing_verified))
 }
@@ -208,7 +202,7 @@ pub struct CargoCommandConfig<'a> {
     warn_if_nothing_verified: bool,
 }
 
-fn make_cargo_command(cfg: CargoCommandConfig) -> Result<(Command, bool)> {
+fn make_cargo_command(cfg: &CargoCommandConfig) -> Result<(Command, bool)> {
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
 

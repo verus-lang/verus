@@ -115,19 +115,12 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
     // Phase 2: make a plan to execute Verus //
     ///////////////////////////////////////////
 
-    let (command, warn_nothing_verified) = subcommands::make_verus_plan(
-        cfg.subcommand,
-        metadata,
-        cfg.verify_deps,
-        &cfg.options.cargo_opts,
-        &cfg.options.verus_args,
-        cfg.warn_if_nothing_verified,
-    )?;
+    let (command, warn_nothing_verified) = subcommands::make_verus_plan(cfg, metadata)?;
 
     Ok(ExecPlan::RunVerus { command, warn_nothing_verified })
 }
 
-struct SubcommandConfig {
+pub struct SubcommandConfig {
     subcommand: &'static str,
     verify_deps: bool,
     warn_if_nothing_verified: bool,
