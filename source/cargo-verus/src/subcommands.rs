@@ -1,14 +1,13 @@
 use std::collections::BTreeSet as Set;
 use std::env;
 use std::path::PathBuf;
-use std::process::{Command, ExitCode};
+use std::process::Command;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{bail, Result};
 use cargo_metadata::PackageId;
-use colored::Colorize;
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -89,13 +88,13 @@ verify = true
     Ok(())
 }
 
-pub fn run_cargo(
+pub fn make_verus_plan(
     subcommand: &str,
     verify_deps: bool,
     cargo_options: &CargoOptions,
     verus_args: &[String],
     warn_if_nothing_verified: bool,
-) -> Result<ExitCode> {
+) -> Result<(Command, bool)> {
     //////////////////////////////////////////////////
     // Phase 1: fetch metadata via `cargo metadata` //
     //////////////////////////////////////////////////
@@ -136,33 +135,11 @@ pub fn run_cargo(
         warn_if_nothing_verified,
     };
 
-    let (mut command, verified_something) = make_cargo_command(cfg)?;
+    let (command, verified_something) = make_cargo_command(cfg)?;
 
-    let exit_status = command
-        .spawn()
-        .context("Failed to spawn cargo")?
-        .wait()
-        .context("Failed to wait for cargo")?;
+    let warn_nothing_verified = warn_if_nothing_verified && !verified_something;
 
-    if warn_if_nothing_verified && !verified_something {
-        eprint!(
-            "{}",
-            "\
-WARNING: You asked for verification, but cargo did not find any crates that opted into verification.
-         If this is unexpected, try adding this entry to your Cargo.toml file:
-            [package.metadata.verus]
-            verify = true
-"
-            .red(),
-        );
-    }
-
-    match exit_status.code() {
-        Some(code) => u8::try_from(code)
-            .map(From::from)
-            .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
-        None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
-    }
+    Ok((command, warn_nothing_verified))
 }
 
 fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
