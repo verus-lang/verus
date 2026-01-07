@@ -11,7 +11,7 @@ use crate::rust_to_vir_base::{
     mid_ty_simplify, mid_ty_to_vir_ghost, mk_range, ty_is_vec, typ_of_node,
     typ_of_node_expect_mut_ref,
 };
-use crate::rust_to_vir_ctor::{AdtKind, resolve_braces_ctor, resolve_ctor};
+use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::spans::err_air_span;
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
@@ -1690,6 +1690,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     let ty = bctx.types.node_type(expr.hir_id);
     assert!(ty.is_enum());
 
+    /*
     if let ExprKind::Path(qpath) = &expr.kind {
         let res = bctx.types.qpath_res(&qpath, expr.hir_id);
         if let Some((ctor, CtorKind::Const)) = resolve_ctor(bctx.ctxt.tcx, res) {
@@ -1700,6 +1701,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
             return mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)));
         }
     }
+    */
 
     let TyKind::Adt(adt, _) = ty.kind() else {
         unreachable!();
