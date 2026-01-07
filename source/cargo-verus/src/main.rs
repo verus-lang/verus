@@ -10,7 +10,7 @@
 use std::process::ExitCode;
 use std::{env, process::Command};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use colored::Colorize;
 
@@ -18,6 +18,8 @@ mod cli;
 mod metadata;
 mod subcommands;
 use crate::cli::{CargoVerusCli, VerusSubcommand};
+use crate::metadata::fetch_metadata;
+use crate::subcommands::make_cargo_args;
 
 pub fn main() -> Result<ExitCode> {
     let plan = make_exec_plan(env::args())?;
@@ -99,8 +101,23 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
         }
     };
 
+    //////////////////////////////////////////////////
+    // Phase 1: fetch metadata via `cargo metadata` //
+    //////////////////////////////////////////////////
+
+    let metadata_args = {
+        let for_cargo_metadata = true;
+        make_cargo_args(&options.cargo_opts, for_cargo_metadata)
+    };
+    let metadata = fetch_metadata(&metadata_args)?;
+
+    ///////////////////////////////////////////
+    // Phase 2: make a plan to execute Verus //
+    ///////////////////////////////////////////
+
     let (command, warn_nothing_verified) = subcommands::make_verus_plan(
         subcommand,
+        metadata,
         verify_deps,
         &options.cargo_opts,
         &options.verus_args,

@@ -3,11 +3,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{bail, Result};
-use cargo_metadata::PackageId;
+use anyhow::{Result, bail};
+use cargo_metadata::{Metadata, PackageId};
 
 use crate::cli::CargoOptions;
-use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
+use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -90,20 +90,12 @@ verify = true
 
 pub fn make_verus_plan(
     subcommand: &str,
+    metadata: Metadata,
     verify_deps: bool,
     cargo_options: &CargoOptions,
     verus_args: &[String],
     warn_if_nothing_verified: bool,
 ) -> Result<(Command, bool)> {
-    //////////////////////////////////////////////////
-    // Phase 1: fetch metadata via `cargo metadata` //
-    //////////////////////////////////////////////////
-
-    let metadata_args = {
-        let for_cargo_metadata = true;
-        make_cargo_args(cargo_options, for_cargo_metadata)
-    };
-    let metadata = fetch_metadata(&metadata_args)?;
     let metadata_index = MetadataIndex::new(&metadata)?;
 
     let (included_packages, _excluded_packages) =
@@ -115,10 +107,6 @@ pub fn make_verus_plan(
 
     let packages_to_process = &all_packages;
     let packages_to_verify = if verify_deps { &all_packages } else { &root_packages };
-
-    /////////////////////////////////////////////////
-    // Phase 2: run Verus via `cargo {subcommand}` //
-    /////////////////////////////////////////////////
 
     let cargo_args = {
         let for_cargo_metadata = false;
@@ -142,7 +130,7 @@ pub fn make_verus_plan(
     Ok((command, warn_nothing_verified))
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+pub fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
     let mut args = vec![];
 
     if opts.frozen {
