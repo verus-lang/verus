@@ -79,10 +79,10 @@ impl Expect {
 
 #[derive(Clone, Debug)]
 pub struct ErasureModes {
-    // Modes of conditions in If
-    pub condition_modes: Vec<(Span, Mode)>,
     // Modes of variables in Var, Assign, Decl
     pub var_modes: Vec<(Span, Mode)>,
+    // Modes of calls and struct Ctors
+    pub ctor_modes: Vec<(Span, Mode)>,
 }
 
 impl Ghost {
@@ -1123,6 +1123,7 @@ fn check_expr_handle_mut_arg(
                 let arg = &binder.a;
                 check_expr_has_mode(ctxt, record, typing, Mode::Proof, arg, *param_mode)?;
             }
+
             Ok(*ret_mode)
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, autospec_usage), es, None) => {
@@ -1339,6 +1340,9 @@ fn check_expr_handle_mut_arg(
             }
 
             record.type_inv_info.ctor_needs_check.insert(expr.span.id, mode != Mode::Spec);
+            if !matches!(dt, Dt::Tuple(_)) {
+                record.erasure_modes.ctor_modes.push((expr.span.clone(), mode));
+            }
 
             // Now that we've computed the final mode of this struct expr, go back through
             // all the 'take_fields' and see which ones require moves.
@@ -1379,11 +1383,19 @@ fn check_expr_handle_mut_arg(
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
-            check_expr_has_mode(ctxt, record, typing, param_mode, e1, *from_mode)?;
             if *kind == ModeCoercion::BorrowMut {
+                check_expr_has_mode(ctxt, record, typing, param_mode, e1, *from_mode)?;
                 return Ok((*to_mode, Some(*to_mode)));
             } else {
-                Ok(*to_mode)
+                let mode = check_expr(
+                    ctxt,
+                    record,
+                    typing,
+                    param_mode,
+                    Expect(expect.join(*from_mode)),
+                    e1,
+                )?;
+                if !mode_le(mode, *from_mode) { Ok(mode) } else { Ok(*to_mode) }
             }
         }
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {
@@ -1782,7 +1794,6 @@ fn check_expr_handle_mut_arg(
             {
                 return Err(error(&expr.span, "condition must have mode exec"));
             }
-            record.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
             let mode_branch = match (outer_mode, mode1) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
@@ -1819,7 +1830,6 @@ fn check_expr_handle_mut_arg(
             {
                 return Err(error(&expr.span, "exec code cannot match on non-exec value"));
             }
-            record.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
             match (mode1, arms.len()) {
                 (Mode::Spec, 0) => {
@@ -2474,7 +2484,7 @@ pub fn check_crate(
             }
         }
     }
-    let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
+    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
     let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
     let special_paths = SpecialPaths::new(vstd_crate_name);
     let mut ctxt = Ctxt {

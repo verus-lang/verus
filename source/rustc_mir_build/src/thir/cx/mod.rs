@@ -32,7 +32,6 @@ pub(crate) fn thir_body(
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
         crate::verus::erase_tree(&mut cx, body.value)
     } else {
-        cx.verus_ctxt.prep_expr(body.value, false);
         cx.mirror_expr(body.value)
     };
 
@@ -123,7 +122,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             body_owner: def.to_def_id(),
             apply_adjustments:
                 !find_attr!(tcx.hir_attrs(hir_id), AttributeKind::CustomMir(..) => ()).is_some(),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx),
         }
     }
 
