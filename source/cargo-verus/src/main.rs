@@ -11,8 +11,10 @@ use std::process::ExitCode;
 use std::{env, process::Command};
 
 use anyhow::{anyhow, bail, Context, Result};
+use cargo_metadata::Metadata;
 use clap::Parser;
 use colored::Colorize;
+use tempfile::env::override_temp_dir;
 
 mod cli;
 mod metadata;
@@ -22,7 +24,7 @@ use crate::metadata::fetch_metadata;
 use crate::subcommands::make_cargo_args;
 
 pub fn main() -> Result<ExitCode> {
-    let plan = make_exec_plan(env::args())?;
+    let plan = make_exec_plan(env::args(), None)?;
 
     match plan {
         ExecPlan::CreateNew { name, is_bin } => {
@@ -64,7 +66,11 @@ pub enum ExecPlan {
     RunVerus { command: Command, warn_nothing_verified: bool },
 }
 
-fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
+fn make_exec_plan(
+    args: impl Iterator<Item = String>,
+    // Needed for unit testing
+    metadata_override: Option<Metadata>,
+) -> Result<ExecPlan> {
     let normalized_args: Vec<_> = normalize_args(args).collect();
     let parsed_cli =
         CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
@@ -105,11 +111,13 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
     // Phase 1: fetch metadata via `cargo metadata` //
     //////////////////////////////////////////////////
 
-    let metadata_args = {
+    let metadata = if let Some(metadata) = metadata_override {
+        metadata
+    } else {
         let for_cargo_metadata = true;
-        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
+        let metadata_args = make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata);
+        fetch_metadata(&metadata_args)?
     };
-    let metadata = fetch_metadata(&metadata_args)?;
 
     ///////////////////////////////////////////
     // Phase 2: make a plan to execute Verus //
