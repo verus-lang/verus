@@ -3085,3 +3085,30 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_snapshot ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+        }
+
+        fn fails() {
+            let mut a = 0;
+            let a_ref = &mut a;
+
+            let ghost snapshot = a_ref;
+
+            assert(a == 0);
+            assert(mut_ref_future(snapshot) == 0);
+            assert(mut_ref_current(snapshot) == 0);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
