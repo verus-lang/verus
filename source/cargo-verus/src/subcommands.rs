@@ -3,11 +3,11 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use cargo_metadata::{Metadata, PackageId};
 
 use crate::cli::CargoOptions;
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";

@@ -10,14 +10,14 @@
 use std::process::ExitCode;
 use std::{env, process::Command};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
 use colored::Colorize;
 
 mod cli;
 mod metadata;
 mod subcommands;
-use crate::cli::{CargoVerusCli, VerusSubcommand};
+use crate::cli::{CargoVerusCli, VerifyCommand, VerusSubcommand};
 use crate::metadata::fetch_metadata;
 use crate::subcommands::make_cargo_args;
 
@@ -69,36 +69,36 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
     let parsed_cli =
         CargoVerusCli::parse_from(normalized_args.iter().cloned()).clap_trailing_args_hotfix();
 
-    let (options, subcommand, verify_deps, warn_if_nothing_verified) = match parsed_cli.command {
-        VerusSubcommand::New(new_cmd) => match (new_cmd.bin, new_cmd.lib) {
+    let cfg = match parsed_cli.command {
+        VerusSubcommand::New(options) => match (options.bin, options.lib) {
             (Some(name), None) => return Ok(ExecPlan::CreateNew { name, is_bin: true }),
             (None, Some(name)) => return Ok(ExecPlan::CreateNew { name, is_bin: false }),
             _ => unreachable!("clap enforces exactly one of --bin/--lib"),
         },
-        VerusSubcommand::Verify(options) => {
-            let subcommand = "build";
-            let verify_deps = true;
-            let warn_if_nothing_verified = true;
-            (options, subcommand, verify_deps, warn_if_nothing_verified)
-        }
-        VerusSubcommand::Focus(options) => {
-            let subcommand = "build";
-            let verify_deps = false;
-            let warn_if_nothing_verified = true;
-            (options, subcommand, verify_deps, warn_if_nothing_verified)
-        }
-        VerusSubcommand::Build(options) => {
-            let subcommand = "build";
-            let verify_deps = true;
-            let warn_if_nothing_verified = false;
-            (options, subcommand, verify_deps, warn_if_nothing_verified)
-        }
-        VerusSubcommand::Check(options) => {
-            let subcommand = "check";
-            let verify_deps = true;
-            let warn_if_nothing_verified = true;
-            (options, subcommand, verify_deps, warn_if_nothing_verified)
-        }
+        VerusSubcommand::Verify(options) => SubcommandConfig {
+            subcommand: "build",
+            verify_deps: true,
+            warn_if_nothing_verified: true,
+            options,
+        },
+        VerusSubcommand::Focus(options) => SubcommandConfig {
+            subcommand: "build",
+            verify_deps: false,
+            warn_if_nothing_verified: true,
+            options,
+        },
+        VerusSubcommand::Build(options) => SubcommandConfig {
+            subcommand: "build",
+            verify_deps: true,
+            warn_if_nothing_verified: false,
+            options,
+        },
+        VerusSubcommand::Check(options) => SubcommandConfig {
+            subcommand: "check",
+            verify_deps: true,
+            warn_if_nothing_verified: true,
+            options,
+        },
     };
 
     //////////////////////////////////////////////////
@@ -107,7 +107,7 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
 
     let metadata_args = {
         let for_cargo_metadata = true;
-        make_cargo_args(&options.cargo_opts, for_cargo_metadata)
+        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
     };
     let metadata = fetch_metadata(&metadata_args)?;
 
@@ -116,15 +116,22 @@ fn make_exec_plan(args: impl Iterator<Item = String>) -> Result<ExecPlan> {
     ///////////////////////////////////////////
 
     let (command, warn_nothing_verified) = subcommands::make_verus_plan(
-        subcommand,
+        cfg.subcommand,
         metadata,
-        verify_deps,
-        &options.cargo_opts,
-        &options.verus_args,
-        warn_if_nothing_verified,
+        cfg.verify_deps,
+        &cfg.options.cargo_opts,
+        &cfg.options.verus_args,
+        cfg.warn_if_nothing_verified,
     )?;
 
     Ok(ExecPlan::RunVerus { command, warn_nothing_verified })
+}
+
+struct SubcommandConfig {
+    subcommand: &'static str,
+    verify_deps: bool,
+    warn_if_nothing_verified: bool,
+    options: VerifyCommand,
 }
 
 fn normalize_args(args: impl Iterator<Item = String>) -> impl Iterator<Item = String> {
