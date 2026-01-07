@@ -389,6 +389,7 @@ pub(crate) enum VerusItem {
     MutRefCurrent,
     MutRefFuture,
     Final,
+    AfterBorrow,
     ErasedGhostValue,
     DummyCapture(DummyCaptureItem),
 }
@@ -611,6 +612,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
         ("verus::verus_builtin::fin",              VerusItem::Final),
+        ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
     ]
 }
 

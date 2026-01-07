@@ -35,8 +35,9 @@ use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
     FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
-    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, PlaceX, Quant, Typ, TypDecoration,
-    TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
+    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
+    VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -1828,6 +1829,29 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::Unary(op, exp))
         }
+        VerusItem::AfterBorrow => {
+            if !bctx.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            record_spec_fn_no_proof_args(bctx, expr);
+            if !bctx.in_ghost {
+                return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
+            }
+            let p = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            if !is_place_ok_for_spec_after_borrow(&p) {
+                return err_span(
+                    expr.span,
+                    "`after_borrow` expects a local variable, possibly with dereferences or field accesses",
+                );
+            }
+
+            let rk = vir::ast::ReadKind::SpecAfterBorrow;
+            let rk = vir::ast::UnfinalizedReadKind {
+                preliminary_kind: rk,
+                id: bctx.ctxt.unique_read_kind_id(),
+            };
+            mk_expr(ExprX::ReadPlace(p, rk))
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
@@ -1835,6 +1859,20 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::External(_)
         | VerusItem::Global(_)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
+    }
+}
+
+fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
+    match &place.x {
+        PlaceX::Local(_) => true,
+        PlaceX::DerefMut(p) => is_place_ok_for_spec_after_borrow(p),
+        PlaceX::Field(opr, p) => {
+            matches!(opr.check, VariantCheck::None) && is_place_ok_for_spec_after_borrow(p)
+        }
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => is_place_ok_for_spec_after_borrow(p),
+        PlaceX::WithExpr(..) => false,
+        PlaceX::Index(..) => false,
     }
 }
 
