@@ -205,7 +205,8 @@ has length equal to the input argument, `len`.
 
 Thus, our primary goal is to prove something about the value of `list` after the initial
 borrow (`cur = &mut list`) expires. 
-Observe that, as the program progresses through the loop, the shape of this value
+The key to proving this is to observe that,
+as the program progresses through the loop, the shape of this value
 becomes more and more "concrete".
 
  * At the beginning of the loop, `cur` is borrowed from `list`. At this point, we have the
@@ -220,6 +221,65 @@ becomes more and more "concrete".
 <center>
 <img src="graphics/mut-ref-cons-example-2.png" alt="">
 </center>
+(TODO alt text)
+
+Only when the last iteration finishes and `cur` expires for good, do we learn that the
+last node is "nil" and the list becomes fully concrete.
+
+Now, this picture suggests that we can prove the program correct by writing an invariant
+which relates `final(cur)` to `final(list)`.
+Specifically, we can say that `final(list)` will always be equal to `final(cur)` with
+`i` "Cons" nodes added to the top.
+
+TODO need to update final to whatever keyword we choose for the local variable
+
+```rust
+enum List {
+    Cons(u64, Box<List>),
+    Nil,
+}
+
+spec fn append_zeros(n: nat, list: List) -> List
+    decreases n
+{
+    if n == 0 {
+        list
+    } else {
+        append_zeros((n-1) as nat, List::Cons(0, Box::new(list)))
+    }
+}
+
+#[verifier::exec_allows_no_decreases_clause]
+fn build_zero_list(len: u64) -> (list: List)
+    ensures list == append_zeros(len as nat, List::Nil),
+{
+    let mut list = List::Nil;
+    let mut cur = &mut list;
+
+    let mut i = 0;
+    while i < len
+        invariant
+            0 <= i <= len,
+            *cur == List::Nil,
+            final(list) == append_zeros(i as nat, *fin(cur)),
+    {
+        *cur = List::Cons(0, Box::new(List::Nil));
+
+        match cur {
+            List::Cons(_, b) => {
+                // Replace `cur` with a reference to the newly-created List::Nil,
+                // the child of the previous `cur`.
+                cur = &mut *b;
+            }
+            _ => { /* clearly unreachable */ }
+        }
+
+        i += 1;
+    }
+
+    return list;
+}
+```
 
 ## A closer look
 
