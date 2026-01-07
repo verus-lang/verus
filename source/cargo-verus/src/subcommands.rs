@@ -96,9 +96,9 @@ pub fn run_cargo(
     verus_args: &[String],
     warn_if_nothing_verified: bool,
 ) -> Result<ExitCode> {
-    /////////////////////////////////
-    // First, run `cargo metadata` //
-    /////////////////////////////////
+    //////////////////////////////////////////////////
+    // Phase 1: fetch metadata via `cargo metadata` //
+    //////////////////////////////////////////////////
 
     let metadata_args = {
         let for_cargo_metadata = true;
@@ -117,9 +117,9 @@ pub fn run_cargo(
     let packages_to_process = &all_packages;
     let packages_to_verify = if verify_deps { &all_packages } else { &root_packages };
 
-    //////////////////////////////////////
-    // Second, run `cargo {subcommand}` //
-    //////////////////////////////////////
+    /////////////////////////////////////////////////
+    // Phase 2: run Verus via `cargo {subcommand}` //
+    /////////////////////////////////////////////////
 
     let cargo_args = {
         let for_cargo_metadata = false;
