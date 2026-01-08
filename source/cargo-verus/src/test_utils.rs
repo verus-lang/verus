@@ -12,6 +12,7 @@ struct Dependency {
     alias: String,
     package: String,
     kind: DepKind,
+    path: Option<String>,
 }
 
 pub struct MockPackage {
@@ -48,6 +49,7 @@ impl MockPackage {
             alias: name.to_owned(),
             package: name.to_owned(),
             kind: DepKind::Normal,
+            path: None,
         });
         self
     }
@@ -57,6 +59,17 @@ impl MockPackage {
             alias: alias.to_owned(),
             package: package.to_owned(),
             kind: DepKind::Normal,
+            path: None,
+        });
+        self
+    }
+
+    pub fn dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Normal,
+            path: Some(path.to_owned()),
         });
         self
     }
@@ -66,6 +79,7 @@ impl MockPackage {
             alias: name.to_owned(),
             package: name.to_owned(),
             kind: DepKind::Build,
+            path: None,
         });
         self
     }
@@ -75,6 +89,17 @@ impl MockPackage {
             alias: alias.to_owned(),
             package: package.to_owned(),
             kind: DepKind::Build,
+            path: None,
+        });
+        self
+    }
+
+    pub fn build_dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Build,
+            path: Some(path.to_owned()),
         });
         self
     }
@@ -84,6 +109,7 @@ impl MockPackage {
             alias: name.to_owned(),
             package: name.to_owned(),
             kind: DepKind::Dev,
+            path: None,
         });
         self
     }
@@ -93,6 +119,17 @@ impl MockPackage {
             alias: alias.to_owned(),
             package: package.to_owned(),
             kind: DepKind::Dev,
+            path: None,
+        });
+        self
+    }
+
+    pub fn dev_dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Dev,
+            path: Some(path.to_owned()),
         });
         self
     }
@@ -122,7 +159,9 @@ impl MockPackage {
         let mut build = vec![];
         let mut dev = vec![];
         for dep in self.deps {
-            let entry = if dep.alias == dep.package {
+            let entry = if let Some(path) = &dep.path {
+                format!("{} = {{ package = \"{}\", path = \"{}\" }}", dep.alias, dep.package, path)
+            } else if dep.alias == dep.package {
                 format!("{} = {{ workspace = true }}", dep.alias)
             } else {
                 format!(

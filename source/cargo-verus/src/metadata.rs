@@ -57,18 +57,16 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(
-                entries
-                    .insert(
-                        &package.id,
-                        MetadataIndexEntry {
-                            package,
-                            verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap(),
-                        }
-                    )
-                    .is_none()
-            );
+            assert!(entries
+                .insert(
+                    &package.id,
+                    MetadataIndexEntry {
+                        package,
+                        verus_metadata: VerusMetadata::parse_from_package(package)?,
+                        deps: deps_by_package.remove(&package.id).unwrap(),
+                    }
+                )
+                .is_none());
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
@@ -115,4 +113,25 @@ pub fn fetch_metadata(metadata_args: &[String]) -> Result<Metadata> {
     cmd.other_options(metadata_args.to_owned());
     let metadata = cmd.exec()?;
     Ok(metadata)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{MockPackage, MockWorkspace};
+
+    #[test]
+    fn metadata_index_panics_on_duplicate_dep_names() {
+        let workspace = MockWorkspace::new()
+            .member(MockPackage::new("helper-runtime").lib())
+            .member(MockPackage::new("helper-build").lib())
+            .member(
+                MockPackage::new("consumer").lib().dep("helper-runtime").build_dep("helper-build"),
+            )
+            .materialize();
+
+        let metadata = todo!();
+
+        let _index = MetadataIndex::new(&metadata).unwrap();
+    }
 }
