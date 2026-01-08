@@ -2,11 +2,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-#[derive(Clone)]
-enum DepSource {
-    Workspace,
-    Path(String),
-    Registry { version: String },
+pub struct MockWorkspace {
+    members: Vec<MockPackage>,
+}
+
+pub struct MockPackage {
+    name: String,
+    version: String,
+    has_lib: bool,
+    bin_names: Vec<String>,
+    deps: Vec<(DepKind, Option<String>, MockDep)>,
+    verus_verify: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -14,6 +20,13 @@ pub struct MockDep {
     alias: Option<String>,
     package: String,
     source: DepSource,
+}
+
+#[derive(Clone)]
+enum DepSource {
+    Workspace,
+    Path(String),
+    Registry { version: String },
 }
 
 impl MockDep {
@@ -46,13 +59,55 @@ enum DepKind {
     Dev,
 }
 
-pub struct MockPackage {
-    name: String,
-    version: String,
-    has_lib: bool,
-    bin_names: Vec<String>,
-    deps: Vec<(DepKind, Option<String>, MockDep)>,
-    verus_verify: Option<bool>,
+impl MockWorkspace {
+    pub fn new() -> Self {
+        MockWorkspace { members: vec![] }
+    }
+
+    pub fn member(mut self, package: MockPackage) -> Self {
+        self.members.push(package);
+        self
+    }
+
+    pub fn materialize(self) -> tempfile::TempDir {
+        let root = tempfile::tempdir().expect("create temp dir");
+
+        let mut member_names = vec![];
+        for member in self.members {
+            let name = member.name.clone();
+            let package_dir = root.path().join(&name);
+            std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
+            member.materialize_in_dir(&package_dir);
+            member_names.push(name);
+        }
+
+        let mut manifest_lines = vec!["[workspace]".to_owned()];
+
+        manifest_lines.push("members = [".to_owned());
+        for name in &member_names {
+            manifest_lines.push(format!("    \"{name}\","));
+        }
+        manifest_lines.push("]".to_owned());
+        manifest_lines.push("".to_owned());
+
+        manifest_lines.push("[workspace.dependencies]".to_owned());
+        for name in &member_names {
+            manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
+        }
+        manifest_lines.push("".to_owned());
+
+        manifest_lines.push("[patch.crates-io]".to_owned());
+        for name in &member_names {
+            manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
+        }
+        manifest_lines.push("".to_owned());
+
+        let manifest = root.path().join("Cargo.toml");
+        std::fs::write(&manifest, manifest_lines.join("\n"))
+            .expect(&format!("write manifest to {manifest:?}"));
+
+        root
+    }
 }
 
 impl MockPackage {
@@ -212,60 +267,5 @@ impl MockPackage {
                 std::fs::write(&bin, "").expect(&format!("write {bin:?}"));
             }
         }
-    }
-}
-
-pub struct MockWorkspace {
-    members: Vec<MockPackage>,
-}
-
-impl MockWorkspace {
-    pub fn new() -> Self {
-        MockWorkspace { members: vec![] }
-    }
-
-    pub fn member(mut self, package: MockPackage) -> Self {
-        self.members.push(package);
-        self
-    }
-
-    pub fn materialize(self) -> tempfile::TempDir {
-        let root = tempfile::tempdir().expect("create temp dir");
-
-        let mut member_names = vec![];
-        for member in self.members {
-            let name = member.name.clone();
-            let package_dir = root.path().join(&name);
-            std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
-            member.materialize_in_dir(&package_dir);
-            member_names.push(name);
-        }
-
-        let mut manifest_lines = vec!["[workspace]".to_owned()];
-
-        manifest_lines.push("members = [".to_owned());
-        for name in &member_names {
-            manifest_lines.push(format!("    \"{name}\","));
-        }
-        manifest_lines.push("]".to_owned());
-        manifest_lines.push("".to_owned());
-
-        manifest_lines.push("[workspace.dependencies]".to_owned());
-        for name in &member_names {
-            manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
-        }
-        manifest_lines.push("".to_owned());
-
-        manifest_lines.push("[patch.crates-io]".to_owned());
-        for name in &member_names {
-            manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
-        }
-        manifest_lines.push("".to_owned());
-
-        let manifest = root.path().join("Cargo.toml");
-        std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
-
-        root
     }
 }
