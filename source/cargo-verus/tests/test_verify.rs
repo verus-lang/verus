@@ -147,7 +147,7 @@ fn workspace_workdir() {
         .member(MockPackage::new(optin).lib().verify(true))
         .member(MockPackage::new(optout).lib().verify(false))
         .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .member(MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true))
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -182,7 +182,7 @@ fn workspace_manifest() {
         .member(MockPackage::new(optin).lib().verify(true))
         .member(MockPackage::new(optout).lib().verify(false))
         .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .member(MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true))
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -223,7 +223,7 @@ fn workspace_manifest_package_optin() {
         .member(MockPackage::new(optin).lib().verify(true))
         .member(MockPackage::new(optout).lib().verify(false))
         .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .member(MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true))
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -273,7 +273,7 @@ fn workspace_manifest_package_hasdeps() {
         .member(MockPackage::new(optin).lib().verify(true))
         .member(MockPackage::new(optout).lib().verify(false))
         .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .member(MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true))
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");

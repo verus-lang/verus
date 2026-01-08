@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitStatus};
 
-pub use cargo_verus::test_utils::{MockPackage, MockWorkspace};
+pub use cargo_verus::test_utils::{MockDep, MockPackage, MockWorkspace};
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 
 #[derive(Debug, Deserialize)]

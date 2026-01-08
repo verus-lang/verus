@@ -118,18 +118,21 @@ pub fn fetch_metadata(metadata_args: &[String]) -> Result<Metadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{MockPackage, MockWorkspace};
+    use crate::test_utils::{MockDep, MockPackage, MockWorkspace};
 
     #[test]
-    fn metadata_index_panics_on_duplicate_dep_names() {
+    fn metadata_index_duplicate_dep_names() {
         let workspace = MockWorkspace::new()
-            .member(MockPackage::new("serde-core").lib())
-            .member(MockPackage::new("serde").lib())
+            .member(MockPackage::new("serde-core").version("1.0.0").lib())
+            .member(MockPackage::new("serde").version("1.0.0").lib())
             .member(
                 MockPackage::new("consumer")
                     .lib()
-                    .dep_registry("serde", "serde-core", "1.0.0")
-                    .target_dep_registry("cfg(any())", "serde", "serde", "1.0.0"),
+                    .deps([MockDep::registry("serde-core", "1.0.0").alias("serde")])
+                    .target_deps(
+                        "cfg(any())",
+                        [MockDep::registry("serde", "1.0.0").alias("serde")],
+                    ),
             )
             .materialize();
 

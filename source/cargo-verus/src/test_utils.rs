@@ -1,5 +1,43 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
+
+#[derive(Clone)]
+enum DepSource {
+    Workspace,
+    Path(String),
+    Registry { version: String },
+}
+
+#[derive(Clone)]
+pub struct MockDep {
+    alias: Option<String>,
+    package: String,
+    source: DepSource,
+}
+
+impl MockDep {
+    pub fn workspace(package: &str) -> Self {
+        Self { alias: None, package: package.to_owned(), source: DepSource::Workspace }
+    }
+
+    pub fn path(package: &str, path: &str) -> Self {
+        Self { alias: None, package: package.to_owned(), source: DepSource::Path(path.to_owned()) }
+    }
+
+    pub fn registry(package: &str, version: &str) -> Self {
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            source: DepSource::Registry { version: version.to_owned() },
+        }
+    }
+
+    pub fn alias(mut self, alias: &str) -> Self {
+        self.alias = Some(alias.to_owned());
+        self
+    }
+}
 
 #[derive(Clone, Copy)]
 enum DepKind {
@@ -8,20 +46,12 @@ enum DepKind {
     Dev,
 }
 
-struct Dependency {
-    alias: String,
-    package: String,
-    kind: DepKind,
-    path: Option<String>,
-    target: Option<String>,
-    version: Option<String>,
-}
-
 pub struct MockPackage {
     name: String,
+    version: String,
     has_lib: bool,
     bin_names: Vec<String>,
-    deps: Vec<Dependency>,
+    deps: Vec<(DepKind, Option<String>, MockDep)>,
     verus_verify: Option<bool>,
 }
 
@@ -29,11 +59,17 @@ impl MockPackage {
     pub fn new(name: &str) -> Self {
         MockPackage {
             name: name.to_owned(),
+            version: "0.1.0".to_owned(),
             has_lib: false,
             bin_names: vec![],
             deps: vec![],
             verus_verify: None,
         }
+    }
+
+    pub fn version(mut self, version: &str) -> Self {
+        self.version = version.to_owned();
+        self
     }
 
     pub fn lib(mut self) -> Self {
@@ -46,153 +82,23 @@ impl MockPackage {
         self
     }
 
-    pub fn dep(mut self, name: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: name.to_owned(),
-            package: name.to_owned(),
-            kind: DepKind::Normal,
-            path: None,
-            target: None,
-            version: None,
-        });
+    pub fn deps(mut self, deps: impl IntoIterator<Item = MockDep>) -> Self {
+        self.deps.extend(deps.into_iter().map(|d| (DepKind::Normal, None, d)));
         self
     }
 
-    pub fn dep_as(mut self, alias: &str, package: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Normal,
-            path: None,
-            target: None,
-            version: None,
-        });
+    pub fn build_deps(mut self, deps: impl IntoIterator<Item = MockDep>) -> Self {
+        self.deps.extend(deps.into_iter().map(|d| (DepKind::Build, None, d)));
         self
     }
 
-    pub fn dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Normal,
-            path: Some(path.to_owned()),
-            target: None,
-            version: None,
-        });
+    pub fn dev_deps(mut self, deps: impl IntoIterator<Item = MockDep>) -> Self {
+        self.deps.extend(deps.into_iter().map(|d| (DepKind::Dev, None, d)));
         self
     }
 
-    pub fn dep_registry(mut self, alias: &str, package: &str, version: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Normal,
-            path: None,
-            target: None,
-            version: Some(version.to_owned()),
-        });
-        self
-    }
-
-    pub fn build_dep(mut self, name: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: name.to_owned(),
-            package: name.to_owned(),
-            kind: DepKind::Build,
-            path: None,
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn build_dep_as(mut self, alias: &str, package: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Build,
-            path: None,
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn build_dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Build,
-            path: Some(path.to_owned()),
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn dev_dep(mut self, name: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: name.to_owned(),
-            package: name.to_owned(),
-            kind: DepKind::Dev,
-            path: None,
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn dev_dep_as(mut self, alias: &str, package: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Dev,
-            path: None,
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn dev_dep_path(mut self, alias: &str, package: &str, path: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Dev,
-            path: Some(path.to_owned()),
-            target: None,
-            version: None,
-        });
-        self
-    }
-
-    pub fn target_dep_path(mut self, cfg: &str, alias: &str, package: &str, path: &str) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Normal,
-            path: Some(path.to_owned()),
-            target: Some(cfg.to_owned()),
-            version: None,
-        });
-        self
-    }
-
-    pub fn target_dep_registry(
-        mut self,
-        cfg: &str,
-        alias: &str,
-        package: &str,
-        version: &str,
-    ) -> Self {
-        self.deps.push(Dependency {
-            alias: alias.to_owned(),
-            package: package.to_owned(),
-            kind: DepKind::Normal,
-            path: None,
-            target: Some(cfg.to_owned()),
-            version: Some(version.to_owned()),
-        });
+    pub fn target_deps(mut self, cfg: &str, deps: impl IntoIterator<Item = MockDep>) -> Self {
+        self.deps.extend(deps.into_iter().map(|d| (DepKind::Normal, Some(cfg.to_owned()), d)));
         self
     }
 
@@ -212,7 +118,7 @@ impl MockPackage {
             "[package]".to_owned(),
             "publish = false".to_owned(),
             format!("name = \"{}\"", self.name),
-            "version = \"0.1.0\"".to_owned(),
+            format!("version = \"{}\"", self.version),
             "edition = \"2021\"".to_owned(),
             "".to_owned(),
         ];
@@ -220,21 +126,29 @@ impl MockPackage {
         let mut normal = vec![];
         let mut build = vec![];
         let mut dev = vec![];
-        let mut targets: std::collections::BTreeMap<String, Vec<String>> = Default::default();
-        for dep in self.deps {
-            let entry = if let Some(path) = &dep.path {
-                format!("{} = {{ package = \"{}\", path = \"{}\" }}", dep.alias, dep.package, path)
-            } else if let Some(version) = &dep.version {
-                format!(
-                    "{} = {{ package = \"{}\", version = \"{}\" }}",
-                    dep.alias, dep.package, version
-                )
-            } else if dep.alias == dep.package {
-                format!("{} = {{ workspace = true }}", dep.alias)
-            } else {
-                format!("{} = {{ package = \"{}\", workspace = true }}", dep.alias, dep.package)
+        let mut targets: BTreeMap<String, Vec<String>> = Default::default();
+        for (kind, cfg, dep) in self.deps {
+            let alias = dep.alias.as_deref().unwrap_or(&dep.package);
+            let entry = match dep.source {
+                DepSource::Workspace => {
+                    if alias == dep.package {
+                        format!("{alias} = {{ workspace = true }}")
+                    } else {
+                        format!("{alias} = {{ package = \"{}\", workspace = true }}", dep.package)
+                    }
+                }
+                DepSource::Path(path) => {
+                    format!("{alias} = {{ package = \"{}\", path = \"{}\" }}", dep.package, path)
+                }
+                DepSource::Registry { version } => {
+                    format!(
+                        "{alias} = {{ package = \"{}\", version = \"{}\" }}",
+                        dep.package, version
+                    )
+                }
             };
-            match (dep.kind, dep.target) {
+
+            match (kind, cfg) {
                 (DepKind::Normal, None) => normal.push(entry),
                 (DepKind::Build, None) => build.push(entry),
                 (DepKind::Dev, None) => dev.push(entry),
@@ -328,7 +242,6 @@ impl MockWorkspace {
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
-        manifest_lines.push("resolver = \"2\"".to_owned());
 
         manifest_lines.push("members = [".to_owned());
         for name in &member_names {
