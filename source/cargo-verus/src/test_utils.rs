@@ -1,11 +1,24 @@
 use std::fs;
 use std::path::Path;
 
+#[derive(Clone, Copy)]
+enum DepKind {
+    Normal,
+    Build,
+    Dev,
+}
+
+struct Dependency {
+    alias: String,
+    package: String,
+    kind: DepKind,
+}
+
 pub struct MockPackage {
     name: String,
     has_lib: bool,
     bin_names: Vec<String>,
-    dep_names: Vec<String>,
+    deps: Vec<Dependency>,
     verus_verify: Option<bool>,
 }
 
@@ -15,7 +28,7 @@ impl MockPackage {
             name: name.to_owned(),
             has_lib: false,
             bin_names: vec![],
-            dep_names: vec![],
+            deps: vec![],
             verus_verify: None,
         }
     }
@@ -31,7 +44,56 @@ impl MockPackage {
     }
 
     pub fn dep(mut self, name: &str) -> Self {
-        self.dep_names.push(name.to_owned());
+        self.deps.push(Dependency {
+            alias: name.to_owned(),
+            package: name.to_owned(),
+            kind: DepKind::Normal,
+        });
+        self
+    }
+
+    pub fn dep_as(mut self, alias: &str, package: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Normal,
+        });
+        self
+    }
+
+    pub fn build_dep(mut self, name: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: name.to_owned(),
+            package: name.to_owned(),
+            kind: DepKind::Build,
+        });
+        self
+    }
+
+    pub fn build_dep_as(mut self, alias: &str, package: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Build,
+        });
+        self
+    }
+
+    pub fn dev_dep(mut self, name: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: name.to_owned(),
+            package: name.to_owned(),
+            kind: DepKind::Dev,
+        });
+        self
+    }
+
+    pub fn dev_dep_as(mut self, alias: &str, package: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Dev,
+        });
         self
     }
 
@@ -56,11 +118,42 @@ impl MockPackage {
             "".to_owned(),
         ];
 
-        manifest_lines.push("[dependencies]".to_owned());
-        for name in self.dep_names {
-            manifest_lines.push(format!("{name} = {{ workspace = true }}"));
+        let mut normal = vec![];
+        let mut build = vec![];
+        let mut dev = vec![];
+        for dep in self.deps {
+            let entry = if dep.alias == dep.package {
+                format!("{} = {{ workspace = true }}", dep.alias)
+            } else {
+                format!(
+                    "{} = {{ package = \"{}\", workspace = true }}",
+                    dep.alias, dep.package
+                )
+            };
+            match dep.kind {
+                DepKind::Normal => normal.push(entry),
+                DepKind::Build => build.push(entry),
+                DepKind::Dev => dev.push(entry),
+            }
         }
-        manifest_lines.push("".to_owned());
+
+        if !normal.is_empty() {
+            manifest_lines.push("[dependencies]".to_owned());
+            manifest_lines.extend(normal);
+            manifest_lines.push("".to_owned());
+        }
+
+        if !build.is_empty() {
+            manifest_lines.push("[build-dependencies]".to_owned());
+            manifest_lines.extend(build);
+            manifest_lines.push("".to_owned());
+        }
+
+        if !dev.is_empty() {
+            manifest_lines.push("[dev-dependencies]".to_owned());
+            manifest_lines.extend(dev);
+            manifest_lines.push("".to_owned());
+        }
 
         if let Some(verus_verify) = self.verus_verify {
             manifest_lines.push("[package.metadata.verus]".to_owned());
