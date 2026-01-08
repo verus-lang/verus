@@ -125,33 +125,36 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_made code! {
-        use vstd::prelude::verus;
+        use vstd::prelude::*;
 
         verus! {
-
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
+            pub fn bar<T>(o: Option<T>)-> Option<T> {
+                o.inspect(|_x: &T| {})
             }
         }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-           where
-           F: std::ops::FnOnce(T,) -> std::option::Option<U> + std::marker::Destruct,;")
+    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>")
 }
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_correct code! {
-        use vstd::prelude::verus;
+        use vstd::prelude::*;
 
         verus! {
-            pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-            where
-            F: std::ops::FnOnce(T,) -> std::option::Option<U>,;
+            #[verifier::external_trait_specification]
+            pub trait ExDestruct {
+                type ExternalTraitSpecificationFor: core::marker::Destruct;
+            }
 
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
+            pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>
+            where
+            F: std::ops::FnOnce(&T,) -> () + core::marker::Destruct,;
+
+            pub fn bar<T>(o: Option<T>)-> Option<T> {
+                o.inspect(|_x: &T| {})
             }
         }
     } => Ok(())
 }
+
 test_verify_one_file! {
     #[test] test_assume_specification_str_eq_suggestion_made code! {
         use vstd::prelude::*;
