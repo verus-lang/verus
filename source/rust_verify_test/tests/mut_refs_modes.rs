@@ -113,7 +113,18 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Ok(()) // TODO(new_mut_ref): I'm not sure about this being ok
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file_with_options! {
+    // TODO(new_mut_ref): fix
+    #[ignore] #[test] mut_borrow_in_ghost_decl ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let ghost mut_ref2 = &mut x;
+            assert(x == 0);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

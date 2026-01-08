@@ -49,14 +49,12 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
     #[instrument(level = "trace", skip(self, hir_expr))]
     pub(super) fn mirror_expr_inner(&mut self, hir_expr: &'tcx hir::Expr<'tcx>) -> ExprId {
-        // println!("mirror_expr_inner: verus_ctxt.expr_is_spec: {:#?}", self.verus_ctxt.expr_is_spec);
-        let spec = self.verus_ctxt.expr_is_spec[&hir_expr.hir_id];
         let expr_scope =
             region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
 
         trace!(?hir_expr.hir_id, ?hir_expr.span);
 
-        let mut expr = self.make_mirror_unadjusted(hir_expr, spec);
+        let mut expr = self.make_mirror_unadjusted(hir_expr);
 
         trace!(?expr.ty);
 
@@ -65,7 +63,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             for adjustment in self.typeck_results.expr_adjustments(hir_expr) {
                 trace!(?expr, ?adjustment);
                 let span = expr.span;
-                expr = self.apply_adjustment(hir_expr, expr, adjustment, span, spec);
+                expr = self.apply_adjustment(hir_expr, expr, adjustment, span);
             }
         }
 
@@ -94,7 +92,6 @@ impl<'tcx> ThirBuildCx<'tcx> {
         mut expr: Expr<'tcx>,
         adjustment: &Adjustment<'tcx>,
         mut span: Span,
-        spec: bool,
     ) -> Expr<'tcx> {
         let Expr { temp_lifetime, .. } = expr;
 
@@ -245,7 +242,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             }
         };
 
-        let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind, spec);
+        let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind);
 
         Expr { temp_lifetime, ty: adjustment.target, span, kind }
     }
@@ -338,7 +335,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
     }
 
     #[instrument(level = "debug", skip(self), ret)]
-    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>, spec: bool) -> Expr<'tcx> {
+    fn make_mirror_unadjusted(&mut self, expr: &'tcx hir::Expr<'tcx>) -> Expr<'tcx> {
         let tcx = self.tcx;
         let expr_ty = self.typeck_results.expr_ty(expr);
         let (temp_lifetime, backwards_incompatible) =
@@ -786,7 +783,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
             hir::ExprKind::Path(ref qpath) => {
                 let res = self.typeck_results.qpath_res(qpath, expr.hir_id);
-                self.convert_path_expr(expr, res, spec)
+                self.convert_path_expr(expr, res)
             }
 
             hir::ExprKind::InlineAsm(asm) => ExprKind::InlineAsm(Box::new(InlineAsmExpr {
@@ -1126,7 +1123,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         let kind = if kind_opt_is_some {
             kind
         } else {
-            crate::verus_expr::mirror_expr_post(self, expr, kind, spec)
+            crate::verus_expr::mirror_expr_post(self, expr, kind)
         };
 
         Expr {
@@ -1215,12 +1212,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
         self.thir.arms.push(arm)
     }
 
-    fn convert_path_expr(
-        &mut self,
-        expr: &'tcx hir::Expr<'tcx>,
-        res: Res,
-        spec: bool,
-    ) -> ExprKind<'tcx> {
+    fn convert_path_expr(&mut self, expr: &'tcx hir::Expr<'tcx>, res: Res) -> ExprKind<'tcx> {
         let args = self.typeck_results.node_args(expr.hir_id);
         match res {
             // A regular function, constructor function or a constant.
@@ -1297,12 +1289,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             }
 
-            Res::Local(var_hir_id) => {
-                match crate::verus::handle_var(self, expr, var_hir_id, spec) {
-                    Some(expr) => expr,
-                    None => self.convert_var(var_hir_id),
-                }
-            }
+            Res::Local(var_hir_id) => match crate::verus::handle_var(self, expr, var_hir_id) {
+                Some(expr) => expr,
+                None => self.convert_var(var_hir_id),
+            },
 
             _ => span_bug!(expr.span, "res `{:?}` not yet implemented", res),
         }
