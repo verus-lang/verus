@@ -1425,6 +1425,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         // but NOT SpecString, whose exec version (String)
         // does not have a direct indexing operator
         Expr::Index(expr_index) => {
+            // index compile
             let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref)?;
             let index = compile_expr(ctx, &expr_index.index, VarMode::Ref)?;
 
@@ -1519,7 +1520,67 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             "len" => {
                 let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
                 quote! { #receiver.exec_len() }
-            }
+            },
+
+            "drop_first" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_drop_first() },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_drop_first().get_owned() },
+                }
+            },
+
+            "drop_last" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_drop_last() },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_drop_last().get_owned() },
+                }
+            },
+
+            "add" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_add(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "push" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_push(#arg).get_ref() },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_push(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "subrange" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_subrange(#arg1, #arg2) },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_subrange(#arg1, #arg2).get_owned() },
+                }
+            },
+
 
             _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
         },
