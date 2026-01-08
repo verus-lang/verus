@@ -65,10 +65,35 @@ impl PointsTo<str> {
             ret.phy() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
+            ret.ptr()@.metadata == self.ptr()@.metadata
     ;
 }
 
 /* [u8] */
+
+pub broadcast axiom fn u8_slice_can_be_encoded()
+    ensures
+        #[trigger] can_be_encoded::<[u8]>(),
+;
+
+impl PointsTo<[u8]> {
+    pub axiom fn transmute_shared<'a>(tracked &'a self, target: &str) -> (tracked ret:
+        &'a PointsTo<str>)
+        requires
+            self.is_init(),
+            can_be_encoded::<[u8]>(),
+            forall|bytes|
+                #![trigger encode(self.phy(), bytes)]
+                #![trigger decode(bytes, target)]
+                encode(self.phy(), bytes) ==> decode(bytes, target),
+        ensures
+            ret.is_init(),
+            ret.value() == target,
+            ret.ptr()@.addr == self.ptr()@.addr,
+            ret.ptr()@.provenance == self.ptr()@.provenance,
+            ret.ptr()@.metadata == self.ptr()@.metadata
+    ;
+}
 
 pub open spec fn u8_encode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
     decreases bytes.len(),

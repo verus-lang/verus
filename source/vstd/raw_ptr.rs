@@ -324,11 +324,10 @@ impl<T> PointsTo<[T]> {
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
-    pub open spec fn is_init_subrange(&self, start_index: int, len: int) -> bool
-        recommends
-            start_index + len < self.mem_contents_seq().len(),
+    pub open spec fn is_init_subrange(&self, start_index: nat, len: nat) -> bool
     {
-        forall|i| start_index <= i < len ==> self.mem_contents_seq().index(i).is_init()
+        &&& start_index + len <= self.mem_contents_seq().len()
+        &&& forall|i| start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
@@ -741,12 +740,44 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
+pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
         v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v == perm.value(),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &*ptr }
+}
+
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v@ == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -1238,6 +1269,14 @@ impl<'a> SharedReference<'a, str> {
             ptr == self.ptr() as *const u8,
     {
         self.0.as_ptr()
+    }
+
+    #[verifier::external_body]
+    pub const fn as_str_ptr(self) -> (ptr: *const str)
+        ensures
+            ptr == self.ptr()
+    {
+        self.0 as *const str
     }
 
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
