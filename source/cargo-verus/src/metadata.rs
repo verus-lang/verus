@@ -41,7 +41,7 @@ pub struct MetadataIndex<'a> {
 pub struct MetadataIndexEntry<'a> {
     package: &'a Package,
     verus_metadata: VerusMetadata,
-    deps: BTreeMap<&'a str, &'a cargo_metadata::NodeDep>,
+    deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
 impl<'a> MetadataIndex<'a> {
@@ -51,7 +51,7 @@ impl<'a> MetadataIndex<'a> {
         for node in &metadata.resolve.as_ref().unwrap().nodes {
             let mut deps = BTreeMap::new();
             for dep in &node.deps {
-                assert!(deps.insert(dep.name.as_str(), dep).is_none());
+                assert!(deps.insert(&dep.pkg, dep).is_none());
             }
             assert!(deps_by_package.insert(&node.id, deps).is_none());
         }
