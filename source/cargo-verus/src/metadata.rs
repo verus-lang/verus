@@ -126,11 +126,17 @@ mod tests {
             .member(MockPackage::new("helper-runtime").lib())
             .member(MockPackage::new("helper-build").lib())
             .member(
-                MockPackage::new("consumer").lib().dep("helper-runtime").build_dep("helper-build"),
+                MockPackage::new("consumer")
+                    .lib()
+                    .dep_as("helper", "helper-runtime")
+                    .build_dep_as("helper", "helper-build"),
             )
             .materialize();
 
-        let metadata = todo!();
+        let manifest_path: String =
+            workspace.path().join("Cargo.toml").to_string_lossy().to_string();
+
+        let metadata = fetch_metadata(&["--manifest-path".to_string(), manifest_path]).unwrap();
 
         let _index = MetadataIndex::new(&metadata).unwrap();
     }
