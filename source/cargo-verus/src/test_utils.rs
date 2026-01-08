@@ -183,23 +183,21 @@ impl MockPackage {
         let mut dev = vec![];
         let mut targets: BTreeMap<String, Vec<String>> = Default::default();
         for (kind, cfg, dep) in self.deps {
-            let alias = dep.alias.as_deref().unwrap_or(&dep.package);
+            let name = dep.alias.as_ref().unwrap_or(&dep.package);
+            let package_part = dep
+                .alias
+                .as_ref()
+                .map(|_| format!("package = \"{}\",", dep.package))
+                .unwrap_or(String::new());
             let entry = match dep.source {
                 DepSource::Workspace => {
-                    if alias == dep.package {
-                        format!("{alias} = {{ workspace = true }}")
-                    } else {
-                        format!("{alias} = {{ package = \"{}\", workspace = true }}", dep.package)
-                    }
+                    format!("{name} = {{ {package_part} workspace = true }}")
                 }
                 DepSource::Path(path) => {
-                    format!("{alias} = {{ package = \"{}\", path = \"{}\" }}", dep.package, path)
+                    format!("{name} = {{ {package_part} path = \"{}\" }}", path)
                 }
                 DepSource::Registry { version } => {
-                    format!(
-                        "{alias} = {{ package = \"{}\", version = \"{}\" }}",
-                        dep.package, version
-                    )
+                    format!("{name} = {{ {package_part} version = \"{}\" }}", version)
                 }
             };
 
@@ -211,10 +209,10 @@ impl MockPackage {
                     targets.entry(cfg).or_default().push(entry);
                 }
                 (DepKind::Build, Some(_)) => {
-                    panic!("target-specific build-dependencies not supported in MockPackage")
+                    unimplemented!()
                 }
                 (DepKind::Dev, Some(_)) => {
-                    panic!("target-specific dev-dependencies not supported in MockPackage")
+                    unimplemented!()
                 }
             }
         }
