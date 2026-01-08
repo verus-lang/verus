@@ -639,6 +639,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
 
     let span = item_fn.sig.span();
     let sig = quote_spanned! { span =>
+        #[verifier::external_body]
         #vis fn #exec_name(
             #(#params,)*
         ) -> (res: #ret_type)
