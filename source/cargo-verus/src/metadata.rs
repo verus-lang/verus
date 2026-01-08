@@ -57,18 +57,16 @@ impl<'a> MetadataIndex<'a> {
         }
         let mut entries = BTreeMap::new();
         for package in &metadata.packages {
-            assert!(
-                entries
-                    .insert(
-                        &package.id,
-                        MetadataIndexEntry {
-                            package,
-                            verus_metadata: VerusMetadata::parse_from_package(package)?,
-                            deps: deps_by_package.remove(&package.id).unwrap(),
-                        }
-                    )
-                    .is_none()
-            );
+            assert!(entries
+                .insert(
+                    &package.id,
+                    MetadataIndexEntry {
+                        package,
+                        verus_metadata: VerusMetadata::parse_from_package(package)?,
+                        deps: deps_by_package.remove(&package.id).unwrap(),
+                    }
+                )
+                .is_none());
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
@@ -125,9 +123,9 @@ mod tests {
     #[test]
     fn metadata_index_duplicate_dep_names() {
         let workspace = MockWorkspace::new()
-            .member(MockPackage::new("serde-core").version("1.0.0").lib())
-            .member(MockPackage::new("serde").version("1.0.0").lib())
-            .member(
+            .members([
+                MockPackage::new("serde-core").version("1.0.0").lib(),
+                MockPackage::new("serde").version("1.0.0").lib(),
                 MockPackage::new("consumer")
                     .lib()
                     .deps([MockDep::registry("serde-core", "1.0.0").alias("serde")])
@@ -135,7 +133,7 @@ mod tests {
                         "cfg(any())",
                         [MockDep::registry("serde", "1.0.0").alias("serde")],
                     ),
-            )
+            ])
             .materialize();
 
         let manifest_path: String =

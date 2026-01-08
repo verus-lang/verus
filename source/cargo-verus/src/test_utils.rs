@@ -64,8 +64,8 @@ impl MockWorkspace {
         MockWorkspace { members: vec![] }
     }
 
-    pub fn member(mut self, package: MockPackage) -> Self {
-        self.members.push(package);
+    pub fn members(mut self, packages: impl IntoIterator<Item = MockPackage>) -> Self {
+        self.members.extend(packages);
         self
     }
 
