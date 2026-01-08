@@ -24,26 +24,26 @@ pub struct MockDep {
 
 #[derive(Clone)]
 enum DepSource {
-    Workspace,
-    Path(String),
     Registry { version: String },
+    Path(String),
+    Workspace,
 }
 
 impl MockDep {
-    pub fn workspace(package: &str) -> Self {
-        Self { alias: None, package: package.to_owned(), source: DepSource::Workspace }
-    }
-
-    pub fn path(package: &str, path: &str) -> Self {
-        Self { alias: None, package: package.to_owned(), source: DepSource::Path(path.to_owned()) }
-    }
-
     pub fn registry(package: &str, version: &str) -> Self {
         Self {
             alias: None,
             package: package.to_owned(),
             source: DepSource::Registry { version: version.to_owned() },
         }
+    }
+
+    pub fn path(package: &str, path: &str) -> Self {
+        Self { alias: None, package: package.to_owned(), source: DepSource::Path(path.to_owned()) }
+    }
+
+    pub fn workspace(package: &str) -> Self {
+        Self { alias: None, package: package.to_owned(), source: DepSource::Workspace }
     }
 
     pub fn alias(mut self, alias: &str) -> Self {
