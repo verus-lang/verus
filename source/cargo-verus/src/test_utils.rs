@@ -13,6 +13,8 @@ struct Dependency {
     package: String,
     kind: DepKind,
     path: Option<String>,
+    target: Option<String>,
+    version: Option<String>,
 }
 
 pub struct MockPackage {
@@ -50,6 +52,8 @@ impl MockPackage {
             package: name.to_owned(),
             kind: DepKind::Normal,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -60,6 +64,8 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Normal,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -70,6 +76,20 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Normal,
             path: Some(path.to_owned()),
+            target: None,
+            version: None,
+        });
+        self
+    }
+
+    pub fn dep_registry(mut self, alias: &str, package: &str, version: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Normal,
+            path: None,
+            target: None,
+            version: Some(version.to_owned()),
         });
         self
     }
@@ -80,6 +100,8 @@ impl MockPackage {
             package: name.to_owned(),
             kind: DepKind::Build,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -90,6 +112,8 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Build,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -100,6 +124,8 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Build,
             path: Some(path.to_owned()),
+            target: None,
+            version: None,
         });
         self
     }
@@ -110,6 +136,8 @@ impl MockPackage {
             package: name.to_owned(),
             kind: DepKind::Dev,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -120,6 +148,8 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Dev,
             path: None,
+            target: None,
+            version: None,
         });
         self
     }
@@ -130,6 +160,38 @@ impl MockPackage {
             package: package.to_owned(),
             kind: DepKind::Dev,
             path: Some(path.to_owned()),
+            target: None,
+            version: None,
+        });
+        self
+    }
+
+    pub fn target_dep_path(mut self, cfg: &str, alias: &str, package: &str, path: &str) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Normal,
+            path: Some(path.to_owned()),
+            target: Some(cfg.to_owned()),
+            version: None,
+        });
+        self
+    }
+
+    pub fn target_dep_registry(
+        mut self,
+        cfg: &str,
+        alias: &str,
+        package: &str,
+        version: &str,
+    ) -> Self {
+        self.deps.push(Dependency {
+            alias: alias.to_owned(),
+            package: package.to_owned(),
+            kind: DepKind::Normal,
+            path: None,
+            target: Some(cfg.to_owned()),
+            version: Some(version.to_owned()),
         });
         self
     }
@@ -158,21 +220,33 @@ impl MockPackage {
         let mut normal = vec![];
         let mut build = vec![];
         let mut dev = vec![];
+        let mut targets: std::collections::BTreeMap<String, Vec<String>> = Default::default();
         for dep in self.deps {
             let entry = if let Some(path) = &dep.path {
                 format!("{} = {{ package = \"{}\", path = \"{}\" }}", dep.alias, dep.package, path)
+            } else if let Some(version) = &dep.version {
+                format!(
+                    "{} = {{ package = \"{}\", version = \"{}\" }}",
+                    dep.alias, dep.package, version
+                )
             } else if dep.alias == dep.package {
                 format!("{} = {{ workspace = true }}", dep.alias)
             } else {
-                format!(
-                    "{} = {{ package = \"{}\", workspace = true }}",
-                    dep.alias, dep.package
-                )
+                format!("{} = {{ package = \"{}\", workspace = true }}", dep.alias, dep.package)
             };
-            match dep.kind {
-                DepKind::Normal => normal.push(entry),
-                DepKind::Build => build.push(entry),
-                DepKind::Dev => dev.push(entry),
+            match (dep.kind, dep.target) {
+                (DepKind::Normal, None) => normal.push(entry),
+                (DepKind::Build, None) => build.push(entry),
+                (DepKind::Dev, None) => dev.push(entry),
+                (DepKind::Normal, Some(cfg)) => {
+                    targets.entry(cfg).or_default().push(entry);
+                }
+                (DepKind::Build, Some(_)) => {
+                    panic!("target-specific build-dependencies not supported in MockPackage")
+                }
+                (DepKind::Dev, Some(_)) => {
+                    panic!("target-specific dev-dependencies not supported in MockPackage")
+                }
             }
         }
 
@@ -191,6 +265,12 @@ impl MockPackage {
         if !dev.is_empty() {
             manifest_lines.push("[dev-dependencies]".to_owned());
             manifest_lines.extend(dev);
+            manifest_lines.push("".to_owned());
+        }
+
+        for (cfg, entries) in targets {
+            manifest_lines.push(format!("[target.'{}'.dependencies]", cfg));
+            manifest_lines.extend(entries);
             manifest_lines.push("".to_owned());
         }
 
@@ -248,6 +328,7 @@ impl MockWorkspace {
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
+        manifest_lines.push("resolver = \"2\"".to_owned());
 
         manifest_lines.push("members = [".to_owned());
         for name in &member_names {
@@ -257,6 +338,12 @@ impl MockWorkspace {
         manifest_lines.push("".to_owned());
 
         manifest_lines.push("[workspace.dependencies]".to_owned());
+        for name in &member_names {
+            manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
+        }
+        manifest_lines.push("".to_owned());
+
+        manifest_lines.push("[patch.crates-io]".to_owned());
         for name in &member_names {
             manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
         }

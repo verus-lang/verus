@@ -123,13 +123,13 @@ mod tests {
     #[test]
     fn metadata_index_panics_on_duplicate_dep_names() {
         let workspace = MockWorkspace::new()
-            .member(MockPackage::new("helper-runtime").lib())
-            .member(MockPackage::new("helper-build").lib())
+            .member(MockPackage::new("serde-core").lib())
+            .member(MockPackage::new("serde").lib())
             .member(
                 MockPackage::new("consumer")
                     .lib()
-                    .dep_as("helper", "helper-runtime")
-                    .build_dep_as("helper", "helper-build"),
+                    .dep_registry("serde", "serde-core", "1.0.0")
+                    .target_dep_registry("cfg(any())", "serde", "serde", "1.0.0"),
             )
             .materialize();
 
