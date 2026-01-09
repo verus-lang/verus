@@ -743,7 +743,15 @@ test_verify_one_file! {
         fn test(t: T) {
             t.s.a = t.s.a;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file! {
+    #[test] test_field_mut_update_field_mode_pass_1 FIELD_UPDATE_MODES.to_string() + verus_code_str! {
+        fn test(mut t: T) {
+            t.s.a = t.s.a;
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot access proof-mode place in executable context")
 }
 
 const ENUM_S: &str = verus_code_str! {
