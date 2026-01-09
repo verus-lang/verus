@@ -116,3 +116,33 @@ pub fn fetch_metadata(metadata_args: &[String]) -> Result<Metadata> {
     let metadata = cmd.exec()?;
     Ok(metadata)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{MockDep, MockPackage, MockWorkspace};
+
+    #[test]
+    fn metadata_index_duplicate_dep_names() {
+        let workspace = MockWorkspace::new()
+            .members([
+                MockPackage::new("serde-core").version("1.0.0").lib(),
+                MockPackage::new("serde").version("1.0.0").lib(),
+                MockPackage::new("consumer")
+                    .lib()
+                    .deps([MockDep::registry("serde-core", "1.0.0").alias("serde")])
+                    .target_deps(
+                        "cfg(any())",
+                        [MockDep::registry("serde", "1.0.0").alias("serde")],
+                    ),
+            ])
+            .materialize();
+
+        let manifest_path: String =
+            workspace.path().join("Cargo.toml").to_string_lossy().to_string();
+
+        let metadata = fetch_metadata(&["--manifest-path".to_string(), manifest_path]).unwrap();
+
+        let _index = MetadataIndex::new(&metadata).unwrap();
+    }
+}
