@@ -222,7 +222,7 @@ fn func_body_to_sst(
     let mut proof_body_stms: Vec<Stm> = Vec::new();
     for expr in proof_body {
         let (mut stms, exp) = expr_to_stm_opt(ctx, &mut check_state, &expr)?;
-        assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
+        assert!(!matches!(exp, crate::ast_to_sst::Maybe::Never));
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
@@ -755,7 +755,7 @@ pub fn func_def_to_sst(
     // Atomic spec
     if let Some(au_expr) = &function.x.atomic_update {
         let (mut au_stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
-        let au_exp = au_ret_val.expect_value();
+        let au_exp: Exp = au_ret_val.expect_exp();
         //let au_exp = state.make_tmp_var_for_exp(&mut au_stms, au_exp);
         req_stms.append(&mut au_stms);
         state.au_var_exp_to_resolve = Some(au_exp);

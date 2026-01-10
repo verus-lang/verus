@@ -32,12 +32,12 @@ use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, AtomicCallInfoX, AutospecUsage, BinaryOp,
-    BitshiftBehavior, BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode,
-    Constant, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp,
-    IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
-    PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder,
-    VarBinderX, VarIdent, VariantCheck, VirErr,
+    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
+    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, Div0Behavior, ExprX,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange, IntegerTypeBoundKind, Mode,
+    ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place, PlaceX, Quant, Typ,
+    TypDecoration, TypX, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck,
+    VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -554,7 +554,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     // or atomic update annoying/impossible to define/call. This check exists to
                     // help, rather than to restrict the user.
 
-                    let TypX::Datatype(Dt::Path(path), args, _) = typ.as_ref() else {
+                    let TypX::Datatype(vir::ast::Dt::Path(path), args, _) = typ.as_ref() else {
                         return false;
                     };
 
@@ -711,7 +711,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::AtomicUpdate` should take four type arguments")
                 };
 
-                let [Expr { kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), .. }] = args.as_slice() else {
+                let [Expr { kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), .. }] =
+                    args.as_slice()
+                else {
                     return malformed_err(expr);
                 };
 
@@ -734,12 +736,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 } else {
                     let typs = args.iter().map(|e| e.typ.clone()).collect();
                     let tup_typ = mk_tuple_typ(&Arc::new(typs));
-                    SpannedTyped::new(&expr_span, &tup_typ, mk_tuple_x(args))
+                    vir::ast::SpannedTyped::new(&expr_span, &tup_typ, mk_tuple_x(args))
                 };
 
                 let spec_au_var = pat_to_var(spec_au_param.pat)?;
 
-                let info = Arc::new(AtomicCallInfoX {
+                let info = Arc::new(vir::ast::AtomicCallInfoX {
                     au_typ: au_typ.clone(),
                     au_typ_args: au_typ_args.clone(),
                     x_typ: x_typ.clone(),
@@ -763,7 +765,9 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
-                    0 => err_span(update_param.span, "function must be called in `atomically` block"),
+                    0 => {
+                        err_span(update_param.span, "function must be called in `atomically` block")
+                    }
                     1 => mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,
@@ -1996,6 +2000,29 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::Unary(op, exp))
         }
+        VerusItem::AfterBorrow => {
+            if !bctx.new_mut_ref {
+                unsupported_err!(expr.span, "mut_ref spec funs without '-V new-mut-ref'", &args);
+            }
+            record_spec_fn_no_proof_args(bctx, expr);
+            if !bctx.in_ghost {
+                return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
+            }
+            let p = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?.to_place();
+            if !is_place_ok_for_spec_after_borrow(&p) {
+                return err_span(
+                    expr.span,
+                    "`after_borrow` expects a local variable, possibly with dereferences or field accesses",
+                );
+            }
+
+            let rk = vir::ast::ReadKind::SpecAfterBorrow;
+            let rk = vir::ast::UnfinalizedReadKind {
+                preliminary_kind: rk,
+                id: bctx.ctxt.unique_read_kind_id(),
+            };
+            mk_expr(ExprX::ReadPlace(p, rk))
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
@@ -2003,6 +2030,20 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::External(_)
         | VerusItem::Global(_)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType) => unreachable!(),
+    }
+}
+
+fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
+    match &place.x {
+        PlaceX::Local(_) => true,
+        PlaceX::DerefMut(p) => is_place_ok_for_spec_after_borrow(p),
+        PlaceX::Field(opr, p) => {
+            matches!(opr.check, VariantCheck::None) && is_place_ok_for_spec_after_borrow(p)
+        }
+        PlaceX::Temporary(_) => false,
+        PlaceX::ModeUnwrap(p, _) => is_place_ok_for_spec_after_borrow(p),
+        PlaceX::WithExpr(..) => false,
+        PlaceX::Index(..) => false,
     }
 }
 
@@ -2543,7 +2584,7 @@ pub(crate) fn check_variant_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     variant_name: &String,
     field_name_typ: Option<(String, &rustc_middle::ty::Ty<'tcx>)>,
-) -> Result<(Dt, Option<vir::ast::Ident>), VirErr> {
+) -> Result<(vir::ast::Dt, Option<vir::ast::Ident>), VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);
@@ -2619,7 +2660,7 @@ fn check_union_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     field_name: &String,
     expected_field_typ: &rustc_middle::ty::Ty<'tcx>,
-) -> Result<Dt, VirErr> {
+) -> Result<vir::ast::Dt, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);

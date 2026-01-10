@@ -25,6 +25,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
@@ -3095,11 +3096,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                    Ok(tcx.arena.alloc(rustc_middle::mir::DefinitionSiteHiddenTypes(
                         rustc_data_structures::fx::FxIndexMap::default(),
                     )))
                 };
@@ -3109,7 +3110,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);

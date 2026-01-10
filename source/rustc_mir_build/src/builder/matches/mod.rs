@@ -15,7 +15,7 @@ use rustc_data_structures::fx::FxIndexMap;
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_hir::{BindingMode, ByRef, LetStmt, LocalSource, Node};
 use rustc_middle::bug;
-use rustc_middle::middle::region::{self, ScopeCompatibility};
+use rustc_middle::middle::region;
 use rustc_middle::mir::*;
 use rustc_middle::thir::{self, *};
 use rustc_middle::ty::{self, CanonicalUserTypeAnnotation, Ty, ValTree, ValTreeKind};
@@ -579,6 +579,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     block,
                     var,
                     irrefutable_pat.span,
+                    false,
                     OutsideGuard,
                     ScheduleDrops::Yes,
                 );
@@ -608,6 +609,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     block,
                     var,
                     irrefutable_pat.span,
+                    false,
                     OutsideGuard,
                     ScheduleDrops::Yes,
                 );
@@ -739,6 +741,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             pattern,
             &ProjectedUserTypesNode::None,
             &mut |this, name, mode, var, span, ty, user_tys| {
+                let saved_scope = this.source_scope;
+                this.set_correct_source_scope_for_arg(var.0, saved_scope, span);
                 let vis_scope = *visibility_scope
                     .get_or_insert_with(|| this.new_source_scope(scope_span, LintLevel::Inherited));
                 let source_info = SourceInfo { span, scope: this.source_scope };
@@ -756,6 +760,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     opt_match_place.map(|(x, y)| (x.cloned(), y)),
                     pattern.span,
                 );
+                this.source_scope = saved_scope;
             },
         );
         if let Some(guard_expr) = guard {
@@ -799,6 +804,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         block: BasicBlock,
         var: LocalVarId,
         span: Span,
+        is_shorthand: bool,
         for_guard: ForGuard,
         schedule_drop: ScheduleDrops,
     ) -> Place<'tcx> {
@@ -807,19 +813,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         self.cfg.push(block, Statement::new(source_info, StatementKind::StorageLive(local_id)));
         // Although there is almost always scope for given variable in corner cases
         // like #92893 we might get variable with no scope.
-        if matches!(schedule_drop, ScheduleDrops::Yes) {
-            let (var_scope, var_scope_compat) = self.region_scope_tree.var_scope(var.0.local_id);
-            if let Some(region_scope) = var_scope {
-                self.schedule_drop(span, region_scope, local_id, DropKind::Storage);
-            }
-            if let ScopeCompatibility::FutureIncompatible { shortens_to } = var_scope_compat {
-                self.schedule_backwards_incompatible_drop(
-                    span,
-                    shortens_to,
-                    local_id,
-                    BackwardIncompatibleDropReason::MacroExtendedScope,
-                );
-            }
+        if let Some(region_scope) = self.region_scope_tree.var_scope(var.0.local_id)
+            && matches!(schedule_drop, ScheduleDrops::Yes)
+        {
+            self.schedule_drop(span, region_scope, local_id, DropKind::Storage);
+        }
+        let local_info = self.local_decls[local_id].local_info.as_mut().unwrap_crate_local();
+        if let LocalInfo::User(BindingForm::Var(var_info)) = &mut **local_info {
+            var_info.introductions.push(VarBindingIntroduction { span, is_shorthand });
         }
         Place::from(local_id)
     }
@@ -831,9 +832,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         for_guard: ForGuard,
     ) {
         let local_id = self.var_local_id(var, for_guard);
-        // We can ignore the var scope's future-compatibility information since we've already taken
-        // it into account when scheduling the storage drop in `storage_live_binding`.
-        if let (Some(region_scope), _) = self.region_scope_tree.var_scope(var.0.local_id) {
+        if let Some(region_scope) = self.region_scope_tree.var_scope(var.0.local_id) {
             self.schedule_drop(span, region_scope, local_id, DropKind::Value);
         }
     }
@@ -1228,6 +1227,7 @@ struct Binding<'tcx> {
     source: Place<'tcx>,
     var_id: LocalVarId,
     binding_mode: BindingMode,
+    is_shorthand: bool,
 }
 
 /// Indicates that the type of `source` must be a subtype of the
@@ -2736,6 +2736,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 block,
                 binding.var_id,
                 binding.span,
+                binding.is_shorthand,
                 RefWithinGuard,
                 ScheduleDrops::Yes,
             );
@@ -2753,6 +2754,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         block,
                         binding.var_id,
                         binding.span,
+                        binding.is_shorthand,
                         OutsideGuard,
                         ScheduleDrops::Yes,
                     );
@@ -2786,6 +2788,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 block,
                 binding.var_id,
                 binding.span,
+                binding.is_shorthand,
                 OutsideGuard,
                 schedule_drops,
             );
@@ -2838,6 +2841,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     opt_ty_info: None,
                     opt_match_place,
                     pat_span,
+                    introductions: Vec::new(),
                 },
             )))),
         };
@@ -2860,7 +2864,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 user_ty: None,
                 source_info,
                 local_info: ClearCrossCrate::Set(Box::new(LocalInfo::User(
-                    BindingForm::RefForGuard,
+                    BindingForm::RefForGuard(for_arm_body),
                 ))),
             });
             if self.should_emit_debug_info_for_binding(name, var_id) {

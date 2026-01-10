@@ -1464,3 +1464,9 @@ impl MutRefFutureSourceName {
         }
     }
 }
+
+impl ArmX {
+    pub(crate) fn has_guard(&self) -> bool {
+        !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
+    }
+}

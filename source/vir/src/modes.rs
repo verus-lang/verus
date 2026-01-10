@@ -1544,7 +1544,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::AssignToPlace { place, rhs, op: _ } => {
+        ExprX::AssignToPlace { place, rhs, op: _, resolve: _ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -2080,6 +2080,15 @@ fn check_expr_handle_mut_arg(
             Ok(outer_mode)
         }
         ExprX::ReadPlace(place, read_kind) => {
+            if !typing.allow_prophecy_dependence
+                && matches!(read_kind.preliminary_kind, ReadKind::SpecAfterBorrow)
+            {
+                return Err(error(
+                    &expr.span,
+                    "cannot use prophecy-dependent function `after_borrow` in prophecy-independent context",
+                ));
+            }
+
             let mode = check_place(ctxt, record, typing, outer_mode, place, PlaceAccess::Read)?;
 
             // TODO(new_mut_ref) this is not aggressive enough about marking stuff as spec;
@@ -2089,6 +2098,8 @@ fn check_expr_handle_mut_arg(
                 _ => read_kind.preliminary_kind,
             };
             record.read_kind_finals.insert(read_kind.id, final_read_kind);
+
+            // TODO(new_mut_ref) if the ReadKind is spec, we should check that it really is spec
 
             Ok(mode)
         }

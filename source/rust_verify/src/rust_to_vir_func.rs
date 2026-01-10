@@ -2289,7 +2289,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
                 let mut types: Vec<Typ> = vec![];
 
-                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+                let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
                     types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);

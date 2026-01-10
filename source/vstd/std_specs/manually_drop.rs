@@ -51,4 +51,15 @@ pub assume_specification<T: ?Sized>[ <ManuallyDrop<T> as Deref>::deref ](
         m.view_ref(),
 ;
 
+pub broadcast axiom fn axiom_manually_drop_has_resolved<T: ?Sized>(m: &ManuallyDrop<T>)
+    ensures
+        #[trigger] has_resolved_unsized::<ManuallyDrop<T>>(m) ==> has_resolved_unsized::<T>(
+            m.view_ref(),
+        ),
+;
+
+pub broadcast group group_manually_drop_axioms {
+    axiom_manually_drop_has_resolved,
+}
+
 } // verus!
