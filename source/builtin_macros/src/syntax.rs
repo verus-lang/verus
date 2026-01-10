@@ -3633,13 +3633,19 @@ impl Visitor {
                 };
 
                 quote_spanned_builtin_builtin_macros_vstd!(buildin, _macros, vstd, span =>
-                    #vstd::atomic::atomically(|#update_fn_binder, #yield_binder, #temp_au_binder| {
-                        #[verus::internal(spec)]
-                        let #au_binder = #buildin::Ghost::view(#temp_au_binder);
+                    #vstd::atomic::atomically({
+                        let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
 
-                        #[verus::internal(proof)]
-                        #[verifier::assume_termination]
-                        loop { #header #body }
+                        |#update_fn_binder, #yield_binder, #temp_au_binder| {
+                            #vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
+
+                            #[verus::internal(spec)]
+                            let #au_binder = #buildin::Ghost::view(#temp_au_binder);
+
+                            #[verus::internal(proof)]
+                            #[verifier::assume_termination]
+                            loop { #header #body }
+                        }
                     })
                 )
             }

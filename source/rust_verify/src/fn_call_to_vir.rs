@@ -674,8 +674,19 @@ fn verus_item_to_vir<'tcx, 'a>(
                 //     ...
                 // }
                 //
-                // function(x1, x2, x3, ::vstd::atomic::atomically(|update| loop {
-                //     { ... }
+                // #[verifier::atomic_call]
+                // function(x1, x2, x3, ::vstd::atomic::atomically({
+                //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
+                //     |update, yield_fn, atomic_update| {
+                //         ::vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                //
+                //         #[verifier::internal(spec)]
+                //         let _ = atomic_update;
+                //
+                //         loop {
+                //             { ... }
+                //         }
+                //     }
                 // }))
                 //
                 // Most of the structure is enforced by the type checker, we need to identify the
@@ -684,7 +695,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
                     err_span(
                         expr.span,
-                        "malformed atomic call; please do not use `vstd::atomic::atomically` directly (2)",
+                        "malformed atomic call; please do not use `vstd::atomic::atomically` directly",
                     )
                 }
 
@@ -700,7 +711,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::AtomicUpdate` should take four type arguments")
                 };
 
-                let [arg @ Expr { kind: ExprKind::Closure(closure), .. }] = args.as_slice() else {
+                let [Expr { kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), .. }] = args.as_slice() else {
+                    return malformed_err(expr);
+                };
+
+                let Expr { kind: ExprKind::Closure(closure), .. } = inner else {
                     return malformed_err(expr);
                 };
 
@@ -748,7 +763,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
-                    0 => err_span(arg.span, "function must be called in `atomically` block"),
+                    0 => err_span(update_param.span, "function must be called in `atomically` block"),
                     1 => mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,
