@@ -126,6 +126,15 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Owned => Ok(quote_spanned! { span => Vec<#param> }),
                         TypeKind::Ref => Ok(quote_spanned! { span => &[#param] }),
                     };
+                } else if type_path.path.segments[0].ident.to_string() == "Multiset" {
+                    // todo(nneamtu):
+                    // impl ExecSpecType for Multiset to avoid this special case
+                    let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
+                    let param = compile_type(type_arg, TypeKind::Owned)?;
+                    return match ctx {
+                        TypeKind::Owned => Ok(quote_spanned! { span => ExecMultiset<#param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &ExecMultiset<#param> }),
+                    };
                 } else if type_path.path.segments[0].ident.to_string() == "Option" {
                     // TODO: implement ExecSpecType for Option<T> so that
                     // we don't need this special case
@@ -1670,6 +1679,16 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                     // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_first().get_ref().get_owned() },
+                }
+            },
+
+            "count" => {
+                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #base.exec_count(#value) },
+                    VarMode::Owned => quote! { #base.exec_count(#value) },
                 }
             },
 

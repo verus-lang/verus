@@ -252,7 +252,7 @@ impl<'a, T: DeepView> ExecSpecSkip<'a> for &'a [T] {
         ensures
             res.deep_view() =~= self.deep_view().skip(n as int),
     {
-        self.exec_subrange(n, self.len())
+        self.exec_subrange(n, self.exec_len())
     }
 }
 
