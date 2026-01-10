@@ -52,7 +52,7 @@ Currently, `exec_spec!` supports these basic features:
   - Field expressions
   - Spec function calls and recursion
   - Bounded quantifiers of the form `forall |i| <lower> <= i < <upper> ==> <expr>` and `exists |i| <lower> <= i < <upper> && <expr>`
-  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), indexing, len, `seq!` literals
+  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
   - User-defined structs and enums
