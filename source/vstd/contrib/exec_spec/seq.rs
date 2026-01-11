@@ -70,6 +70,13 @@ pub trait ExecSpecNew: Sized {
     fn exec_new<F: Fn(usize) -> Self::Elem + 'static>(len: usize, f: F) -> Self;
 }
 
+/// Spec for executable version of [`Seq::to_multiset`].
+pub trait ExecSpecToMultiset<'a>: Sized {
+    type Elem: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq;
+
+    fn exec_to_multiset(self) -> ExecMultiset<Self::Elem>;
+}
+
 // todo(nneamtu):
 // The implementations here for interp Seq methods (e.g. take) could be streamlined.
 // Currently, I am coping the spec definition and translating it to the exec version by hand.
@@ -227,6 +234,30 @@ impl<T: DeepView> ExecSpecNew for Vec<T> {
             //res.deep_view() =~= Seq::new(len as nat, |i| f(i as usize).deep_view()),
     {
         (0..len).map(|i| f(i)).collect()
+    }
+}
+
+impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecToMultiset<'a> for &'a [T] {
+    type Elem = T;
+
+    #[verifier::external_body]
+    #[inline(always)]
+    fn exec_to_multiset(self) -> (res: ExecMultiset<Self::Elem>)
+        ensures
+            res.deep_view() =~= self.deep_view().to_multiset(),
+    {
+        let mut mset = ExecMultiset { m: HashMap::new() };
+        for e in self.iter() {
+            match mset.m.remove_entry(e) {
+                Some((k, c)) => {
+                    mset.m.insert(k, c + 1);
+                },
+                None => {
+                    mset.m.insert(e.deep_clone(), 1);
+                }
+            }
+        }
+        mset
     }
 }
 

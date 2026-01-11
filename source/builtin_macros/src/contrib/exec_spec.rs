@@ -1636,6 +1636,16 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 }
             },
 
+            "to_multiset" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_to_multiset() },
+
+                    VarMode::Owned => quote! { #receiver.exec_to_multiset().get_owned() },
+                }
+            },
+
             "take" => {
                 let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
                 let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;

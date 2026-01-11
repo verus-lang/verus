@@ -76,7 +76,7 @@ pub trait ExecSpecIndex<'a>: Sized + DeepView<V = Seq<<Self::Elem as DeepView>::
 
 /// Spec for executable version of [`Seq::len`].
 pub trait ExecSpecLen {
-    fn exec_len(&self) -> usize;
+    fn exec_len(self) -> usize;
 }
 
 /// A macro to implement various traits for primitive arithmetic types.
@@ -269,7 +269,7 @@ impl<'a> ExecSpecEq<'a> for &'a String {
 
 impl<'a> ExecSpecLen for &'a str {
     #[inline(always)]
-    fn exec_len(&self) -> (res: usize)
+    fn exec_len(self) -> (res: usize)
         ensures
             res == self.deep_view().len(),
     {
@@ -343,7 +343,7 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Vec<T> where &'a T: ExecSpecEq<'a, 
 impl<'a, T: DeepView> ExecSpecLen for &'a [T] {
     #[verifier::external_body]
     #[inline(always)]
-    fn exec_len(&self) -> (res: usize)
+    fn exec_len(self) -> (res: usize)
         ensures
             res == self.deep_view().len(),
     {
@@ -431,7 +431,7 @@ impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecE
 impl<'a, T: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq> ExecSpecLen for &'a ExecMultiset<T> {
     #[inline(always)]
     #[verifier::external_body]
-    fn exec_len(&self) -> (res: usize)
+    fn exec_len(self) -> (res: usize)
         ensures
             res == self.deep_view().len(),
     {
