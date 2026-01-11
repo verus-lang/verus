@@ -538,7 +538,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 }
 
 /// Compiles a spec fn to the exec fn signature.
-fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Error> {
+fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Error> {
     let spec_params = item_fn
         .sig
         .inputs
@@ -647,14 +647,25 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
     let span = item_fn.sig.span();
-    let sig = quote_spanned! { span =>
-        #[verifier::external_body]
-        #vis fn #exec_name(
-            #(#params,)*
-        ) -> (res: #ret_type)
-            requires #requires
-            ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
-            #decreases
+    let sig = if trusted { 
+        quote_spanned! { span =>
+            #[verifier::external_body]
+            #vis fn #exec_name(
+                #(#params,)*
+            ) -> (res: #ret_type)
+                requires #requires
+                ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
+                #decreases
+        }
+    } else {
+        quote_spanned! { span =>
+            #vis fn #exec_name(
+                #(#params,)*
+            ) -> (res: #ret_type)
+                requires #requires
+                ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
+                #decreases
+        }
     };
 
     // Set token's span to the original signature's span
@@ -1953,7 +1964,7 @@ fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
 }
 
 /// Compiles a spec function into an exec function.
-fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
+fn compile_spec_fn(item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Error> {
     if let FnMode::Spec(..) = &item_fn.sig.mode {
     } else {
         return Err(Error::new_spanned(item_fn, "#[exec_spec] only supports spec functions"));
@@ -1961,7 +1972,7 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
 
     let mut ctx = LocalCtx::new(&item_fn.sig.ident);
 
-    let sig = compile_sig(&mut ctx, item_fn)?;
+    let sig = compile_sig(&mut ctx, item_fn, trusted)?;
     let body = compile_block(&ctx, &item_fn.block)?;
 
     // Generate all promised trigger functions
@@ -1990,9 +2001,9 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
 }
 
 /// Compiles a fn/struct/enum item.
-fn compile_item(item: Item) -> Result<TokenStream2, Error> {
+fn compile_item(item: Item, trusted: bool) -> Result<TokenStream2, Error> {
     match item {
-        Item::Fn(item_fn) => compile_spec_fn(&item_fn),
+        Item::Fn(item_fn) => compile_spec_fn(&item_fn, trusted),
         Item::Struct(item_struct) => compile_struct(&item_struct),
         Item::Enum(item_enum) => compile_enum(&item_enum),
         _ => Err(Error::new_spanned(item, "unsupported item")),
@@ -2000,12 +2011,12 @@ fn compile_item(item: Item) -> Result<TokenStream2, Error> {
 }
 
 /// Parses and compiles a list of items.
-pub fn exec_spec(input: TokenStream) -> TokenStream {
+pub fn exec_spec(input: TokenStream, trusted: bool) -> TokenStream {
     let items = parse_macro_input!(input as Items);
     let res = items
         .0
         .into_iter()
-        .map(|item| match compile_item(item) {
+        .map(|item| match compile_item(item, trusted) {
             Ok(ts) => Ok(ts),
             Err(err) => Err(err.to_compile_error().into()),
         })

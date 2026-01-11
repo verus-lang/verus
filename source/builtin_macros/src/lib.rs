@@ -450,7 +450,13 @@ pub fn auto_spec(
 ///   - Equality between Seq, String, and arithmetic types
 #[proc_macro]
 pub fn exec_spec(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    contrib::exec_spec::exec_spec(input)
+    contrib::exec_spec::exec_spec(input, false)
+}
+
+/// Same as exec_spec! macro but without proofs of functional correctness. All specifications on compiled executable code are trusted.
+#[proc_macro]
+pub fn exec_spec_trusted(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    contrib::exec_spec::exec_spec(input, true)
 }
 
 /*** End of contrib macros ***/
