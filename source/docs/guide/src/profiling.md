@@ -43,36 +43,46 @@ If we run the profiler on the example above, we'll see something along the lines
 
 ```
 error: function body check: Resource limit (rlimit) exceeded
-  --> ../examples/trigger_loops.rs:64:1
+  --> ../examples/trigger_loops.rs:66:7
    |
-64 | fn trigger_forever2() {
-   | ^^^^^^^^^^^^^^^^^^^^^
+66 | proof fn trigger_forever2()
+   |       ^^^^^^^^^^^^^^^^^^^^^
 
-Analyzing prover log...
-[00:00:39] ████████████████████████████████████████████████████████████████████████████████ 1153/1153K lines
-... analysis complete
+note: Analyzing prover log for (profile rerun) trigger_loops::trigger_forever2 ...
 
-note: Observed 27,184 total instantiations of user-level quantifiers
+Z3 4.12.5
+note: Log analysis complete for (profile rerun) trigger_loops::trigger_forever2
 
-note: Cost * Instantiations: 5391549700 (Instantiated 13,591 times - 49% of the total, cost 396700) top 1 of 3 user-level quantifiers.
-  --> ../examples/trigger_loops.rs:68:78
+note: Profile statistics for trigger_loops::trigger_forever2
+
+note: Observed 17,963 total instantiations of user-level quantifiers
+
+note: Cost * Instantiations: 2269911826 (Instantiated 8,981 times - 49% of the total, cost 252746) top 1 of 3 user-level quantifiers.
+  --> ../examples/trigger_loops.rs:70:93
    |
-68 |    forall|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> #[trigger] f(x, y),
-   |    -------------------------------------------------------------------------^^^^^^^^^^^^^^^^^^ Triggers selected for this quantifier
+70 | ...   forall|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> #[trigger] f(x, y),
+   |       ------------------------------------------------------------------------------------^^^^^^^
+   |       |
+   |       Triggers selected for this quantifier
 
-note: Cost * Instantiations: 1037237938 (Instantiated 13,591 times - 49% of the total, cost 76318) top 2 of 3 user-level quantifiers.
-  --> ../examples/trigger_loops.rs:67:28
+note: Cost * Instantiations: 397732566 (Instantiated 8,981 times - 49% of the total, cost 44286) top 2 of 3 user-level quantifiers.
+  --> ../examples/trigger_loops.rs:69:32
    |
-67 |    forall|x: nat, y: nat| h(x, y) == f(x, y),
-   |    -----------------------^^^^^^^----^^^^^^^ Triggers selected for this quantifier
+69 |         forall|x: nat, y: nat| h(x, y) == f(x, y),
+   |         -----------------------^^^^^^^----^^^^^^^
+   |         |
+   |         Triggers selected for this quantifier
 
-note: Cost * Instantiations: 16 (Instantiated 2 times - 0% of the total, cost 8) top 3 of 3 user-level quantifiers.
-  --> ../examples/trigger_loops.rs:66:20
+note: Cost * Instantiations: 3 (Instantiated 1 times - 0% of the total, cost 3) top 3 of 3 user-level quantifiers.
+  --> ../examples/trigger_loops.rs:68:24
    |
-66 |    forall|x: nat| g(x),
-   |    ---------------^^^^ Triggers selected for this quantifier
+68 |         forall|x: nat| g(x),
+   |         ---------------^^^^
+   |         |
+   |         Triggers selected for this quantifier
 
-error: aborting due to previous error
+verification results:: 0 verified, 1 errors
+error: aborting due to 1 previous error
 ```
 
 The profiler measures two aspects of quantifier performance.  First, it collects a basic count of how
