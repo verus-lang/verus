@@ -3,12 +3,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
 use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand};
-use crate::metadata::{fetch_metadata, make_package_id, MetadataIndex};
+use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
