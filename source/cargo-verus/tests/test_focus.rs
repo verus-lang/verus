@@ -118,7 +118,10 @@ fn workspace_package_hasdeps() {
             MockPackage::new(optin).lib().verify(true),
             MockPackage::new(optout).lib().verify(false),
             MockPackage::new(unset).lib(),
-            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+            MockPackage::new(hasdeps)
+                .lib()
+                .deps([MockDep::workspace(optin), MockDep::workspace(optout)])
+                .verify(true),
         ])
         .materialize();
 
