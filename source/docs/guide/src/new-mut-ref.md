@@ -281,6 +281,24 @@ fn build_zero_list(len: u64) -> (list: List)
 }
 ```
 
+# Resolution
+
+```rust
+fn test() {
+    let mut a = 0;
+    let b = &mut a;
+
+    *b = 5;
+
+    // assert(has_resolved(b)); // fails
+
+    *b = 12;
+
+    assert(has_resolved(b)); // ok
+    assert(a == 12);
+}
+```
+
 ## A closer look
 
 To understand the formal theory better, let's dissect the earlier examples and see just how
