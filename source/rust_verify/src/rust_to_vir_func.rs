@@ -14,7 +14,7 @@ use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
     Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
-    HirId, MaybeOwner, Param, Safety,
+    HirId, MaybeOwner, Param, Safety, Expr,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
@@ -518,8 +518,6 @@ fn compare_external_ty<'tcx>(
     ty2: &rustc_middle::ty::Ty<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
-    // println!("ty1 {:#?} \n ty2 {:#?}", ty1, ty2);
-    // println!("external_trait_from_to {:#?}", external_trait_from_to);
     if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
     } else if let (
@@ -528,12 +526,16 @@ fn compare_external_ty<'tcx>(
     ) = (ty1.kind(), ty2.kind())
     {
         // two opaque types. We compare their trait bounds
+        println!("ty1 {:#?} \n ty2 {:#?}", ty1, ty2);
+        println!("external_trait_from_to {:#?}", external_trait_from_to);
         let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
         let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
         if ty1_bounds.len() != ty2_bounds.len() {
             return false;
         }
+
         for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
+            println!("bound1 {:#?} \n bound2 {:#?} \n result {:#?}", bound1, bound2, !compare_clasue_kind(&bound1.kind().skip_binder(), &bound2.kind().skip_binder()));
             if !compare_clasue_kind(&bound1.kind().skip_binder(), &bound2.kind().skip_binder()) {
                 return false;
             }
@@ -1934,6 +1936,10 @@ pub(crate) fn check_item_fn<'tcx>(
             autospec.redirect_to.clone();
     }
 
+    if is_async{
+        println!("async fun {:#?}",function);
+    }
+
     functions.push(function);
 
     if let Some(f) = &autospec.new_func {
@@ -2116,6 +2122,8 @@ fn handle_async_func<'tcx>(
         loop_isolation: false,
         new_mut_ref,
     };
+    println!("fn_sig: {:#?}", ctxt.tcx.fn_sig(fun_id).skip_binder().skip_binder());
+    println!("body_hir: {:#?}", body_hir);
 
     let FunctionX {
         name,
@@ -2130,7 +2138,7 @@ fn handle_async_func<'tcx>(
         typ_bounds,
         mut params,
         ret,
-        ens_has_return,
+        ens_has_return:_,
         require,
         ensure,
         returns,
@@ -2151,6 +2159,7 @@ fn handle_async_func<'tcx>(
     let async_body_bindings = match body_hir.value.kind {
         rustc_hir::ExprKind::Closure(cls) => {
             let closure_body = crate::rust_to_vir_func::find_body(ctxt, &cls.body);
+            println!("closure_body: {:#?}", closure_body);
             match closure_body.value.kind {
                 rustc_hir::ExprKind::Block(block, ..) => block.stmts,
                 _ => {
@@ -2168,20 +2177,25 @@ fn handle_async_func<'tcx>(
             );
         }
     };
-
-    let stmts = stmts_to_vir(&bctx, &mut async_body_bindings.iter())?;
+    
     let mut async_body_modes = HashMap::new();
-    if let Some(stmts) = stmts {
-        for stmt in stmts {
-            if let StmtX::Decl { pattern, mode: _, init, els: _ } = &stmt.x {
-                if let (PatternX::Var(pat), Some(init)) = (&pattern.x, init) {
-                    if let ExprX::Var(var) = &vir::ast_util::place_to_expr(&init).x {
-                        async_body_modes.insert(var.clone(), pat.name.clone());
-                    }
-                }
-            }
+    for stmt in async_body_bindings.iter(){
+        if let rustc_hir::StmtKind::Let(let_stmt) = stmt.kind {
+            let pat = crate::rust_to_vir_expr::pat_to_var(let_stmt.pat)?;
+            let init = let_stmt.init.expect("internal error: async body params rebinding has no initial value");
+            // if let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(op_ty, path)) = init.kind{
+            //     let ident = crate::rust_to_vir_base::qpath_to_ident(bctx.ctxt.tcx, path)?;
+            //     println!("pat {:#?}, ident {:#?}", pat, ident);
+            // }
+            if let rustc_hir::ExprKind::Path(qpath) = init.kind{
+                let ident = crate::rust_to_vir_base::qpath_to_ident(bctx.ctxt.tcx, &qpath).expect("internal error: async body params rebinding has no initial value");
+                println!("pat {:#?}, ident {:#?}", pat, ident);
+                async_body_modes.insert(ident.clone(), pat.clone());
+            } 
         }
     }
+
+    println!("async_body_modes {:#?}", async_body_modes);
 
     let mut rewitten_params = vec![];
     for param in params.iter() {
@@ -2198,6 +2212,8 @@ fn handle_async_func<'tcx>(
     }
     params = Arc::new(rewitten_params);
 
+    println!("handling of async function is done");
+
     Ok(FunctionX {
         name,
         proxy,
@@ -2211,7 +2227,7 @@ fn handle_async_func<'tcx>(
         typ_bounds,
         params,
         ret,
-        ens_has_return,
+        ens_has_return:true,
         require,
         ensure,
         returns,
@@ -2497,14 +2513,106 @@ pub(crate) fn get_external_def_id<'tcx>(
     let tcx = ctxt.tcx;
 
     let err = || {
+        println!("Forcibly captured backtrace:\n{}", std::backtrace::Backtrace::force_capture());
         err_span(
             sig.span,
             format!("assume_specification encoding error: body should end in call expression"),
         )
     };
+    if sig.header.asyncness.is_async(){
+        println!("async external def");
+        println!("body {:#?}", body);
+        let async_body_expr = match body.value.kind {
+            rustc_hir::ExprKind::Closure(cls) => {
+            let closure_body = crate::rust_to_vir_func::find_body(ctxt, &cls.body);
+                match closure_body.value.kind {
+                    rustc_hir::ExprKind::Block(block, ..) => {
+                        let expr = block.expr.expect("async function block has no expression");
+                        match expr.kind {
+                            rustc_hir::ExprKind::DropTemps(expr) => expr,
+                            _ => {
+                                return err_span(
+                                    body.value.span,
+                                    format!(
+                                        "internal error: async function desugered closure expression is not `DropTemps`"
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        return err_span(
+                            body.value.span,
+                            format!(
+                                "internal error: async function desugered closure doesn't have a block"
+                            ),
+                        );
+                    }
+                }
+            }
+            _ => {
+                return err_span(
+                    body.value.span,
+                    format!("internal error: async function desugered body is not a closure"),
+                );
+            }
+        };
+        println!("async external body {:#?}", async_body_expr);
+    }else {
+        println!("external body {:#?}", body);
+    }
 
     // Get the 'body' of this function (skipping over header and unsafe-block if necessary)
-    let expr = match &body.value.kind {
+    let expr = if sig.header.asyncness.is_async() {
+        let async_body = match body.value.kind {
+            rustc_hir::ExprKind::Closure(cls) => {
+            let closure_body = crate::rust_to_vir_func::find_body(ctxt, &cls.body);
+                match closure_body.value.kind {
+                    rustc_hir::ExprKind::Block(block, ..) => {
+                        let expr = block.expr.expect("async function block has no expression");
+                        match expr.kind {
+                            rustc_hir::ExprKind::DropTemps(expr) => expr,
+                            _ => {
+                                return err_span(
+                                    body.value.span,
+                                    format!(
+                                        "internal error: async function desugered closure expression is not `DropTemps`"
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        return err_span(
+                            body.value.span,
+                            format!(
+                                "internal error: async function desugered closure doesn't have a block"
+                            ),
+                        );
+                    }
+                }
+            }
+            _ => {
+                return err_span(
+                    body.value.span,
+                    format!("internal error: async function desugered body is not a closure"),
+                );
+            }
+        };
+
+        match &async_body.kind {
+            ExprKind::Block(block_body, _) => match &block_body.expr {
+                Some(body_value) => body_value,
+                None => {
+                    return err();
+                }
+            },
+            _ => &body.value,
+    
+    }
+
+    } else {
+        match &body.value.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
             Some(body_value) => body_value,
             None => {
@@ -2512,7 +2620,13 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         _ => &body.value,
+    
+    }
     };
+
+
+
+
     let expr = match &expr.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
             Some(body_value) => body_value,
@@ -2524,6 +2638,36 @@ pub(crate) fn get_external_def_id<'tcx>(
     };
 
     let types = body_id_to_types(tcx, body_id);
+
+    let expr = if sig.header.asyncness.is_async(){
+        match expr.kind {
+            ExprKind::Match(
+                Expr {
+                    hir_id: _,
+                    kind:
+                        ExprKind::Call(
+                            Expr {
+                                hir_id: _,
+                                kind: ExprKind::Path(rustc_hir::QPath::LangItem(rustc_hir::LangItem::IntoFutureIntoFuture, _)),
+                                span: _,
+                            },
+                            call_args,
+                        ),
+                    span: _,
+                },
+                _arms,
+                _match_source,
+            ) => {
+                &&call_args[0]
+            }
+            _ => return err_span(
+                    body.value.span,
+                    format!("internal error: async function desugered body is not a closure"),
+                ),
+    }
+    }else{
+        expr
+    };
 
     let (external_id, hir_id, is_const) = match &expr.kind {
         ExprKind::Call(fun, _args) => match &fun.kind {

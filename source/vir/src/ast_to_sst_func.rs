@@ -502,6 +502,7 @@ fn req_ens_to_sst(
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
     let pars_mut = Arc::make_mut(&mut pars);
+
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
         if !function.x.attrs.is_async {
             pars_mut.push(param_to_par(&function.x.ret, false));

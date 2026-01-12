@@ -451,7 +451,13 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+            ExpX::Var(x) => {
+                if state.types.contains_key(x) == false{
+                    println!("x {:#?}", x);
+                     println!("Forcibly captured backtrace:\n{}", std::backtrace::Backtrace::force_capture());
+                }
+                SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone()))
+            },
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -1042,6 +1048,8 @@ fn visit_func_decl_sst(
 
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
+    println!("ens_pars {:#?}", ens_pars);
+    println!("enss0 {:#?}", enss0);
     let enss0 = visit_exps_native(ctx, state, enss0);
     let enss1 = visit_exps_native(ctx, state, enss1);
     state.types.pop_scope();

@@ -1624,6 +1624,8 @@ pub struct OpaqueTypeX {
     pub name: Path,
     pub typ_params: Typs,
     pub typ_bounds: GenericBounds,
+
+    pub external_fn_opaque_type: Option<(Fun, Path)>
 }
 
 pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;
