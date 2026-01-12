@@ -302,7 +302,6 @@ pub(crate) enum AtomicUpdateItem {
     AtomicUpdateOutput,
     AtomicUpdateOuterMask,
     AtomicUpdateInnerMask,
-    AtomicUpdateMayAbort,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -322,6 +321,7 @@ pub(crate) enum VstdItem {
     Invariant(InvariantItem),
     AtomicUpdate(AtomicUpdateItem),
     PredArgs,
+    BranchBool,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -597,6 +597,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
         ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
+        ("verus::vstd::atomic::branch_bool",              VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
@@ -605,7 +606,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::atomic::AtomicUpdate::output",     VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
         ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
-        ("verus::vstd::atomic::AtomicUpdate::may_abort",  VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateMayAbort),  Some(Arc::new("atomic::AtomicUpdate::may_abort".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index",             VerusItem::Vstd(VstdItem::VecIndex,               Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::std_specs::vec::vec_index_mut",         VerusItem::Vstd(VstdItem::VecIndexMut,            Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),

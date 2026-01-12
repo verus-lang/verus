@@ -441,8 +441,6 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         // invariant masks
         "inner_mask",
         "outer_mask",
-        // no_abort flag
-        "may_abort",
     ];
 
     for &method in AU_METHOD_NAMES {
@@ -451,6 +449,20 @@ fn reach_atomic_update_ops(state: &mut State, ctxt: &Ctxt) {
         let fun = Arc::new(crate::ast::FunX { path });
         reach_function(ctxt, state, &fun);
     }
+
+    reach_function(
+        ctxt,
+        state,
+        &Arc::new(crate::ast::FunX {
+            path: Arc::new(crate::ast::PathX {
+                krate: Some(ctxt.vstd_crate_name.clone()),
+                segments: Arc::new(vec![
+                    Arc::new("atomic".to_owned()),
+                    Arc::new("branch_bool".to_owned()),
+                ]),
+            }),
+        }),
+    );
 
     reach_set_ops(state, &ctxt);
 }

@@ -11,6 +11,7 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
+use super::view::*;
 
 macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident) => {
@@ -687,13 +688,12 @@ impl<T> PAtomicPtr<T> {
 verus! {
 
 #[verifier::reject_recursive_types(X)]
-#[verifier::reject_recursive_types(Z)]
-pub struct AtomicUpdate<X, Y, Z, Pred> {
+pub struct AtomicUpdate<X, Y, Pred> {
     pred: Pred,
-    _dummy: core::marker::PhantomData<spec_fn(X, Z) -> Y>,
+    _dummy: core::marker::PhantomData<spec_fn(X) -> Y>,
 }
 
-impl<X, Y, Z, Pred> AtomicUpdate<X, Y, Z, Pred> {
+impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::pred"]
     pub closed spec fn pred(self) -> Pred {
         self.pred
@@ -709,7 +709,7 @@ impl<X, Y, Z, Pred> AtomicUpdate<X, Y, Z, Pred> {
     pub uninterp spec fn output(self) -> Y;
 }
 
-impl<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>> AtomicUpdate<X, Y, Z, Pred> {
+impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::req"]
     pub open spec fn req(self, x: X) -> bool {
         self.pred().req(x)
@@ -729,14 +729,14 @@ impl<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>> AtomicUpdate<X, Y, Z, Pred> {
     pub open spec fn inner_mask(self) -> Set<int> {
         self.pred().inner_mask()
     }
-
-    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::may_abort"]
-    pub open spec fn may_abort(self) -> bool {
-        self.pred().may_abort()
-    }
 }
 
-pub trait UpdatePredicate<X, Y, Z>: Sized {
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::pred_args"]
+#[doc(hidden)]
+pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
+
+pub trait UpdatePredicate<X, Y>: Sized {
     spec fn req(self, x: X) -> bool;
 
     spec fn ens(self, x: X, y: Y) -> bool;
@@ -748,35 +748,86 @@ pub trait UpdatePredicate<X, Y, Z>: Sized {
     open spec fn inner_mask(self) -> Set<int> {
         Set::empty()
     }
+}
 
-    open spec fn may_abort(self) -> bool {
-        true
+pub enum UpdateControlFlow {
+    Commit,
+    Abort,
+}
+
+impl UpdateControlFlow {
+    pub open spec fn is_commit(self) -> bool {
+        match self {
+            UpdateControlFlow::Commit => true,
+            UpdateControlFlow::Abort => false,
+        }
+    }
+
+    pub open spec fn is_abort(self) -> bool {
+        !self.is_commit()
     }
 }
 
-impl<X, Y, Z> UpdatePredicate<X, Y, Z> for () {
-    open spec fn req(self, x: X) -> bool {
-        true
-    }
+pub trait UpdateTry {
+    spec fn branch(self) -> UpdateControlFlow;
+}
 
-    open spec fn ens(self, x: X, y: Y) -> bool {
-        true
+impl<T, E> UpdateTry for Result<T, E> {
+    open spec fn branch(self) -> UpdateControlFlow {
+        match self {
+            Ok(_) => UpdateControlFlow::Commit,
+            Err(_) => UpdateControlFlow::Abort,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct I<T>(pub T);
+
+impl<T> I<T> {
+    pub proof fn get(tracked self) -> (tracked out: T)
+        ensures self@ == out,
+    {
+        self.0
+    }
+}
+
+impl<T> View for I<T> {
+    type V = T;
+
+    #[verifier::inline]
+    open spec fn view(&self) -> T {
+        self.0
+    }
+}
+
+impl<T> UpdateTry for I<T> {
+    open spec fn branch(self) -> UpdateControlFlow {
+        UpdateControlFlow::Commit
+    }
+}
+
+impl UpdateTry for () {
+    open spec fn branch(self) -> UpdateControlFlow {
+        UpdateControlFlow::Commit
     }
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::atomic::pred_args"]
+#[rustc_diagnostic_item = "verus::vstd::atomic::branch_bool"]
 #[doc(hidden)]
-pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
+pub open spec fn branch_bool<T: UpdateTry>(this: T) -> bool {
+    this.branch().is_commit()
+}
 
 // Definition for atomic function call
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
 #[doc(hidden)]
 #[verifier::external_body]
-pub fn atomically<X, Y, Z, P>(
-    _body: impl FnOnce(fn (X) -> Result<Y, X>, fn () -> Z, Ghost<AtomicUpdate<X, Y, Z, P>>),
-) -> AtomicUpdate<X, Y, Z, P> {
+pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _body: impl FnOnce(fn (X) -> Y, Ghost<AtomicUpdate<X, Y, P>>),
+) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }
 
@@ -790,10 +841,9 @@ pub struct BlockGuard<T> {
 #[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_begin"]
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
-pub fn try_open_atomic_update_begin<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>>(
-    _atomic_update: AtomicUpdate<X, Y, Z, Pred>,
-    _yield: Z,
-) -> (BlockGuard<AtomicUpdate<X, Y, Z, Pred>>, X) {
+pub fn try_open_atomic_update_begin<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _atomic_update: AtomicUpdate<X, Y, P>,
+) -> (BlockGuard<AtomicUpdate<X, Y, P>>, X) {
     unimplemented!()
 }
 
@@ -801,87 +851,81 @@ pub fn try_open_atomic_update_begin<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>>(
 #[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_end"]
 #[doc(hidden)]
 #[verifier::external]  /* vattr */
-pub fn try_open_atomic_update_end<X, Y, Z, Pred: UpdatePredicate<X, Y, Z>>(
-    _guard: BlockGuard<AtomicUpdate<X, Y, Z, Pred>>,
-    _commit_or_abort: Tracked<Result<Y, X>>,
-) -> Tracked<Result<(), AtomicUpdate<X, Y, Z, Pred>>> {
+pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _guard: BlockGuard<AtomicUpdate<X, Y, P>>,
+    _y: Tracked<Y>,
+) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
     unimplemented!()
 }
 
 // Helper function for wrapping/unwrapping tracked results
 // using in `open_atomic_update` and `peek_atomic_update`
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub proof fn au_commit_wrap_proof<X, Y>(tracked y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Ok,
-        res@->Ok_0 == y@,
-    opens_invariants none
-{
-    Tracked(Ok(y.get()))
-}
-
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub exec fn au_commit_wrap_exec<X, Y>(y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Ok,
-        res@->Ok_0 == y@,
-    opens_invariants none
-{
-    Tracked(Ok(y.get()))
-}
-
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub proof fn au_abort_wrap_proof<X, Y>(tracked x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Err,
-        res@->Err_0 == x@,
-    opens_invariants none
-{
-    Tracked(Err(x.get()))
-}
-
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub exec fn au_abort_wrap_exec<X, Y>(x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
-    ensures
-        res@ is Err,
-        res@->Err_0 == x@,
-    opens_invariants none
-{
-    Tracked(Err(x.get()))
-}
-
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub proof fn au_abort_unwrap_proof<X, Y, Z, Pred>(
-    tracked err_au: Tracked<Result<(), AtomicUpdate<X, Y, Z, Pred>>>,
-) -> (au: Tracked<AtomicUpdate<X, Y, Z, Pred>>)
-    requires
-        err_au@ is Err,
-    ensures
-        err_au@->Err_0 == au@,
-    opens_invariants none
-{
-    Tracked(err_au.get().tracked_unwrap_err())
-}
-
-#[doc(hidden)]
-#[verifier::skip_inst_collector]
-pub exec fn au_abort_unwrap_exec<X, Y, Z, Pred>(
-    err_au: Tracked<Result<(), AtomicUpdate<X, Y, Z, Pred>>>,
-) -> (au: Tracked<AtomicUpdate<X, Y, Z, Pred>>)
-    requires
-        err_au@ is Err,
-    ensures
-        err_au@->Err_0 == au@,
-    opens_invariants none
-{
-    Tracked(err_au.get().tracked_unwrap_err())
-}
-
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub proof fn au_commit_wrap_proof<X, Y>(tracked y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
+//     ensures
+//         res@ is Ok,
+//         res@->Ok_0 == y@,
+//     opens_invariants none
+// {
+//     Tracked(Ok(y.get()))
+// }
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub exec fn au_commit_wrap_exec<X, Y>(y: Tracked<Y>) -> (res: Tracked<Result<Y, X>>)
+//     ensures
+//         res@ is Ok,
+//         res@->Ok_0 == y@,
+//     opens_invariants none
+// {
+//     Tracked(Ok(y.get()))
+// }
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub proof fn au_abort_wrap_proof<X, Y>(tracked x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
+//     ensures
+//         res@ is Err,
+//         res@->Err_0 == x@,
+//     opens_invariants none
+// {
+//     Tracked(Err(x.get()))
+// }
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub exec fn au_abort_wrap_exec<X, Y>(x: Tracked<X>) -> (res: Tracked<Result<Y, X>>)
+//     ensures
+//         res@ is Err,
+//         res@->Err_0 == x@,
+//     opens_invariants none
+// {
+//     Tracked(Err(x.get()))
+// }
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub proof fn au_abort_unwrap_proof<X, Y, Z, Pred>(
+//     tracked err_au: Tracked<Result<(), AtomicUpdate<X, Y, Z, Pred>>>,
+// ) -> (au: Tracked<AtomicUpdate<X, Y, Z, Pred>>)
+//     requires
+//         err_au@ is Err,
+//     ensures
+//         err_au@->Err_0 == au@,
+//     opens_invariants none
+// {
+//     Tracked(err_au.get().tracked_unwrap_err())
+// }
+// #[doc(hidden)]
+// #[verifier::skip_inst_collector]
+// pub exec fn au_abort_unwrap_exec<X, Y, Z, Pred>(
+//     err_au: Tracked<Result<(), AtomicUpdate<X, Y, Z, Pred>>>,
+// ) -> (au: Tracked<AtomicUpdate<X, Y, Z, Pred>>)
+//     requires
+//         err_au@ is Err,
+//     ensures
+//         err_au@->Err_0 == au@,
+//     opens_invariants none
+// {
+//     Tracked(err_au.get().tracked_unwrap_err())
+// }
 // Macro definitions
 #[macro_export]
 macro_rules! open_atomic_update {
@@ -973,8 +1017,8 @@ macro_rules! try_open_atomic_update_in_proof {
 
 #[macro_export]
 macro_rules! try_open_atomic_update_internal {
-    ($au:expr, $x:pat $(, yield $z:expr)? => $body:block, @EXEC, $wrap_fn:ident) => {
-        $crate::atomic::try_open_atomic_update_internal!($au, $x $(, yield $z)? => {
+    ($au:expr, $x:pat => $body:block, @EXEC, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
             #[verifier::exec]
             let v = $body;
 
@@ -988,8 +1032,8 @@ macro_rules! try_open_atomic_update_internal {
         })
     };
 
-    ($au:expr, $x:pat $(, yield $z:expr)? => $body:block, @PROOF, $wrap_fn:ident) => {
-        $crate::atomic::try_open_atomic_update_internal!($au, $x $(, yield $z)? => {
+    ($au:expr, $x:pat => $body:block, @PROOF, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
             #[verifier::proof]
             let v = $body;
 
@@ -1003,14 +1047,10 @@ macro_rules! try_open_atomic_update_internal {
         })
     };
 
-    ($au:expr, $x:pat $(, yield $z:expr)? => $body:block) => {
+    ($au:expr, $x:pat => $body:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            let (guard, $x) = $crate::atomic::try_open_atomic_update_begin(
-                $au,
-                ($($z)?)
-            );
-
+            let (guard, $x) = $crate::atomic::try_open_atomic_update_begin($au);
             let res = $body;
 
             match res {

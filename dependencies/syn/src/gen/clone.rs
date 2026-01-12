@@ -138,12 +138,10 @@ impl Clone for crate::AtomicSpec {
             block_token: self.block_token.clone(),
             type_clause: self.type_clause.clone(),
             perm_clause: self.perm_clause.clone(),
-            yield_type: self.yield_type.clone(),
             requires: self.requires.clone(),
             ensures: self.ensures.clone(),
             outer_mask: self.outer_mask.clone(),
             inner_mask: self.inner_mask.clone(),
-            no_abort: self.no_abort.clone(),
             comma_token: self.comma_token.clone(),
         }
     }
@@ -161,7 +159,6 @@ impl Clone for crate::AtomicallyBlock {
             invariant_except_breaks: self.invariant_except_breaks.clone(),
             invariants: self.invariants.clone(),
             ensures: self.ensures.clone(),
-            yield_let: self.yield_let.clone(),
             body: self.body.clone(),
         }
     }
@@ -2098,15 +2095,6 @@ impl Clone for crate::ModeTracked {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
-impl Clone for crate::NoAbort {
-    fn clone(&self) -> Self {
-        crate::NoAbort {
-            token: self.token.clone(),
-            comma_token: self.comma_token.clone(),
-        }
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::Open {
     fn clone(&self) -> Self {
         crate::Open {
@@ -2500,6 +2488,20 @@ impl Clone for crate::Requires {
         crate::Requires {
             token: self.token.clone(),
             exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ReturnPat {
+    fn clone(&self) -> Self {
+        match self {
+            crate::ReturnPat::Default => crate::ReturnPat::Default,
+            crate::ReturnPat::Pat(v0, v1, v2, v3) => {
+                crate::ReturnPat::Pat(v0.clone(), v1.clone(), v2.clone(), v3.clone())
+            }
+            crate::ReturnPat::Type(v0, v1) => {
+                crate::ReturnPat::Type(v0.clone(), v1.clone())
+            }
         }
     }
 }
@@ -3173,28 +3175,6 @@ impl Clone for crate::WithSpecOnFn {
             with: self.with.clone(),
             inputs: self.inputs.clone(),
             outputs: self.outputs.clone(),
-        }
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
-impl Clone for crate::YieldLet {
-    fn clone(&self) -> Self {
-        crate::YieldLet {
-            token1: self.token1.clone(),
-            token2: self.token2.clone(),
-            ident: self.ident.clone(),
-            comma_token: self.comma_token.clone(),
-        }
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
-impl Clone for crate::YieldType {
-    fn clone(&self) -> Self {
-        crate::YieldType {
-            token1: self.token1.clone(),
-            token2: self.token2.clone(),
-            ty: self.ty.clone(),
-            comma_token: self.comma_token.clone(),
         }
     }
 }

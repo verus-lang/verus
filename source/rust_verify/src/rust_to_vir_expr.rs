@@ -2131,14 +2131,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     ))
                                 }
 
-                                Some(actx) if actx.yield_binder == local_hir_id => {
-                                    Some(bctx.spanned_typed_new(
-                                        fun.span,
-                                        &expr_typ()?,
-                                        ExprX::Yield(actx.info.clone()),
-                                    ))
-                                }
-
                                 // dynamically computed function, see below
                                 _ => None,
                             }

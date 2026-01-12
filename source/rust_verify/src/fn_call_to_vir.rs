@@ -707,8 +707,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     panic!("`vstd::atomic::atomically` should return an atomic update")
                 };
 
-                let [x_typ, y_typ, yield_typ, pred_typ] = au_typ_args.as_slice() else {
-                    panic!("`vstd::atomic::AtomicUpdate` should take four type arguments")
+                let [x_typ, y_typ, pred_typ] = au_typ_args.as_slice() else {
+                    panic!("`vstd::atomic::AtomicUpdate` should take three type arguments")
                 };
 
                 let [Expr { kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), .. }] =
@@ -722,8 +722,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param, yield_param, spec_au_param] = body.params else {
-                    panic!("the closure should take exactly three argument")
+                let [update_param, spec_au_param] = body.params else {
+                    panic!("the closure should take exactly two argument")
                 };
 
                 let Some(args) = &bctx.au_pred_args else {
@@ -746,7 +746,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     au_typ_args: au_typ_args.clone(),
                     x_typ: x_typ.clone(),
                     y_typ: y_typ.clone(),
-                    yield_typ: yield_typ.clone(),
                     pred_typ: pred_typ.clone(),
                     call_span: expr_span,
                 });
@@ -754,7 +753,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let (tx, rx) = std::sync::mpsc::channel();
                 let actx = Arc::new(AtomicallyCtxt {
                     update_binder: update_param.pat.hir_id,
-                    yield_binder: yield_param.pat.hir_id,
                     call_spans: tx,
                     info: info.clone(),
                 });

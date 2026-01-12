@@ -1019,6 +1019,13 @@ pub fn fn_set_contains_name(vstd_crate_name: &Ident) -> Fun {
     })
 }
 
+pub fn result_type_path() -> Path {
+    Arc::new(PathX {
+        krate: Some(Arc::new("core".to_owned())),
+        segments: Arc::new(vec![Arc::new("result".to_owned()), Arc::new("Result".to_owned())]),
+    })
+}
+
 pub fn strslice_module_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),

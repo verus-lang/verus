@@ -770,9 +770,6 @@ pub trait Visit<'ast> {
     fn visit_mode_tracked(&mut self, i: &'ast crate::ModeTracked) {
         visit_mode_tracked(self, i);
     }
-    fn visit_no_abort(&mut self, i: &'ast crate::NoAbort) {
-        visit_no_abort(self, i);
-    }
     fn visit_open(&mut self, i: &'ast crate::Open) {
         visit_open(self, i);
     }
@@ -923,6 +920,9 @@ pub trait Visit<'ast> {
     }
     fn visit_requires(&mut self, i: &'ast crate::Requires) {
         visit_requires(self, i);
+    }
+    fn visit_return_pat(&mut self, i: &'ast crate::ReturnPat) {
+        visit_return_pat(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1181,12 +1181,6 @@ pub trait Visit<'ast> {
     fn visit_with_spec_on_fn(&mut self, i: &'ast crate::WithSpecOnFn) {
         visit_with_spec_on_fn(self, i);
     }
-    fn visit_yield_let(&mut self, i: &'ast crate::YieldLet) {
-        visit_yield_let(self, i);
-    }
-    fn visit_yield_type(&mut self, i: &'ast crate::YieldType) {
-        visit_yield_type(self, i);
-    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1374,9 +1368,6 @@ where
         v.visit_pred_type_clause(it);
     }
     v.visit_perm_clause(&node.perm_clause);
-    if let Some(it) = &node.yield_type {
-        v.visit_yield_type(it);
-    }
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
@@ -1389,9 +1380,6 @@ where
     if let Some(it) = &node.inner_mask {
         v.visit_inner_mask(it);
     }
-    if let Some(it) = &node.no_abort {
-        v.visit_no_abort(it);
-    }
     skip!(node.comma_token);
 }
 pub fn visit_atomically_block<'ast, V>(v: &mut V, node: &'ast crate::AtomicallyBlock)
@@ -1403,9 +1391,7 @@ where
     v.visit_ident(&node.update_fn_binder);
     skip!(node.comma_token);
     skip!(node.or2_token);
-    if let Some(it) = &node.spec_au_binder {
-        v.visit_return_value(it);
-    }
+    v.visit_return_pat(&node.spec_au_binder);
     if let Some(it) = &node.invariant_except_breaks {
         v.visit_invariant_except_break(it);
     }
@@ -1414,9 +1400,6 @@ where
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
-    }
-    if let Some(it) = &node.yield_let {
-        v.visit_yield_let(it);
     }
     full!(v.visit_block(& * node.body));
 }
@@ -3983,13 +3966,6 @@ where
 {
     skip!(node.tracked_token);
 }
-pub fn visit_no_abort<'ast, V>(v: &mut V, node: &'ast crate::NoAbort)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    skip!(node.token);
-    skip!(node.comma_token);
-}
 pub fn visit_open<'ast, V>(v: &mut V, node: &'ast crate::Open)
 where
     V: Visit<'ast> + ?Sized,
@@ -4474,6 +4450,27 @@ where
 {
     skip!(node.token);
     v.visit_specification(&node.exprs);
+}
+pub fn visit_return_pat<'ast, V>(v: &mut V, node: &'ast crate::ReturnPat)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        crate::ReturnPat::Default => {}
+        crate::ReturnPat::Pat(_binding_0, _binding_1, _binding_2, _binding_3) => {
+            skip!(_binding_0);
+            skip!(_binding_1);
+            full!(v.visit_pat(_binding_2));
+            if let Some(it) = _binding_3 {
+                skip!((* * it).0);
+                v.visit_type(&(**it).1);
+            }
+        }
+        crate::ReturnPat::Type(_binding_0, _binding_1) => {
+            skip!(_binding_0);
+            v.visit_type(&**_binding_1);
+        }
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -5356,22 +5353,4 @@ where
             full!(v.visit_pat_type(it));
         }
     }
-}
-pub fn visit_yield_let<'ast, V>(v: &mut V, node: &'ast crate::YieldLet)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    skip!(node.token1);
-    skip!(node.token2);
-    v.visit_ident(&node.ident);
-    skip!(node.comma_token);
-}
-pub fn visit_yield_type<'ast, V>(v: &mut V, node: &'ast crate::YieldType)
-where
-    V: Visit<'ast> + ?Sized,
-{
-    skip!(node.token1);
-    skip!(node.token2);
-    v.visit_type(&node.ty);
-    skip!(node.comma_token);
 }

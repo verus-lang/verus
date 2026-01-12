@@ -855,9 +855,6 @@ pub trait Fold {
     fn fold_mode_tracked(&mut self, i: crate::ModeTracked) -> crate::ModeTracked {
         fold_mode_tracked(self, i)
     }
-    fn fold_no_abort(&mut self, i: crate::NoAbort) -> crate::NoAbort {
-        fold_no_abort(self, i)
-    }
     fn fold_open(&mut self, i: crate::Open) -> crate::Open {
         fold_open(self, i)
     }
@@ -1029,6 +1026,9 @@ pub trait Fold {
     }
     fn fold_requires(&mut self, i: crate::Requires) -> crate::Requires {
         fold_requires(self, i)
+    }
+    fn fold_return_pat(&mut self, i: crate::ReturnPat) -> crate::ReturnPat {
+        fold_return_pat(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1330,12 +1330,6 @@ pub trait Fold {
     fn fold_with_spec_on_fn(&mut self, i: crate::WithSpecOnFn) -> crate::WithSpecOnFn {
         fold_with_spec_on_fn(self, i)
     }
-    fn fold_yield_let(&mut self, i: crate::YieldLet) -> crate::YieldLet {
-        fold_yield_let(self, i)
-    }
-    fn fold_yield_type(&mut self, i: crate::YieldType) -> crate::YieldType {
-        fold_yield_type(self, i)
-    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1486,12 +1480,10 @@ where
         block_token: node.block_token,
         type_clause: (node.type_clause).map(|it| f.fold_pred_type_clause(it)),
         perm_clause: f.fold_perm_clause(node.perm_clause),
-        yield_type: (node.yield_type).map(|it| f.fold_yield_type(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         outer_mask: (node.outer_mask).map(|it| f.fold_outer_mask(it)),
         inner_mask: (node.inner_mask).map(|it| f.fold_inner_mask(it)),
-        no_abort: (node.no_abort).map(|it| f.fold_no_abort(it)),
         comma_token: node.comma_token,
     }
 }
@@ -1508,12 +1500,11 @@ where
         update_fn_binder: f.fold_ident(node.update_fn_binder),
         comma_token: node.comma_token,
         or2_token: node.or2_token,
-        spec_au_binder: (node.spec_au_binder).map(|it| f.fold_return_value(it)),
+        spec_au_binder: f.fold_return_pat(node.spec_au_binder),
         invariant_except_breaks: (node.invariant_except_breaks)
             .map(|it| f.fold_invariant_except_break(it)),
         invariants: (node.invariants).map(|it| f.fold_invariant(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
-        yield_let: (node.yield_let).map(|it| f.fold_yield_let(it)),
         body: Box::new(full!(f.fold_block(* node.body))),
     }
 }
@@ -3964,15 +3955,6 @@ where
         tracked_token: node.tracked_token,
     }
 }
-pub fn fold_no_abort<F>(f: &mut F, node: crate::NoAbort) -> crate::NoAbort
-where
-    F: Fold + ?Sized,
-{
-    crate::NoAbort {
-        token: node.token,
-        comma_token: node.comma_token,
-    }
-}
 pub fn fold_open<F>(f: &mut F, node: crate::Open) -> crate::Open
 where
     F: Fold + ?Sized,
@@ -4438,6 +4420,25 @@ where
     crate::Requires {
         token: node.token,
         exprs: f.fold_specification(node.exprs),
+    }
+}
+pub fn fold_return_pat<F>(f: &mut F, node: crate::ReturnPat) -> crate::ReturnPat
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        crate::ReturnPat::Default => crate::ReturnPat::Default,
+        crate::ReturnPat::Pat(_binding_0, _binding_1, _binding_2, _binding_3) => {
+            crate::ReturnPat::Pat(
+                _binding_0,
+                _binding_1,
+                full!(f.fold_pat(_binding_2)),
+                (_binding_3).map(|it| Box::new(((*it).0, f.fold_type((*it).1)))),
+            )
+        }
+        crate::ReturnPat::Type(_binding_0, _binding_1) => {
+            crate::ReturnPat::Type(_binding_0, Box::new(f.fold_type(*_binding_1)))
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -5289,28 +5290,6 @@ where
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_fn_arg),
         outputs: (node.outputs)
             .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_pat_type))),
-    }
-}
-pub fn fold_yield_let<F>(f: &mut F, node: crate::YieldLet) -> crate::YieldLet
-where
-    F: Fold + ?Sized,
-{
-    crate::YieldLet {
-        token1: node.token1,
-        token2: node.token2,
-        ident: f.fold_ident(node.ident),
-        comma_token: node.comma_token,
-    }
-}
-pub fn fold_yield_type<F>(f: &mut F, node: crate::YieldType) -> crate::YieldType
-where
-    F: Fold + ?Sized,
-{
-    crate::YieldType {
-        token1: node.token1,
-        token2: node.token2,
-        ty: f.fold_type(node.ty),
-        comma_token: node.comma_token,
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

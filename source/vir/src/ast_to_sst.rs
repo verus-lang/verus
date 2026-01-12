@@ -2522,31 +2522,25 @@ pub(crate) fn expr_to_stm_opt(
             // This is roughtly what the generated SST looks like:
             //
             // ```
-            // let au_tmp = $au_expr;
-            // let x_tmp = new existential;
+            // let au = $au_expr;
+            // let x = new existential;
             //
-            // assume(req(au_tmp, x_tmp));
-            // assert(inner_mask(au_tmp) ⊆ state.mask);
+            // assume(req(au, x));
+            // assert(inner_mask(au) ⊆ state.mask);
             //
-            // let $mut $x = x_tmp;
-            // let res = $body;
+            // let $mut $x = x;
+            // let y = $body;
             //
-            // assert(may_abort(au_tmp) || is_variant(res, Ok));
+            // assert(ens(au, x, y));
             //
-            // if is_variant(res, Ok) {
-            //     let y = field(res, Ok);
-            //     assert(ens(au_tmp, x_tmp, y));
-            //
-            //     assume(input(au_tmp, x_tmp));
-            //     assume(output(au_tmp, y));
-            //     assume(resolves(au_tmp));
+            // if branch_bool(y) {
+            //     assume(input(au, x));
+            //     assume(output(au, y));
+            //     assume(resolves(au));
             //
             //     Ok(())
             // } else {
-            //     let x = field(res, Err);
-            //     assert(x == x_tmp);
-            //
-            //     Err(au_tmp)
+            //     Err(au)
             // }
             // ```
             //
@@ -2556,7 +2550,7 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, au_raw_exp) = expr_to_stm_opt(ctx, state, au_expr)?;
             let au_raw_val = unwrap_or_return_never!(au_raw_exp, stms);
             let au_typ = undecorate_typ(&au_expr.typ);
-            let au_temp_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_val.to_exp());
+            let au_var_exp = state.make_tmp_var_for_exp(&mut stms, au_raw_val.to_exp());
 
             let TypX::Datatype(_, typ_args, _) = au_typ.as_ref() else {
                 return crate::util::err_span(
@@ -2565,34 +2559,26 @@ pub(crate) fn expr_to_stm_opt(
                 );
             };
 
-            let [x_typ, y_typ, _yield_typ, _pred_typ] = typ_args.as_slice() else {
+            let [x_typ, y_typ, _pred_typ] = typ_args.as_slice() else {
                 return crate::util::err_span(
                     expr.span.clone(),
                     "malformed atomic update block; atomic update should have four type params",
                 );
             };
 
-            let (x_temp_var_id, x_temp_var_exp) =
+            let (x_var_id, x_var_exp) =
                 state.declare_temp_var_stm(&expr.span, x_typ, LocalDeclKind::Nondeterministic);
-            stms.push(assume_has_typ(&x_temp_var_id, x_typ, &expr.span));
+            stms.push(assume_has_typ(&x_var_id, x_typ, &expr.span));
 
-            // generate assumption
+            // assume atomic requires
 
             let call_req = ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
                 typ_args.clone(),
-                Arc::new(vec![au_temp_var_exp.clone(), x_temp_var_exp.clone()]),
+                Arc::new(vec![au_var_exp.clone(), x_var_exp.clone()]),
             );
             let call_req = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_req);
             stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_req.clone())));
-
-            let x_var_id = state.get_var_unique_id(&x_bind.name);
-            state.local_decls.push(Arc::new(LocalDeclX {
-                ident: x_var_id.clone(),
-                typ: x_typ.clone(),
-                kind: LocalDeclKind::StmtLet { mutable: *x_mut },
-            }));
-            stms.push(init_var(&expr.span, &x_var_id, &x_temp_var_exp));
 
             // check invariant mask
 
@@ -2606,7 +2592,7 @@ pub(crate) fn expr_to_stm_opt(
             let call_inner_mask = ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::AtomicUpdate::inner_mask"),
                 typ_args.clone(),
-                Arc::new(vec![au_temp_var_exp.clone()]),
+                Arc::new(vec![au_var_exp.clone()]),
             );
 
             let inner_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_inner_mask);
@@ -2627,6 +2613,17 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
 
+            // generate binder for x
+
+            let x_bind_var_id = state.get_var_unique_id(&x_bind.name);
+            state.local_decls.push(Arc::new(LocalDeclX {
+                ident: x_bind_var_id.clone(),
+                typ: x_typ.clone(),
+                kind: LocalDeclKind::StmtLet { mutable: *x_mut },
+            }));
+
+            stms.push(init_var(&expr.span, &x_bind_var_id, &x_var_exp));
+
             // generate body
 
             state.push_scope();
@@ -2639,132 +2636,58 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             let body_val = unwrap_or_return_never!(body_exp, stms);
-            let res_var_exp = state.make_tmp_var_for_exp(&mut stms, body_val.to_exp());
-            let res_typ = undecorate_typ(&res_var_exp.typ);
+            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_val.to_exp());
 
-            // generate `no_abort` assertion
+            // assert atomic ensures
 
-            let TypX::Datatype(res_dt, ..) = &*res_typ else {
-                return crate::util::err_span(
-                    expr.span.clone(),
-                    "malformed atomic update block; result should be a datatype",
+            if !state.checking_recommends(ctx) {
+                let call_ens = ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
+                    typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
                 );
-            };
 
+                let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
+                let error =
+                    error(&expr.span, "cannot show atomic postcondition hold at end of block");
+
+                stms.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(error), call_ens),
+                ));
+            }
+
+            // generate condition
+
+            let res_dt = Dt::Path(crate::def::result_type_path());
             let ok_variant = Arc::new("Ok".to_owned());
             let err_variant = Arc::new("Err".to_owned());
             let variant_field = Arc::new("0".to_owned());
 
-            let res_is_ok = SpannedTyped::new(
-                &expr.span,
-                &Arc::new(TypX::Bool),
-                ExpX::UnaryOpr(
-                    UnaryOpr::IsVariant { datatype: res_dt.clone(), variant: ok_variant.clone() },
-                    res_var_exp.clone(),
-                ),
-            );
-
-            let res_is_ok = state.make_tmp_var_for_exp(&mut stms, res_is_ok);
-
-            let may_abort = SpannedTyped::new(
+            let branch_bool = SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::may_abort"),
-                    typ_args.clone(),
-                    Arc::new(vec![au_temp_var_exp.clone()]),
+                    ctx.fn_from_path("#vstd::atomic::branch_bool"),
+                    Arc::new(vec![y_typ.clone()]),
+                    Arc::new(vec![y_var_exp.clone()]),
                 ),
             );
 
-            let disj_exp = SpannedTyped::new(
-                &expr.span,
-                &Arc::new(TypX::Bool),
-                ExpX::Binary(BinaryOp::Or, res_is_ok.clone(), may_abort),
-            );
-
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Assert(
-                    state.next_assert_id(),
-                    Some(error(&expr.span, "cannot show atomic update always commits").help(
-                        "this atomic update must always commit, since it is marked as `no_abort`",
-                    )),
-                    disj_exp,
-                ),
-            ));
-
-            // generate condition
-
-            let cond = Maybe::Some(Value::Exp(res_is_ok));
+            let cond = Maybe::Some(Value::Exp(branch_bool));
 
             let (ok_arm_stms, ok_arm_ret_val) = {
                 let mut stms = Vec::new();
 
-                let field_exp = SpannedTyped::new(
-                    &expr.span,
-                    y_typ,
-                    ExpX::UnaryOpr(
-                        UnaryOpr::Field(FieldOpr {
-                            datatype: res_dt.clone(),
-                            variant: ok_variant.clone(),
-                            field: variant_field.clone(),
-                            get_variant: false,
-                            check: VariantCheck::None,
-                        }),
-                        res_var_exp.clone(),
-                    ),
-                );
-
-                let y_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
-
-                // generate assertion
-
-                if !state.checking_recommends(ctx) {
-                    let call_ens = ExpX::Call(
-                        ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
-                        typ_args.clone(),
-                        Arc::new(vec![
-                            au_temp_var_exp.clone(),
-                            x_temp_var_exp.clone(),
-                            y_var_exp.clone(),
-                        ]),
-                    );
-
-                    let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
-                    let error =
-                        error(&expr.span, "cannot show atomic postcondition hold at end of block");
-
-                    stms.push(Spanned::new(
-                        expr.span.clone(),
-                        StmX::Assert(state.next_assert_id(), Some(error), call_ens),
-                    ));
-                }
-
-                // bind for private post condition
-
-                atomic_update_bind_arrow(
+                atomic_update_bind_and_resolve(
                     ctx,
                     expr,
                     typ_args,
-                    &au_temp_var_exp,
-                    &x_temp_var_exp,
+                    &au_var_exp,
+                    &x_var_exp,
                     &y_var_exp,
                     &mut stms,
                 );
-
-                // mark as resolved
-
-                let call_resolves = ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
-                    typ_args.clone(),
-                    Arc::new(vec![au_temp_var_exp.clone()]),
-                );
-
-                let call_resolves =
-                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
-
-                // generate output value
 
                 let unit_typ = crate::ast_util::mk_tuple_typ(&Default::default());
                 let (unit_var_id, unit_var_exp) = state.declare_temp_var_stm(
@@ -2792,46 +2715,7 @@ pub(crate) fn expr_to_stm_opt(
             };
 
             let (err_arm_stms, err_arm_ret_val) = {
-                let mut stms = Vec::new();
-
-                let field_exp = SpannedTyped::new(
-                    &expr.span,
-                    x_typ,
-                    ExpX::UnaryOpr(
-                        UnaryOpr::Field(FieldOpr {
-                            datatype: res_dt.clone(),
-                            variant: err_variant.clone(),
-                            field: variant_field.clone(),
-                            get_variant: false,
-                            check: VariantCheck::None,
-                        }),
-                        res_var_exp.clone(),
-                    ),
-                );
-
-                let x_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
-
-                // generate assertion
-
-                if !state.checking_recommends(ctx) {
-                    let cmp_eq = SpannedTyped::new(
-                        &expr.span,
-                        &Arc::new(TypX::Bool),
-                        ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var_exp, x_temp_var_exp),
-                    );
-
-                    let error = error(
-                        &expr.span,
-                        "atomic update was aborted, but failed to show input stayed the same",
-                    );
-
-                    stms.push(Spanned::new(
-                        expr.span.clone(),
-                        StmX::Assert(state.next_assert_id(), Some(error), cmp_eq),
-                    ));
-                }
-
-                // generate output value
+                let stms = Vec::new();
 
                 let out_exp = SpannedTyped::new(
                     &expr.span,
@@ -2841,7 +2725,7 @@ pub(crate) fn expr_to_stm_opt(
                         err_variant.clone(),
                         Arc::new(vec![Arc::new(BinderX {
                             name: variant_field.clone(),
-                            a: au_temp_var_exp,
+                            a: au_var_exp,
                         })]),
                     ),
                 );
@@ -3015,32 +2899,21 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Update(info, x_expr) => {
             // ```
             // let x = $x_expr;
-            // let res = new existential;
+            // let y = new existential;
             //
             // recommend(inner_mask(au) ⊆ outer_mask(au));
             // assert(inner_mask(au) ⊆ state.mask);
             //
             // assert(req(au, x));
+            // assume(ens(au, x, y));
             //
-            // assume(may_abort(au_tmp) || is_variant(res, Ok));
-            //
-            // if is_variant(res, Ok) {
-            //     let y = field(res, Ok);
-            //     assume(ens(au_tmp, x_tmp, y));
-            //
-            //     assume(input(au_tmp, x_tmp));
-            //     assume(output(au_tmp, y));
-            //     assume(resolves(au_tmp));
-            //
-            //     Ok(())
-            // } else {
-            //     let x = field(res, Err);
-            //     assume(x == x_tmp);
-            //
-            //     Err(au_tmp)
+            // if branch_bool(y) {
+            //     assume(input(au, x));
+            //     assume(output(au, y));
+            //     assume(resolves(au));
             // }
             //
-            // res
+            // y
             // ```
 
             let AtomicCallInfoX { au_typ_args, x_typ, y_typ, call_span, .. } = info.as_ref();
@@ -3053,10 +2926,9 @@ pub(crate) fn expr_to_stm_opt(
             let (x_var_id, x_var_exp) = state.declare_temp_assign(&x_expr.span, x_typ);
             stms.push(init_var(&x_expr.span, &x_var_id, &x_raw_exp));
 
-            let res_typ = &expr.typ;
-            let (res_var_id, res_var_exp) =
-                state.declare_temp_var_stm(&expr.span, res_typ, LocalDeclKind::Nondeterministic);
-            stms.push(assume_has_typ(&res_var_id, res_typ, &expr.span));
+            let (y_var_id, y_var_exp) =
+                state.declare_temp_var_stm(&expr.span, y_typ, LocalDeclKind::Nondeterministic);
+            stms.push(assume_has_typ(&y_var_id, y_typ, &expr.span));
 
             // check invariant mask
 
@@ -3112,7 +2984,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
 
-            // generate assertion
+            // assert atomic requires
 
             let call_req = ExpX::Call(
                 ctx.fn_from_path("#vstd::atomic::AtomicUpdate::req"),
@@ -3135,88 +3007,38 @@ pub(crate) fn expr_to_stm_opt(
                 ));
             }
 
-            // generate assumptions
+            // assume atomic ensures
 
-            let TypX::Datatype(res_dt, ..) = &**res_typ else {
-                dbg!(&res_typ);
-                return crate::util::err_span(
-                    expr.span.clone(),
-                    "malformed update function; result should be a datatype",
-                );
-            };
-
-            let ok_variant = Arc::new("Ok".to_owned());
-            let err_variant = Arc::new("Err".to_owned());
-            let variant_field = Arc::new("0".to_owned());
-
-            let res_is_ok = SpannedTyped::new(
-                &expr.span,
-                &Arc::new(TypX::Bool),
-                ExpX::UnaryOpr(
-                    UnaryOpr::IsVariant { datatype: res_dt.clone(), variant: ok_variant.clone() },
-                    res_var_exp.clone(),
-                ),
-            );
-
-            let res_is_ok = state.make_tmp_var_for_exp(&mut stms, res_is_ok);
-
-            let may_abort = SpannedTyped::new(
+            let call_ens = SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::may_abort"),
-                    au_typ_args.clone(),
-                    Arc::new(vec![au_var_exp.clone()]),
-                ),
-            );
-
-            stms.push(Spanned::new(
-                expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Or, res_is_ok.clone(), may_abort),
-                )),
-            ));
-
-            // generate condition
-
-            let cond = Maybe::Some(Value::Exp(res_is_ok));
-
-            let (ok_arm_stms, ok_arm_ret_val) = {
-                let mut stms = Vec::new();
-
-                let field_exp = SpannedTyped::new(
-                    &expr.span,
-                    y_typ,
-                    ExpX::UnaryOpr(
-                        UnaryOpr::Field(FieldOpr {
-                            datatype: res_dt.clone(),
-                            variant: ok_variant.clone(),
-                            field: variant_field.clone(),
-                            get_variant: false,
-                            check: VariantCheck::None,
-                        }),
-                        res_var_exp.clone(),
-                    ),
-                );
-
-                let y_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
-
-                // generate assumption
-
-                let call_ens = ExpX::Call(
                     ctx.fn_from_path("#vstd::atomic::AtomicUpdate::ens"),
                     au_typ_args.clone(),
                     Arc::new(vec![au_var_exp.clone(), x_var_exp.clone(), y_var_exp.clone()]),
-                );
+                ),
+            );
 
-                let call_ens = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_ens);
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
+            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_ens)));
 
-                // bind for private post condition
+            // generate conditional
 
-                atomic_update_bind_arrow(
+            let branch_bool = SpannedTyped::new(
+                &expr.span,
+                &Arc::new(TypX::Bool),
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::branch_bool"),
+                    Arc::new(vec![y_typ.clone()]),
+                    Arc::new(vec![y_var_exp.clone()]),
+                ),
+            );
+
+            let cond = Maybe::Some(Value::Exp(branch_bool));
+
+            let if_body_stms = {
+                let mut stms = Vec::new();
+
+                atomic_update_bind_and_resolve(
                     ctx,
                     expr,
                     au_typ_args,
@@ -3226,70 +3048,21 @@ pub(crate) fn expr_to_stm_opt(
                     &mut stms,
                 );
 
-                // mark as resolved
-
-                let call_resolves = ExpX::Call(
-                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
-                    au_typ_args.clone(),
-                    Arc::new(vec![au_var_exp.clone()]),
-                );
-
-                let call_resolves =
-                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), call_resolves);
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
-
-                (stms, Maybe::Some(Value::Exp(res_var_exp.clone())))
+                stms
             };
 
-            let (err_arm_stms, err_arm_ret_val) = {
-                let mut stms = Vec::new();
-
-                let field_exp = SpannedTyped::new(
-                    &expr.span,
-                    x_typ,
-                    ExpX::UnaryOpr(
-                        UnaryOpr::Field(FieldOpr {
-                            datatype: res_dt.clone(),
-                            variant: err_variant.clone(),
-                            field: variant_field.clone(),
-                            get_variant: false,
-                            check: VariantCheck::None,
-                        }),
-                        res_var_exp.clone(),
-                    ),
-                );
-
-                let x2_var_exp = state.make_tmp_var_for_exp(&mut stms, field_exp);
-
-                // generate assumption
-
-                let cmp_eq = SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), x2_var_exp, x_var_exp),
-                );
-
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(cmp_eq)));
-
-                (stms, Maybe::Some(Value::Exp(res_var_exp.clone())))
-            };
+            let ret_val = Maybe::Some(Value::Exp(y_var_exp.clone()));
 
             return Ok(if_to_stm(
                 state,
                 expr,
                 stms,
                 &cond,
-                ok_arm_stms,
-                &ok_arm_ret_val,
-                err_arm_stms,
-                &err_arm_ret_val,
+                if_body_stms,
+                &ret_val,
+                Vec::new(),
+                &ret_val,
             ));
-        }
-        ExprX::Yield(_info) => {
-            let (var_ident, exp) =
-                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::Nondeterministic);
-            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
-            Ok((vec![stm], Maybe::Some(Value::Exp(exp))))
         }
         ExprX::InvMask(mask_spec) => {
             let (span, exprs, compl) = match mask_spec {
@@ -3505,7 +3278,7 @@ pub(crate) fn expr_to_stm_opt(
     }
 }
 
-fn atomic_update_bind_arrow(
+fn atomic_update_bind_and_resolve(
     ctx: &Ctx,
     expr: &Expr,
     typ_args: &Typs,
@@ -3533,6 +3306,18 @@ fn atomic_update_bind_arrow(
             )),
         ));
     }
+
+    let call_resolves = SpannedTyped::new(
+        &expr.span,
+        &Arc::new(TypX::Bool),
+        ExpX::Call(
+            ctx.fn_from_path("#vstd::atomic::AtomicUpdate::resolves"),
+            typ_args.clone(),
+            Arc::new(vec![au_exp.clone()]),
+        ),
+    );
+
+    stms.push(Spanned::new(expr.span.clone(), StmX::Assume(call_resolves)));
 }
 
 /// Translate the given binary op given its two arguments as Exps.

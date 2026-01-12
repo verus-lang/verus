@@ -595,12 +595,11 @@ ast_struct! {
     }
 }
 
-ast_struct! {
-    pub struct YieldLet {
-        pub token1: Token![yield],
-        pub token2: Token![let],
-        pub ident: Ident,
-        pub comma_token: Option<Token![,]>,
+ast_enum! {
+    pub enum ReturnPat {
+        Default,
+        Pat(Token![->], token::Paren, Pat, Option<Box<(Token![:], Type)>>),
+        Type(Token![->], Box<Type>),
     }
 }
 
@@ -611,11 +610,10 @@ ast_struct! {
         pub update_fn_binder: Ident,
         pub comma_token: Option<Token![,]>,
         pub or2_token: Token![|],
-        pub spec_au_binder: Option<ReturnValue>,
+        pub spec_au_binder: ReturnPat,
         pub invariant_except_breaks: Option<InvariantExceptBreak>,
         pub invariants: Option<Invariant>,
         pub ensures: Option<Ensures>,
-        pub yield_let: Option<YieldLet>,
         pub body: Box<Block>,
     }
 }
@@ -671,22 +669,6 @@ ast_struct! {
 }
 
 ast_struct! {
-    pub struct YieldType {
-        pub token1: Token![yield],
-        pub token2: Token![type],
-        pub ty: Type,
-        pub comma_token: Option<Token![,]>,
-    }
-}
-
-ast_struct! {
-    pub struct NoAbort {
-        pub token: Token![no_abort],
-        pub comma_token: Option<Token![,]>,
-    }
-}
-
-ast_struct! {
     pub struct AtomicSpec {
         pub atomically_token: Token![atomically],
         pub paren_token: token::Paren,
@@ -694,12 +676,10 @@ ast_struct! {
         pub block_token: token::Brace,
         pub type_clause: Option<PredTypeClause>,
         pub perm_clause: PermClause,
-        pub yield_type: Option<YieldType>,
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
         pub outer_mask: Option<OuterMask>,
         pub inner_mask: Option<InnerMask>,
-        pub no_abort: Option<NoAbort>,
         pub comma_token: Option<Token![,]>,
     }
 }
@@ -829,9 +809,7 @@ pub mod parsing {
                 || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants])
                 || input.peek(Token![outer_mask])
-                || input.peek(Token![inner_mask])
-                || input.peek(Token![yield])
-                || input.peek(Token![no_abort]))
+                || input.peek(Token![inner_mask]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -1733,25 +1711,32 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for YieldLet {
+    impl Parse for ReturnPat {
         fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Self {
-                token1: input.parse()?,
-                token2: input.parse()?,
-                ident: input.parse()?,
-                comma_token: input.parse()?,
-            })
-        }
-    }
+            // TODO: this logic breaks if the arrow is followed by a tuple type,
+            // which currently cannot happen
 
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<YieldLet> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![yield]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
+            if !input.peek(Token![->]) {
+                return Ok(ReturnPat::Default);
             }
+
+            let arrow: Token![->] = input.parse()?;
+            if !input.peek(token::Paren) {
+                return Ok(ReturnPat::Type(arrow, input.parse()?));
+            }
+
+            let context;
+            let paren = parenthesized!(context in input);
+            let pat = Pat::parse_single(&context)?;
+            let opt_ty = if input.peek(Token![:]) {
+                let colon = context.parse()?;
+                let ty = context.parse()?;
+                Some(Box::new((colon, ty)))
+            } else {
+                None
+            };
+
+            Ok(ReturnPat::Pat(arrow, paren, pat, opt_ty))
         }
     }
 
@@ -1768,7 +1753,6 @@ pub mod parsing {
                 invariant_except_breaks: input.parse()?,
                 invariants: input.parse()?,
                 ensures: input.parse()?,
-                yield_let: input.parse()?,
                 body: input.parse()?,
             })
         }
@@ -1900,50 +1884,6 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for YieldType {
-        fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Self {
-                token1: input.parse()?,
-                token2: input.parse()?,
-                ty: input.parse()?,
-                comma_token: input.parse()?,
-            })
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<YieldType> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![yield]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for NoAbort {
-        fn parse(input: ParseStream) -> Result<Self> {
-            Ok(Self {
-                token: input.parse()?,
-                comma_token: input.parse()?,
-            })
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
-    impl Parse for Option<NoAbort> {
-        fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![no_abort]) {
-                input.parse().map(Some)
-            } else {
-                Ok(None)
-            }
-        }
-    }
-
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for AtomicSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let parens;
@@ -1955,12 +1895,10 @@ pub mod parsing {
                 block_token: braced!(curlys in input),
                 type_clause: curlys.parse()?,
                 perm_clause: curlys.parse()?,
-                yield_type: curlys.parse()?,
                 requires: curlys.parse()?,
                 ensures: curlys.parse()?,
                 outer_mask: curlys.parse()?,
                 inner_mask: curlys.parse()?,
-                no_abort: curlys.parse()?,
                 comma_token: input.parse()?,
             })
         }

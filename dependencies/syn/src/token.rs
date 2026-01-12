@@ -1091,7 +1091,6 @@ macro_rules! Token {
     [atomically]  => { $crate::token::Atomically };
     [outer_mask]  => { $crate::token::OuterMask };
     [inner_mask]  => { $crate::token::InnerMask };
-    [no_abort]    => { $crate::token::NoAbort };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };
     [<==>]        => { $crate::token::Equiv };

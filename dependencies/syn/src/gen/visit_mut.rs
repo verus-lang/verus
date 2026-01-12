@@ -784,9 +784,6 @@ pub trait VisitMut {
     fn visit_mode_tracked_mut(&mut self, i: &mut crate::ModeTracked) {
         visit_mode_tracked_mut(self, i);
     }
-    fn visit_no_abort_mut(&mut self, i: &mut crate::NoAbort) {
-        visit_no_abort_mut(self, i);
-    }
     fn visit_open_mut(&mut self, i: &mut crate::Open) {
         visit_open_mut(self, i);
     }
@@ -937,6 +934,9 @@ pub trait VisitMut {
     }
     fn visit_requires_mut(&mut self, i: &mut crate::Requires) {
         visit_requires_mut(self, i);
+    }
+    fn visit_return_pat_mut(&mut self, i: &mut crate::ReturnPat) {
+        visit_return_pat_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1195,12 +1195,6 @@ pub trait VisitMut {
     fn visit_with_spec_on_fn_mut(&mut self, i: &mut crate::WithSpecOnFn) {
         visit_with_spec_on_fn_mut(self, i);
     }
-    fn visit_yield_let_mut(&mut self, i: &mut crate::YieldLet) {
-        visit_yield_let_mut(self, i);
-    }
-    fn visit_yield_type_mut(&mut self, i: &mut crate::YieldType) {
-        visit_yield_type_mut(self, i);
-    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1378,9 +1372,6 @@ where
         v.visit_pred_type_clause_mut(it);
     }
     v.visit_perm_clause_mut(&mut node.perm_clause);
-    if let Some(it) = &mut node.yield_type {
-        v.visit_yield_type_mut(it);
-    }
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
@@ -1393,9 +1384,6 @@ where
     if let Some(it) = &mut node.inner_mask {
         v.visit_inner_mask_mut(it);
     }
-    if let Some(it) = &mut node.no_abort {
-        v.visit_no_abort_mut(it);
-    }
     skip!(node.comma_token);
 }
 pub fn visit_atomically_block_mut<V>(v: &mut V, node: &mut crate::AtomicallyBlock)
@@ -1407,9 +1395,7 @@ where
     v.visit_ident_mut(&mut node.update_fn_binder);
     skip!(node.comma_token);
     skip!(node.or2_token);
-    if let Some(it) = &mut node.spec_au_binder {
-        v.visit_return_value_mut(it);
-    }
+    v.visit_return_pat_mut(&mut node.spec_au_binder);
     if let Some(it) = &mut node.invariant_except_breaks {
         v.visit_invariant_except_break_mut(it);
     }
@@ -1418,9 +1404,6 @@ where
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
-    }
-    if let Some(it) = &mut node.yield_let {
-        v.visit_yield_let_mut(it);
     }
     full!(v.visit_block_mut(& mut * node.body));
 }
@@ -3817,13 +3800,6 @@ where
 {
     skip!(node.tracked_token);
 }
-pub fn visit_no_abort_mut<V>(v: &mut V, node: &mut crate::NoAbort)
-where
-    V: VisitMut + ?Sized,
-{
-    skip!(node.token);
-    skip!(node.comma_token);
-}
 pub fn visit_open_mut<V>(v: &mut V, node: &mut crate::Open)
 where
     V: VisitMut + ?Sized,
@@ -4284,6 +4260,27 @@ where
 {
     skip!(node.token);
     v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_return_pat_mut<V>(v: &mut V, node: &mut crate::ReturnPat)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        crate::ReturnPat::Default => {}
+        crate::ReturnPat::Pat(_binding_0, _binding_1, _binding_2, _binding_3) => {
+            skip!(_binding_0);
+            skip!(_binding_1);
+            full!(v.visit_pat_mut(_binding_2));
+            if let Some(it) = _binding_3 {
+                skip!((* * it).0);
+                v.visit_type_mut(&mut (**it).1);
+            }
+        }
+        crate::ReturnPat::Type(_binding_0, _binding_1) => {
+            skip!(_binding_0);
+            v.visit_type_mut(&mut **_binding_1);
+        }
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -5137,22 +5134,4 @@ where
             full!(v.visit_pat_type_mut(it));
         }
     }
-}
-pub fn visit_yield_let_mut<V>(v: &mut V, node: &mut crate::YieldLet)
-where
-    V: VisitMut + ?Sized,
-{
-    skip!(node.token1);
-    skip!(node.token2);
-    v.visit_ident_mut(&mut node.ident);
-    skip!(node.comma_token);
-}
-pub fn visit_yield_type_mut<V>(v: &mut V, node: &mut crate::YieldType)
-where
-    V: VisitMut + ?Sized,
-{
-    skip!(node.token1);
-    skip!(node.token2);
-    v.visit_type_mut(&mut node.ty);
-    skip!(node.comma_token);
 }

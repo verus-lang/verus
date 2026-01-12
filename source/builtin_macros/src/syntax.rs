@@ -2,7 +2,7 @@ use crate::rustdoc::env_rustdoc;
 use crate::{EraseGhost, VstdKind, vstd_kind};
 use convert_case::{Case, Casing};
 use proc_macro2::{Group, Span, TokenStream, TokenTree};
-use quote::{ToTokens, TokenStreamExt, format_ident, quote, quote_spanned};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::token::Comma;
 use verus_syn::parse::{Parse, ParseStream};
 use verus_syn::parse_quote_spanned;
@@ -625,12 +625,10 @@ impl Visitor {
             atomic_update,
             type_clause,
             perm_clause,
-            yield_type,
             requires,
             ensures,
             outer_mask,
             inner_mask,
-            no_abort,
             ..
         } = atomic_spec;
 
@@ -646,11 +644,6 @@ impl Visitor {
                 pred_name.push_str("AtomicUpdatePredicate");
                 Ident::new(&pred_name, sig.ident.span())
             }
-        };
-
-        let yield_ty = match yield_type {
-            Some(clause) => clause.ty,
-            None => parse_quote_spanned!(full_span => ()),
         };
 
         let mut args_ty_tokens = TokenStream::new();
@@ -713,7 +706,7 @@ impl Visitor {
 
         let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
             tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #yield_ty, #pred_ident #generics >
+                < #old_ty, #new_ty, #pred_ident #generics >
         );
 
         let mut old_pat = TokenStream::new();
@@ -789,16 +782,8 @@ impl Visitor {
             fn_tokens.to_tokens(&mut impl_members);
         }
 
-        if let Some(no_abort) = no_abort {
-            let fn_tokens = &quote_spanned!(no_abort.token.span =>
-                open spec fn may_abort(self) -> bool { false }
-            );
-
-            fn_tokens.to_tokens(&mut impl_members);
-        }
-
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty, #yield_ty>
+            impl #generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
             for #pred_ident #generics #where_clause { #impl_members }
         ));
 
@@ -3568,7 +3553,6 @@ impl Visitor {
             mut invariant_except_breaks,
             mut invariants,
             mut ensures,
-            yield_let,
             ..
         } = atomically;
 
@@ -3609,34 +3593,24 @@ impl Visitor {
                     stmt.to_tokens(&mut header)
                 }
 
-                // This is a cryptographically secure way to prevent users
-                // from guessing the name of this function
-                let unique_id = rand::random::<u64>();
-                let name = format!("yield_fn_internal_{unique_id:x}");
-                let yield_binder = Ident::new(&name, span);
-
-                if let Some(bind) = yield_let {
-                    let var = bind.ident;
-                    header.append_all(quote_spanned!(span =>
-                        #[verus::internal(proof)]
-                        let #var = #yield_binder();
-                    ));
-                }
-
                 let unique_id = rand::random::<u64>();
                 let name = format!("atomic_update_internal_{unique_id:x}");
                 let temp_au_binder = Ident::new(&name, span);
 
                 let au_binder = match spec_au_binder {
-                    Some(ret_val) => ret_val.pat,
-                    None => parse_quote_spanned!(span => _),
+                    verus_syn::ReturnPat::Pat(_, _, pat, Some(hint)) => {
+                        let (colon, ty) = hint.as_ref();
+                        quote_spanned!(span => (#pat) #colon (#ty))
+                    }
+                    verus_syn::ReturnPat::Type(_, ty) => quote_spanned!(span => _ : (#ty)),
+                    _ => quote_spanned!(span => _),
                 };
 
                 quote_spanned_builtin_builtin_macros_vstd!(buildin, _macros, vstd, span =>
                     #vstd::atomic::atomically({
                         let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
 
-                        |#update_fn_binder, #yield_binder, #temp_au_binder| {
+                        |#update_fn_binder, #temp_au_binder| {
                             #vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
 
                             #[verus::internal(spec)]
@@ -3651,7 +3625,7 @@ impl Visitor {
             }
 
             _ => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(|_update_fn, _yield_fn, _atomic_update| ())
+                #vstd::atomic::atomically(|_update_fn, _atomic_update| ())
             ),
         };
 

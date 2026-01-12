@@ -394,11 +394,6 @@
         "perm_clause": {
           "syn": "PermClause"
         },
-        "yield_type": {
-          "option": {
-            "syn": "YieldType"
-          }
-        },
         "requires": {
           "option": {
             "syn": "Requires"
@@ -417,11 +412,6 @@
         "inner_mask": {
           "option": {
             "syn": "InnerMask"
-          }
-        },
-        "no_abort": {
-          "option": {
-            "syn": "NoAbort"
           }
         },
         "comma_token": {
@@ -455,9 +445,7 @@
           "token": "Or"
         },
         "spec_au_binder": {
-          "option": {
-            "syn": "ReturnValue"
-          }
+          "syn": "ReturnPat"
         },
         "invariant_except_breaks": {
           "option": {
@@ -472,11 +460,6 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
-          }
-        },
-        "yield_let": {
-          "option": {
-            "syn": "YieldLet"
           }
         },
         "body": {
@@ -5319,22 +5302,6 @@
       }
     },
     {
-      "ident": "NoAbort",
-      "features": {
-        "any": []
-      },
-      "fields": {
-        "token": {
-          "token": "NoAbort"
-        },
-        "comma_token": {
-          "option": {
-            "token": "Comma"
-          }
-        }
-      }
-    },
-    {
       "ident": "Open",
       "features": {
         "any": []
@@ -6242,6 +6209,50 @@
         "exprs": {
           "syn": "Specification"
         }
+      }
+    },
+    {
+      "ident": "ReturnPat",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Default": [],
+        "Pat": [
+          {
+            "token": "RArrow"
+          },
+          {
+            "group": "Paren"
+          },
+          {
+            "syn": "Pat"
+          },
+          {
+            "option": {
+              "box": {
+                "tuple": [
+                  {
+                    "token": "Colon"
+                  },
+                  {
+                    "syn": "Type"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "Type": [
+          {
+            "token": "RArrow"
+          },
+          {
+            "box": {
+              "syn": "Type"
+            }
+          }
+        ]
       }
     },
     {
@@ -7924,50 +7935,6 @@
           }
         }
       }
-    },
-    {
-      "ident": "YieldLet",
-      "features": {
-        "any": []
-      },
-      "fields": {
-        "token1": {
-          "token": "Yield"
-        },
-        "token2": {
-          "token": "Let"
-        },
-        "ident": {
-          "proc_macro2": "Ident"
-        },
-        "comma_token": {
-          "option": {
-            "token": "Comma"
-          }
-        }
-      }
-    },
-    {
-      "ident": "YieldType",
-      "features": {
-        "any": []
-      },
-      "fields": {
-        "token1": {
-          "token": "Yield"
-        },
-        "token2": {
-          "token": "Type"
-        },
-        "ty": {
-          "syn": "Type"
-        },
-        "comma_token": {
-          "option": {
-            "token": "Comma"
-          }
-        }
-      }
     }
   ],
   "tokens": {
@@ -8065,7 +8032,6 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
-    "NoAbort": "no_abort",
     "NoUnwind": "no_unwind",
     "Not": "!",
     "Open": "open",

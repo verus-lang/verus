@@ -130,12 +130,10 @@ impl Hash for crate::AtomicSpec {
         self.atomic_update.hash(state);
         self.type_clause.hash(state);
         self.perm_clause.hash(state);
-        self.yield_type.hash(state);
         self.requires.hash(state);
         self.ensures.hash(state);
         self.outer_mask.hash(state);
         self.inner_mask.hash(state);
-        self.no_abort.hash(state);
         self.comma_token.hash(state);
     }
 }
@@ -151,7 +149,6 @@ impl Hash for crate::AtomicallyBlock {
         self.invariant_except_breaks.hash(state);
         self.invariants.hash(state);
         self.ensures.hash(state);
-        self.yield_let.hash(state);
         self.body.hash(state);
     }
 }
@@ -2618,15 +2615,6 @@ impl Hash for crate::ModeTracked {
     {}
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::NoAbort {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.comma_token.hash(state);
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Open {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -3105,6 +3093,28 @@ impl Hash for crate::Requires {
         H: Hasher,
     {
         self.exprs.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ReturnPat {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            crate::ReturnPat::Default => {
+                state.write_u8(0u8);
+            }
+            crate::ReturnPat::Pat(_, _, v2, v3) => {
+                state.write_u8(1u8);
+                v2.hash(state);
+                v3.hash(state);
+            }
+            crate::ReturnPat::Type(_, v1) => {
+                state.write_u8(2u8);
+                v1.hash(state);
+            }
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3954,25 +3964,5 @@ impl Hash for crate::WithSpecOnFn {
     {
         self.inputs.hash(state);
         self.outputs.hash(state);
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::YieldLet {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.ident.hash(state);
-        self.comma_token.hash(state);
-    }
-}
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::YieldType {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.ty.hash(state);
-        self.comma_token.hash(state);
     }
 }
