@@ -123,8 +123,15 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
     /////////////////////////////////////////////////
 
     let cargo_args = {
+        let mut options = cfg.options.cargo_opts;
+        if !cfg.verify_deps && options.target_dir.is_none() {
+            // Ensure that partially verified artifacts are separated from complete results
+            options.target_dir =
+                Some(metadata.target_directory.clone().into_std_path_buf().join("verus-partial"));
+        }
+
         let for_cargo_metadata = false;
-        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
+        make_cargo_args(&options, for_cargo_metadata)
     };
 
     let mut common_verus_driver_args: Vec<String> =
@@ -205,6 +212,11 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
     }
 
     if !for_cargo_metadata {
+        if let Some(path) = &opts.target_dir {
+            args.push("--target-dir".to_owned());
+            args.push(path.to_string_lossy().into_owned());
+        }
+
         for pkg in &opts.workspace.package {
             args.push("--package".to_owned());
             args.push(pkg.clone());

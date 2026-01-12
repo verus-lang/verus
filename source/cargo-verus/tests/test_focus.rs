@@ -19,9 +19,17 @@ fn crate_optin_manifest() {
 
     assert!(status.success());
 
+    let target_dir = package_dir.path().join("target").join("verus-partial");
+
     assert_eq!(
         data.args,
-        vec!["build", "--manifest-path", manifest_path.to_str().expect("manifest path to string")]
+        vec![
+            "build",
+            "--manifest-path",
+            manifest_path.to_str().expect("manifest path to string"),
+            "--target-dir",
+            target_dir.to_str().expect("target dir to string"),
+        ]
     );
 
     data.assert_env_has("RUSTC_WRAPPER");
@@ -60,9 +68,18 @@ fn workspace_manifest() {
     });
 
     assert!(status.success());
+
+    let target_dir = workspace_dir.path().join("target").join("verus-partial");
+
     assert_eq!(
         data.args,
-        vec!["build", "--manifest-path", manifest_path.to_str().expect("manifest path to string"),]
+        vec![
+            "build",
+            "--manifest-path",
+            manifest_path.to_str().expect("manifest path to string"),
+            "--target-dir",
+            target_dir.to_str().expect("target dir to string"),
+        ]
     );
 
     data.assert_env_has("RUSTC_WRAPPER");
@@ -111,7 +128,19 @@ fn workspace_package_hasdeps() {
     });
 
     assert!(status.success());
-    assert_eq!(data.args, vec!["build", "--package", "hasdeps"]);
+
+    let target_dir = workspace_dir.path().join("target").join("verus-partial");
+
+    assert_eq!(
+        data.args,
+        vec![
+            "build",
+            "--target-dir",
+            target_dir.to_str().expect("target dir to string"),
+            "--package",
+            "hasdeps",
+        ]
+    );
 
     data.assert_env_has("RUSTC_WRAPPER");
     data.assert_env_sets("__CARGO_DEFAULT_LIB_METADATA", "verus");

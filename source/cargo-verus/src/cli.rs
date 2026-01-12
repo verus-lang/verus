@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{ArgAction, Args, Parser, Subcommand};
 
 #[derive(Clone, Debug, Parser)]
@@ -77,6 +79,9 @@ pub struct CargoOptions {
 
     #[arg(long)]
     pub offline: bool,
+
+    #[arg(long)]
+    pub target_dir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
     pub config: Vec<String>,
