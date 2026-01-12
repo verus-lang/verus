@@ -9,7 +9,9 @@ The `exec_spec!` macro simplifies this process: you only need
 to write the desired functions/structs/enums in spec mode within
 the supported fragment of `exec_spec!`, and then the macro can
 automatically generate exec counterparts of these spec items,
-as well as proofs of equivalence.
+as well as proofs of equivalence. The `exec_spec_trusted!` macro 
+does the same generation of exec code, but without proofs of equivalence
+(all generated code is annotated with `#[verifier::external_body]`).
 
 Here is an example:
 ```rust
@@ -52,7 +54,8 @@ Currently, `exec_spec!` supports these basic features:
   - Field expressions
   - Spec function calls and recursion
   - Bounded quantifiers of the form `forall |i| <lower> <= i < <upper> ==> <expr>` and `exists |i| <lower> <= i < <upper> && <expr>`
-  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`
+  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `to_multiset`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`
+  - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and `len`, `count`
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
   - User-defined structs and enums
