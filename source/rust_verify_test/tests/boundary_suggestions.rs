@@ -140,7 +140,7 @@ test_verify_one_file! {
 
         verus! {
             #[verifier::external_trait_specification]
-            pub trait ExDestruct {
+            pub trait ExDestruct : core::marker::PointeeSized {
                 type ExternalTraitSpecificationFor: core::marker::Destruct;
             }
 

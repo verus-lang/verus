@@ -2594,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-01-04-0057"
+version = "0.0.0-2026-01-11-0057"
 
 [[package]]
 name = "verus_builtin_macros"
