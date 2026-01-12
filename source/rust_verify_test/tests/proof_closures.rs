@@ -1808,3 +1808,20 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_coerce_to_spec_issue2078 ["vstd"] => verus_code! {
+        proof fn test() {
+            let f = proof_fn|x: u32| { true };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] proof_fn_call_spec ["vstd"] => verus_code! {
+        proof fn test() {
+            let f = proof_fn|x: u32| { true };
+            f(12u32);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
