@@ -67,10 +67,10 @@ pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element
     requires
         i < vec.view().len(),
     ensures
-        mut_ref_current(element) == mut_ref_current(vec).view().index(i as int),
-        mut_ref_future(vec)@ == mut_ref_current(vec)@.update(i as int, mut_ref_future(element)),
+        *element == (*vec).view().index(i as int),
+        fin(vec)@ == vec@.update(i as int, *fin(element)),
 
-        mut_ref_future(element) == mut_ref_future(vec).view().index(i as int),
+        *fin(element) == fin(vec).view().index(i as int),
     no_unwind
 {
     &mut vec[i]
@@ -97,6 +97,11 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -
 
 ////// Other functions
 pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
+    ensures
+        v@ == Seq::<T>::empty(),
+;
+
+pub assume_specification<T>[ <Vec<T> as core::default::Default>::default ]() -> (v: Vec<T>)
     ensures
         v@ == Seq::<T>::empty(),
 ;
@@ -229,6 +234,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T,
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
         slice@ == vec@,
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
+    ensures
+        slice@ == vec@,
+        fin(slice)@ == fin(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::deref ](

@@ -112,6 +112,11 @@ test_verify_one_file_with_options! {
         spec fn test2<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
+
+        #[verifier::prophetic]
+        spec fn test3<T>(x: &mut T) -> T {
+            *fin(x)
+        }
     } => Ok(())
 }
 
@@ -124,11 +129,58 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
+        spec fn test<T>(x: &mut T) -> T {
+            *fin(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `fin` in prophecy-independent context")
+}
+
+test_verify_one_file_with_options! {
     #[test] test_resolved_proph ["new-mut-ref"] => verus_code! {
         spec fn test<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent predicate `has_resolved` in prophecy-independent context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_after_borrow_proph ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let x_ref = &mut x;
+
+            let ghost y = after_borrow(x);
+
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use prophecy-dependent function `after_borrow` in prophecy-independent context")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_after_borrow_ok ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let x_ref = &mut x;
+
+            assert(*fin(x_ref) == after_borrow(x));
+
+            *x_ref = 20;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_after_borrow_bad_expr ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let x_ref = &mut x;
+
+            assert(after_borrow(true) == true);
+
+            *x_ref = 20;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`after_borrow` expects a local variable, possibly with dereferences or field accesses")
 }
 
 test_verify_one_file_with_options! {
@@ -2699,4 +2751,334 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut u64) {
+            assert(mut_ref_future(x) == *fin(x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
+        fn foo(x: &mut bool) {
+            assert(mut_ref_current(fin(x)));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The result of `fin` must be dereferenced")
+}
+
+test_verify_one_file_with_options! {
+    #[test] resolve_places_with_projection_types ["new-mut-ref"] => verus_code! {
+        trait Tr {
+            type AssocType;
+        }
+
+        struct P<T: Tr> {
+            a: T::AssocType,
+            b: u64,
+        }
+
+        struct X<'a> { a: &'a u64 }
+
+        impl<'a> Tr for X<'a> {
+            type AssocType = (&'a mut u64, &'a mut u64);
+        }
+
+        fn test<'a>(p: P<X<'a>>) {
+            let mut p = p;
+            assert(has_resolved(p.a.1));
+            p.b = 20;
+            *p.a.0 = 30;
+            assert(has_resolved(p.a.0));
+        }
+
+        fn test2<'a>(p: P<X<'a>>) {
+            let mut p = p;
+            p.b = 20;
+            assert(has_resolved(p.a.0)); // FAILS
+            *p.a.0 = 30;
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] place_that_doesnt_return ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test1() {
+            let mut a = 4;
+            *({ loop {}; &mut a }) = 5;
+            assert(false);
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test2() {
+            let mut a = 4;
+            *({ loop {}; &mut a }) = ({ assert(false); 5 });
+            assert(false);
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test2_fails() {
+            let mut a = 4;
+            *({
+                assert(false); // FAILS
+            &mut a }) = ({ loop {} 5 });
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test3() {
+            let mut a = 4;
+            let mut a_ref: &mut u64 = loop { };
+            assert(false);
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test4() {
+            let y: [[u64; 2]; 2] = [[0,1],[2,3]];
+            let x = y[({ loop{}; 0 })][({ assert(false); 1 })];
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test5() {
+            let y: [[u64; 2]; 2] = [[0,1],[2,3]];
+            let x = y[({
+              assert(false); // FAILS
+            1})][({ loop{}; 0 })];
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test6(y: [&mut (u64, u64); 2]) {
+            let mut y = y;
+            (*y[({ loop{} 0 })]).0 = 20;
+            assert(false);
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] compound_op_that_doesnt_return ["new-mut-ref"] => verus_code! {
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test1(y: [&mut (u64, u64); 2]) {
+            let mut y = y;
+            (*y[({ loop{} 0 })]).0 += 20;
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test2(y: [&mut (u64, u64); 2]) {
+            let mut y = y;
+            (*y[({
+                assert(false); // FAILS
+            0 })]).0 += ({ loop{} 20 });
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test3(y: [&mut (u64, u64); 2]) {
+            let mut y = y;
+            (*y[0]).0 += ({ loop{} 20 });
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test4(y: &mut [&mut (u64, u64); 2])
+            ensures mut_ref_current(y) == mut_ref_future(y)
+        {
+            let mut y = y;
+            (*y[0]).0 += ({ return; 20 });
+        }
+
+        #[allow(unreachable_code)]
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test4_fails(y: &mut [&mut (u64, u64); 2])
+            ensures false
+        {
+            let mut y = y;
+            (*y[0]).0 += ({
+                return; // FAILS
+                0
+            });
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_with_args_that_dont_return ["new-mut-ref"] => verus_code! {
+        fn call(a: &mut u64, b: &mut u64, c: &mut u64) { }
+
+        fn call_requires_false(a: &mut u64, b: &mut u64, c: &mut u64)
+            requires false
+        { }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test1() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            call_requires_false(&mut a, ({ loop {} &mut b }), &mut c);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test2() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            call_requires_false(&mut a, (loop {}), &mut c);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test3(a_ref: &mut u64, c_ref: &mut u64)
+            ensures
+                mut_ref_future(a_ref) == mut_ref_current(a_ref),
+                mut_ref_future(c_ref) == mut_ref_current(c_ref),
+        {
+            call_requires_false(a_ref, (return), c_ref);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test3_fails(a_ref: &mut u64, c_ref: &mut u64)
+            ensures
+                false
+        {
+            call_requires_false(a_ref, (
+                return // FAILS
+            ), c_ref);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test4() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            call_requires_false(&mut a, (loop {}), ({ assert(false); &mut c }));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test5() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            call(({
+              assert(false); // FAILS
+            &mut a }), (loop {}), &mut c);
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] ctor_with_args_that_dont_return ["new-mut-ref"] => verus_code! {
+        struct Ctor<'a, 'b, 'c>(&'a mut u64, &'b mut u64, &'c mut u64);
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test1() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            let ct = Ctor(&mut a, ({ loop {} &mut b }), &mut c);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test2() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            let ct = Ctor(&mut a, (loop {}), &mut c);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test3(a_ref: &mut u64, c_ref: &mut u64)
+            ensures
+                mut_ref_future(a_ref) == mut_ref_current(a_ref),
+                mut_ref_future(c_ref) == mut_ref_current(c_ref),
+        {
+            let ct = Ctor(a_ref, (return), c_ref);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test3_fails(a_ref: &mut u64, c_ref: &mut u64)
+            ensures
+                false
+        {
+            let ct = Ctor(a_ref, (
+                return // FAILS
+            ), c_ref);
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test4() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            let ct = Ctor(&mut a, (loop {}), ({ assert(false); &mut c }));
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unreachable_code)]
+        fn test5() {
+            let mut a = 20;
+            let mut b = 30;
+            let mut c = 40;
+            let ct = Ctor(({
+              assert(false); // FAILS
+            &mut a }), (loop {}), &mut c);
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_with_implicit_box_deref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        enum List {
+            Cons(u64, Box<List>),
+            Nil,
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn build_zero_list(len: u64) -> List {
+            let mut list = List::Nil;
+            let mut cur = &mut list;
+
+            let mut i = 0;
+            while i < len {
+                *cur = List::Cons(0, Box::new(List::Nil));
+
+                match cur {
+                    List::Cons(_, b) => {
+                        // Replace `cur` with a reference to the newly-created List::Nil,
+                        // the child of the previous `cur`.
+                        cur = &mut *b;
+                    }
+                    _ => { /* clearly unreachable */ }
+                }
+
+                i += 1;
+            }
+
+            return list;
+        }
+    } => Ok(())
 }

@@ -347,3 +347,147 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] union_has_resolved ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+
+        union Foo<'a> {
+            a: ManuallyDrop<&'a mut u64>,
+            b: ManuallyDrop<&'a mut u64>,
+        }
+
+        proof fn test<'a>(foo: Foo<'a>) {
+            assert(has_resolved(foo) ==> is_variant(foo, "a") ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "a")@));
+
+            assert(has_resolved(foo) ==> is_variant(foo, "b") ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "b")@));
+        }
+
+        proof fn test2<'a>(foo: Foo<'a>) {
+            assert(has_resolved(foo) ==>
+                has_resolved(get_union_field::<_, ManuallyDrop<&'a mut u64>>(foo, "a")@)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] union_with_mut_ref_in_fields ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use std::mem::ManuallyDrop;
+        use std::ops::DerefMut;
+
+        union Foo<'a> {
+            a: ManuallyDrop<&'a mut u64>,
+            b: ManuallyDrop<&'a mut u64>,
+        }
+
+        #[verifier::external_body]
+        fn manually_drop_deref_mut<T>(m: &mut ManuallyDrop<T>) -> (ret: &mut T)
+            ensures
+                mut_ref_current(ret) == mut_ref_current(m)@,
+                mut_ref_future(ret) == mut_ref_future(m)@,
+        {
+            m.deref_mut()
+        }
+
+        fn test<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let foo = Foo { a: ManuallyDrop::new(a_ref) };
+            assert(has_resolved(get_union_field::<_, ManuallyDrop<&mut u64>>(foo, "a"))); // TODO(new_mut_ref): bad triggers
+            assert(a == 0);
+        }
+
+        fn fail<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let foo = Foo { a: ManuallyDrop::new(a_ref) };
+            assert(has_resolved(get_union_field::<_, ManuallyDrop<&mut u64>>(foo, "a"))); // TODO(new_mut_ref): bad triggers
+            assert(a == 0);
+            assert(false); // FAILS
+        }
+
+        fn test2<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            assert(a == 5);
+        }
+
+        fn fail2<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            assert(a == 5);
+            assert(false); // FAILS
+        }
+
+        fn test3<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            assert(a == 5);
+        }
+
+        fn fail3<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            assert(a == 5);
+            assert(false); // FAILS
+        }
+
+        fn test4<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            let a_ref2 = ManuallyDrop::into_inner(a_ref2);
+            *a_ref2 = 20;
+            assert(a == 20);
+        }
+
+        fn fail4<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = foo.a;
+            let a_ref2 = ManuallyDrop::into_inner(a_ref2);
+            *a_ref2 = 20;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn test5<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = ManuallyDrop::into_inner(foo.a);
+            *a_ref2 = 20;
+            assert(a == 20);
+        }
+
+        fn fail5<'a>() {
+            let mut a = 0;
+            let a_ref = &mut a;
+            let mut foo = Foo { a: ManuallyDrop::new(a_ref) };
+            **manually_drop_deref_mut(&mut foo.a) = 5;
+            let a_ref2 = ManuallyDrop::into_inner(foo.a);
+            *a_ref2 = 20;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 5)
+}

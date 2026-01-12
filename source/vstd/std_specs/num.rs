@@ -169,6 +169,12 @@ macro_rules! num_specs {
                 ensures
                     // checked_div is the same as checked_div_euclid for unsigned ints
                     result == checked_div(lhs, rhs);
+
+            #[verifier::allow_in_spec]
+            pub assume_specification[<$uN>::is_multiple_of](x: $uN, y: $uN) -> bool
+                returns (
+                    if y == 0 { x == 0 } else { x % y == 0 }
+                );
         }
 
         // Signed ints (i8, i16, etc.)

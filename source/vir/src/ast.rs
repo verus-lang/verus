@@ -433,9 +433,22 @@ pub enum UnaryOp {
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
-    MutRefFuture,
+    MutRefFuture(MutRefFutureSourceName),
+    /// The `final` keyword. `*final(e)` should be replaced with `mut_ref_future(e)`
+    /// and `final` on its own is unsupported.
+    MutRefFinal,
+
     /// Length of an array or slice
     Length(ArrayKind),
+}
+
+/// Which builtin source name does this come from
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum MutRefFutureSourceName {
+    /// This comes from a direct use of the `mut_ref_future` built-in
+    MutRefFuture,
+    /// Simplified from `*final(e)`
+    Final,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -1013,10 +1026,17 @@ pub enum ExprX {
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
+    ///
     /// Not used when new-mut-refs is enabled.
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    /// Assign to the given place.
+    ///
+    /// If `resolve` is set, then we also emit
+    /// `assume(has_resolved(place))` immediately before the mutation.
+    /// This flag may be set by resolution analysis.
+    ///
     /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp> },
+    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1085,11 +1105,6 @@ pub enum ExprX {
     ///
     /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
-    /// Equivalent to `Assume(HasResolved(e))`. These are inserted by the resolution analysis
-    /// (resolution_inference.rs)
-    /// Used only when new-mut-refs is enabled.
-    /// TODO(new_mut_ref): this might be unused now; can be deleted
-    AssumeResolved(Expr, Typ),
     /// Indicates a move or a copy from the given place.
     /// These over-approximate the actual set of copies/moves.
     /// (That is, many reads marked Move or Copy should really be marked Spec).
@@ -1128,6 +1143,8 @@ pub enum ReadKind {
     Unused,
     /// Spec snapshot. (Not a move.)
     Spec,
+    /// Prophetic spec snapshot. (Not a move.)
+    SpecAfterBorrow,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, Copy)]

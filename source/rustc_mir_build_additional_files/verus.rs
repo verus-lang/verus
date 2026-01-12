@@ -14,8 +14,8 @@ use rustc_middle::thir::{
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
-    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVariableKind, CapturedPlace, GenericArg,
-    Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
+    Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
+    CapturedPlace, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -674,7 +674,15 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
         PatKind::AscribeUserType { ascription: _, subpattern } => {
             erase_pat_rec(emode, subpattern);
         }
-        PatKind::Binding { name: _, mode: _, var, ty: _, subpattern, is_primary: _ } => {
+        PatKind::Binding {
+            name: _,
+            mode: _,
+            var,
+            ty: _,
+            subpattern,
+            is_primary: _,
+            is_shorthand: _,
+        } => {
             if let Some(subpat) = subpattern {
                 erase_pat_rec(emode, subpat);
             }
@@ -1162,7 +1170,7 @@ impl<'tcx> TypeFolder<TyCtxt<'tcx>> for ReErasedReplacer<'tcx> {
                     BoundRegion { var: BoundVar::from_usize(var), kind: BoundRegionKind::Anon },
                 )
             }
-            rustc_middle::ty::ReBound(debruijn, _br) => {
+            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), _br) => {
                 assert!(debruijn < self.current_index);
                 r
             }
@@ -1551,6 +1559,7 @@ pub(crate) fn make_let<'tcx>(
             ty,
             subpattern: None,
             is_primary: true,
+            is_shorthand: false,
         },
     });
 

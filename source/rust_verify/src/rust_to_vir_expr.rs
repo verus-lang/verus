@@ -1291,18 +1291,23 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     && matches!(&adjustments[adjustment_idx - 2].kind, Adjust::Deref(None))
                 {
                     let inner_inner_ty = get_inner2_ty();
-                    if inner_inner_ty != adjustment.target {
-                        panic!("Verus Internal Error: Implicit &mut * expected the same type");
-                    }
-                    // TODO(new_mut_ref): we need to improve this condition to work for tracked code
-                    if bctx.in_ghost {
-                        return expr_to_vir_with_adjustments(
-                            bctx,
-                            expr,
-                            current_modifier,
-                            adjustments,
-                            adjustment_idx - 2,
-                        );
+                    if matches!(
+                        inner_inner_ty.kind(),
+                        TyKind::Ref(_, _, rustc_ast::Mutability::Mut)
+                    ) {
+                        if inner_inner_ty != adjustment.target {
+                            panic!("Verus Internal Error: Implicit &mut * expected the same type");
+                        }
+                        // TODO(new_mut_ref): we need to improve this condition to work for tracked code
+                        if bctx.in_ghost {
+                            return expr_to_vir_with_adjustments(
+                                bctx,
+                                expr,
+                                current_modifier,
+                                adjustments,
+                                adjustment_idx - 2,
+                            );
+                        }
                     }
                 }
 
@@ -1368,7 +1373,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _, rustc_middle::ty::DynKind::Dyn)) => Some(UnaryOp::ToDyn),
+                (_, TyKind::Dynamic(_, _)) => Some(UnaryOp::ToDyn),
                 _ => None,
             };
             if let Some(op) = op {
@@ -3057,7 +3062,12 @@ fn expr_assign_to_vir_innermost<'tcx>(
             None => None,
         };
 
-        return mk_expr(ExprX::AssignToPlace { place: vir_lhs, rhs: vir_rhs, op: op });
+        return mk_expr(ExprX::AssignToPlace {
+            place: vir_lhs,
+            rhs: vir_rhs,
+            op: op,
+            resolve: None,
+        });
     }
 
     fn init_not_mut(bctx: &BodyCtxt, lhs: &Expr) -> Result<bool, VirErr> {
@@ -3841,10 +3851,22 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Place {
     // This shows up a lot (in part due to adjustments) so we make the simplification
     // to avoid cluttering the encoding.
 
+    // *final(x) is equivalent to mut_ref_future(x)
+
     match &place.x {
         PlaceX::Temporary(e) => match &e.x {
             ExprX::BorrowMut(place) => {
                 return place.clone();
+            }
+            ExprX::Unary(UnaryOp::MutRefFinal, arg) => {
+                let t = match &*undecorate_typ(&place.typ) {
+                    TypX::MutRef(t) => t.clone(),
+                    _ => panic!("expected mut ref"),
+                };
+
+                let op = UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::Final);
+                let e = bctx.spanned_typed_new(span, &t, ExprX::Unary(op, arg.clone()));
+                return bctx.spanned_typed_new(span, &t, PlaceX::Temporary(e));
             }
             _ => {}
         },

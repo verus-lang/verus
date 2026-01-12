@@ -17,6 +17,9 @@ use colored::Colorize;
 mod cli;
 mod metadata;
 mod subcommands;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod test_utils;
+
 use crate::cli::{CargoVerusCli, VerusSubcommand};
 use crate::metadata::fetch_metadata;
 use crate::subcommands::make_cargo_args;

@@ -32,7 +32,7 @@ pub struct ScopeEntry {
 }
 
 impl ScopeEntry {
-    fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
+    pub(crate) fn new(typ: &Typ, is_mut: bool, init: bool) -> Self {
         ScopeEntry { typ: typ.clone(), is_mut, init, is_outer_param_or_ret: false }
     }
     fn new_outer_param_ret(typ: &Typ, is_mut: bool, init: bool) -> Self {
@@ -122,6 +122,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             let es = self.visit_exprs(es)?;
             R::ret(|| R::get_vec_a(es))
         })
+    }
+
+    fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
+        R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
     }
 
     fn visit_opt_expr(&mut self, expr_opt: &Option<Expr>) -> Result<R::Opt<Expr>, Err> {
@@ -461,14 +465,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::AssignToPlace { place, rhs, op } => {
+            ExprX::AssignToPlace { place, rhs, op, resolve } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
+                let resolve = self.visit_opt_typ(resolve)?;
                 R::ret(|| {
                     expr_new(ExprX::AssignToPlace {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,
+                        resolve: R::get_opt(resolve),
                     })
                 })
             }
@@ -634,11 +640,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::TwoPhaseBorrowMut(p) => {
                 let p = self.visit_place(p)?;
                 R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
-            }
-            ExprX::AssumeResolved(e, t) => {
-                let e = self.visit_expr(e)?;
-                let t = self.visit_typ(t)?;
-                R::ret(|| expr_new(ExprX::AssumeResolved(R::get(e), R::get(t))))
             }
             ExprX::ReadPlace(p, read_type) => {
                 let p = self.visit_place(p)?;

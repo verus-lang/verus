@@ -952,7 +952,7 @@ test_verify_one_file_with_options! {
 
             assert(a == 10);
             assert(b == 11);
-            //assert(c == 12); // TODO(new_mut_ref)
+            assert(c == 12);
             assert(d == 13);
         }
     } => Ok(())
@@ -989,8 +989,287 @@ test_verify_one_file_with_options! {
 
             assert(a == 10);
             assert(b == 11);
-            //assert(c == 12); // TODO(new_mut_ref)
+            assert(c == 12);
             assert(d == 13);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] slices_lib_first_last_mut ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_emp() {
+            let v: Vec<u64> = vec![];
+            let f = v.first();
+            assert(f === None);
+            let l = v.last();
+            assert(l === None);
+        }
+
+        fn test_non_emp() {
+            let v = vec![1, 2, 3];
+            let f = v.first();
+            assert(f === Some(&1));
+            let l = v.last();
+            assert(l === Some(&3));
+        }
+
+        fn test_emp_first_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().first_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+        }
+
+        fn test_emp_last_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().last_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+        }
+
+        fn test_non_emp_first_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().first_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 1);
+            *m = 10;
+            assert(v@ === seq![10, 2, 3]);
+        }
+
+        fn test_non_emp_last_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().last_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 3);
+            *m = 10;
+            assert(v@ === seq![1, 2, 10]);
+        }
+
+        fn fail_emp() {
+            let v: Vec<u64> = vec![];
+            let f = v.first();
+            assert(f === None);
+            let l = v.last();
+            assert(l === None);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp() {
+            let v = vec![1, 2, 3];
+            let f = v.first();
+            assert(f === Some(&1));
+            let l = v.last();
+            assert(l === Some(&3));
+            assert(false); // FAILS
+        }
+
+        fn fail_emp_first_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().first_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_emp_last_mut() {
+            let mut v: Vec<u64> = vec![];
+            let f = v.as_mut_slice().last_mut();
+            assert(f === None);
+            assert(v@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp_first_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().first_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 1);
+            *m = 10;
+            assert(v@ === seq![10, 2, 3]);
+            assert(false); // FAILS
+        }
+
+        fn fail_non_emp_last_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let f = v.as_mut_slice().last_mut();
+            assert(f.is_some());
+            let m = f.unwrap();
+            assert(*m == 3);
+            *m = 10;
+            assert(v@ === seq![1, 2, 10]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slices_lib_split_at ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_split_at() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(2);
+            assert(a@ === seq![1, 2]);
+            assert(b@ === seq![3]);
+        }
+
+        fn test_split_at_end() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(3);
+            assert(a@ === seq![1, 2, 3]);
+            assert(b@ === seq![]);
+        }
+
+        fn test_split_at_out_of_bounds() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(4); // FAILS
+        }
+
+        fn test_split_at_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.as_mut_slice().split_at_mut(2);
+            assert(a@ === seq![1, 2]);
+            assert(b@ === seq![3]);
+            a[1] = 20;
+            b[0] = 30;
+            assert(v@ === seq![1, 20, 30]);
+        }
+
+        fn test_split_at_mut_end() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.as_mut_slice().split_at_mut(3);
+            assert(a@ === seq![1, 2, 3]);
+            assert(b@ === seq![]);
+            a[1] = 20;
+            assert(v@ === seq![1, 20, 3]);
+        }
+
+        fn test_split_at_mut_out_of_bounds() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(4); // FAILS
+        }
+
+        fn fail_split_at() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(2);
+            assert(a@ === seq![1, 2]);
+            assert(b@ === seq![3]);
+            assert(false); // FAILS
+        }
+
+        fn fail_split_at_end() {
+            let v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.split_at(3);
+            assert(a@ === seq![1, 2, 3]);
+            assert(b@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_split_at_mut() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.as_mut_slice().split_at_mut(2);
+            assert(a@ === seq![1, 2]);
+            assert(b@ === seq![3]);
+            a[1] = 20;
+            b[0] = 30;
+            assert(v@ === seq![1, 20, 30]);
+            assert(false); // FAILS
+        }
+
+        fn fail_split_at_mut_end() {
+            let mut v: Vec<u64> = vec![1, 2, 3];
+            let (a, b) = v.as_mut_slice().split_at_mut(3);
+            assert(a@ === seq![1, 2, 3]);
+            assert(b@ === seq![]);
+            a[1] = 20;
+            assert(v@ === seq![1, 20, 3]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
+}
+
+test_verify_one_file_with_options! {
+    #[test] slices_assign_resolving_basic ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        spec fn id<A>(a: A) -> A { a }
+
+        fn test_slice0(x: Box<[&mut u64]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+
+            // In principle this is fine, but the current alg won't put it this early
+            // for index places.
+            assert(has_resolved(x[0])); // FAILS
+
+            x[0] = &mut a;
+        }
+
+        fn test_slice1(x: Box<[&mut u64]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0]);
+            x[0] = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice2(x: Box<[[&mut u64; 2]]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0][1]);
+            x[0][1] = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice_field(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0].1);
+            x[0].1 = &mut a;
+            assert(has_resolved(g));
+        }
+
+        fn test_slice_field_fails(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0].0);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        fn test_slice_field_fails2(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x[0]);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        fn test_slice_field_fails3(x: Box<[(&mut u64, &mut u64)]>)
+            requires x.len() > 0
+        {
+            let mut x = x;
+            let mut a = 5;
+            let ghost g = id(x);
+            x[0].1 = &mut a;
+            assert(has_resolved(g)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }

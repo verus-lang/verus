@@ -2317,6 +2317,54 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] no_resolve_ghost_binders ["new-mut-ref"] => verus_code! {
+        proof fn test1<T>(x: (T, T)) {
+            match x {
+                (y, z) => {
+                    assert(has_resolved(y)); // FAILS
+                }
+            }
+        }
+
+        proof fn test2<T>(x: (T, T)) {
+            let (y, z) = x;
+            assert(has_resolved(y)); // FAILS
+        }
+
+        tracked struct TG<T, G> {
+            tracked t: T,
+            ghost g: G,
+        }
+
+        proof fn test_tg1<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(g)); // FAILS
+                }
+            }
+        }
+
+        proof fn test_tg2<T>(tracked x: TG<T, T>) {
+            match x {
+                TG { t, g } => {
+                    assert(has_resolved(t));
+                }
+            }
+        }
+
+        proof fn test_tg1_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(g)); // FAILS
+        }
+
+        proof fn test_tg2_let<T>(tracked x: TG<T, T>) {
+            let tracked TG { t, g } = x;
+            assert(has_resolved(t));
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
     #[test] mut_ref_ghost_binder_forbidden ["new-mut-ref"] => verus_code! {
         struct X {
             a: u64
@@ -3264,4 +3312,37 @@ test_verify_one_file_with_options! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_guard ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, 1);
+            match m {
+                (ref mut a, b) if b == 1 => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an if-guard and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let m = (0, false);
+            match m {
+                (ref mut a, false) | (ref mut a, true) => { }
+                _ => { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] not_support_let_pattern_mut_ref_binding_with_or_pat ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let x = Some((5, true));
+            let Some((ref mut i, true | false)) = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
 }

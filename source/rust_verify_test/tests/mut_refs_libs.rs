@@ -338,3 +338,141 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_options_as_mut_slice ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_as_slice_none() {
+            let x: Option<u64> = None;
+            let s = x.as_slice();
+            assert(s@ === seq![]);
+        }
+
+        fn test_as_slice_some() {
+            let x: Option<u64> = Some(20);
+            let s = x.as_slice();
+            assert(s@ === seq![20]);
+        }
+
+        fn test_as_mut_slice_none() {
+            let mut x: Option<u64> = None;
+            let s = x.as_mut_slice();
+            assert(s@ === seq![]);
+            assert(x.is_none());
+        }
+
+        fn test_as_mut_slice_some() {
+            let mut x: Option<u64> = Some(20);
+            let s = x.as_mut_slice();
+            assert(s@ === seq![20]);
+            s[0] = 30;
+            assert(x === Some(30));
+        }
+
+        fn fail_as_slice_none() {
+            let x: Option<u64> = None;
+            let s = x.as_slice();
+            assert(s@ === seq![]);
+            assert(false); // FAILS
+        }
+
+        fn fail_as_slice_some() {
+            let x: Option<u64> = Some(20);
+            let s = x.as_slice();
+            assert(s@ === seq![20]);
+            assert(false); // FAILS
+        }
+
+        fn fail_as_mut_slice_none() {
+            let mut x: Option<u64> = None;
+            let s = x.as_mut_slice();
+            assert(s@ === seq![]);
+            assert(x.is_none());
+            assert(false); // FAILS
+        }
+
+        fn fail_as_mut_slice_some() {
+            let mut x: Option<u64> = Some(20);
+            let s = x.as_mut_slice();
+            assert(s@ === seq![20]);
+            s[0] = 30;
+            assert(x === Some(30));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_option_insert_and_get_or_insert ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test_insert_none() {
+            let mut x: Option<u64> = None;
+            let r = x.insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+        }
+
+        fn test_insert_some() {
+            let mut x: Option<u64> = Some(5);
+            let r = x.insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+        }
+
+        fn test_get_or_insert_none() {
+            let mut x: Option<u64> = None;
+            let r = x.get_or_insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+        }
+
+        fn test_get_or_insert_some() {
+            let mut x: Option<u64> = Some(5);
+            let r = x.get_or_insert(20);
+            assert(*r == 5);
+            *r = 21;
+            assert(x === Some(21));
+        }
+
+        fn fail_insert_none() {
+            let mut x: Option<u64> = None;
+            let r = x.insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+            assert(false); // FAILS
+        }
+
+        fn fail_insert_some() {
+            let mut x: Option<u64> = Some(5);
+            let r = x.insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+            assert(false); // FAILS
+        }
+
+        fn fail_get_or_insert_none() {
+            let mut x: Option<u64> = None;
+            let r = x.get_or_insert(20);
+            assert(*r == 20);
+            *r = 21;
+            assert(x === Some(21));
+            assert(false); // FAILS
+        }
+
+        fn fail_get_or_insert_some() {
+            let mut x: Option<u64> = Some(5);
+            let r = x.get_or_insert(20);
+            assert(*r == 5);
+            *r = 21;
+            assert(x === Some(21));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
