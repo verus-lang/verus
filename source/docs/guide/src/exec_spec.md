@@ -53,7 +53,7 @@ Currently, `exec_spec!` supports these basic features:
   - If, match and "matches"
   - Field expressions
   - Spec function calls and recursion
-  - Bounded quantifiers of the form `forall |i| <lower> <= i < <upper> ==> <expr>` and `exists |i| <lower> <= i < <upper> && <expr>`
+  - Bounded quantifiers of the form `forall |i: <type>| <lower> <op> i <op> <upper> ==> <expr>` and `exists |i: <type>| <lower> <op> i <op> <upper> && <expr>`, where `<op>` is either `<=` or `<` and `<type>` is a Rust primitive integer (`i<N>`, `isize`, `u<N>`, `usize`) or `char`
   - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `to_multiset`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`
   - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and `len`, `count`
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
