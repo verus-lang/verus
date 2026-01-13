@@ -18,13 +18,13 @@ serde_json = "1.0"
 sha2 = "0.10.2"
 hex = "0.4.3"
 colored = "3.0.0"
+tempfile = "3"
 
 [build-dependencies]
 rustc_tools_util = "0.3.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
-tempfile = "3"
 
 [[bin]]
 name = "fake-cargo"

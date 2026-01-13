@@ -16,6 +16,9 @@ use clap::Parser;
 mod cli;
 mod metadata;
 mod subcommands;
+#[cfg(any(test, feature = "integration-tests"))]
+pub mod test_utils;
+
 use crate::cli::{CargoVerusCli, VerusSubcommand};
 
 pub fn main() -> Result<ExitCode> {
