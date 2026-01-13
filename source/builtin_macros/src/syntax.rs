@@ -3578,6 +3578,10 @@ impl Visitor {
 
         let extra_arg = match self.erase_ghost {
             EraseGhost::Keep => {
+                let mut loop_header = quote_spanned_builtin!(builtin, span =>
+                    #builtin::atomic_call_loop();
+                );
+
                 let mut stmts = Vec::new();
                 self.add_loop_specs(
                     &mut stmts,
@@ -3588,44 +3592,55 @@ impl Visitor {
                     None,
                 );
 
-                let mut header = TokenStream::new();
                 for stmt in stmts {
-                    stmt.to_tokens(&mut header)
+                    stmt.to_tokens(&mut loop_header)
                 }
 
+                // This is a cryptographically secure way to prevent users
+                // from guessing the name of this function
                 let unique_id = rand::random::<u64>();
-                let name = format!("atomic_update_internal_{unique_id:x}");
-                let temp_au_binder = Ident::new(&name, span);
+                let name = format!("ghost_atomic_update_internal_{unique_id:x}");
+                let ghost_au_binder = Ident::new(&name, span);
 
+                use verus_syn::ReturnPat as RP;
                 let au_binder = match spec_au_binder {
-                    verus_syn::ReturnPat::Pat(_, _, pat, Some(hint)) => {
+                    RP::Pat(.., pat, Some(hint)) => {
                         let (colon, ty) = hint.as_ref();
                         quote_spanned!(span => (#pat) #colon (#ty))
                     }
-                    verus_syn::ReturnPat::Type(_, ty) => quote_spanned!(span => _ : (#ty)),
+                    RP::Pat(.., pat, _) => quote_spanned!(span => (#pat)),
+                    RP::Type(_, ty) => quote_spanned!(span => _ : (#ty)),
                     _ => quote_spanned!(span => _),
                 };
 
-                quote_spanned_builtin_builtin_macros_vstd!(buildin, _macros, vstd, span =>
+                let unique_id = rand::random::<u64>();
+                let name = format!("_atomic_call_loop_start_marker_internal_{unique_id:x}");
+                let marker_fn_binder = Ident::new(&name, span);
+
+                quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
                     #vstd::atomic::atomically({
                         let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
 
-                        |#update_fn_binder, #temp_au_binder| {
-                            #vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                        |#update_fn_binder, #ghost_au_binder, #marker_fn_binder| {
+                            #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
 
                             #[verus::internal(spec)]
-                            let #au_binder = #buildin::Ghost::view(#temp_au_binder);
+                            let #au_binder = #builtin::Ghost::view(#ghost_au_binder);
 
                             #[verus::internal(proof)]
                             #[verifier::assume_termination]
-                            loop { #header #body }
+                            loop {
+                                #loop_header
+                                #body
+                                continue;
+                            }
                         }
                     })
                 )
             }
 
             _ => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(|_update_fn, _atomic_update| ())
+                #vstd::atomic::atomically(|_update_fn, _atomic_update, _marker_fn| ())
             ),
         };
 

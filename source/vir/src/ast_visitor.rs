@@ -558,6 +558,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 body,
                 invs,
                 decrease,
+                atomic_call,
             } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
@@ -573,6 +574,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         body: R::get(body),
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
+                        atomic_call: *atomic_call,
                     })
                 })
             }
@@ -626,6 +628,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let i = i.clone();
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
+            }
+            ExprX::AtomicFunctionCallLoopStartMarker => {
+                R::ret(|| expr_new(ExprX::AtomicFunctionCallLoopStartMarker))
             }
             ExprX::InvMask(_m) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Return(e) => {

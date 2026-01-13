@@ -2131,6 +2131,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                     ))
                                 }
 
+                                Some(actx) if actx.loop_marker_binder == local_hir_id => {
+                                    assert_eq!(args_slice.len(), 0);
+                                    Some(bctx.spanned_typed_new(
+                                        fun.span,
+                                        &expr_typ()?,
+                                        ExprX::AtomicFunctionCallLoopStartMarker,
+                                    ))
+                                }
+
                                 // dynamically computed function, see below
                                 _ => None,
                             }
@@ -2782,6 +2791,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     body,
                     invs: header.loop_invariants(),
                     decrease,
+                    atomic_call: header.atomic_call_loop,
                 },
             )))
         }
@@ -2846,6 +2856,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     body,
                     invs: header.loop_invariants(),
                     decrease: header.decrease,
+                    atomic_call: header.atomic_call_loop,
                 },
             )))
         }

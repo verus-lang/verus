@@ -978,6 +978,7 @@ impl<'a> Builder<'a> {
                 body,
                 invs: _,
                 decrease: _,
+                atomic_call: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -1074,6 +1075,7 @@ impl<'a> Builder<'a> {
                 bb = self.build(e, bb)?;
                 Ok(bb)
             }
+            ExprX::AtomicFunctionCallLoopStartMarker => Ok(bb),
             ExprX::InvMask(_m) => Ok(bb),
             ExprX::Return(e_opt) => {
                 if let Some(e) = e_opt {

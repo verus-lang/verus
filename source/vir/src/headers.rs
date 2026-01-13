@@ -76,6 +76,7 @@ pub struct Header {
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
     pub atomic_update: Option<Expr>,
+    pub atomic_call_loop: bool,
     pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
     pub open_visibility_qualifier: Option<Visibility>,
@@ -96,6 +97,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
     let mut atomic_update: Option<Expr> = None;
+    let mut atomic_call_loop = false;
     let mut unwind_spec: Option<UnwindSpec> = None;
     let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
@@ -224,6 +226,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         }
                         atomic_update = Some(e.clone());
                     }
+                    HeaderExprX::AtomicCallLoop => {
+                        atomic_call_loop = true;
+                        allowed = allows.loops();
+                    }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {
                             None => {}
@@ -287,6 +293,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         decrease_by,
         invariant_mask,
         atomic_update,
+        atomic_call_loop,
         unwind_spec,
         extra_dependencies,
         open_visibility_qualifier,

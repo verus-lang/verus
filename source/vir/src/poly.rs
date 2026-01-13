@@ -971,6 +971,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
         } => {
             let cond = cond
                 .as_ref()
@@ -982,6 +983,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             });
             let invs = Arc::new(invs.collect());
             let decrease = visit_exps_native(ctx, state, decrease);
+            let au_branch_bool = au_branch_bool.as_ref().map(|e| visit_exp_native(ctx, state, e));
             mk_stm(StmX::Loop {
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
@@ -993,6 +995,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 decrease,
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
+                au_branch_bool,
             })
         }
         StmX::OpenInvariant(s) => {

@@ -468,11 +468,16 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
+                au_branch_bool,
             } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
                     let cond_exp = self.visit_exp(cond_exp)?;
                     R::ret(|| (R::get(cond_stm), R::get(cond_exp)))
+                })?;
+                let au_branch_bool = R::map_opt(au_branch_bool, &mut |exp| {
+                    let exp = self.visit_exp(exp)?;
+                    R::ret(|| R::get(exp))
                 })?;
                 let body = self.visit_stm(body)?;
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
@@ -490,6 +495,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: modified_vars.clone(),
+                        au_branch_bool: R::get_opt(au_branch_bool),
                     })
                 })
             }

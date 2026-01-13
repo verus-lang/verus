@@ -61,6 +61,7 @@ pub(crate) struct BodyCtxt<'tcx> {
 
 pub(crate) struct AtomicallyCtxt {
     pub(crate) update_binder: HirId,
+    pub(crate) loop_marker_binder: HirId,
     pub(crate) call_spans: Sender<vir::messages::Span>,
     pub(crate) info: AtomicCallInfo,
 }

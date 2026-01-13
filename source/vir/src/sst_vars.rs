@@ -141,6 +141,7 @@ pub(crate) fn stm_assign(
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
         } => {
             let mut pre_modified = modified.clone();
             *modified = IndexSet::new();
@@ -181,6 +182,7 @@ pub(crate) fn stm_assign(
                 decrease: decrease.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Arc::new(modified_vars),
+                au_branch_bool: au_branch_bool.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
         }

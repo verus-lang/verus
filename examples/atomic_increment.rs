@@ -112,24 +112,21 @@ fn call_increment_good() {
     let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
 
     increment_good(&var) atomically |update| {
-        let tracked mut fuel = None;
+        let tracked mut spare = None;
         open_atomic_invariant!(credit => &inv => perm => {
             let tracked res = update(perm);
             match res {
                 Ok(p) => perm = p,
                 Err((p, c)) => {
                     perm = p;
-                    fuel = Some(c);
+                    spare = Some(c);
                 }
             }
         });
 
-        match fuel {
+        match spare {
             None => break,
-            Some(c) => {
-                credit = c;
-                continue;
-            }
+            Some(c) => credit = c,
         }
     };
 }

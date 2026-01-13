@@ -238,6 +238,7 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Arc<Vec<UniqueIdent>>,
+        au_branch_bool: Option<Exp>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),

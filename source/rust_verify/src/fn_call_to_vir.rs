@@ -594,6 +594,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let expr = expr_to_vir_consume(&bctx, args[0], ExprModifier::REGULAR)?;
                 mk_expr_span(args[0].span, ExprX::Header(Arc::new(HeaderExprX::AtomicSpec(expr))))
             }
+            SpecItem::AtomicCallLoop => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let header = Arc::new(HeaderExprX::AtomicCallLoop);
+                mk_expr(ExprX::Header(header))
+            }
             SpecItem::Decreases => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected decreases", &args);
@@ -722,7 +727,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param, spec_au_param] = body.params else {
+                let [update_param, spec_au_param, loop_marker_param] = body.params else {
                     panic!("the closure should take exactly two argument")
                 };
 
@@ -753,6 +758,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let (tx, rx) = std::sync::mpsc::channel();
                 let actx = Arc::new(AtomicallyCtxt {
                     update_binder: update_param.pat.hir_id,
+                    loop_marker_binder: loop_marker_param.pat.hir_id,
                     call_spans: tx,
                     info: info.clone(),
                 });

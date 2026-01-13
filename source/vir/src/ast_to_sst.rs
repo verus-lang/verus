@@ -87,13 +87,17 @@ pub(crate) struct State<'a> {
 
     pub mask: Option<MaskSet>,
 
-    // This is the atomic update bound in the atomic spec,
-    // we must assert `au.resolves()` at the end of the function.
+    /// This is the atomic update bound in the atomic spec,
+    /// we must assert `au.resolves()` at the end of the function.
     pub au_var_exp_to_resolve: Option<crate::sst::Exp>,
-
-    // This variable is bound by the `atomically |update| { ... }` block
-    // and read by the corresponding `update` function.
+    /// This variable is bound by the `atomically |update| { ... }` block
+    /// and read by the corresponding `update` function.
     pub au_var_exp: Option<crate::sst::Exp>,
+    /// This boolean corresponds to the update control flow of the update
+    /// function in the current atomic call, where:
+    /// - `Commit` (i.e. `true`) forces the loop to `break`, and
+    /// - `Abort` (i.e. `false`) forces the loop to `continue`.
+    pub branch_bool_var: Option<(VarIdent, crate::sst::Exp)>,
 }
 
 pub(crate) struct FinalState {
@@ -208,6 +212,7 @@ impl<'a> State<'a> {
             mask: None,
             au_var_exp_to_resolve: None,
             au_var_exp: None,
+            branch_bool_var: None,
         }
     }
 
@@ -2291,6 +2296,7 @@ pub(crate) fn expr_to_stm_opt(
             body,
             invs,
             decrease,
+            atomic_call,
         } => {
             let is_for_loop = *is_for_loop;
             let loop_isolation = *loop_isolation;
@@ -2299,15 +2305,17 @@ pub(crate) fn expr_to_stm_opt(
             let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
-                Arc::new(
-                    invs.iter()
-                        .filter_map(|inv| match inv.kind {
-                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
-                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
-                            LoopInvariantKind::Ensures => None,
-                        })
-                        .collect(),
-                )
+                let invs = invs
+                    .iter()
+                    .filter(|inv| match inv.kind {
+                        LoopInvariantKind::InvariantExceptBreak => true,
+                        LoopInvariantKind::InvariantAndEnsures => true,
+                        LoopInvariantKind::Ensures => false,
+                    })
+                    .cloned()
+                    .collect();
+
+                Arc::new(invs)
             } else {
                 invs.clone()
             };
@@ -2352,7 +2360,23 @@ pub(crate) fn expr_to_stm_opt(
                             .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
             }
 
-            let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
+            let mut body_prefix = Vec::new();
+            let mut au_branch_bool = None;
+            if *atomic_call {
+                let bool_typ = Arc::new(TypX::Bool);
+                let (var_id, var_exp) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &bool_typ,
+                    LocalDeclKind::Nondeterministic,
+                );
+                body_prefix.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
+                au_branch_bool = Some(var_exp.clone());
+                state.branch_bool_var = Some((var_id, var_exp));
+            }
+
+            let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            state.branch_bool_var = None;
+
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
@@ -2375,7 +2399,7 @@ pub(crate) fn expr_to_stm_opt(
                 decrease1.push(exp);
             }
             if ctx.checking_spec_preconditions() {
-                stms1.splice(0..0, check_recommends);
+                body_stms.splice(0..0, check_recommends);
             }
             if !simple_while {
                 // must be "loop", not "while"
@@ -2385,8 +2409,8 @@ pub(crate) fn expr_to_stm_opt(
                     let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
-                    stms1.insert(0, c_stm);
-                    stms1.insert(1, if_stm);
+                    body_stms.insert(0, c_stm);
+                    body_stms.insert(1, if_stm);
                     cnd = None;
                 }
             }
@@ -2394,6 +2418,7 @@ pub(crate) fn expr_to_stm_opt(
                 // !loop_isolation handling expects a "loop", not a "while"
                 assert!(cnd.is_none());
             }
+            body_stms.splice(0..0, body_prefix);
             let (decls, _) =
                 crate::recursion::mk_decreases_at_entry(ctx, &expr.span, Some(id), &decrease1)?;
             state.local_decls.extend(decls);
@@ -2405,12 +2430,13 @@ pub(crate) fn expr_to_stm_opt(
                     id,
                     label: label.clone(),
                     cond: cnd,
-                    body: stms_to_one_stm(&body.span, stms1),
+                    body: stms_to_one_stm(&body.span, body_stms),
                     invs: Arc::new(invs1),
                     decrease: Arc::new(decrease1),
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
+                    au_branch_bool,
                 },
             );
             if can_control_flow_reach_after_loop(expr) {
@@ -2635,8 +2661,8 @@ pub(crate) fn expr_to_stm_opt(
             state.mask = backup_mask;
             state.pop_scope();
 
-            let body_val = unwrap_or_return_never!(body_exp, stms);
-            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_val.to_exp());
+            let body_exp = to_exp_or_return_never!(body_exp, stms);
+            let y_var_exp = state.make_tmp_var_for_exp(&mut stms, body_exp);
 
             // assert atomic ensures
 
@@ -2832,14 +2858,15 @@ pub(crate) fn expr_to_stm_opt(
                 Default::default(),
             ));
 
-            let call_outer_mask = ExpX::Call(
-                ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
-                au_typ_args.clone(),
-                Arc::new(vec![au_var_exp.clone()]),
-            );
-
-            let outer_mask_exp = SpannedTyped::new(&expr.span, &int_set_typ, call_outer_mask);
-            let outer_mask = MaskSet::arbitrary(&outer_mask_exp);
+            let outer_mask = MaskSet::arbitrary(&SpannedTyped::new(
+                &expr.span,
+                &int_set_typ,
+                ExpX::Call(
+                    ctx.fn_from_path("#vstd::atomic::AtomicUpdate::outer_mask"),
+                    au_typ_args.clone(),
+                    Arc::new(vec![au_var_exp.clone()]),
+                ),
+            ));
 
             if !state.checking_recommends(ctx) {
                 let state_mask = state.mask.as_ref().unwrap();
@@ -3023,7 +3050,7 @@ pub(crate) fn expr_to_stm_opt(
 
             // generate conditional
 
-            let branch_bool = SpannedTyped::new(
+            let branch_bool_exp = SpannedTyped::new(
                 &expr.span,
                 &Arc::new(TypX::Bool),
                 ExpX::Call(
@@ -3033,11 +3060,15 @@ pub(crate) fn expr_to_stm_opt(
                 ),
             );
 
-            let cond = Maybe::Some(Value::Exp(branch_bool));
+            let Some((branch_bool_var_id, branch_bool_var_exp)) = &state.branch_bool_var else {
+                panic!("must be inside atomic function call loop")
+            };
 
-            let if_body_stms = {
+            stms.push(init_var(&expr.span, branch_bool_var_id, &branch_bool_exp));
+            let cond = branch_bool_var_exp.clone();
+
+            let if_body_stm = {
                 let mut stms = Vec::new();
-
                 atomic_update_bind_and_resolve(
                     ctx,
                     expr,
@@ -3048,21 +3079,24 @@ pub(crate) fn expr_to_stm_opt(
                     &mut stms,
                 );
 
-                stms
+                stms_to_one_stm(&expr.span, stms)
             };
 
-            let ret_val = Maybe::Some(Value::Exp(y_var_exp.clone()));
+            stms.push(Spanned::new(expr.span.clone(), StmX::If(cond, if_body_stm, None)));
 
-            return Ok(if_to_stm(
-                state,
-                expr,
-                stms,
-                &cond,
-                if_body_stms,
-                &ret_val,
-                Vec::new(),
-                &ret_val,
-            ));
+            let ret_val = Maybe::Some(Value::Exp(y_var_exp.clone()));
+            return Ok((stms, ret_val));
+        }
+        ExprX::AtomicFunctionCallLoopStartMarker => {
+            let stms = Vec::new();
+            // let bool_typ = Arc::new(TypX::Bool);
+
+            // let (var_id, var_exp) =
+            //     state.declare_temp_var_stm(&expr.span, &bool_typ, LocalDeclKind::Nondeterministic);
+            // stms.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
+            // state.branch_bool_var_exp = Some(var_exp);
+
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::InvMask(mask_spec) => {
             let (span, exprs, compl) = match mask_spec {
