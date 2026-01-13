@@ -2430,7 +2430,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+            let mut header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
             use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
             let allow_no_decreases =
@@ -2440,6 +2440,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             } else {
                 header.decrease.clone()
             };
+            if expr_vattrs.auto_decreases && allow_no_decreases {
+                // Filter out auto_decreases invariants if we're not checking for termination
+                // (at present, we only add them to invariant_except_break)
+                Arc::make_mut(&mut header.invariant_except_break).retain(|e| {
+                    !matches!(&e.x, ExprX::UnaryOpr(UnaryOpr::AutoDecreases, _))
+                }
+                );
+            }
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
                 &expr_typ()?,
@@ -2450,6 +2458,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     cond: None,
                     body,
                     invs: header.loop_invariants(),
+                    //invs,
                     decrease,
                 },
             )))

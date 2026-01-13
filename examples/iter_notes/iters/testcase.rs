@@ -3,21 +3,21 @@ use vstd::std_specs::iter::IteratorSpecImpl;
 
 verus! {
 
-fn test_basic() {
-    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
-    let mut w: Vec<u8> = Vec::new();
-
-    for x in y: v 
-        invariant
-            w.len() as int == y.index@,
-            forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
-            //forall |i| 0 <= i < w.len() ==> w[i] == v[i],
-    {
-        w.push(x);
-    }
-    assert(w.len() == v.len());
-    assert(w@ == v@);
-}
+//fn test_basic() {
+//    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+//    let mut w: Vec<u8> = Vec::new();
+//
+//    for x in y: v 
+//        invariant
+//            w.len() as int == y.index@,
+//            forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+//            //forall |i| 0 <= i < w.len() ==> w[i] == v[i],
+//    {
+//        w.push(x);
+//    }
+//    assert(w.len() == v.len());
+//    assert(w@ == v@);
+//}
 
 
 /*
@@ -39,8 +39,8 @@ fn test_no_loop_isolation() {
     assert(w@ == v@);
 
 }
-*/
 
+*/
 
 struct NoTerminate {
     x: u64,
@@ -55,7 +55,7 @@ impl Iterator for NoTerminate {
 }
 
 impl IteratorSpecImpl for NoTerminate {
-    open spec fn obeys_iter_laws(&self) -> bool { false }
+    open spec fn obeys_iter_laws(&self) -> bool { true }
 
     open spec fn seq(&self) -> Seq<Self::Item> {
         Seq::empty()
@@ -75,17 +75,37 @@ impl IteratorSpecImpl for NoTerminate {
 }
 
 
+#[verifier::exec_allows_no_decreases_clause]
 fn test_no_termination(n: NoTerminate) {
     let mut w: Vec<u64> = Vec::new();
 
-    //#[verifier::exec_allows_no_decreases_clause]
     for x in y: n 
         invariant
-            w.len() as int == y.index@,
+            true,
+            //w.len() as int == y.index@,
     {
-        w.push(x);
+        //w.push(x);
     }
 }
+
+//
+//fn test_basic_no_terminate() {
+//    let v: Vec<u8> = vec![1, 2, 3, 4, 5, 6];
+//    let mut w: Vec<u8> = Vec::new();
+//
+//    #[verifier::exec_allows_no_decreases_clause]
+//    for x in y: v 
+//        invariant
+//            w.len() as int == y.index@,
+//            forall |i| 0 <= i < w.len() ==> w[i] == y.seq()[i],
+//            //forall |i| 0 <= i < w.len() ==> w[i] == v[i],
+//    {
+//        w.push(x);
+//    }
+//    assert(w.len() == v.len());
+//    assert(w@ == v@);
+//}
+
 }
 
 fn main() {}

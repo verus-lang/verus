@@ -476,6 +476,9 @@ pub enum UnaryOpr {
     IntegerTypeBound(IntegerTypeBoundKind, Mode),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
+    /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
+    /// Used to filter out auto-generated decreases-related invariants
+    AutoDecreases,
     /// Predicate over any type that indicates its mutable references has resolved.
     /// For &mut T this says the prophetic value == the current value.
     /// For primitive types this is trivially true.

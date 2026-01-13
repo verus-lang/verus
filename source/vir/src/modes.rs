@@ -1381,6 +1381,10 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec)?;
             Ok(Mode::Spec)
         }
+        ExprX::UnaryOpr(UnaryOpr::AutoDecreases, e1) => {
+            check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Loc(e) => {
             return check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, e);
         }

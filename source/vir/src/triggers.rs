@@ -125,6 +125,10 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, expect_boxed, arg)
             }
+            UnaryOpr::AutoDecreases => {
+                // recurse inside marker
+                check_trigger_expr_arg(state, expect_boxed, arg)
+            }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
@@ -185,6 +189,7 @@ fn check_trigger_expr(
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         ExpX::UnaryOpr(UnaryOpr::HasResolved(_), _) => {}
+        ExpX::UnaryOpr(UnaryOpr::AutoDecreases, _) => {}
         _ => {
             return Err(error(
                 &exp.span,
@@ -269,7 +274,7 @@ fn check_trigger_expr(
             },
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-                UnaryOpr::CustomErr(_) => Ok(()),
+                UnaryOpr::CustomErr(_) | UnaryOpr::AutoDecreases => Ok(()),
                 UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())

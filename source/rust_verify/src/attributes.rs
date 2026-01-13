@@ -945,6 +945,15 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
+pub(crate) fn has_auto_decreases_attr(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        if let Attr::AutoDecreases = attr {
+            return true;
+        }
+    }
+    false
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum AutoDerivesAttr {
     Regular,
