@@ -472,10 +472,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     let is_pure = is_pure1 && is_pure2;
                     (is_pure, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
                 }
-                Index(..) => {
-                    let is_pure = is_pure1 && is_pure2;
-                    (is_pure, Arc::new(TermX::App(App::Index, Arc::new(vec![term1, term2]))))
-                }
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
             }
         }
