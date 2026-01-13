@@ -3,7 +3,6 @@ use crate::cli::VargoOptions;
 use crate::commands::cargo_run;
 use crate::commands::AddOptions;
 use crate::VargoContext;
-use crate::VargoResult;
 
 impl AddOptions for VargoMetadata {
     fn add_options(&self, cargo: &mut std::process::Command) {
@@ -22,6 +21,6 @@ pub fn metadata(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoMetadata,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     cargo_run(options, context, vargo_cmd)
 }

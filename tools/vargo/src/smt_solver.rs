@@ -1,8 +1,8 @@
+use anyhow::Context;
 use regex::Regex;
 
 use crate::consts;
 use crate::macros::warning;
-use crate::VargoResult;
 
 #[derive(Clone, Debug)]
 pub enum SmtSolverType {
@@ -95,25 +95,16 @@ impl SmtSolverBinary {
         })
     }
 
-    pub fn check_version(&self) -> VargoResult<()> {
+    pub fn check_version(&self) -> anyhow::Result<()> {
         let output = std::process::Command::new(&self.path)
             .arg("--version")
             .output()
-            .map_err(|x| format!("could not execute {}: {}", self.stype.to_str(), x))?;
+            .with_context(|| format!("could not execute {}", self.stype.to_str()))?;
         if !output.status.success() {
-            return Err(format!(
-                "{} returned non-zero exit code",
-                self.stype.to_str()
-            ));
+            anyhow::bail!("{} returned non-zero exit code", self.stype.to_str());
         }
         let stdout_str = std::str::from_utf8(&output.stdout)
-            .map_err(|x| {
-                format!(
-                    "{} version output is not valid utf8 ({})",
-                    self.stype.to_str(),
-                    x
-                )
-            })?
+            .with_context(|| format!("{} version output is not valid utf8", self.stype.to_str(),))?
             .to_string();
 
         let version = self
@@ -129,20 +120,23 @@ impl SmtSolverBinary {
                 }
                 Some(version?.as_str())
             })
-            .ok_or(format!(
-                "unexpected {} version output ({})",
-                self.stype.to_str(),
-                stdout_str
-            ))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unexpected {} version output ({})",
+                    self.stype.to_str(),
+                    stdout_str
+                )
+            })?;
         if version != self.stype.expected_version() {
             let name = self.stype.to_str().to_lowercase();
-            return Err(format!(
+
+            anyhow::bail!(
                 "Verus expects {name} version \"{}\", found version \"{}\"\n\
             Run ./tools/get-{name}.(sh|ps1) to update {name} first.\n\
             If you need a build with a custom {name} version, re-run with --no-solver-version-check.",
                 self.stype.expected_version(),
                 version
-            ));
+            );
         } else {
             Ok(())
         }
@@ -152,7 +146,7 @@ impl SmtSolverBinary {
         &self,
         target_verus_dir: &std::path::PathBuf,
         macos_prepare_script: &mut String,
-    ) -> VargoResult<()> {
+    ) -> anyhow::Result<()> {
         if self.path.is_file() {
             let from_f = &self.path;
             let to_f = target_verus_dir.join(self.stype.executable_name());
@@ -162,12 +156,17 @@ impl SmtSolverBinary {
                 // delete the old file first before moving the new one.
                 std::fs::remove_file(&to_f).unwrap();
             }
-            std::fs::copy(&from_f, &to_f).map_err(|x| format!("could not copy file ({})", x))?;
+            std::fs::copy(&from_f, &to_f).with_context(|| {
+                format!(
+                    "could not copy file {} to {}",
+                    from_f.display(),
+                    to_f.display()
+                )
+            })?;
 
-            let dest_file_name = to_f.file_name().ok_or(format!(
-                "could not get file name for {}",
-                self.stype.to_str()
-            ))?;
+            let dest_file_name = to_f.file_name().ok_or_else(|| {
+                anyhow::anyhow!("could not get file name for {}", self.stype.to_str())
+            })?;
             macos_prepare_script.push_str(
                 format!(
                     "\nxattr -d com.apple.quarantine {}\n",

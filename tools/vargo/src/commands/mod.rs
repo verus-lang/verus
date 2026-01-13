@@ -7,7 +7,6 @@ use crate::cli::VerusFeatures;
 use crate::macros::info;
 use crate::VargoContext;
 
-use crate::VargoResult;
 use crate::VSTD_FILES;
 
 mod build;
@@ -20,6 +19,7 @@ mod run;
 mod test;
 mod update;
 
+use anyhow::Context;
 pub use build::build;
 pub use clean::clean;
 pub use cmd::cmd;
@@ -65,27 +65,20 @@ pub(crate) fn cargo_run<Cmd: AddOptions>(
     options: &VargoOptions,
     context: &VargoContext,
     cmd: &Cmd,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     let mut cargo = cargo_command(options, context);
     cmd.add_options(&mut cargo);
     log_command(&cargo, options.vargo_verbose);
 
     let status = cargo
         .status()
-        .map_err(|x| format!("could not execute `cargo {}` ({})", cmd.cmd_name(), x))?;
+        .with_context(|| format!("could not execute `cargo {}`", cmd.cmd_name()))?;
 
     if !status.success() {
         if let Some(code) = status.code() {
-            return Err(format!(
-                "`cargo {}` returned status code {}",
-                cmd.cmd_name(),
-                code
-            ));
+            anyhow::bail!("`cargo {}` returned status code {}", cmd.cmd_name(), code)
         } else {
-            return Err(format!(
-                "`cargo {}` was terminated by a signal",
-                cmd.cmd_name(),
-            ));
+            anyhow::bail!("`cargo {}` was terminated by a signal", cmd.cmd_name(),)
         }
     }
 
@@ -124,14 +117,14 @@ fn rust_flags() -> String {
         .join(" ")
 }
 
-pub(crate) fn clean_vstd(target_verus_dir: impl AsRef<Path>) -> VargoResult<()> {
+pub(crate) fn clean_vstd(target_verus_dir: impl AsRef<Path>) -> anyhow::Result<()> {
     let target_verus_dir = target_verus_dir.as_ref();
     for f in VSTD_FILES.iter() {
         let f = target_verus_dir.join(f);
         if f.is_file() && f.exists() {
             info!("removing {}", f.display());
             std::fs::remove_file(&f)
-                .map_err(|x| format!("could not delete file {} ({x})", f.display()))?;
+                .with_context(|| format!("could not delete file {}", f.display()))?;
         }
     }
     Ok(())

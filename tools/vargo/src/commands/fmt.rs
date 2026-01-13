@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Context;
 use regex::Regex;
 
 use crate::cli::VargoFmt;
@@ -12,7 +13,6 @@ use crate::commands::AddOptions;
 use crate::macros::info;
 use crate::macros::warning;
 use crate::VargoContext;
-use crate::VargoResult;
 
 const MINIMUM_VERUSFMT_VERSION: (u64, u64, u64) = (0, 5, 0);
 
@@ -37,7 +37,7 @@ pub fn fmt(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoFmt,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     if context.in_nextest {
         return Ok(());
     }
@@ -66,7 +66,7 @@ fn format_rust_dir(
     path: impl AsRef<Path>,
     rustfmt_args: &[impl AsRef<OsStr>],
     verbose: bool,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     let path = path.as_ref();
     let path_filename = path.file_name().unwrap_or(OsStr::new("<unknown dir>"));
     info!("formatting {}", path_filename.display());
@@ -79,17 +79,17 @@ fn format_rust_dir(
     log_command(&cargo_fmt, verbose);
     let cargo_fmt_status = cargo_fmt.status().expect("failed to run cargo fmt");
     if !cargo_fmt_status.success() {
-        return Err(format!(
+        anyhow::bail!(
             "cargo fmt on {} returned status code {:?}",
             path_filename.display(),
             cargo_fmt_status.code()
-        ));
+        );
     }
 
     Ok(())
 }
 
-fn format_vstd(options: &VargoOptions, vargo_cmd: &VargoFmt) -> VargoResult<()> {
+fn format_vstd(options: &VargoOptions, vargo_cmd: &VargoFmt) -> anyhow::Result<()> {
     if vargo_cmd.vstd_no_verusfmt {
         return Ok(());
     }
@@ -119,24 +119,24 @@ fn format_vstd(options: &VargoOptions, vargo_cmd: &VargoFmt) -> VargoResult<()> 
     verusfmt.args(&vargo_cmd.rustfmt_args);
     verusfmt.args(all_vstd_files);
     log_command(&verusfmt, options.vargo_verbose);
-    let verusfmt_status = verusfmt
+    verusfmt
         .status()
-        .map_err(|e| format!("failed to run verusfmt on vstd: {e}"))?;
-
-    if !verusfmt_status.success() {
-        return Err(format!(
-            "verusfmt returned status code {:?}",
-            verusfmt_status.code()
-        ));
-    }
-
-    Ok(())
+        .context("failed to run verusfmt on vstd")
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else if let Some(code) = status.code() {
+                Err(anyhow::anyhow!("`verusfmt` returned status code {code}"))
+            } else {
+                Err(anyhow::anyhow!("`verusfmt` was terminated by a signal"))
+            }
+        })
 }
 
 fn verusfmt_get_version(
     verusfmt_path: impl AsRef<Path>,
     verbose: bool,
-) -> VargoResult<Option<(u64, u64, u64)>> {
+) -> anyhow::Result<Option<(u64, u64, u64)>> {
     let verusfmt_path = verusfmt_path.as_ref();
     let mut cmd = std::process::Command::new(verusfmt_path);
     cmd.arg("--version");
@@ -151,25 +151,26 @@ fn verusfmt_get_version(
                     );
                 return Ok(None);
             }
-            _ => return Err(format!("cannot execute verusfmt: {}", err)),
+            _ => return Err(err).context("cannot execute verusfmt"),
         },
     };
 
     if !version_output.status.success() {
-        return Err(format!(
-            "`verusfmt` returned status code {:?}",
-            version_output.status.code()
-        ));
+        if let Some(code) = version_output.status.code() {
+            return Err(anyhow::anyhow!("`verusfmt` returned status code {}", code));
+        } else {
+            return Err(anyhow::anyhow!("`verusfmt` was terminated by a signal",));
+        }
     }
 
-    let verusfmt_version_stdout = String::from_utf8(version_output.stdout)
-        .map_err(|e| format!("invalid output from verusfmt: {e}"))?;
+    let verusfmt_version_stdout =
+        String::from_utf8(version_output.stdout).context("invalid output from verusfmt")?;
 
     let verusfmt_version_re =
         Regex::new(r"^verusfmt ([0-9]+)\.([0-9]+)\.([0-9]+)(?:-.*)?\n$").unwrap();
     let verusfmt_version = verusfmt_version_re
         .captures(&verusfmt_version_stdout)
-        .ok_or("invalid output from verusfmt".to_owned())?
+        .ok_or_else(|| anyhow::anyhow!("invalid output from verusfmt"))?
         .extract::<3>()
         .1
         .iter()
@@ -183,9 +184,9 @@ fn verusfmt_get_version(
     )))
 }
 
-fn verusfmt_check_version(verusfmt_version: (u64, u64, u64)) -> VargoResult<()> {
+fn verusfmt_check_version(verusfmt_version: (u64, u64, u64)) -> anyhow::Result<()> {
     if MINIMUM_VERUSFMT_VERSION > verusfmt_version {
-        Err(format!(
+        Err(anyhow::anyhow!(
                     "expected `verusfmt` version to be at least {}.{}.{}, found {}.{}.{}; refer to https://github.com/verus-lang/verusfmt/blob/main/README.md#installing-and-using-verusfmt for installation instructions",
                     MINIMUM_VERUSFMT_VERSION.0,
                     MINIMUM_VERUSFMT_VERSION.1,

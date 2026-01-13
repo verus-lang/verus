@@ -3,7 +3,6 @@ use crate::cli::VargoUpdate;
 use crate::commands::cargo_run;
 use crate::commands::AddOptions;
 use crate::VargoContext;
-use crate::VargoResult;
 
 impl AddOptions for VargoUpdate {
     fn add_options(&self, cargo: &mut std::process::Command) {
@@ -20,7 +19,7 @@ pub fn update(
     options: &VargoOptions,
     context: &VargoContext,
     vargo_cmd: &VargoUpdate,
-) -> VargoResult<()> {
+) -> anyhow::Result<()> {
     if context.in_nextest {
         return Ok(());
     }

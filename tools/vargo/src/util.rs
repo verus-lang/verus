@@ -29,12 +29,14 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use anyhow::Context;
 use filetime::FileTime;
 use std::fs;
 use std::path::Path;
 
-pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
-    let meta = fs::metadata(path).map_err(|_| format!("failed to stat `{}`", path.display()))?;
+pub fn mtime_recursive(path: &Path) -> anyhow::Result<FileTime> {
+    let meta =
+        fs::metadata(path).with_context(|| format!("failed to stat `{}`", path.display()))?;
     if !meta.is_dir() {
         return Ok(FileTime::from_last_modification_time(&meta));
     }
@@ -75,13 +77,9 @@ pub struct VersionInfo {
     pub sha: String,
 }
 
-pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
-    fn io_err_to_string(err: std::io::Error) -> String {
-        format!("cannot obtain version info from git ({})", err)
-    }
-
+pub fn version_info(root: &std::path::PathBuf) -> anyhow::Result<VersionInfo> {
     // assumes the verus executable gets the .git file for verus repo
-    fn rev_parse(root: &std::path::PathBuf, short: bool) -> Result<String, String> {
+    fn rev_parse(root: &std::path::PathBuf, short: bool) -> anyhow::Result<String> {
         let mut rev_parse_cmd = std::process::Command::new("git");
         rev_parse_cmd.current_dir(root).args(&["rev-parse"]);
         if short {
@@ -91,16 +89,16 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
         let rev_parse_output = rev_parse_cmd
             .stdout(std::process::Stdio::piped())
             .spawn()
-            .map_err(io_err_to_string)?
+            .context("cannot obtain version info from git")?
             .wait_with_output()
-            .map_err(io_err_to_string)?;
+            .context("cannot obtain version info from git")?;
         rev_parse_output
             .status
             .success()
             .then(|| ())
-            .ok_or(format!("git returned error code"))?;
-        let sha = String::from_utf8(rev_parse_output.stdout)
-            .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
+            .ok_or_else(|| anyhow::anyhow!("git returned error code"))?;
+        let sha =
+            String::from_utf8(rev_parse_output.stdout).context("commit sha is invalid utf8")?;
         Ok(sha.trim().to_owned())
     }
     let sha_short = rev_parse(&root, true)?;
@@ -111,21 +109,21 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
         .args(&["show", "-s", "--format=%cs", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(io_err_to_string)?
+        .context("cannot obtain date info from git")?
         .wait_with_output()
-        .map_err(io_err_to_string)?;
+        .context("cannot obtain date info from git")?;
 
     date_info_output
         .status
         .success()
         .then(|| ())
-        .ok_or(format!("git returned error code"))?;
-    let date_str = String::from_utf8(date_info_output.stdout)
-        .map_err(|x| format!("commit date is invalid utf8, {}", x))?;
-    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+        .ok_or_else(|| anyhow::anyhow!("git returned error code"))?;
+    let date_str =
+        String::from_utf8(date_info_output.stdout).context("commit date is invalid utf8")?;
+    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").expect("regex is well formed");
     let date_captures = date_re
         .captures(date_str.trim())
-        .ok_or(format!("unexpected date string \"{}\"", date_str))?;
+        .ok_or_else(|| anyhow::anyhow!("unexpected date string \"{}\"", date_str))?;
     let year = &date_captures[1];
     let month = &date_captures[2];
     let day = &date_captures[3];
@@ -135,9 +133,9 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
         .args(&["diff", "--exit-code", "HEAD"])
         .stdout(std::process::Stdio::null())
         .spawn()
-        .map_err(io_err_to_string)?
+        .context("cannot obtain version info from git")?
         .wait_with_output()
-        .map_err(io_err_to_string)?;
+        .context("cannot obtain version info from git")?;
 
     let dirty = if dirty_output.status.success() {
         ""

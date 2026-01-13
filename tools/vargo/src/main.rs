@@ -21,8 +21,6 @@ use cli::VargoCli;
 use cli::VargoParsedCli;
 use cli::VargoSubcommand;
 
-pub type VargoResult<T> = Result<T, String>;
-
 use context::VargoContext;
 use macros::info;
 
@@ -87,7 +85,7 @@ fn main() {
         Ok(()) => (),
         Err(err) => {
             use yansi::Paint;
-            eprintln!("{}", format!("error: {}", err).red());
+            eprintln!("{} {}", "vargo error:".bold().red(), format!("{err}").red());
             std::process::exit(1);
         }
     }
@@ -111,7 +109,7 @@ pub fn set_vargo_env(cli: &VargoCli, context: &VargoContext) {
     );
 }
 
-fn run(cli: VargoCli) -> VargoResult<()> {
+fn run(cli: VargoCli) -> anyhow::Result<()> {
     let context = VargoContext::construct(&cli)?;
     set_vargo_env(&cli, &context);
 
