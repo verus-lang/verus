@@ -667,7 +667,9 @@ impl Clone for crate::ExprForLoop {
             in_token: self.in_token.clone(),
             expr_name: self.expr_name.clone(),
             expr: self.expr.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
+            ensures: self.ensures.clone(),
             decreases: self.decreases.clone(),
             body: self.body.clone(),
         }
