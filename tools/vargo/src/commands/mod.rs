@@ -10,6 +10,7 @@ use crate::VargoContext;
 use crate::VSTD_FILES;
 
 mod build;
+mod check;
 mod clean;
 mod cmd;
 mod fmt;
@@ -21,6 +22,7 @@ mod update;
 
 use anyhow::Context;
 pub use build::build;
+pub use check::check;
 pub use clean::clean;
 pub use cmd::cmd;
 pub use fmt::fmt;

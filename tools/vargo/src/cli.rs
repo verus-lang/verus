@@ -81,6 +81,14 @@ pub struct VargoBuild {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VargoCheck {
+    pub package: Option<String>,
+    pub exclude: HashSet<String>,
+    pub feature_options: FeaturesOptions,
+    pub release: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoClean {
     pub package: Option<String>,
     pub release: bool,
@@ -141,6 +149,9 @@ pub enum VargoSubcommand {
     /// Build Verus
     Build(VargoBuild),
 
+    /// Analyze the current package and report errors, but don't build/verify
+    Check(VargoCheck),
+
     /// Clean current build
     Clean(VargoClean),
 
@@ -172,6 +183,7 @@ impl VargoSubcommand {
     pub fn release(&self) -> bool {
         match self {
             VargoSubcommand::Build(c) => c.build_options.release,
+            VargoSubcommand::Check(c) => c.release,
             VargoSubcommand::Clean(c) => c.release,
             VargoSubcommand::Cmd(_) => false,
             VargoSubcommand::Fmt(_) => false,
@@ -255,6 +267,23 @@ pub enum VargoParsedSubcommand {
         /// Arguments to pass on to verus (in case verification is needed)
         #[arg(last = true, allow_hyphen_values = true)]
         verus_args: Vec<String>,
+    },
+
+    /// Analyze the current package and report errors, but don't build/verify
+    Check {
+        /// Package to build
+        #[arg(short, long)]
+        package: Option<String>,
+
+        /// Exclude packages from building
+        #[arg(long, action = clap::ArgAction::Append)]
+        exclude: Vec<String>,
+
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
+
+        /// Check artifacts in release mode
+        release: bool,
     },
 
     /// Clean current build
@@ -393,6 +422,17 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 feature_options,
                 build_options,
                 verus_args,
+            }),
+            VargoParsedSubcommand::Check {
+                package,
+                exclude,
+                feature_options,
+                release,
+            } => VargoSubcommand::Check(VargoCheck {
+                package,
+                exclude: exclude.into_iter().collect(),
+                feature_options,
+                release,
             }),
             VargoParsedSubcommand::Clean { package, release } => {
                 VargoSubcommand::Clean(VargoClean { package, release })
