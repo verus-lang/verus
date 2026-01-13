@@ -126,7 +126,10 @@ fn call_increment_good() {
 
         match spare {
             None => break,
-            Some(c) => credit = c,
+            Some(c) => {
+                credit = c;
+                continue;
+            },
         }
     };
 }

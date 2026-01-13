@@ -827,7 +827,7 @@ pub open spec fn branch_bool<T: UpdateTry>(this: T) -> bool {
 #[doc(hidden)]
 #[verifier::external_body]
 pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
-    _body: impl FnOnce(fn (X) -> Y, Ghost<AtomicUpdate<X, Y, P>>, fn ()),
+    _body: impl FnOnce(fn (X) -> Y, Ghost<AtomicUpdate<X, Y, P>>),
 ) -> AtomicUpdate<X, Y, P> {
     arbitrary()
 }

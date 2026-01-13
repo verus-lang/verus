@@ -3613,15 +3613,11 @@ impl Visitor {
                     _ => quote_spanned!(span => _),
                 };
 
-                let unique_id = rand::random::<u64>();
-                let name = format!("_atomic_call_loop_start_marker_internal_{unique_id:x}");
-                let marker_fn_binder = Ident::new(&name, span);
-
                 quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
                     #vstd::atomic::atomically({
                         let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
 
-                        |#update_fn_binder, #ghost_au_binder, #marker_fn_binder| {
+                        |#update_fn_binder, #ghost_au_binder| {
                             #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
 
                             #[verus::internal(spec)]
@@ -3631,8 +3627,10 @@ impl Visitor {
                             #[verifier::assume_termination]
                             loop {
                                 #loop_header
-                                #body
-                                continue;
+                                let _ = #body;
+
+                                #[allow(unreachable_code)]
+                                break;
                             }
                         }
                     })
@@ -3640,7 +3638,7 @@ impl Visitor {
             }
 
             _ => quote_spanned_vstd!(vstd, span =>
-                #vstd::atomic::atomically(|_update_fn, _atomic_update, _marker_fn| ())
+                #vstd::atomic::atomically(|_update_fn, _atomic_update| ())
             ),
         };
 

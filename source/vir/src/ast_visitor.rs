@@ -629,9 +629,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::Update(i, R::get(e))))
             }
-            ExprX::AtomicFunctionCallLoopStartMarker => {
-                R::ret(|| expr_new(ExprX::AtomicFunctionCallLoopStartMarker))
-            }
             ExprX::InvMask(_m) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;

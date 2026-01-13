@@ -727,7 +727,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param, spec_au_param, loop_marker_param] = body.params else {
+                let [update_param, spec_au_param] = body.params else {
                     panic!("the closure should take exactly two argument")
                 };
 
@@ -758,7 +758,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let (tx, rx) = std::sync::mpsc::channel();
                 let actx = Arc::new(AtomicallyCtxt {
                     update_binder: update_param.pat.hir_id,
-                    loop_marker_binder: loop_marker_param.pat.hir_id,
                     call_spans: tx,
                     info: info.clone(),
                 });

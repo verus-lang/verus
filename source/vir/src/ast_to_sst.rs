@@ -3087,17 +3087,6 @@ pub(crate) fn expr_to_stm_opt(
             let ret_val = Maybe::Some(Value::Exp(y_var_exp.clone()));
             return Ok((stms, ret_val));
         }
-        ExprX::AtomicFunctionCallLoopStartMarker => {
-            let stms = Vec::new();
-            // let bool_typ = Arc::new(TypX::Bool);
-
-            // let (var_id, var_exp) =
-            //     state.declare_temp_var_stm(&expr.span, &bool_typ, LocalDeclKind::Nondeterministic);
-            // stms.push(assume_has_typ(&var_id, &bool_typ, &expr.span));
-            // state.branch_bool_var_exp = Some(var_exp);
-
-            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
-        }
         ExprX::InvMask(mask_spec) => {
             let (span, exprs, compl) = match mask_spec {
                 MaskSpec::InvariantOpens(span, exprs) => (span, exprs, false),
