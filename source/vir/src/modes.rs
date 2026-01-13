@@ -1755,7 +1755,16 @@ fn check_expr_handle_mut_arg(
             }
             Ok(final_mode)
         }
-        ExprX::Loop { cond, body, invs, decrease, loop_isolation: _, allow_complex_invariants: _, is_for_loop: _, label: _ } => {
+        ExprX::Loop {
+            cond,
+            body,
+            invs,
+            decrease,
+            loop_isolation: _,
+            allow_complex_invariants: _,
+            is_for_loop: _,
+            label: _,
+        } => {
             // We could also allow this for proof, if we check it for termination
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot use while in proof or spec mode"));
