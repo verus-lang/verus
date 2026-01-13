@@ -286,6 +286,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
+    // Allow complex invariants (invariant_except_break, ensures) with loop_isolation(false)
+    AllowComplexInvariants,
     // Memoize function call results during interpretation
     Memoize,
     // Override default rlimit
@@ -534,6 +536,9 @@ pub(crate) fn parse_attrs(
                     if arg == "loop_isolation" && r == "false" =>
                 {
                     v.push(Attr::LoopIsolation(false))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "allow_complex_invariants" => {
+                    v.push(Attr::AllowComplexInvariants)
                 }
                 AttrTree::Fun(span, arg, Some(places)) if arg == "auto_ext_equal" => {
                     let mut auto_ext_equal = vir::ast::AutoExtEqual {
@@ -848,6 +853,18 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     None
 }
 
+pub(crate) fn get_allow_complex_invariants_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::AllowComplexInvariants = attr {
+            return Some(true);
+        }
+    }
+    None
+}
+
 pub(crate) fn get_auto_ext_equal_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
@@ -1009,6 +1026,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) loop_isolation: Option<bool>,
+    pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
     pub(crate) truncate: bool,
@@ -1180,6 +1198,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         nonlinear: false,
         spinoff_prover: false,
         loop_isolation: None,
+        allow_complex_invariants: false,
         memoize: false,
         rlimit: None,
         truncate: false,
@@ -1260,6 +1279,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
+            Attr::AllowComplexInvariants => vs.allow_complex_invariants = true,
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,

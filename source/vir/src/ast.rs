@@ -1063,6 +1063,7 @@ pub enum ExprX {
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
+        allow_complex_invariants: bool,
         is_for_loop: bool,
         label: Option<String>,
         cond: Option<Expr>,
