@@ -207,6 +207,24 @@ impl VargoSubcommand {
             VargoSubcommand::Update(_) => false,
         }
     }
+
+    // whether a command needs to check the solver version
+    // (if the command doesn't need to run the solver, the version check can be skipped)
+    pub fn needs_solver_version_check(&self) -> bool {
+        match self {
+            VargoSubcommand::Build(_) => true,
+            VargoSubcommand::Check(_) => false,
+            VargoSubcommand::Clean(_) => false,
+            VargoSubcommand::Clippy(_) => false,
+            VargoSubcommand::Cmd(_) => true,
+            VargoSubcommand::Fmt(_) => false,
+            VargoSubcommand::Metadata(_) => false,
+            VargoSubcommand::NextestRun(_) => true,
+            VargoSubcommand::Run(_) => true,
+            VargoSubcommand::Test(_) => true,
+            VargoSubcommand::Update(_) => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Parser)]
