@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -52,6 +52,7 @@ enum App {
     StaticVar(Fun),
     ExecFnByName(Fun),
     ExtEq,
+    Index,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -124,6 +125,9 @@ impl std::fmt::Debug for TermX {
             }
             TermX::App(App::ExecFnByName(fun), _) => {
                 write!(f, "ExecFnByName: {:?}", fun)
+            }
+            TermX::App(App::Index, es) => {
+                write!(f, "Index({:?}, {:?})", es[0], es[1])
             }
         }
     }
@@ -468,6 +472,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     let is_pure = is_pure1 && is_pure2;
                     (is_pure, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
                 }
+                Index(..) => {
+                    let is_pure = is_pure1 && is_pure2;
+                    (is_pure, Arc::new(TermX::App(App::Index, Arc::new(vec![term1, term2]))))
+                }
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
             }
         }
@@ -494,8 +502,22 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::WithTriggers(..) => {
             panic!("shouldn't be inferring triggers for WithTriggers expression")
         }
-        ExpX::Bind(_, _) => {
-            // REVIEW: we could at least look for matching loops here
+        ExpX::Bind(bnd, body) => {
+            // Traverse into bindings to find trigger terms
+            let depth = 1;
+            match &bnd.x {
+                BndX::Let(binders) => {
+                    for binder in binders.iter() {
+                        gather_terms(ctxt, ctx, &binder.a, depth);
+                    }
+                }
+                BndX::Quant(_, _, _, _) | BndX::Lambda(_, _) | BndX::Choose(_, _, _) => {
+                    // Don't traverse into nested quantifiers
+                }
+            }
+            // Traverse into the body
+            gather_terms(ctxt, ctx, body, depth);
+            // The Bind itself is not a pure trigger term
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
         ExpX::ArrayLiteral(es) => {
