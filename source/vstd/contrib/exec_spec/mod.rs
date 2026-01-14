@@ -181,41 +181,61 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'
 // note: practical limitation on tuple length is effectively 12 for impls of some common traits: 
 // https://github.com/WebAssembly/component-model/issues/373
 // https://users.rust-lang.org/t/why-can-tuples-only-handle-12-elements-at-max/29715
-impl<'a, T1: Sized + DeepView, T2: Sized + DeepView> ToRef<&'a (T1, T2)> for &'a (T1, T2) {
-    #[inline(always)]
-    fn get_ref(self) -> &'a (T1, T2) {
-        self
-    }
+// todo(nneamtu): why ToRef impled on a reference?
+macro_rules! impl_exec_spec_tuple {
+    ([$(
+        ($T:ident, $n:tt)
+    ),*])=> {
+        impl<'a, $($T: Sized + DeepView),*> ToRef<&'a ($($T,)*)> for &'a ($($T,)*) {
+            #[inline(always)]
+            fn get_ref(self) -> &'a ($($T,)*) {
+                self
+            }
+        }
+
+        impl<'a, $($T: DeepView + DeepViewClone),*> ToOwned<($($T,)*)> for &'a ($($T,)*) {
+            #[inline(always)]
+            fn get_owned(self) -> ($($T,)*) {
+                self.deep_clone()
+            }
+        }
+
+        impl<$($T: DeepViewClone),*> DeepViewClone for ($($T,)*) {
+            #[inline(always)]
+            #[allow(non_snake_case)]
+            fn deep_clone(&self) -> Self {
+                ($(self.$n.deep_clone(),)*)
+            }
+        }
+
+        impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*) 
+        where
+            $( &'a $T: ExecSpecEq<'a, Other = &'a $T>, )*
+        {
+            type Other = &'a ($($T,)*);
+
+            #[inline(always)]
+            #[allow(non_snake_case)]
+            fn exec_eq(this: Self, other: Self::Other) -> bool {
+                $( <&$T>::exec_eq(&this.$n, &other.$n) )&&*
+            }
+        }
+    };
 }
 
-impl<'a, T1: DeepView + DeepViewClone, T2: DeepView + DeepViewClone> ToOwned<(T1, T2)> for &'a (
-    T1,
-    T2,
-) {
-    #[inline(always)]
-    fn get_owned(self) -> (T1, T2) {
-        self.deep_clone()
-    }
-}
+impl_exec_spec_tuple!([(T0, 0)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10)]);
+impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), (T11, 11)]);
 
-impl<T1: DeepViewClone, T2: DeepViewClone> DeepViewClone for (T1, T2) {
-    #[inline(always)]
-    fn deep_clone(&self) -> Self {
-        (self.0.deep_clone(), self.1.deep_clone())
-    }
-}
-
-impl<'a, T1: DeepView, T2: DeepView> ExecSpecEq<'a> for &'a (T1, T2) where
-    &'a T1: ExecSpecEq<'a, Other = &'a T1>,
-    &'a T2: ExecSpecEq<'a, Other = &'a T2>,
- {
-    type Other = &'a (T1, T2);
-
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        <&T1>::exec_eq(&this.0, &other.0) && <&T2>::exec_eq(&this.1, &other.1)
-    }
-}
 
 /// We use this special alias to tell the `exec_spec` macro to
 /// compile [`Seq<char>`] to [`String`] instead of [`Vec<char>`].

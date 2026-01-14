@@ -294,7 +294,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#field_name.get_ref(), other.#field_name.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
-            quote_spanned! { span => #(#field_eq &&)* true }
+            quote_spanned! { span => #(#field_eq)&&* }
         }
         Fields::Unnamed(fields_unnamed) => {
             let span = fields_unnamed.span();
@@ -305,7 +305,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
                 Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#i.get_ref(), other.#i.get_ref()) })
             }).collect::<Result<Vec<_>, Error>>()?;
 
-            quote_spanned! { span => #(#field_eq &&)* true }
+            quote_spanned! { span => #(#field_eq)&&* }
         }
         Fields::Unit => {
             let span = item_struct.span();
