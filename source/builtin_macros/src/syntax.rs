@@ -3603,12 +3603,23 @@ impl Visitor {
                 let ghost_au_binder = Ident::new(&name, span);
 
                 use verus_syn::ReturnPat as RP;
+                let mut au_eq_assume = TokenStream::new();
                 let au_binder = match spec_au_binder {
-                    RP::Pat(.., pat, Some(hint)) => {
-                        let (colon, ty) = hint.as_ref();
-                        quote_spanned!(span => (#pat) #colon (#ty))
+                    RP::Pat(_, _, pat, hint) => {
+                        au_eq_assume = quote_spanned_builtin!(builtin, span =>
+                            #builtin::assume_(#builtin::spec_eq(
+                                (#pat),
+                                #builtin::Ghost::view(#ghost_au_binder)
+                            ));
+                        );
+
+                        let colon_ty = match hint.as_deref() {
+                            Some((colon, ty)) => quote_spanned!(span => #colon (#ty)),
+                            None => TokenStream::new(),
+                        };
+
+                        quote_spanned!(span => (#pat) #colon_ty)
                     }
-                    RP::Pat(.., pat, _) => quote_spanned!(span => (#pat)),
                     RP::Type(_, ty) => quote_spanned!(span => _ : (#ty)),
                     _ => quote_spanned!(span => _),
                 };
@@ -3627,10 +3638,8 @@ impl Visitor {
                             #[verifier::assume_termination]
                             loop {
                                 #loop_header
-                                let _ = #body;
-
-                                #[allow(unreachable_code)]
-                                break;
+                                #au_eq_assume
+                                #body
                             }
                         }
                     })

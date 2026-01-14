@@ -682,7 +682,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 // #[verifier::atomic_call]
                 // function(x1, x2, x3, ::vstd::atomic::atomically({
                 //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
-                //     |update, yield_fn, atomic_update| {
+                //     |update, atomic_update| {
                 //         ::vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
                 //
                 //         #[verifier::internal(spec)]
@@ -727,9 +727,23 @@ fn verus_item_to_vir<'tcx, 'a>(
                 };
 
                 let body = tcx.hir_body(closure.body);
-                let [update_param, spec_au_param] = body.params else {
+                let [update_param, ghost_au_param] = body.params else {
                     panic!("the closure should take exactly two argument")
                 };
+
+                // let ExprKind::Block(Block { stmts: [_, let_spec_au, ..], .. }, None) = body.value.kind else {
+                //     return malformed_err(expr);
+                // };
+
+                // let StmtKind::Let(rustc_hir::LetStmt { pat: spec_au_pat, .. }) = let_spec_au.kind else {
+                //     return malformed_err(expr);
+                // };
+
+                // let spec_au_var = match spec_au_pat.kind {
+                //     rustc_hir::PatKind::Wild => pat_to_var(ghost_au_param.pat)?,
+                //     _ => pat_to_var(spec_au_pat)?,
+                // };
+                let spec_au_var = pat_to_var(ghost_au_param.pat)?;
 
                 let Some(args) = &bctx.au_pred_args else {
                     return malformed_err(expr);
@@ -743,8 +757,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let tup_typ = mk_tuple_typ(&Arc::new(typs));
                     vir::ast::SpannedTyped::new(&expr_span, &tup_typ, mk_tuple_x(args))
                 };
-
-                let spec_au_var = pat_to_var(spec_au_param.pat)?;
 
                 let info = Arc::new(vir::ast::AtomicCallInfoX {
                     au_typ: au_typ.clone(),
@@ -766,11 +778,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
                 let value = expr_to_vir_consume(&bctx_inner, body.value, outer_modifier)?;
 
+                let update_span = update_param.span.clone();
                 let call_spans = rx.try_iter().collect::<Vec<_>>();
                 match call_spans.len() {
-                    0 => {
-                        err_span(update_param.span, "function must be called in `atomically` block")
-                    }
+                    0 => err_span(update_span, "function must be called in `atomically` block"),
                     1 => mk_expr(ExprX::Atomically(info, spec_au_var, args_expr, value)),
                     _ => Err(Arc::new(vir::messages::MessageX {
                         level: air::messages::MessageLevel::Error,

@@ -1729,6 +1729,33 @@ fn assume_other_fields_unchanged(
         .then(|| Arc::new(StmtX::Assume(Arc::new(ExprX::Multi(MultiOp::And, Arc::new(eqs)))))))
 }
 
+fn assert_atomic_update_control_flow(
+    ctx: &Ctx,
+    expr_ctxt: &ExprCtxt,
+    span: &Span,
+    stmts: &mut Vec<Stmt>,
+    is_break: bool,
+    branch_bool: &Exp,
+) -> Result<(), crate::messages::Message> {
+    let (cond, error) = if is_break {
+        let err = error(span, "cannot show the atomic update was committed");
+        let branch_is_commit = branch_bool.clone();
+        (branch_is_commit, err)
+    } else {
+        let err = error(span, "cannot show the atomic update was aborted");
+        let branch_is_abort = SpannedTyped::new(
+            &branch_bool.span,
+            &branch_bool.typ,
+            ExpX::Unary(UnaryOp::Not, branch_bool.clone()),
+        );
+        (branch_is_abort, err)
+    };
+
+    let cond = exp_to_expr(ctx, &cond, expr_ctxt)?;
+    stmts.push(Arc::new(StmtX::Assert(None, error, None, cond)));
+    Ok(())
+}
+
 fn assume_other_fields_unchanged_inner(
     ctx: &Ctx,
     snapshot_name: &str,
@@ -2414,22 +2441,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             //if ctx.checking_spec_preconditions() {
             if let Some(branch_bool) = &loop_info.au_branch_bool {
-                let (cond, error) = if *is_break {
-                    let err = error(&stm.span, "cannot show the atomic update was committed");
-                    let branch_is_commit = branch_bool.clone();
-                    (branch_is_commit, err)
-                } else {
-                    let err = error(&stm.span, "cannot show the atomic update was aborted");
-                    let branch_is_abort = SpannedTyped::new(
-                        &branch_bool.span,
-                        &branch_bool.typ,
-                        ExpX::Unary(UnaryOp::Not, branch_bool.clone()),
-                    );
-                    (branch_is_abort, err)
-                };
-
-                let cond = exp_to_expr(ctx, &cond, expr_ctxt)?;
-                stmts.push(Arc::new(StmtX::Assert(None, error, None, cond)));
+                assert_atomic_update_control_flow(
+                    ctx,
+                    expr_ctxt,
+                    &stm.span,
+                    &mut stmts,
+                    *is_break,
+                    branch_bool,
+                )?;
             }
             //}
 
@@ -2742,6 +2761,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             state.loop_infos.push(loop_info);
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
             state.loop_infos.pop();
+
+            if let Some(branch_bool) = au_branch_bool {
+                let is_break = false;
+                assert_atomic_update_control_flow(
+                    ctx,
+                    expr_ctxt,
+                    &stm.span,
+                    &mut air_body,
+                    is_break,
+                    branch_bool,
+                )?;
+            }
 
             if !ctx.checking_spec_preconditions() {
                 for (span, inv, msg, _) in invs_entry.iter() {

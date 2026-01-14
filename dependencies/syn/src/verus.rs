@@ -1713,8 +1713,9 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ReturnPat {
         fn parse(input: ParseStream) -> Result<Self> {
-            // TODO: this logic breaks if the arrow is followed by a tuple type,
-            // which currently cannot happen
+            // TODO: We decide whether this is a pattern or type by checking for
+            // parenthesis after the arrow. This logic breaks if the arrow is
+            // followed by a tuple type `-> (Ty, ..., Ty)`.
 
             if !input.peek(Token![->]) {
                 return Ok(ReturnPat::Default);
@@ -1725,12 +1726,12 @@ pub mod parsing {
                 return Ok(ReturnPat::Type(arrow, input.parse()?));
             }
 
-            let context;
-            let paren = parenthesized!(context in input);
-            let pat = Pat::parse_single(&context)?;
-            let opt_ty = if input.peek(Token![:]) {
-                let colon = context.parse()?;
-                let ty = context.parse()?;
+            let content;
+            let paren = parenthesized!(content in input);
+            let pat = Pat::parse_single(&content)?;
+            let opt_ty = if content.peek(Token![:]) {
+                let colon = content.parse()?;
+                let ty = content.parse()?;
                 Some(Box::new((colon, ty)))
             } else {
                 None
