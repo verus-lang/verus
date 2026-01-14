@@ -178,6 +178,9 @@ impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'
 }
 
 /// TODO: generalize to more tuple types
+// note: practical limitation on tuple length is effectively 12 for impls of some common traits: 
+// https://github.com/WebAssembly/component-model/issues/373
+// https://users.rust-lang.org/t/why-can-tuples-only-handle-12-elements-at-max/29715
 impl<'a, T1: Sized + DeepView, T2: Sized + DeepView> ToRef<&'a (T1, T2)> for &'a (T1, T2) {
     #[inline(always)]
     fn get_ref(self) -> &'a (T1, T2) {
