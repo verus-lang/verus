@@ -969,6 +969,7 @@ impl<'a> Builder<'a> {
             }
             ExprX::Loop {
                 loop_isolation: _,
+                allow_complex_invariants: _,
                 // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
