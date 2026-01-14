@@ -144,6 +144,17 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Owned => Ok(quote_spanned! { span => Option<#param> }),
                         TypeKind::Ref => Ok(quote_spanned! { span => &Option<#param> }),
                     };
+                // Special cases for common types to throw more informative errors
+                } else if type_path.path.segments[0].ident.to_string() == "Vec" 
+                    || type_path.path.segments[0].ident.to_string() == "HashMap"
+                    || type_path.path.segments[0].ident.to_string() == "HashSet"
+                    || type_path.path.segments[0].ident.to_string() == "ExecMultiset"
+                    || type_path.path.segments[0].ident.to_string() == "String"
+                    || type_path.path.segments[0].ident.to_string() == "str"
+                    || type_path.path.segments[0].ident.to_string() == "nat"
+                    || type_path.path.segments[0].ident.to_string() == "int"
+                {
+                    return Err(Error::new_spanned(&typ, "Type cannot be compiled from spec code to exec code. Hint: supported types are primitive integers (uN, usize, iN, isize), bool, char, Seq<char> (for strings), Seq, Multiset, Map, Set."));
                 }
             }
         }
