@@ -179,8 +179,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
 
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
-    // note: types of fields are effectively constrained to those whose compiled types impl DeepView and DeepViewClone.
-    // could be extended to those that impl ExecEq as well?
+    // note: types of fields are effectively constrained to those whose compiled types impl DeepView, DeepViewClone, and ExecSpecEq.
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
     }
@@ -284,6 +283,36 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         }
     };
 
+    // Generate body of the ExecSpecEq impl
+    let eq_body = match &item_struct.fields {
+        Fields::Named(fields_named) => {
+            let span = fields_named.span();
+            let field_eq = fields_named.named.iter().map(|field| {
+                let field_name = &field.ident;
+                let field_type = compile_type(&field.ty, TypeKind::Ref)?;
+                let span = field.span();
+                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#field_name.get_ref(), other.#field_name.get_ref()) })
+            }).collect::<Result<Vec<_>, Error>>()?;
+
+            quote_spanned! { span => #(#field_eq &&)* true }
+        }
+        Fields::Unnamed(fields_unnamed) => {
+            let span = fields_unnamed.span();
+            let field_eq = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
+                let i = Index::from(i);
+                let field_type = compile_type(&field.ty, TypeKind::Ref)?;
+                let span = field.span();
+                Ok(quote_spanned! { span => <#field_type>::exec_eq(this.#i.get_ref(), other.#i.get_ref()) })
+            }).collect::<Result<Vec<_>, Error>>()?;
+
+            quote_spanned! { span => #(#field_eq &&)* true }
+        }
+        Fields::Unit => {
+            let span = item_struct.span();
+            quote_spanned! { span => true }
+        }
+    };
+
     let vis = &item_struct.vis;
 
     // Only open the view if the struct and all fields are public
@@ -338,6 +367,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         impl vstd::contrib::exec_spec::DeepViewClone for #exec_name {
             fn deep_clone(&self) -> Self {
                 #clone_body
+            }
+        }
+
+        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
+            type Other = &'a #exec_name;
+
+            fn exec_eq(this: Self, other: Self::Other) -> bool {
+                #eq_body
             }
         }
     })
