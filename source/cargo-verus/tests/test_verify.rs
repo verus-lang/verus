@@ -263,9 +263,7 @@ fn workspace_manifest_package_optin() {
     data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
     data.assert_env_has_no_key_prefix(&verify_unset_prefix);
-    // TODO: `cargo-verus` should be fixed in a follow-up change to have
-    //       the correct behavior, i.e. not mark `hasdeps` to be verified
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    data.assert_env_has_no_key_prefix(&verify_hasdeps_prefix);
 }
 
 #[test]

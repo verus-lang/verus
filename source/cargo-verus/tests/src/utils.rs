@@ -8,6 +8,7 @@ use std::path::Path;
 use std::process::{Command, ExitStatus};
 
 pub use cargo_verus::test_utils::{MockDep, MockPackage, MockWorkspace};
+
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 
 #[derive(Debug, Deserialize)]
@@ -51,6 +52,13 @@ impl CargoData {
     pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
         let encoded_args = self.env.get(key).expect(&format!("retrieve env var `{}`", key));
         encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
+    }
+
+    pub fn parse_driver_args_for_key_prefix(&self, key_prefix: &str) -> Vec<&str> {
+        let Some((_, value)) = self.env.iter().find(|(k, _)| k.starts_with(key_prefix)) else {
+            return vec![];
+        };
+        value.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 }
 

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{ArgAction, Args, Parser, Subcommand};
 
 #[derive(Clone, Debug, Parser)]
@@ -20,6 +22,9 @@ pub enum VerusSubcommand {
 
     /// Verify the current crate with 'cargo build'
     Verify(VerifyCommand),
+
+    /// Verify only crate contents, without dependencies.
+    Focus(VerifyCommand),
 
     /// Verify and build the current crate with 'cargo build'
     Build(VerifyCommand),
@@ -75,6 +80,9 @@ pub struct CargoOptions {
     #[arg(long)]
     pub offline: bool,
 
+    #[arg(long)]
+    pub target_dir: Option<PathBuf>,
+
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
     pub config: Vec<String>,
 
@@ -95,6 +103,7 @@ impl CargoVerusCli {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
         match &mut self.command {
             VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
                 let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
