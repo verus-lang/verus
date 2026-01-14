@@ -179,6 +179,8 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
 
 /// Compiles a struct item.
 fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
+    // note: types of fields are effectively constrained to those whose compiled types impl DeepView and DeepViewClone.
+    // could be extended to those that impl ExecEq as well?
     if !item_struct.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_struct.generics, "generics not supported"));
     }
