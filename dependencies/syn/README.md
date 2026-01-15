@@ -189,6 +189,13 @@ warning: come on, pick a more creative name
 
 <br>
 
+## Building
+
+**IMPORTANT**: If you introduce new items (e.g., `ast_struct`s) or modify the
+fields in existing items, you need to go into the `codegen`directory and run
+`cargo run` to regenerate the files in the `src/gen` directory.
+
+
 ## Testing
 
 When testing macros, we often care not just that the macro can be used
