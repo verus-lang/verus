@@ -325,14 +325,8 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
         true
     }
 
-    closed spec fn seq(&self) -> Seq<Self::Item> {
-        Seq::empty()
-        //self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
-    }
-
-    closed spec fn completes(&self) -> bool {
-        true
-    }
+    uninterp fn seq(&self) -> Seq<Self::Item>;
+    uninterp fn completes(&self) -> bool;
 
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
         // &&& self.elts() == self.seq().map_values(|v: &T| *v)
@@ -341,10 +335,7 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
         &&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
     }
 
-    closed spec fn decrease(&self) -> Option<nat> {
-        //Some((self.back() - self.front()) as nat)
-        None
-    }
+    uninterp fn decrease(&self) -> Option<nat>;
 }
 
 // This is used by `vec![x; n]`
