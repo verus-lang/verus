@@ -1075,12 +1075,12 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
         return Err(Error::new_spanned(closure, "The exec_spec! macro only supports typed quantified variables."));
     };
 
-    // check for commonly used unsupported types to provide a more informative error message
+    // check that the type is supported
     match &*quant_type {
         Type::Path(type_path) => {
             if type_path.path.segments.len() == 1 {
                 let ident = &type_path.path.segments.first().unwrap().ident;
-                if ident == "int" || ident == "nat" {
+                if !(ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" || ident == "usize" || ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" || ident == "isize" || ident == "char") {
                     return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG));
                 }
             }
