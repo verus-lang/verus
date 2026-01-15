@@ -186,39 +186,43 @@ macro_rules! impl_exec_spec_tuple {
     ([$(
         ($T:ident, $n:tt)
     ),*])=> {
-        impl<'a, $($T: Sized + DeepView),*> ToRef<&'a ($($T,)*)> for &'a ($($T,)*) {
-            #[inline(always)]
-            fn get_ref(self) -> &'a ($($T,)*) {
-                self
+        verus! {
+        
+            impl<'a, $($T: Sized + DeepView),*> ToRef<&'a ($($T,)*)> for &'a ($($T,)*) {
+                #[inline(always)]
+                fn get_ref(self) -> &'a ($($T,)*) {
+                    self
+                }
             }
-        }
 
-        impl<'a, $($T: DeepView + DeepViewClone),*> ToOwned<($($T,)*)> for &'a ($($T,)*) {
-            #[inline(always)]
-            fn get_owned(self) -> ($($T,)*) {
-                self.deep_clone()
+            impl<'a, $($T: DeepView + DeepViewClone),*> ToOwned<($($T,)*)> for &'a ($($T,)*) {
+                #[inline(always)]
+                fn get_owned(self) -> ($($T,)*) {
+                    self.deep_clone()
+                }
             }
-        }
 
-        impl<$($T: DeepViewClone),*> DeepViewClone for ($($T,)*) {
-            #[inline(always)]
-            #[allow(non_snake_case)]
-            fn deep_clone(&self) -> Self {
-                ($(self.$n.deep_clone(),)*)
+            impl<$($T: DeepViewClone),*> DeepViewClone for ($($T,)*) {
+                #[inline(always)]
+                #[allow(non_snake_case)]
+                fn deep_clone(&self) -> Self {
+                    ($(self.$n.deep_clone(),)*)
+                }
             }
-        }
 
-        impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*) 
-        where
-            $( &'a $T: ExecSpecEq<'a, Other = &'a $T>, )*
-        {
-            type Other = &'a ($($T,)*);
+            impl<'a, $($T: DeepView),*> ExecSpecEq<'a> for &'a ($($T,)*) 
+            where
+                $( &'a $T: ExecSpecEq<'a, Other = &'a $T>, )*
+            {
+                type Other = &'a ($($T,)*);
 
-            #[inline(always)]
-            #[allow(non_snake_case)]
-            fn exec_eq(this: Self, other: Self::Other) -> bool {
-                $( <&$T>::exec_eq(&this.$n, &other.$n) )&&*
+                #[inline(always)]
+                #[allow(non_snake_case)]
+                fn exec_eq(this: Self, other: Self::Other) -> bool {
+                    $( <&$T>::exec_eq(&this.$n, &other.$n) )&&*
+                }
             }
+
         }
     };
 }
