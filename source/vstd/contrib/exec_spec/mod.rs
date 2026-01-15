@@ -231,15 +231,6 @@ impl_exec_spec_tuple!([(T0, 0)]);
 impl_exec_spec_tuple!([(T0, 0), (T1, 1)]);
 impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2)]);
 impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10)]);
-impl_exec_spec_tuple!([(T0, 0), (T1, 1), (T2, 2), (T3, 3), (T4, 4), (T5, 5), (T6, 6), (T7, 7), (T8, 8), (T9, 9), (T10, 10), (T11, 11)]);
-
 
 /// We use this special alias to tell the `exec_spec` macro to
 /// compile [`Seq<char>`] to [`String`] instead of [`Vec<char>`].
