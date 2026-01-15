@@ -3769,9 +3769,10 @@ impl Visitor {
             None
         };
         dbg!("invariant created");
-        let inv_except_break = if let Some(mut invariant) = invariant_except_break {
+        let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
             dbg!("inv_except_break 1");
-            for inv in &mut invariant.exprs.exprs {
+            for inv in &mut invariant_except_break.exprs.exprs {
+                dbg!(&inv);
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = if #x_iter_name.index.view().spec_le(#x_iter_name.seq().len()) {
                         #x_iter_name.seq().spec_index(#x_iter_name.index.view())
@@ -3782,9 +3783,9 @@ impl Visitor {
                 }));
             }
             if no_loop_invariant.is_none() {
-                invariant.exprs.exprs.insert(0, some_inv);
+                invariant_except_break.exprs.exprs.insert(0, some_inv);
             }
-            Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant.exprs })
+            Some(InvariantExceptBreak { token: Token![invariant_except_break](span), exprs: invariant_except_break.exprs })
         } else if no_loop_invariant.is_none() {
             dbg!("inv_except_break 2");
             //Some(parse_quote_spanned!(span => invariant #some_inv,))

@@ -2115,7 +2115,10 @@ where
         in_token: node.in_token,
         expr_name: (node.expr_name).map(|it| Box::new((f.fold_ident((*it).0), (*it).1))),
         expr: Box::new(f.fold_expr(*node.expr)),
+        invariant_except_break: (node.invariant_except_break)
+            .map(|it| f.fold_invariant_except_break(it)),
         invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         decreases: (node.decreases).map(|it| f.fold_decreases(it)),
         body: f.fold_block(node.body),
     }

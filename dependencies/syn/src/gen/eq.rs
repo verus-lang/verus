@@ -673,8 +673,9 @@ impl PartialEq for crate::ExprForLoop {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.label == other.label && self.pat == other.pat
             && self.expr_name == other.expr_name && self.expr == other.expr
-            && self.invariant == other.invariant && self.decreases == other.decreases
-            && self.body == other.body
+            && self.invariant_except_break == other.invariant_except_break
+            && self.invariant == other.invariant && self.ensures == other.ensures
+            && self.decreases == other.decreases && self.body == other.body
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
