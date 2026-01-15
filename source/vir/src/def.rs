@@ -57,6 +57,7 @@ const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
+const PREFIX_DYN_ID: &str = "DYN%";
 const PREFIX_DCR_ID: &str = "DCR%";
 const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
@@ -71,6 +72,7 @@ pub(crate) const PROJECT_POINTEE_METADATA: &str = "pointee_metadata%";
 pub(crate) const PROJECT_POINTEE_METADATA_DECORATION: &str = "pointee_metadata%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const PREFIX_TO_DYN: &str = "to_dyn%";
 pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -177,6 +179,7 @@ pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
+pub const DECORATE_NIL_DYN: &str = "$dyn"; // for 'dyn' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
@@ -427,6 +430,54 @@ pub fn strslice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn fn_slice_len(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_len".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_index(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_index".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_slice_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("slice".to_string()),
+                Arc::new("spec_slice_update".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_array_update(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("array".to_string()),
+                Arc::new("spec_array_update".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -448,6 +499,10 @@ pub fn prefix_dcr_id(ident: &Path) -> Ident {
 
 pub fn prefix_type_id(ident: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
+}
+
+pub fn prefix_dyn_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_DYN_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -506,6 +561,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn to_dyn(trait_path: &Path) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_TO_DYN, path_to_string(trait_path)))
 }
 
 pub fn sized_bound() -> Ident {

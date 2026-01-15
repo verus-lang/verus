@@ -922,3 +922,15 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file_with_options! {
+    #[test] resolve_tracked_param_but_not_ghost_param ["new-mut-ref"] => verus_code! {
+        proof fn test_tr<T>(tracked m: &mut T) {
+            assert(has_resolved(m));
+        }
+
+        proof fn test_gho<T>(m: &mut T) {
+            assert(has_resolved(m)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

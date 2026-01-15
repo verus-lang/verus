@@ -353,7 +353,7 @@ impl BinaryOp {
                 Shr(..) | Shl(..) => (26, 26, 27),
             },
             StrGetChar => (90, 90, 90),
-            ArrayIndex => (90, 90, 90),
+            Index(_, _) => (90, 90, 90),
         }
     }
 }
@@ -460,6 +460,7 @@ impl ExpX {
                 }
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
+                | UnaryOp::ToDyn
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
@@ -473,8 +474,12 @@ impl ExpX {
                 UnaryOp::MutRefCurrent => {
                     (format!("mut_ref_current({})", exp.x.to_string_prec(global, 99)), 0)
                 }
-                UnaryOp::MutRefFuture => {
+                UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
+                }
+                UnaryOp::MutRefFinal => (format!("fin({})", exp.x.to_string_prec(global, 99)), 0),
+                UnaryOp::Length(_kind) => {
+                    (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
             },
             UnaryOpr(op, exp) => {
@@ -552,15 +557,15 @@ impl ExpX {
                         Shr(..) => ">>",
                         Shl(..) => "<<",
                     },
-                    StrGetChar => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
-                    ArrayIndex => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
+                    StrGetChar => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
+                    Index(..) => "ignored", // This is a non-infix BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
-                } else if let ArrayIndex = op {
-                    (format!("array_index({left}, {right})"), prec_exp)
+                } else if let Index(..) = op {
+                    (format!("index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
@@ -808,7 +813,7 @@ pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(crate::ast::MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
 }
 

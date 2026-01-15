@@ -171,6 +171,7 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _, _)),
+            false,
         )?;
 
         Ok(())
@@ -550,6 +551,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     )?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
+    vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
     Ok(Arc::new(vir))
 }

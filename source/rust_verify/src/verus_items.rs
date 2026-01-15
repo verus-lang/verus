@@ -304,11 +304,16 @@ pub(crate) enum VstdItem {
     ArrayIndexGet,
     ArrayAsSlice,
     ArrayFillForCopyTypes,
+    SpecArrayUpdate,
     SliceIndexGet,
+    SpecSliceUpdate,
+    SpecSliceLen,
+    SpecSliceIndex,
     CastPtrToThinPtr,
     CastArrayPtrToSlicePtr,
     CastPtrToUsize,
     VecIndex,
+    VecIndexMut,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -379,11 +384,12 @@ pub(crate) enum VerusItem {
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
     External(ExternalItem),
-    Resolve,
     HasResolved,
     HasResolvedUnsized,
     MutRefCurrent,
     MutRefFuture,
+    Final,
+    AfterBorrow,
     ErasedGhostValue,
     DummyCapture(DummyCaptureItem),
 }
@@ -560,10 +566,15 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
+        ("verus::vstd::std_specs::vec::vec_index_mut", VerusItem::Vstd(VstdItem::VecIndexMut, Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
+        ("verus::vstd::array::spec_array_update", VerusItem::Vstd(VstdItem::SpecArrayUpdate, Some(Arc::new("array::spec_array_update".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
+        ("verus::vstd::slice::spec_slice_update", VerusItem::Vstd(VstdItem::SpecSliceUpdate, Some(Arc::new("slice::spec_slice_update".to_owned())))),
+        ("verus::vstd::slice::spec_slice_len", VerusItem::Vstd(VstdItem::SpecSliceLen, Some(Arc::new("slice::spec_slice_len".to_owned())))),
+        ("verus::vstd::slice::spec_slice_index", VerusItem::Vstd(VstdItem::SpecSliceIndex, Some(Arc::new("slice::spec_slice_index".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
@@ -596,11 +607,12 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
         ("verus::verus_builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
         ("verus::verus_builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
-        ("verus::verus_builtin::resolve",          VerusItem::Resolve),
         ("verus::verus_builtin::has_resolved",     VerusItem::HasResolved),
         ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
+        ("verus::verus_builtin::fin",              VerusItem::Final),
+        ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
     ]
 }
 
@@ -696,6 +708,7 @@ pub(crate) enum RustItem {
     PhantomData,
     Destruct,
     SliceSealed,
+    Vec,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -820,6 +833,9 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::cmp::Ord") {
         return Some(RustItem::Ord);
+    }
+    if rust_path == Some("alloc::vec::Vec") {
+        return Some(RustItem::Vec);
     }
 
     if let Some(rust_path) = rust_path {

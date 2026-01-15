@@ -11,9 +11,9 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
+    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -322,7 +322,9 @@ where
 
     fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
         match *t.kind() {
-            rustc_middle::ty::Bound(debruijn, bound_ty) if debruijn == self.current_index => {
+            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty)
+                if debruijn == self.current_index =>
+            {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
@@ -335,9 +337,13 @@ where
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
+            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br)
+                if debruijn >= self.current_index =>
+            {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(debruijn1, br) = region.kind() {
+                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
+                    region.kind()
+                {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -350,7 +356,9 @@ where
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            ConstKind::Bound(debruijn, bound_const) if debruijn == self.current_index => {
+            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const)
+                if debruijn == self.current_index =>
+            {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
@@ -855,12 +863,28 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
+    use rustc_middle::ty::GenericArgs;
     use vir::ast::TypDecoration;
     let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
         mid_ty_to_vir_ghost(tcx, verus_items, None, param_env_src, span, t, allow_mut_ref)
     };
     let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
         mid_ty_to_vir_ghost(tcx, verus_items, None, param_env_src, span, t, allow_mut_ref)
+    };
+    let mk_typ_args = |args: &GenericArgs<'tcx>| -> Result<Vec<(Typ, bool)>, VirErr> {
+        let mut typ_args: Vec<(Typ, bool)> = Vec::new();
+        for arg in args.iter() {
+            match arg.kind() {
+                rustc_middle::ty::GenericArgKind::Type(t) => {
+                    typ_args.push(t_rec(&t)?);
+                }
+                rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
+                rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                    typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
+                }
+            }
+        }
+        Ok(typ_args)
     };
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
@@ -953,18 +977,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     ));
                 }
 
-                let mut typ_args: Vec<(Typ, bool)> = Vec::new();
-                for arg in args.iter() {
-                    match arg.kind() {
-                        rustc_middle::ty::GenericArgKind::Type(t) => {
-                            typ_args.push(t_rec(&t)?);
-                        }
-                        rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
-                        rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                            typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
-                        }
-                    }
-                }
+                let typ_args = mk_typ_args(&args)?;
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
                     let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
@@ -1182,26 +1195,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 }
             };
 
-            let mut typ_args: Vec<(Typ, bool)> = Vec::new();
-            for arg in args.iter() {
-                match arg.kind() {
-                    rustc_middle::ty::GenericArgKind::Type(t) => {
-                        typ_args.push(mid_ty_to_vir_ghost(
-                            tcx,
-                            verus_items,
-                            None,
-                            param_env_src,
-                            span,
-                            &t,
-                            allow_mut_ref,
-                        )?);
-                    }
-                    rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
-                    rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                        typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
-                    }
-                }
-            }
+            let typ_args = mk_typ_args(&args)?;
             let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
             let path = def_id_to_vir_path(tcx, verus_items, *def_id, None);
             let fun = Arc::new(vir::ast::FunX { path });
@@ -1209,12 +1203,46 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
+        TyKind::Dynamic(preds, _) => {
+            use rustc_middle::ty::ExistentialPredicate;
+            if preds.len() != 1 {
+                unsupported_err!(span, "dyn with more that one trait");
+            }
+            match preds[0].skip_binder() {
+                ExistentialPredicate::Trait(trait_ref) => {
+                    let trait_did = trait_ref.def_id;
+                    let args = trait_ref.args;
+                    let trait_path = def_id_to_vir_path(tcx, verus_items, trait_did, None);
+                    let self_arg = GenericArg::from(*ty);
+                    let mut ty_args_with_self = vec![self_arg];
+                    ty_args_with_self.extend(args.into_iter());
+                    let args_with_self = tcx.mk_args(&ty_args_with_self);
+                    let typ_args = mk_typ_args(&args)?;
+                    let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
+                    let impl_paths = get_impl_paths(
+                        tcx,
+                        verus_items,
+                        param_env_src,
+                        trait_did,
+                        args_with_self,
+                        None,
+                    );
+                    let typx = TypX::Dyn(trait_path, Arc::new(typ_args), impl_paths);
+                    (Arc::new(typx), false)
+                }
+                ExistentialPredicate::Projection(_) => {
+                    unsupported_err!(span, "dyn with projections");
+                }
+                ExistentialPredicate::AutoTrait(_def_id) => {
+                    unsupported_err!(span, "dyn with auto-traits");
+                }
+            }
+        }
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }
         TyKind::FnPtr(..) => unsupported_err!(span, "function pointer types"),
-        TyKind::Dynamic(..) => unsupported_err!(span, "dynamic types"),
         TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
@@ -2066,6 +2094,16 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
                 TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
                 _ => false,
             }
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn ty_is_vec<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    match ty.kind() {
+        TyKind::Adt(adt, _) => {
+            let rust_item = verus_items::get_rust_item(tcx, adt.did());
+            matches!(rust_item, Some(verus_items::RustItem::Vec))
         }
         _ => false,
     }

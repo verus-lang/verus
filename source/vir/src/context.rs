@@ -48,6 +48,8 @@ pub struct GlobalCtx {
     pub(crate) datatype_graph: Arc<Graph<crate::recursive_types::TypNode>>,
     pub(crate) datatype_graph_span_infos: Vec<Span>,
     pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
+    /// Map TSpec to T
+    pub(crate) extension_to_trait: HashMap<Path, Path>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -89,6 +91,7 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) reached_dyn_traits: HashSet<Path>,
     pub(crate) used_builtins: crate::prune::UsedBuiltins,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
@@ -181,6 +184,7 @@ fn datatypes_invs(
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_)
+                        | TypX::Dyn(..)
                         | TypX::TypParam(_)
                         | TypX::Projection { .. }
                         | TypX::PointeeMetadata(_) => {
@@ -658,6 +662,7 @@ impl GlobalCtx {
             func_call_sccs: Arc::new(func_call_sccs),
             datatype_graph: Arc::new(datatype_graph),
             datatype_graph_span_infos: span_infos,
+            extension_to_trait,
             trait_impl_to_extensions,
             qid_map,
             rlimit,
@@ -690,6 +695,7 @@ impl GlobalCtx {
             datatype_graph: self.datatype_graph.clone(),
             datatype_graph_span_infos: self.datatype_graph_span_infos.clone(),
             func_call_sccs: self.func_call_sccs.clone(),
+            extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
             qid_map,
             rlimit: self.rlimit,
@@ -732,6 +738,7 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        reached_dyn_traits: HashSet<Path>,
         used_builtins: crate::prune::UsedBuiltins,
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
@@ -782,6 +789,7 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            reached_dyn_traits,
             used_builtins,
             fndef_types,
             resolved_typs,

@@ -87,41 +87,8 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    #[cfg_attr(not(verus_verify_core), deprecated = "use `pcell_points!`, or `mem_contents()` instead")]
-    pub value: Option<V>,
+    pub mem_contents: MemContents<V>,
 }
-
-#[doc(hidden)]
-pub open spec fn option_from_mem_contents<V>(val: MemContents<V>) -> Option<V> {
-    match val {
-        MemContents::Init(v) => Some(v),
-        MemContents::Uninit => None,
-    }
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! pcell_opt_internal {
-    [$pcell:expr => $val:expr] => {
-        $crate::vstd::cell::PointsToData {
-            pcell: $pcell,
-            value: $val,
-        }
-    };
-}
-
-#[cfg_attr(not(verus_verify_core), deprecated = "use pcell_points! instead")]
-#[macro_export]
-macro_rules! pcell_opt {
-    [$($tail:tt)*] => {
-        $crate::vstd::prelude::verus_proof_macro_exprs!(
-            $crate::vstd::cell::pcell_opt_internal!($($tail)*)
-        )
-    }
-}
-
-pub use pcell_opt_internal;
-pub use pcell_opt;
 
 #[doc(hidden)]
 #[macro_export]
@@ -129,7 +96,7 @@ macro_rules! pcell_points_internal {
     [$pcell:expr => $val:expr] => {
         $crate::vstd::cell::PointsToData {
             pcell: $pcell,
-            value: $crate::vstd::cell::option_from_mem_contents($val),
+            mem_contents: $val,
         }
     };
 }
@@ -159,15 +126,7 @@ impl<V> PointsTo<V> {
     pub uninterp spec fn mem_contents(&self) -> MemContents<V>;
 
     pub open spec fn view(self) -> PointsToData<V> {
-        PointsToData { pcell: self.id(), value: option_from_mem_contents(self.mem_contents()) }
-    }
-
-    #[cfg_attr(not(verus_verify_core), deprecated = "use mem_contents() instead")]
-    pub open spec fn opt_value(&self) -> Option<V> {
-        match self.mem_contents() {
-            MemContents::Init(value) => Some(value),
-            MemContents::Uninit => None,
-        }
+        PointsToData { pcell: self.id(), mem_contents: self.mem_contents() }
     }
 
     /// Is this cell initialized?

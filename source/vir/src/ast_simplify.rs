@@ -7,12 +7,12 @@ use crate::ast::VarBinderX;
 use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
-    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, ByRef, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr,
-    ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange,
-    ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant, VariantCheck,
-    VirErr, Visibility,
+    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
+    ChainedOp, Constant, CtorPrintStyle, CtorUpdateTail, Datatype, DatatypeTransparency, DatatypeX,
+    Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp,
+    IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern, PatternBinding, PatternX,
+    Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX, UnaryOp, UnaryOpr, Variant,
+    VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_expr, typ_args_for_datatype_typ,
@@ -305,26 +305,6 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
     }
 }
 
-fn pattern_has_or(pattern: &Pattern) -> bool {
-    match &pattern.x {
-        PatternX::Wildcard(_) => false,
-        PatternX::Var(_binding) => false,
-        PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
-        PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                if pattern_has_or(&binder.a) {
-                    return true;
-                }
-            }
-            false
-        }
-        PatternX::Or(_pat1, _pat2) => true,
-        PatternX::Expr(_e) => false,
-        PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
-    }
-}
-
 fn rename_var(state: &State, scope_map: &VisitorScopeMap, x: &VarIdent) -> VarIdent {
     if let Some(rename) = state.rename_vars.get(x) {
         if scope_map[x].is_outer_param_or_ret {
@@ -351,10 +331,17 @@ fn simplify_one_place(
 fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
     match &place.x {
         PlaceX::Field(field_opr, p) => {
-            if !matches!(field_opr.check, VariantCheck::None) {
-                todo!(); // TODO(new_mut_ref)
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            match field_opr.check {
+                VariantCheck::None => {}
+                VariantCheck::Union => {
+                    let p1_expr = place_to_expr(&p1);
+                    let assert_stmt =
+                        crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
+                    stmts.push(assert_stmt);
+                }
             }
-            let (stmts, p1) = place_to_pure_place(state, p);
+            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2)
@@ -380,6 +367,33 @@ fn place_to_pure_place(state: &mut State, place: &Place) -> (Vec<Stmt>, Place) {
             let (mut stmts, p1) = place_to_pure_place(state, p);
             stmts.insert(0, Spanned::new(place.span.clone(), StmtX::Expr(expr.clone())));
             (stmts, p1)
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let (mut stmts, p1) = place_to_pure_place(state, p);
+            let (idx_decl, idx_expr) = temp_expr(state, idx);
+            stmts.push(idx_decl);
+
+            match bounds_check {
+                BoundsCheck::Allow => {}
+                BoundsCheck::Error => {
+                    let p1_expr = place_to_expr(&p1);
+                    let assert_stmt = crate::place_preconditions::index_bound(
+                        &place.span,
+                        &p1_expr,
+                        &idx_expr,
+                        *kind,
+                    );
+                    stmts.push(assert_stmt);
+                }
+            }
+
+            let p = SpannedTyped::new(
+                &place.span,
+                &place.typ,
+                PlaceX::Index(p1, idx_expr, *kind, BoundsCheck::Allow),
+            );
+
+            (stmts, p)
         }
     }
 }
@@ -594,7 +608,7 @@ fn simplify_one_expr(
             let mut if_expr: Option<Expr> = None;
             for arm in arms1.iter().rev() {
                 let mut decls: Vec<Stmt> = Vec::new();
-                let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
+                let has_guard = arm.x.has_guard();
 
                 let test_pattern = if ctx.new_mut_ref {
                     crate::patterns::pattern_to_exprs(
@@ -611,12 +625,7 @@ fn simplify_one_expr(
                 let test = if !has_guard {
                     test_pattern
                 } else {
-                    if pattern_has_or(&arm.x.pattern) {
-                        return Err(error(
-                            &arm.x.pattern.span,
-                            "Not supported: pattern containing both an or-pattern (|) and an if-guard",
-                        ));
-                    }
+                    assert!(!crate::patterns::pattern_has_or(&arm.x.pattern));
 
                     let guard = arm.x.guard.clone();
                     let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);

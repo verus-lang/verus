@@ -25,6 +25,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
@@ -1205,9 +1206,10 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
         function_path: &vir::ast::Path,
+        trait_decl_commands: Commands,
         datatype_commands: Commands,
         assoc_type_decl_commands: Commands,
-        trait_commands: Commands,
+        trait_type_bounds_commands: Commands,
         assoc_type_impl_commands: Commands,
         function_decl_commands: Arc<Vec<(Commands, String)>>,
         ops: &Vec<Op>,
@@ -1247,6 +1249,13 @@ impl Verifier {
             bucket_id,
             diagnostics,
             &mut air_context,
+            &trait_decl_commands,
+            &("Trait-Decls".to_string()),
+        );
+        self.run_commands(
+            bucket_id,
+            diagnostics,
+            &mut air_context,
             &assoc_type_decl_commands,
             &("Associated-Type-Decls".to_string()),
         );
@@ -1261,8 +1270,8 @@ impl Verifier {
             bucket_id,
             diagnostics,
             &mut air_context,
-            &trait_commands,
-            &("Traits".to_string()),
+            &trait_type_bounds_commands,
+            &("Trait-Bounds".to_string()),
         );
         self.run_commands(
             bucket_id,
@@ -1355,6 +1364,15 @@ impl Verifier {
             ));
         }
 
+        let trait_decl_commands = vir::traits::trait_decls_to_air(ctx, &krate);
+        self.run_commands(
+            bucket_id,
+            reporter,
+            &mut air_context,
+            &trait_decl_commands,
+            &("Trait-Decls".to_string()),
+        );
+
         let assoc_type_decl_commands =
             vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
         self.run_commands(
@@ -1382,17 +1400,13 @@ impl Verifier {
             &("Datatypes".to_string()),
         );
 
-        let trait_commands = vir::traits::traits_to_air(ctx, &krate);
         let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
-        let trait_commands = Arc::new(
-            trait_commands.iter().chain(trait_type_bounds_commands.iter()).cloned().collect(),
-        );
         self.run_commands(
             bucket_id,
             reporter,
             &mut air_context,
-            &trait_commands,
-            &("Traits".to_string()),
+            &trait_type_bounds_commands,
+            &("Trait-Bounds".to_string()),
         );
 
         let assoc_type_impl_commands =
@@ -1574,9 +1588,10 @@ impl Verifier {
                                     reporter,
                                     bucket_id,
                                     &(function.x.name).path,
+                                    trait_decl_commands.clone(),
                                     datatype_commands.clone(),
                                     assoc_type_decl_commands.clone(),
-                                    trait_commands.clone(),
+                                    trait_type_bounds_commands.clone(),
                                     assoc_type_impl_commands.clone(),
                                     function_decl_commands.clone(),
                                     &all_context_ops,
@@ -1953,14 +1968,7 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (
-            pruned_krate,
-            mono_abstract_datatypes,
-            spec_fn_types,
-            used_builtins,
-            fndef_types,
-            resolved_typs,
-        ) = vir::prune::prune_krate_for_module_or_krate(
+        let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
             &Arc::new(self.crate_name.clone().expect("crate_name")),
             None,
@@ -1969,6 +1977,14 @@ impl Verifier {
             true,
             true,
         );
+        let vir::prune::PruneInfo {
+            mono_abstract_datatypes,
+            spec_fn_types,
+            used_builtins,
+            fndef_types,
+            resolved_typs,
+            dyn_traits,
+        } = prune_info;
         let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
@@ -1982,6 +1998,7 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
+            dyn_traits,
             used_builtins,
             fndef_types,
             resolved_typs.unwrap(),
@@ -2753,6 +2770,9 @@ impl Verifier {
                 .collect()
         } else {
             other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::ignore_mut_ref_only_fns(krate))
+                .collect()
         };
 
         let vir_crate =
@@ -2792,7 +2812,7 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),
@@ -3076,11 +3096,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
+                    Ok(tcx.arena.alloc(rustc_middle::mir::DefinitionSiteHiddenTypes(
                         rustc_data_structures::fx::FxIndexMap::default(),
                     )))
                 };
@@ -3090,7 +3110,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);

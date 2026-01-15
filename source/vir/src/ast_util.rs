@@ -140,6 +140,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Datatype(path1, ts1, _), TypX::Datatype(path2, ts2, _)) => {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
+        (TypX::Dyn(path1, ts1, _), TypX::Dyn(path2, ts2, _)) => {
+            path1 == path2 && n_types_equal(ts1, ts2)
+        }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
         (TypX::Decorate(d1, a1, t1), TypX::Decorate(d2, a2, t2)) => {
             d1 == d2
@@ -193,6 +196,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
+        (TypX::Dyn(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
         (TypX::Decorate(..), _) => false,
         (TypX::Boxed(_), _) => false,
@@ -600,6 +604,14 @@ pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -
     expr
 }
 
+pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &unit_typ(),
+        ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
+    )
+}
+
 pub fn const_int_from_u128(u: u128) -> Constant {
     Constant::Int(BigInt::from(u))
 }
@@ -633,7 +645,7 @@ pub fn mk_mut_ref_future(span: &Span, expr: &Expr) -> Expr {
         TypX::MutRef(t) => t,
         _ => panic!("sst_mut_ref_future expected MutRef type"),
     };
-    let op = UnaryOp::MutRefFuture;
+    let op = UnaryOp::MutRefFuture(MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExprX::Unary(op, expr.clone()))
 }
 
@@ -916,6 +928,15 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::Datatype(Dt::Path(path), typs, _) => format!(
             "{}{}",
+            path_as_friendly_rust_name(path),
+            if typs.len() > 0 {
+                format!("<{}>", typs_to_comma_separated_str(typs))
+            } else {
+                format!("")
+            }
+        ),
+        TypX::Dyn(path, typs, _) => format!(
+            "dyn {}{}",
             path_as_friendly_rust_name(path),
             if typs.len() > 0 {
                 format!("<{}>", typs_to_comma_separated_str(typs))
@@ -1340,6 +1361,7 @@ impl PlaceX {
             PlaceX::Temporary(_) => true,
             PlaceX::ModeUnwrap(p, _) => p.x.uses_unnamed_temporary(),
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
+            PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
         }
     }
 }
@@ -1352,6 +1374,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::Temporary(_) => None,
         PlaceX::ModeUnwrap(p, _) => place_get_local(p),
         PlaceX::WithExpr(_e, p) => place_get_local(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
     }
 }
 
@@ -1378,6 +1401,10 @@ pub fn place_to_expr(place: &Place) -> Expr {
                 Arc::new(vec![Spanned::new(e.span.clone(), StmtX::Expr(e.clone()))]),
                 Some(e2),
             )
+        }
+        PlaceX::Index(p, idx, kind, bounds_check) => {
+            let e = place_to_expr(p);
+            ExprX::Binary(BinaryOp::Index(*kind, *bounds_check), e, idx.clone())
         }
     };
     SpannedTyped::new(&place.span, &place.typ, x)
@@ -1406,5 +1433,41 @@ impl ModeWrapperMode {
             ModeWrapperMode::Spec => Mode::Spec,
             ModeWrapperMode::Proof => Mode::Proof,
         }
+    }
+}
+
+pub(crate) fn place_to_spec_expr(place: &Place) -> Expr {
+    SpannedTyped::new(
+        &place.span,
+        &place.typ,
+        ExprX::ReadPlace(
+            place.clone(),
+            UnfinalizedReadKind { preliminary_kind: ReadKind::Spec, id: u64::MAX },
+        ),
+    )
+}
+
+pub(crate) fn arg_mode_from_proof_fn_modes(
+    proof_fn_modes: &Option<(Arc<Vec<Mode>>, Mode)>,
+    i: usize,
+) -> Mode {
+    match proof_fn_modes {
+        Some((modes, _ret_mode)) => modes[i],
+        None => Mode::Exec,
+    }
+}
+
+impl MutRefFutureSourceName {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            MutRefFutureSourceName::MutRefFuture => "mut_ref_future",
+            MutRefFutureSourceName::Final => "fin",
+        }
+    }
+}
+
+impl ArmX {
+    pub(crate) fn has_guard(&self) -> bool {
+        !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
     }
 }

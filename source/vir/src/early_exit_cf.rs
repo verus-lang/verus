@@ -92,7 +92,6 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
-            | ExprX::AssumeResolved(..)
             | ExprX::RevealString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,

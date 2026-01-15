@@ -4,7 +4,6 @@ use crate::ast_util::{conjoin, mk_eq, mk_ineq};
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -199,54 +198,69 @@ fn pattern_to_exprs_rec(
     }
 }
 
-pub(crate) fn pattern_has_move(pattern: &Pattern, modes: &HashMap<VarIdent, Mode>) -> bool {
+pub(crate) fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
     match &pattern.x {
-        PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => binding_is_move(binding, modes),
+        PatternX::Wildcard(_) => None,
+        PatternX::Var(binding) => {
+            if matches!(binding.by_ref, ByRef::MutRef) {
+                Some(pattern.span.clone())
+            } else {
+                None
+            }
+        }
         PatternX::Binding { binding, sub_pat } => {
-            binding_is_move(binding, modes) || pattern_has_move(sub_pat, modes)
+            if matches!(binding.by_ref, ByRef::MutRef) {
+                Some(pattern.span.clone())
+            } else {
+                pattern_find_mut_binding(sub_pat)
+            }
         }
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {
-                if pattern_has_move(&binder.a, modes) {
-                    return true;
+                match pattern_find_mut_binding(&binder.a) {
+                    s @ Some(_) => {
+                        return s;
+                    }
+                    None => {}
                 }
             }
-            false
+            None
         }
-        PatternX::Or(pat1, pat2) => pattern_has_move(pat1, modes) || pattern_has_move(pat2, modes),
-        PatternX::Expr(_e) => false,
-        PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_move(p, modes),
+        PatternX::Or(pat1, pat2) => {
+            match pattern_find_mut_binding(pat1) {
+                s @ Some(_) => {
+                    return s;
+                }
+                None => {}
+            }
+            pattern_find_mut_binding(pat2)
+        }
+        PatternX::Expr(_e) => None,
+        PatternX::Range(_lower, _upper) => None,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_find_mut_binding(p),
     }
 }
 
-fn binding_is_move(binding: &PatternBinding, modes: &HashMap<VarIdent, Mode>) -> bool {
-    !binding.copy
-        && matches!(binding.by_ref, ByRef::No)
-        && !matches!(modes[&binding.name], Mode::Spec)
+pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
+    pattern_find_mut_binding(pattern).is_some()
 }
 
-pub(crate) fn pattern_has_mut(pattern: &Pattern) -> bool {
-    // We don't need to account for modes here (unlike pattern_has_move)
-    // because mode-checking will rule out taking mutable references to spec-mode locations.
+pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
     match &pattern.x {
         PatternX::Wildcard(_) => false,
-        PatternX::Var(binding) => matches!(binding.by_ref, ByRef::MutRef),
-        PatternX::Binding { binding, sub_pat } => {
-            matches!(binding.by_ref, ByRef::MutRef) || pattern_has_mut(sub_pat)
-        }
+        PatternX::Var(_binding) => false,
+        PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
         PatternX::Constructor(_path, _variant, patterns) => {
             for binder in patterns.iter() {
-                if pattern_has_mut(&binder.a) {
+                if pattern_has_or(&binder.a) {
                     return true;
                 }
             }
             false
         }
-        PatternX::Or(pat1, pat2) => pattern_has_mut(pat1) || pattern_has_mut(pat2),
+        PatternX::Or(_pat1, _pat2) => true,
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
-        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_mut(p),
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
     }
 }
