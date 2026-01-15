@@ -1032,15 +1032,25 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
     })
 }
 
-struct GuardedQuantifier {
-    quant_var: Ident,
-    quant_type: Box<Type>,
+#[derive(Debug, Clone)]
+struct GuardBounds {
     lower: Box<Expr>,
     upper: Box<Expr>,
-    guard_op: BinOp,
     lower_op: BinOp,
     upper_op: BinOp,
+}
+
+#[derive(Debug, Clone)]
+struct GuardedQuantVar {
+    bounds: GuardBounds,
+    quant_var: Ident,
+    quant_type: Box<Type>,
+}
+
+struct GuardedQuantifier {
+    guard_op: BinOp,
     body: Box<Expr>,
+    guarded_vars: Vec<GuardedQuantVar>
 }
 
 const UNSUPPORTED_QUANTIFIER_ERROR_MSG: &str = "Within the exec_spec! macro, quantifiers must have one of these forms:
@@ -1057,44 +1067,7 @@ const UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG: &str = "Unsupported quantified type
 
 Within the exec_spec! macro, quantified variables must have one of the following Rust types: u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, char. Note: int and nat are not allowed.";
 
-/// Matches the closure to the form
-///   `|x| <guard> ==> <body>`
-/// or
-///   `|x| <guard> && <body>`
-/// where <guard> is one of:
-///   `<lower> <= x < <upper>`
-///   `<lower> <= x <= <upper>`
-///   `<lower> < x < <upper>`
-///   `<lower> < x <= <upper>`
-fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier, Error> {
-    if closure.inputs.len() != 1 {
-        return Err(Error::new_spanned(closure, "The exec_spec! macro only supports single variable per quantifier. If multiple quantified variables are needed, use nested quantifiers instead."));
-    }
-
-    let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
-        return Err(Error::new_spanned(closure, "The exec_spec! macro only supports typed quantified variables."));
-    };
-
-    // check that the type is supported
-    match &*quant_type {
-        Type::Path(type_path) => {
-            if type_path.path.segments.len() == 1 {
-                let ident = &type_path.path.segments.first().unwrap().ident;
-                if !(ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" || ident == "usize" || ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" || ident == "isize" || ident == "char") {
-                    return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG));
-                }
-            }
-        },
-        _ => {}
-    };
-
-    // |x| <guard> ==>/&& <body>
-    let Expr::Binary(ExprBinary { left: guard, op: guard_op, right: body, .. }) =
-        closure.body.as_ref()
-    else {
-        return Err(Error::new_spanned(closure, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
-    };
-
+fn get_single_guard(guard: &Box<Expr>, quant_var: &Ident) -> Result<GuardBounds, Error> {
     // <guard> == <lower> <= x < <upper>
     let Expr::Binary(ExprBinary { left: lower_guard, op: upper_op, right: upper, .. }) =
         guard.as_ref()
@@ -1135,16 +1108,246 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
         ));
     }
 
-    Ok(GuardedQuantifier {
-        quant_var: quant_var.clone(),
-        quant_type,
-        lower: lower.clone(),
-        upper: upper.clone(),
-        guard_op: guard_op.clone(),
-        lower_op: lower_op.clone(),
-        upper_op: upper_op.clone(),
-        body: body.clone(),
+    Ok(GuardBounds {
+        lower_op: lower_op.clone(), 
+        upper_op: upper_op.clone(), 
+        lower: lower.clone(), 
+        upper: upper.clone()
     })
+}
+
+/// Matches the closure to the form
+///   `|x| <guard> ==> <body>`
+/// or
+///   `|x| <guard> && <body>`
+/// where <guard> is one of:
+///   `<lower> <= x < <upper>`
+///   `<lower> <= x <= <upper>`
+///   `<lower> < x < <upper>`
+///   `<lower> < x <= <upper>`
+fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier, Error> {
+    let quant_vars = closure.inputs.iter().map(|input| {
+        let (quant_var, Some(quant_type)) = get_simple_pat(&input.pat)? else {
+            return Err(Error::new_spanned(closure, "The exec_spec! macro only supports typed quantified variables. Expects this form: forall |x: <type>| or exists |x: <type>|."));
+        };
+
+        // check that the type is supported
+        match &*quant_type {
+            Type::Path(type_path) => {
+                if type_path.path.segments.len() == 1 {
+                    let ident = &type_path.path.segments.first().unwrap().ident;
+                    if !(ident == "u8" || ident == "u16" || ident == "u32" || ident == "u64" || ident == "u128" || ident == "usize" || ident == "i8" || ident == "i16" || ident == "i32" || ident == "i64" || ident == "i128" || ident == "isize" || ident == "char") {
+                        return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG));
+                    }
+                }
+            },
+            _ => { return Err(Error::new_spanned(quant_type, UNSUPPORTED_QUANTIFIED_TYPE_ERROR_MSG)); }
+        };
+        Ok((quant_var, quant_type))
+    }).collect::<Result<Vec<_>, Error>>()?;
+
+    // |x| <guard> ==>/&& <body>
+    // todo(nneamtu) - update comment
+    let mut guarded_vars = Vec::new();
+    let Expr::Binary(ExprBinary { left, op: guard_op, right: body, .. }) =
+        closure.body.as_ref()
+    else {
+        return Err(Error::new_spanned(closure, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+    };
+
+    // process <guard1> && <guard2> && ... && <guardN> left-to-right
+    let mut remaining = left;
+    for i in 0..quant_vars.len() {
+        let single_guard;
+        if i < quant_vars.len() - 1 {
+            let Expr::Binary(ExprBinary { left: head, op: BinOp::And(..), right: tail, .. }) =
+                remaining.as_ref()
+            else {
+                return Err(Error::new_spanned(remaining, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+            };
+            single_guard = tail;
+            remaining = head;
+        } else {
+            single_guard = remaining;
+        }
+
+        let bounds = get_single_guard(single_guard, &quant_vars[quant_vars.len() - 1 - i].0)?;
+        guarded_vars.insert(0, GuardedQuantVar {
+            bounds,
+            quant_var: quant_vars[quant_vars.len() - 1 - i].0.clone(),
+            quant_type: quant_vars[quant_vars.len() - 1 - i].1.clone()
+        });
+    }
+
+    // <guard> == <lower> <= x < <upper>
+
+    Ok(GuardedQuantifier {
+        guard_op: guard_op.clone(),
+        body: body.clone(),
+        guarded_vars
+    })
+}
+
+fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
+    let quant_var = &var.quant_var;
+    let quant_type = &var.quant_type;
+    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned)?;
+    if let BinOp::Lt(..) = var.bounds.lower_op {
+        compiled_lower = quote! { #compiled_lower + 1 };
+    };
+    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned)?;
+    if let BinOp::Le(..) = var.bounds.upper_op {
+        compiled_upper = quote! { #compiled_upper + 1 };
+    };
+
+    let is_char = match &**quant_type {
+        Type::Path(type_path) => {
+            type_path.path.segments.len() == 1 && type_path.path.segments.first().unwrap().ident == "char"
+        }
+        _ => false,
+    };
+
+    let lower = Ident::new(&format!("_lower_{}", quant_var), quant_var.span());
+    let upper = Ident::new(&format!("_upper_{}", quant_var), quant_var.span());
+    let cur = quant_var;
+
+    let init = quote! {
+        let #lower = #compiled_lower;
+        let #upper = #compiled_upper;
+        let mut #cur = #lower;
+    };
+
+    let update = if is_char {
+        quote! { #cur = char::from_u32(#cur as u32 + 1).unwrap(); }
+    } else {
+        quote! { #cur += 1; }
+    };
+
+    let init_cond = quote! {
+        #lower < #upper
+    };
+
+    let while_cond = quote! {
+        #cur < #upper
+    };
+
+    Ok((init, update, init_cond, while_cond))
+}
+
+fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op: &BinOp, body: &Expr, guarded_vars: &Vec<GuardedQuantVar>) -> Result<TokenStream2, Error> {
+    let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0])?;
+
+    let mut body_ctx = ctx.clone();
+    body_ctx.add(guarded_vars[0].quant_var.clone(), VarMode::Owned);
+    let compiled_body;
+    if guarded_vars.len() == 1 {
+        let compiled_body_expr = compile_expr(&body_ctx, &body, VarMode::Ref)?;
+        compiled_body = match op {
+            UnOp::Forall(..) => quote! {
+                if !(#compiled_body_expr) {
+                    //proof { let _ = #trigger_fn_name(#quant_var); }
+                    //assert(#assert_trigger);
+                    _res = false;
+                    break;
+                }
+            },
+            UnOp::Exists(..) => quote! {
+                if #compiled_body_expr {
+                    //proof { let _ = #trigger_fn_name(#quant_var); }
+                    //assert(#assert_trigger);
+                    _res = true;
+                    break;
+                }
+            },
+            _ => {
+                return Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+            },
+        }
+    } else {
+        let mut next_vars = guarded_vars.clone();
+        next_vars.remove(0);
+        let compiled_inner = compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars)?;
+        compiled_body = match op {
+            UnOp::Forall(..) => quote! {
+                #compiled_inner
+                if !_res {
+                    break;
+                }
+            },
+            UnOp::Exists(..) => quote! {
+                #compiled_inner
+                if _res {
+                    break;
+                }
+            },
+            _ => {
+                return Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG));
+            },
+        }
+    }
+
+    match (op, guard_op) {
+        (UnOp::Forall(..), BinOp::Imply(..)) => {
+            // Generate some pieces separately so that we can attach spans to them
+            /*let inv = quote_spanned! { expr_span => _res == {
+                let _upper = #quant_var;
+                #(#local_view)*
+                forall |#quant_var: #quant_type|
+                    #![trigger #trigger_fn_name(#quant_var)]
+                    #(#quant_attrs)*  !(_lower <= #quant_var < _upper) || (#body)
+            }};
+            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* !(#body) } };*/
+
+            Ok(quote! {
+                {
+                    #init
+
+                    if #init_cond {
+                        while #while_cond
+                            //invariant #inv_bound, #inv,
+                            //decreases #decreases,
+                        {
+                            #compiled_body
+                            #update
+                        }
+                    }
+                    //proof { let _ = #trigger_fn_name(_lower); }
+                    //assert(#final_assert);
+                    //_res
+                }
+            })
+        }
+        (UnOp::Exists(..), BinOp::And(..)) => {
+            /*let inv = quote_spanned! { expr_span => _res == {
+                let _upper = #quant_var;
+                #(#local_view)*
+                exists |#quant_var: #quant_type|
+                    #![trigger #trigger_fn_name(#quant_var)]
+                    #(#quant_attrs)*
+                    (_lower <= #quant_var < _upper) && (#body)
+            }};
+            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* (#body) } };*/
+
+            Ok(quote! {
+                {
+                    #init
+
+                    if #init_cond {
+                        while #while_cond
+                            /*invariant #inv_bound, #inv,
+                            decreases #decreases,*/
+                        {
+                            #compiled_body
+                            #update
+                        }
+                    }
+                    // proof { let _ = #trigger_fn_name(_lower); }
+                    // assert(#final_assert);
+                }
+            })
+        },
+        _ => Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
+    }
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
@@ -1158,29 +1361,37 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // TODO: support other forms of quantifiers
     let quant = get_guarded_range_quant(closure)?;
 
-    let quant_var = &quant.quant_var;
-    let quant_type = &quant.quant_type;
-    let body = &quant.body;
-    let mut compiled_lower = compile_expr(ctx, &quant.lower, VarMode::Owned)?;
-    if let BinOp::Lt(..) = quant.lower_op {
-        compiled_lower = quote! { #compiled_lower + 1 };
-    };
-    let mut compiled_upper = compile_expr(ctx, &quant.upper, VarMode::Owned)?;
-    if let BinOp::Le(..) = quant.upper_op {
-        compiled_upper = quote! { #compiled_upper + 1 };
-    };
+    let loops = compile_guarded_quant_loops(ctx, op, expr, &quant.guard_op, &quant.body, &quant.guarded_vars)?;
 
-    let is_char = match &**quant_type {
-        Type::Path(type_path) => {
-            type_path.path.segments.len() == 1 && type_path.path.segments.first().unwrap().ident == "char"
-        }
-        _ => false,
-    };
+    match op {
+        UnOp::Forall(..) => 
+            Ok(quote! {
+                {
+                    let mut _res = true;
 
-    let mut body_ctx = ctx.clone();
-    body_ctx.add(quant_var.clone(), VarMode::Owned);
-    let compiled_body = compile_expr(&body_ctx, &quant.body, VarMode::Ref)?;
-    let mut quant_attrs = closure.inner_attrs.clone();
+                    #loops
+
+                    //proof { let _ = #trigger_fn_name(_lower); }
+                    //assert(#final_assert);
+                    _res
+                }
+            }),
+        UnOp::Exists(..) => 
+            Ok(quote! {
+                {
+                    let mut _res = false;
+
+                    #loops
+
+                    //proof { let _ = #trigger_fn_name(_lower); }
+                    //assert(#final_assert);
+                    _res
+                }
+            }),
+        _ => Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
+    }
+
+    /*let mut quant_attrs = closure.inner_attrs.clone();
 
     if quant_attrs.len() == 0 {
         quant_attrs.push(Attribute {
@@ -1189,21 +1400,21 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
             bracket_token: Default::default(),
             meta: Meta::Path(Path::from(Ident::new("auto", Span::call_site()))),
         });
-    }
+    }*/
 
     // Since #body and #expr will be used as spec code in exec mode
     // we have to convert all variables in the context to their spec versions via deep_view
-    let local_view: Vec<TokenStream2> = ctx
+    /*let local_view: Vec<TokenStream2> = ctx
         .vars
         .iter()
         .map(|(name, _)| {
             quote! { let #name = #name.deep_view(); }
         })
-        .collect();
+        .collect();*/
 
     // Some common pieces
-    let expr_span = expr.span();
-    let bound_expr = match (quant.lower_op, quant.upper_op) {
+    //let expr_span = expr.span();
+    /*let bound_expr = match (quant.lower_op, quant.upper_op) {
         (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var <= _upper },
         (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var <= _upper },
         (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper + 1 },
@@ -1215,98 +1426,16 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
         quote_spanned! { expr_span => _upper as u32 - #quant_var as u32 }
     } else {
         quote_spanned! { expr_span => _upper - #quant_var }
-    };
-    let quant_var_update = if is_char {
-        quote! { #quant_var = char::from_u32(#quant_var as u32 + 1).unwrap(); }
-    } else {
-        quote! { #quant_var += 1; }
-    };
-    let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
+    };*/
+    // let quant_var_update = if is_char {
+    //     quote! { #quant_var = char::from_u32(#quant_var as u32 + 1).unwrap(); }
+    // } else {
+    //     quote! { #quant_var += 1; }
+    // };
+    /*let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
 
     // Generate a fresh trigger function
-    let trigger_fn_name = ctx.gen_fresh_trigger_fn(&quant.quant_type);
-
-    match (op, &quant.guard_op) {
-        (UnOp::Forall(..), BinOp::Imply(..)) => {
-            // Generate some pieces separately so that we can attach spans to them
-            let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
-                #(#local_view)*
-                forall |#quant_var: #quant_type|
-                    #![trigger #trigger_fn_name(#quant_var)]
-                    #(#quant_attrs)* !(#bound_expr) || (#body)
-            }};
-            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* !(#body) } };
-
-            Ok(quote! {
-                {
-                    let _lower = #compiled_lower;
-                    let _upper = #compiled_upper;
-                    let mut _res = true;
-                    let mut #quant_var = _lower;
-
-                    if _lower < _upper {
-                        while #quant_var < _upper
-                            invariant #inv_bound, #inv,
-                            decreases #decreases,
-                        {
-                            if !(#compiled_body) {
-                                proof { let _ = #trigger_fn_name(#quant_var); }
-                                assert(#assert_trigger);
-                                _res = false;
-                                break;
-                            }
-                            #quant_var_update
-                        }
-                    }
-                    proof { let _ = #trigger_fn_name(_lower); }
-                    assert(#final_assert);
-                    _res
-                }
-            })
-        }
-
-        (UnOp::Exists(..), BinOp::And(..)) => {
-            let inv = quote_spanned! { expr_span => _res == {
-                let _upper = #quant_var;
-                #(#local_view)*
-                exists |#quant_var: #quant_type|
-                    #![trigger #trigger_fn_name(#quant_var)]
-                    #(#quant_attrs)*
-                    (_lower <= #quant_var < _upper) && (#body)
-            }};
-            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* (#body) } };
-
-            Ok(quote! {
-                {
-                    let _lower = #compiled_lower;
-                    let _upper = #compiled_upper;
-                    let mut _res = false;
-                    let mut #quant_var = _lower;
-
-                    if _lower < _upper {
-                        while #quant_var < _upper
-                            invariant #inv_bound, #inv,
-                            decreases #decreases,
-                        {
-                            if (#compiled_body) {
-                                proof { let _ = #trigger_fn_name(#quant_var); }
-                                assert(#assert_trigger);
-                                _res = true;
-                                break;
-                            }
-                            #quant_var += 1;
-                        }
-                    }
-                    proof { let _ = #trigger_fn_name(_lower); }
-                    assert(#final_assert);
-                    _res
-                }
-            })
-        }
-
-        _ => Err(Error::new_spanned(expr, "Unsupported quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
-    }
+    let trigger_fn_name = ctx.gen_fresh_trigger_fn(&quant.quant_type);*/
 }
 
 /// Compiles an expression
