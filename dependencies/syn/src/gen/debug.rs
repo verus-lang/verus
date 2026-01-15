@@ -157,6 +157,7 @@ impl Debug for crate::AtomicSpec {
 impl Debug for crate::AtomicallyBlock {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
+        formatter.field("label", &self.label);
         formatter.field("atomically_token", &self.atomically_token);
         formatter.field("or1_token", &self.or1_token);
         formatter.field("update_fn_binder", &self.update_fn_binder);

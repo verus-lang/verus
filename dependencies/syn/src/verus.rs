@@ -605,6 +605,7 @@ ast_enum! {
 
 ast_struct! {
     pub struct AtomicallyBlock {
+        pub label: Option<Label>,
         pub atomically_token: Token![atomically],
         pub or1_token: Token![|],
         pub update_fn_binder: Ident,
@@ -1745,6 +1746,7 @@ pub mod parsing {
     impl Parse for AtomicallyBlock {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(AtomicallyBlock {
+                label: input.parse()?,
                 atomically_token: input.parse()?,
                 or1_token: input.parse()?,
                 update_fn_binder: input.parse()?,
@@ -1762,7 +1764,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<AtomicallyBlock> {
         fn parse(input: ParseStream) -> Result<Self> {
-            if input.peek(Token![atomically]) {
+            if input.peek(Token![atomically]) || input.peek(Lifetime) {
                 input.parse().map(Some)
             } else {
                 Ok(None)

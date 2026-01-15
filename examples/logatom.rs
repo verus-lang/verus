@@ -1,6 +1,8 @@
 #![verifier::exec_allows_no_decreases_clause]
 #![verifier::loop_isolation(false)]
 
+// TODO: remove this example, it's complete non-sense
+
 use vstd::prelude::*;
 use vstd::*;
 
@@ -60,7 +62,7 @@ pub fn middle(x: i32) -> (y: i32)
 
     loop invariant au == atom_upd { break }
 
-    atomic_function(x, "hi", ()) atomically |upd| -> (final_au)
+    atomic_function(x, "hi", ()) 'label: atomically |upd| -> (final_au)
         invariant au == atom_upd,
     {
         let tracked Tracked(res) = try_open_atomic_update!(au, a => {
@@ -76,12 +78,12 @@ pub fn middle(x: i32) -> (y: i32)
             Ok(_) => {
                 assert(atom_upd.resolves());
                 assert(final_au.resolves());
-                break;
+                break 'label;
             }
 
             Err(new_au) => {
                 au = new_au;
-                //continue;
+                continue 'label;
             }
         }
     }

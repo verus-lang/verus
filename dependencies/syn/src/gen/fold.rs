@@ -1495,6 +1495,7 @@ where
     F: Fold + ?Sized,
 {
     crate::AtomicallyBlock {
+        label: (node.label).map(|it| full!(f.fold_label(it))),
         atomically_token: node.atomically_token,
         or1_token: node.or1_token,
         update_fn_binder: f.fold_ident(node.update_fn_binder),

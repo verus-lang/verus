@@ -3547,6 +3547,7 @@ impl Visitor {
 
         let span = atomically.span();
         let AtomicallyBlock {
+            label,
             update_fn_binder,
             spec_au_binder,
             mut body,
@@ -3613,14 +3614,10 @@ impl Visitor {
                             ));
                         );
 
-                        let colon_ty = match hint.as_deref() {
-                            Some((colon, ty)) => quote_spanned!(span => #colon (#ty)),
-                            None => TokenStream::new(),
-                        };
-
-                        quote_spanned!(span => (#pat) #colon_ty)
+                        let (colon, ty) = hint.as_deref().map(|(a, b)| (a, b)).unzip();
+                        quote_spanned!(span => (#pat) #colon #ty)
                     }
-                    RP::Type(_, ty) => quote_spanned!(span => _ : (#ty)),
+                    RP::Type(_, ty) => quote_spanned!(span => _ : #ty),
                     _ => quote_spanned!(span => _),
                 };
 
@@ -3636,7 +3633,7 @@ impl Visitor {
 
                             #[verus::internal(proof)]
                             #[verifier::assume_termination]
-                            loop {
+                            #label loop {
                                 #loop_header
                                 #au_eq_assume
                                 #body

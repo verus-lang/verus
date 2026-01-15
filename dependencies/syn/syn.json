@@ -427,6 +427,11 @@
         "any": []
       },
       "fields": {
+        "label": {
+          "option": {
+            "syn": "Label"
+          }
+        },
         "atomically_token": {
           "token": "Atomically"
         },

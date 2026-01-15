@@ -143,6 +143,7 @@ impl Hash for crate::AtomicallyBlock {
     where
         H: Hasher,
     {
+        self.label.hash(state);
         self.update_fn_binder.hash(state);
         self.comma_token.hash(state);
         self.spec_au_binder.hash(state);

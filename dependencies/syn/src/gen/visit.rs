@@ -1386,6 +1386,9 @@ pub fn visit_atomically_block<'ast, V>(v: &mut V, node: &'ast crate::AtomicallyB
 where
     V: Visit<'ast> + ?Sized,
 {
+    if let Some(it) = &node.label {
+        full!(v.visit_label(it));
+    }
     skip!(node.atomically_token);
     skip!(node.or1_token);
     v.visit_ident(&node.update_fn_binder);

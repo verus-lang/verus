@@ -150,6 +150,7 @@ impl Clone for crate::AtomicSpec {
 impl Clone for crate::AtomicallyBlock {
     fn clone(&self) -> Self {
         crate::AtomicallyBlock {
+            label: self.label.clone(),
             atomically_token: self.atomically_token.clone(),
             or1_token: self.or1_token.clone(),
             update_fn_binder: self.update_fn_binder.clone(),

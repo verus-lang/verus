@@ -414,6 +414,20 @@ impl Debug for Lite<syn::AtomicSpec> {
 impl Debug for Lite<syn::AtomicallyBlock> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("AtomicallyBlock");
+        if let Some(val) = &self.value.label {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Label);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("label", Print::ref_cast(val));
+        }
         formatter.field("update_fn_binder", Lite(&self.value.update_fn_binder));
         if self.value.comma_token.is_some() {
             formatter.field("comma_token", &Present);

@@ -1390,6 +1390,9 @@ pub fn visit_atomically_block_mut<V>(v: &mut V, node: &mut crate::AtomicallyBloc
 where
     V: VisitMut + ?Sized,
 {
+    if let Some(it) = &mut node.label {
+        full!(v.visit_label_mut(it));
+    }
     skip!(node.atomically_token);
     skip!(node.or1_token);
     v.visit_ident_mut(&mut node.update_fn_binder);
