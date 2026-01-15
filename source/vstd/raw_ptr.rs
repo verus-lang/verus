@@ -27,6 +27,7 @@ use super::arithmetic::power::pow;
 use super::calc_macro::*;
 use super::layout::*;
 use super::prelude::*;
+use super::set::group_set_axioms;
 use crate::vstd::endian::*;
 use crate::vstd::layout;
 use crate::vstd::primitive_int::PrimitiveInt;
@@ -869,29 +870,22 @@ impl<T> MapPointsTo<T> {
         requires
             old(self).ptr()@.provenance == other.ptr()@.provenance,
             old(self).addrs().disjoint(other.addrs()),
-            old(self).ptr()@.addr <= other.ptr()@.addr,
-            other.ptr()@.addr + other.ptr()@.metadata <= old(self).ptr()@.addr + old(
-                self,
-            ).ptr()@.metadata,
+            slice_ptr_addrs(other.ptr()).subset_of(
+                slice_ptr_addrs(old(self).ptr()),
+            ),
+    // old(self).ptr()@.addr <= other.ptr()@.addr,
+    // addr_from_index(other.ptr(), other.ptr()@.metadata as nat) <= addr_from_index(old(self).ptr(), old(self).ptr()@.metadata as nat),
+
         ensures
             self.points_to() == old(self).points_to().union_prefer_right(other.points_to()),
             self.ptr() == old(self).ptr(),
     {
+        broadcast use group_set_axioms;
+
         use_type_invariant(&*self);
         use_type_invariant(other);
-        let new_map = self.points_to.union_prefer_right(other.points_to());
-        let tmp = MapPointsTo { points_to: new_map, ptr: self.ptr };
-        // assert(forall |i| other.dom().contains(i) ==> other[i].ptr()@.provenance == other.ptr()@.provenance);
-        // assert(forall |i| self.dom().contains(i) ==> self[i].ptr()@.provenance == self.ptr()@.provenance);
-        // assert(forall|i|
-        //     tmp.dom().contains(i) ==> other.dom().contains(i) || self.dom().contains(i));
-        // assert(forall|i|
-        //     tmp.dom().contains(i) ==> tmp[i].ptr()@.provenance == tmp.ptr()@.provenance);
-        // need to prove that the correct offset from other.ptr() translates to the correct offset from self.ptr()
-        assume(false);
-        assert(tmp.inv());
+
         self.points_to.tracked_union_prefer_right(other.points_to());
-        // assert(self.points_to() == old(self).points_to().union_prefer_right(other.points_to()));
     }
 
     /// Guarantees that the pointer address is non-null,
