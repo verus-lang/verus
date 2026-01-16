@@ -382,7 +382,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                         break;
                     }
                     if let Some(print_to) = &mut print_to {
-                        print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                        print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                     }
                     full_output
                         .write_all(&buffer[..bytes])
@@ -390,7 +390,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
                 }
                 let bytes = child_stdio.read_to_end(&mut buffer).expect("read from stdio failed");
                 if let Some(print_to) = &mut print_to {
-                    print_to.write(&buffer[..bytes]).expect("failed to write to stdio");
+                    print_to.write_all(&buffer[..bytes]).expect("failed to write to stdio");
                 }
                 full_output
                     .write_all(&buffer[..bytes])
