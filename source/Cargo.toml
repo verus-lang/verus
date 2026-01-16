@@ -75,7 +75,6 @@ vec_init_then_push = "allow"
 arc_with_non_send_sync = "allow"
 # do not remove: see https://github.com/verus-lang/verus/pull/2091#discussion_r2710412679 for a discussion
 manual_unwrap_or_default = "allow"
-non_canonical_partial_ord_impl = "allow"
 redundant_locals = "allow"
 suspicious_doc_comments = "allow"
 unnecessary_get_then_check = "allow"

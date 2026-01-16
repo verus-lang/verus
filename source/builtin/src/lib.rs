@@ -636,6 +636,8 @@ impl PartialEq for int {
 
 impl Eq for int {}
 
+// int is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for int {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -696,6 +698,8 @@ impl PartialEq for nat {
 
 impl Eq for nat {}
 
+// nat is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for nat {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
