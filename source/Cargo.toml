@@ -56,7 +56,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 #    fixing it would be overly complex, consider also `allow`ing it on that particular instance.
 
 # correctness
-derived_hash_with_manual_eq = "allow"
 never_loop = "allow"
 uninit_assumed_init = "allow"
 unused_io_amount = "allow"
