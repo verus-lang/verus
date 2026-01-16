@@ -32,6 +32,7 @@ fold = []
 clone-impls = []
 extra-traits = []
 proc-macro = ["proc-macro2/proc-macro", "quote?/proc-macro"]
+rust-syntax-tests = []
 # test = ["syn-test-suite/all-features"]
 
 [dependencies]
@@ -85,115 +86,115 @@ features = ["full", "visit", "visit-mut", "fold", "extra-traits"]
 
 [[test]]
 name = "regression"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_asyncness"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_attribute"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_derive_input"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_expr"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_generics"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_grouping"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_ident"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_item"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_lit"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_meta"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_parse_buffer"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_parse_stream"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_parse_quote"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_pat"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_path"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_precedence"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_punctuated"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_receiver"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_round_trip"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_shebang"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_size"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_stmt"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_token_trees"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_ty"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_unparenthesize"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "test_visibility"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [[test]]
 name = "zzz_stable"
-test = false
+required-features = ["rust-syntax-tests"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
