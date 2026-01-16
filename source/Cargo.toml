@@ -73,7 +73,6 @@ vec_init_then_push = "allow"
 
 # suspicious
 arc_with_non_send_sync = "allow"
-ineffective_open_options = "allow"
 manual_unwrap_or_default = "allow"
 non_canonical_clone_impl = "allow"
 non_canonical_partial_ord_impl = "allow"

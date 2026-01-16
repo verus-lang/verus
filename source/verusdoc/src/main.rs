@@ -714,8 +714,7 @@ fn write_css(dir_path: &Path) {
 
     let rustdoc_css_path = rustdoc_css_path.unwrap();
 
-    let mut rustdoc_css =
-        std::fs::OpenOptions::new().write(true).append(true).open(rustdoc_css_path).unwrap();
+    let mut rustdoc_css = std::fs::OpenOptions::new().append(true).open(rustdoc_css_path).unwrap();
     rustdoc_css
         .write_all(
             r#"
