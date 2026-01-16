@@ -2310,7 +2310,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 unimplemented!("assignments are unsupported in debugger mode");
             }
 
-            let dest = dest;
             let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
 
