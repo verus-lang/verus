@@ -77,7 +77,8 @@
           inherit version;
           srcs = [ ./source ./tools ./dependencies ];
           sourceRoot = "source";
-          cargoHash = "sha256-hxEH8qurjEDiXX2GGfZF4FTKaMz2e7O1rKHsb+ywnvc=";
+          # cargoHash = "sha256-hxEH8qurjEDiXX2GGfZF4FTKaMz2e7O1rKHsb+ywnvc=";
+          cargoHash = "sha256-y3wfW3a8A/bfCYklV0DcOODvzcBuzXh1i8U14quW1xY=";
           nativeBuildInputs = [ pkgs.makeBinaryWrapper rust-bin rustup vargo z3 ];
           buildInputs = [ rustup z3 ];
           buildPhase = ''
@@ -145,6 +146,9 @@
             tag = "z3-${finalAttrs.version}";
             sha256 = "sha256-Qj9w5s02OSMQ2qA7HG7xNqQGaUacA1d4zbOHynq5k+A=";
           };
+          # NIX_CFLAGS_COMPILE = "-Wno-error=maybe-uninitialized -Wno-error=uninitialized";
+          # GCC 14 fixes: suppress template body checks and uninitialized warnings
+          NIX_CFLAGS_COMPILE = "-Wno-template-body -Wno-error=maybe-uninitialized -Wno-error=uninitialized";
         });
         cvc5' = pkgs.cvc5.override {
           cadical = pkgs.cadical.override { version = "2.0.0"; };
