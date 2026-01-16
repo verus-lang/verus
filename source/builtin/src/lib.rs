@@ -536,17 +536,16 @@ impl<A> Clone for Ghost<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Ghost { phantom: PhantomData }
+        *self
     }
 }
 
 impl<A> Copy for Ghost<A> {}
-
 impl<A: Copy> Clone for Tracked<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Tracked { phantom: PhantomData }
+        *self
     }
 }
 
@@ -801,7 +800,7 @@ unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
 
 impl<T> Clone for SyncSendIfSyncSend<T> {
     fn clone(&self) -> Self {
-        unimplemented!();
+        *self
     }
 }
 
@@ -1694,7 +1693,7 @@ impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Clone
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     fn clone(&self) -> Self {
-        unimplemented!()
+        *self
     }
 }
 
