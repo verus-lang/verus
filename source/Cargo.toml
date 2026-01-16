@@ -73,7 +73,6 @@ vec_init_then_push = "allow"
 
 # suspicious
 arc_with_non_send_sync = "allow"
-crate_in_macro_def = "allow"
 empty_line_after_doc_comments = "allow"
 ineffective_open_options = "allow"
 manual_unwrap_or_default = "allow"
