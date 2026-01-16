@@ -1,7 +1,7 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
-use crate::context::{ContextX, ErasureInfo};
+use crate::context::{Context, ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
@@ -725,7 +725,7 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &std::cell::RefCell<Option<Message>>,
+        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -885,7 +885,7 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.take() {
+                        if let Some(hint) = hint_upon_failure.clone() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
                         }
                     }
@@ -1047,6 +1047,7 @@ impl Verifier {
             skip_recommends: _,
             hint_upon_failure,
         } = &*commands_with_context;
+        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1066,7 +1067,7 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    hint_upon_failure,
+                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -2728,21 +2729,16 @@ impl Verifier {
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
         let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
-        let mut ctxt = Arc::new(ContextX {
-            cmd_line_args: self.args.clone(),
+        let mut ctxt = ContextX::new_rc(
+            self.args.clone(),
             tcx,
-            krate: tcx.hir_crate(()),
             erasure_info,
-            spans: spans.clone(),
+            spans.clone(),
             verus_items,
-            diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-            no_vstd: self.args.vstd == crate::config::Vstd::NoVstd,
-            arch_word_bits: None,
-            crate_name: Arc::new(crate_name.clone()),
+            self.args.vstd == crate::config::Vstd::NoVstd,
+            Arc::new(crate_name.clone()),
             vstd_crate_name,
-            name_def_id_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
-            next_read_kind_id: std::rc::Rc::new(std::cell::Cell::new(0)),
-        });
+        );
 
         let ctxt_diagnostics = ctxt.diagnostics.clone();
         let map_err_diagnostics =
@@ -2866,7 +2862,7 @@ impl Verifier {
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             &unpruned_crate,
-            &mut ctxt.diagnostics.borrow_mut(),
+            &mut *ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,
         );
@@ -3008,10 +3004,10 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
 }
 
 /// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
-/// will cause the thir_body to run before VerusErasureCtxt is initialized.  
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.
 /// We disallow opaque types in trait for now.
 fn check_no_opaque_types_in_trait<'tcx>(
-    ctxt: &Arc<ContextX<'tcx>>,
+    ctxt: &Context<'tcx>,
     crate_items: &crate::external::CrateItems,
 ) -> Result<(), VirErr> {
     for item in crate_items.items.iter() {

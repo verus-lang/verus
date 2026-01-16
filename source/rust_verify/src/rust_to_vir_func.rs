@@ -361,8 +361,18 @@ fn compare_external_ty_or_true<'tcx>(
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
-                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1, None);
-                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2, None);
+                    let mut trait_path1 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def1,
+                        None::<&mut HashMap<_, _>>,
+                    );
+                    let trait_path2 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def2,
+                        None::<&mut HashMap<_, _>>,
+                    );
                     if trait_path1 == *from_path {
                         trait_path1 = to_path.clone();
                     }

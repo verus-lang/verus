@@ -2773,7 +2773,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     ProverChoice::DefaultProver,
                     false,
                 );
-                loop_cmd_context.hint_upon_failure.replace(hint_message);
+                {
+                    let mut guard =
+                        loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
+                    *guard = hint_message;
+                }
                 state.commands.push(loop_cmd_context);
             }
 
