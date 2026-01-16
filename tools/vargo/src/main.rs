@@ -31,6 +31,10 @@ pub const VARGO_SOURCE_FILES: &[(&str, &[u8])] = &[
     ("src/commands/build.rs", include_bytes!("commands/build.rs")),
     ("src/commands/check.rs", include_bytes!("commands/check.rs")),
     ("src/commands/clean.rs", include_bytes!("commands/clean.rs")),
+    (
+        "src/commands/clippy.rs",
+        include_bytes!("commands/clippy.rs"),
+    ),
     ("src/commands/cmd.rs", include_bytes!("commands/cmd.rs")),
     ("src/commands/fmt.rs", include_bytes!("commands/fmt.rs")),
     (
@@ -118,6 +122,7 @@ fn run(cli: VargoCli) -> anyhow::Result<()> {
         VargoSubcommand::Build(vargo_cmd) => commands::build(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Check(vargo_cmd) => commands::check(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Clean(vargo_cmd) => commands::clean(&cli.options, &context, vargo_cmd),
+        VargoSubcommand::Clippy(vargo_cmd) => commands::clippy(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Cmd(vargo_cmd) => commands::cmd(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Fmt(vargo_cmd) => commands::fmt(&cli.options, &context, vargo_cmd),
         VargoSubcommand::Metadata(vargo_cmd) => {

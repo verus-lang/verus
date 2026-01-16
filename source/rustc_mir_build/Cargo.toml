@@ -8,3 +8,6 @@ edition = "2024"
 itertools = "0.12"
 tracing = "0.1"
 # tidy-alphabetical-end
+
+[lints]
+workspace = true

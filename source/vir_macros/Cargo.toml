@@ -13,3 +13,6 @@ syn = "^2"
 
 [lib]
 proc-macro = true
+
+[lints]
+workspace = true

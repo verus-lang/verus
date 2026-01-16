@@ -23,3 +23,6 @@ win32job = "1"
 
 [build-dependencies]
 regex = "1"
+
+[lints]
+workspace = true
