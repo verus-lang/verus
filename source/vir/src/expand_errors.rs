@@ -176,7 +176,6 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
 ///
 /// The second argument, the 'expansion tree' describes the transformations that were
 /// performed to do the expansion.
-
 pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,

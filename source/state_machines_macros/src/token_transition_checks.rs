@@ -16,7 +16,6 @@ use verus_syn::parse::Error;
 /// (presumably via Option types) a feature that we don't implement.
 ///
 /// Also checks to make sure there are no sub-updates.
-
 pub fn check_unsupported_updates(ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -106,7 +105,6 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> parse::Result<()> {
 /// 'guard' can only be in a readonly transiton and 'withdraw/deposit' in a normal transition.
 /// So those can't interact at all. For another, there could conceivably be reason
 /// to put 'withdraw' and 'deposit' in either order.
-
 pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> parse::Result<()> {
     for field in &sm.fields {
         check_ordering_remove_have_add_rec(ts, &field.name.to_string(), false, false)?;

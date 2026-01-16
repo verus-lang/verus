@@ -129,7 +129,6 @@ impl CrateItems {
 ///     individual items can be treated as external individually.
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
-
 pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<CrateItems, VirErr> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify

@@ -25,7 +25,6 @@ pub enum ExpandErrorsResult {
 
 /// Object responsible for maintaining state during an expand-errors
 /// invocation and determining which expansions to perform.
-
 // How it works:
 //
 // Suppose that, during a normal query, assert ID 42 fails.
@@ -66,7 +65,6 @@ pub enum ExpandErrorsResult {
 //    and choosing which queries to run
 //  - Flattening the tree-of-trees into a form suitable to print to the user,
 //    indicating which queries fail or succeed
-
 pub struct ExpandErrorsDriver {
     /// The function we're operating on.
     pub function: vir::sst::FunctionSst,

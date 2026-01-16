@@ -13,7 +13,6 @@ use verus_syn::{
 };
 
 /// Check that the declarations of 'inductive' lemmas are well-formed.
-
 pub fn check_lemmas(bundle: &SMBundle) -> parse::Result<()> {
     check_each_lemma_valid(bundle)?;
     if bundle.extras.invariants.len() > 0 {
@@ -45,7 +44,6 @@ pub fn get_transition<'a>(
 ///
 /// Make sure the error message is helpful. On error, just tell the user exactly
 /// what params they can copy-paste in.
-
 fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
     let mut seen_lemmas = HashSet::new();
 
@@ -152,7 +150,6 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
 /// we expect params: `post: X, ...` where `...` are the transition params and X is the Self type.
 /// For a 'transition' routine,
 /// we expect params: `pre: X, post: X, ...`
-
 fn get_expected_params(t: &Transition) -> Vec<TransitionParam> {
     let mut v = vec![];
     let self_ty = Type::Verbatim(quote! { Self });
@@ -177,7 +174,6 @@ fn get_expected_params(t: &Transition) -> Vec<TransitionParam> {
 
 /// If the params match, return None.
 /// If not, return a span to error at. Pick the earliest span where a discrepancy is found.
-
 fn params_match(
     expected: &Vec<TransitionParam>,
     actual: &Punctuated<FnArg, token::Comma>,
@@ -242,7 +238,6 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
 
 /// Check that every transition has a corresponding 'inductive' lemma.
 /// On error, print out a list of stubs that the user can directly copy-paste into their source.
-
 fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> parse::Result<()> {
     let mut names = HashMap::new();
     for t in bundle.sm.transitions.iter() {
@@ -318,7 +313,6 @@ fn transition_params_to_string(is_init: bool, params: &Vec<TransitionParam>) -> 
 }
 
 /// Error if the user tried to add 'requires' or 'ensures' to an inductiveness lemma.
-
 fn check_no_explicit_conditions(bundle: &SMBundle) -> parse::Result<()> {
     // Note that this check isn't strictly necessary. If the user tries to write something like:
     //

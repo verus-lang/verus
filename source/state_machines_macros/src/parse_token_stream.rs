@@ -390,7 +390,6 @@ enum ShardingType {
 /// In a tokenized state machine, we require this for each field.
 /// In a 'normal' state machine, we error if we find such an attribute
 /// (but internally we represent the field as having the 'variable' strategy).
-
 fn get_sharding_type(
     field_span: Span,
     attrs: &[Attribute],

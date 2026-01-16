@@ -110,10 +110,8 @@ fn transition_arg_name(field: &Field) -> Ident {
 /// to the other thread) or arbitrary guards (thus 'syncing' the storage objects to the
 /// other thread). Due to the flexibility of the guard protocol, this could theoretically
 /// happen regardless of whether the instance/tokens are synced or sent to the other thread.
-///
-/// TODO make sure that the Instance/tokens don't inherit !Sync or !Send negative-instances
-/// from the other fields where it doesn't matter. (Completeness issue)
-
+// TODO make sure that the Instance/tokens don't inherit !Sync or !Send negative-instances
+// from the other fields where it doesn't matter. (Completeness issue)
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let self_ty = get_self_ty(sm);
@@ -218,7 +216,6 @@ fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
 /// is basically a Map<V, nat>. So the V is treated as a 'key' here
 /// and if you have multiple elements of the same value, that's represented
 /// by having a higher counter.
-
 fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     let tokenname = field_token_type_name(field);
     let insttype = inst_type(sm);
@@ -305,7 +302,6 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
 /// For a given sharding(constant) field, add that constant
 /// as a #[verifier::spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
-
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = &field.name;
     let fieldtype = match &field.stype {
@@ -424,7 +420,6 @@ struct TokenParam {
 
 /// Context object for the complex task of translating a single
 /// transition into a token-exchange method.
-
 struct Ctxt {
     // fields written in some normal 'update' or 'init' statements
     // (not including special ops)
@@ -496,7 +491,6 @@ enum Mode {
 ///
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
-
 pub fn exchange_stream(
     bundle: &SMBundle,
     tr: &Transition,
@@ -1673,7 +1667,6 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> 
 /// Further, we do not create new 'Assert' statements here at all. If the user wants
 /// the exchange postcondition to contain any additional predicates, they can always
 /// add an 'assert' explicitly.
-
 fn translate_transition(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
@@ -2219,7 +2212,6 @@ fn translate_value_expr(
 ///    _out_ parameters. Previous well-formedness checks (`check_birds_eye`) should ensure
 ///    that this will only happen in contexts that will ultimately appears in the
 ///    post-conditions, never pre-conditions.
-
 #[must_use]
 fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Error>) -> Expr {
     let mut expr = expr.clone();
@@ -2479,7 +2471,6 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
 /// it doesn't matter. Updates to a NotTokenized field aren't observed by the exchange method.
 /// (Also, if there's just any dead code for any other reason, that will also get pruned
 /// as a byproduct.)
-
 fn prune_irrelevant_ops(ctxt: &Ctxt, ts: TransitionStmt) -> TransitionStmt {
     let span = ts.get_span().clone();
     match prune_irrelevant_ops_rec(ctxt, ts) {
@@ -2561,7 +2552,6 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
 /// so it can be used for initialization as well.
 ///
 /// Ignores all special ops.
-
 fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {

@@ -233,7 +233,6 @@ pub(crate) fn expr_id_from_kind<'tcx>(
 /// erase_tree
 /// This erases the expression and all HIR subexpressions.
 /// (Mostly. It also keeps expressions that need pattern-exhaustiveness checking.)
-
 pub(crate) fn erase_tree<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -277,7 +276,6 @@ pub(crate) fn erase_tree_kind<'tcx>(
 /// This erases a single node but not the children.
 /// We create a value `erased_ghost_value::<T>::((args...))` where `args` contains anything
 /// that needs checking from the subexpressions.
-
 pub(crate) fn erase_node_unadjusted<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -372,7 +370,6 @@ pub(crate) fn erase_node<'tcx>(
 /// `erased_ghost_value::<S>()`, we replace the latter with `erased_ghost_value::<()>()`.
 /// The type param only matters for the return value anyway, which doesn't matter in this
 /// context.
-
 fn erased_ghost_value_remove_type_if_possible<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,

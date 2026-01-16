@@ -749,7 +749,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
 /// (This may include the proof content of a decreases_by function.)
 /// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
 /// on its own.)
-
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,

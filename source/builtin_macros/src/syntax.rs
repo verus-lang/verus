@@ -2075,7 +2075,6 @@ impl Visitor {
     /// Also handle trigger attributes.
     ///
     /// Returns true if the transform is attempted, false if the transform is inapplicable.
-
     fn closure_quant_operators(&mut self, expr: &mut Expr) -> bool {
         let unary = match expr {
             Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
@@ -4820,7 +4819,7 @@ pub(crate) fn verus_inputs_to_tokens(
                     args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
                 }
                 _ => {
-                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() =>
                             compile_error!("verus! macro error: input of the function is not an Ident"))));
                 }
             },
@@ -4846,7 +4845,7 @@ pub(crate) fn inputs_to_tokens(
                     args.push(Expr::Verbatim(pat_ident.ident.to_token_stream()));
                 }
                 _ => {
-                    args.push(Expr::Verbatim(quote_spanned!(input.span() => 
+                    args.push(Expr::Verbatim(quote_spanned!(input.span() =>
                             compile_error!("verus! macro error: input of the function is not an Ident"))));
                 }
             },

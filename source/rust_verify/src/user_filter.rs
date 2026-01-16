@@ -143,7 +143,6 @@ impl UserFilter {
     /// element accepted by the filter.
     /// Assumes the input vector is already restricted to the modules
     /// as returned by `filter_module_ids`.
-
     pub fn filter_buckets(&self, vec: Vec<(BucketId, Bucket)>) -> Vec<(BucketId, Bucket)> {
         match self {
             UserFilter::None | UserFilter::Modules(_) => vec,
@@ -172,7 +171,6 @@ impl UserFilter {
     /// partial match, then we upgrade to a partial match, i.e., return false)
     ///
     /// Errors if there is no match.
-
     fn get_matches(
         module_id: &ModuleId,
         function_pattern: &String,
