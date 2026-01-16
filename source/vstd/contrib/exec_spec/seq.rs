@@ -63,13 +63,6 @@ pub trait ExecSpecEmpty: Sized {
     fn exec_empty() -> Self;
 }
 
-/// Spec for executable version of [`Seq::new`].
-pub trait ExecSpecNew: Sized {
-    type Elem: DeepView;
-
-    fn exec_new<F: Fn(usize) -> Self::Elem + 'static>(len: usize, f: F) -> Self;
-}
-
 /// Spec for executable version of [`Seq::to_multiset`].
 pub trait ExecSpecToMultiset<'a>: Sized {
     type Elem: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq;
@@ -214,26 +207,6 @@ impl<T: DeepView> ExecSpecEmpty for Vec<T> {
             res.deep_view() =~= Seq::empty(),
     {
         Vec::new()
-    }
-}
-
-// todo(nneamtu):
-// The support for `Seq::new` is quite incomplete and hacky.
-// 1) We don't currently convert the type of the closure `f`. This is problematic because `Seq::new` expects `F: SpecFn(int) -> T`, 
-// but `exec_new` expects `F: Fn(usize) -> T`. 
-// The current workaround is just to leave off type annotations for the argument in `f`, as in `|i| i as usize`.
-// 2) The postcondition on `exec_new` is trivial. Verus complains when trying to use the non-spec function `f` in the postcondition.
-impl<T: DeepView> ExecSpecNew for Vec<T> {
-    type Elem = T;
-
-    #[verifier::external_body]
-    #[inline(always)]
-    fn exec_new<F: Fn(usize) -> Self::Elem + 'static>(len: usize, f: F) -> (res: Self)
-        ensures
-            true
-            //res.deep_view() =~= Seq::new(len as nat, |i| f(i as usize).deep_view()),
-    {
-        (0..len).map(|i| f(i)).collect()
     }
 }
 

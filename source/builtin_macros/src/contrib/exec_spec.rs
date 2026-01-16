@@ -2076,33 +2076,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 VarMode::Owned => owned,
             }
         },
-        Expr::Closure(expr_closure) => {
-            let mut ctx = ctx.clone();
-            let mut new_locals = HashSet::new();
-
-            let pats = expr_closure
-                .inputs
-                .iter()
-                .map(|arg| compile_pattern(&mut ctx, &arg.pat, &mut new_locals))
-                .collect::<Result<Vec<_>, Error>>()?;
-            
-            let body = compile_expr(
-                &ctx,
-                &expr_closure
-                    .body
-                    .as_ref(),
-                VarMode::Owned,
-            )?;
-            
-            let owned = quote! {
-                |#(#pats,)*| #body
-            };
-
-            match mode {
-                VarMode::Ref => quote! { #owned.get_ref() },
-                VarMode::Owned => owned,
-            }
-        },
 
         // TODOs:
         // Expr::Let(expr_let) => todo!(),
