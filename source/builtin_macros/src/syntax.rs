@@ -125,7 +125,7 @@ fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
 
 fn path_is_ident(path: &Path, s: &str) -> bool {
     let segments = &path.segments;
-    segments.len() == 1 && segments.first().unwrap().ident.to_string() == s
+    segments.len() == 1 && segments.first().unwrap().ident == s
 }
 
 pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
@@ -847,7 +847,7 @@ impl Visitor {
                         let mut pattern = ret.1.clone();
                         // Check if the pattern name conflicts with the function name
                         let was_renamed = if let Pat::Ident(pat_ident) = &pattern {
-                            if pat_ident.ident.to_string() == sig.ident.to_string() {
+                            if pat_ident.ident == sig.ident {
                                 pattern = Pat::Verbatim(
                                     quote_spanned! {pattern.span() => __verus_tmp_ret},
                                 );
@@ -3345,8 +3345,8 @@ impl Visitor {
 
         let no_loop_invariant = attrs.iter().position(|attr| {
             attr.path().segments.len() == 2
-                && attr.path().segments[0].ident.to_string() == "verifier"
-                && attr.path().segments[1].ident.to_string() == "no_loop_invariant"
+                && attr.path().segments[0].ident == "verifier"
+                && attr.path().segments[1].ident == "no_loop_invariant"
         });
         if let Some(i) = no_loop_invariant {
             attrs.remove(i);
@@ -3356,8 +3356,8 @@ impl Visitor {
         // give people a reasonable way to disable it:
         let no_auto_loop_invariant = attrs.iter().position(|attr| {
             attr.path().segments.len() == 2
-                && attr.path().segments[0].ident.to_string() == "verifier"
-                && attr.path().segments[1].ident.to_string() == "no_auto_loop_invariant"
+                && attr.path().segments[0].ident == "verifier"
+                && attr.path().segments[1].ident == "no_auto_loop_invariant"
         });
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
@@ -3749,7 +3749,7 @@ impl VisitMut for Visitor {
         }
         if let verus_syn::AttrStyle::Outer = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
-                [attr_name] if attr_name.to_string() == "trigger" => {
+                [attr_name] if *attr_name == "trigger" => {
                     let mut valid = true;
                     if let verus_syn::Meta::List(list) = &attr.meta {
                         if !list.tokens.is_empty() {
@@ -3761,10 +3761,10 @@ impl VisitMut for Visitor {
                         *attr = mk_verus_attr(attr.span(), quote! { trigger });
                     }
                 }
-                [attr_name] if attr_name.to_string() == "via_fn" => {
+                [attr_name] if *attr_name == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
                 }
-                [attr_name] if attr_name.to_string() == "verifier" => {
+                [attr_name] if *attr_name == "verifier" => {
                     let span = attr.span();
                     let Ok(parsed) = attr.parse_args_with(
                         Punctuated::<verus_syn::Meta, Token![,]>::parse_terminated,
@@ -3818,7 +3818,7 @@ impl VisitMut for Visitor {
 
         if let verus_syn::AttrStyle::Inner(_) = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
-                [attr_name] if attr_name.to_string() == "trigger" => {
+                [attr_name] if *attr_name == "trigger" => {
                     // process something like: #![trigger f(a, b), g(c, d)]
                     use verus_syn::Meta;
                     match &mut attr.meta {
@@ -5170,12 +5170,12 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| {
         // verifier::external
         attr.path().segments.len() == 2
-            && attr.path().segments[0].ident.to_string() == "verifier"
-            && (attr.path().segments[1].ident.to_string() == "external"
-                || attr.path().segments[1].ident.to_string() == "external_body")
+            && attr.path().segments[0].ident == "verifier"
+            && (attr.path().segments[1].ident == "external"
+                || attr.path().segments[1].ident == "external_body")
         // verifier(external)
         || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident.to_string() == "verifier"
+            && attr.path().segments[0].ident == "verifier"
             && match &attr.meta {
                 verus_syn::Meta::List(list) => {
                     matches!(list.tokens.to_string().as_str(), "external" | "external_body")
@@ -5189,8 +5189,8 @@ pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| match &attr.meta {
         Meta::List(MetaList { path, delimiter: _, tokens }) => {
             path.segments.len() == 2
-                && path.segments[0].ident.to_string() == "verus"
-                && path.segments[1].ident.to_string() == "internal"
+                && path.segments[0].ident == "verus"
+                && path.segments[1].ident == "internal"
                 && tokens.to_string() == "encoded_const"
         }
         _ => false,
@@ -5201,11 +5201,11 @@ pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| {
         // verifier::external
         attr.path().segments.len() == 2
-            && attr.path().segments[0].ident.to_string() == "verifier"
-            && attr.path().segments[1].ident.to_string() == "external"
+            && attr.path().segments[0].ident == "verifier"
+            && attr.path().segments[1].ident == "external"
         // verifier(external)
         || attr.path().segments.len() == 1
-            && attr.path().segments[0].ident.to_string() == "verifier"
+            && attr.path().segments[0].ident == "verifier"
             && match &attr.meta {
                 verus_syn::Meta::List(list) => {
                     matches!(list.tokens.to_string().as_str(), "external")
@@ -5328,7 +5328,7 @@ fn is_probably_real_type(typ: &Type) -> bool {
     match typ {
         Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
             None => false,
-            Some(ident) => ident.to_string() == "real",
+            Some(ident) => ident == "real",
         },
         _ => false,
     }

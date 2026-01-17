@@ -16,21 +16,11 @@ use verus_syn::spanned::Spanned;
 use verus_syn::{Error, GenericArgument, GenericParam, Ident, Path, PathArguments, Type, TypePath};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
-    for f in fields {
-        if f.name.to_string() == ident.to_string() {
-            return true;
-        }
-    }
-    return false;
+    fields.iter().any(|f| f.name == *ident)
 }
 
 pub fn get_field<'a>(fields: &'a Vec<Field>, ident: &Ident) -> &'a Field {
-    for f in fields {
-        if f.name.to_string() == ident.to_string() {
-            return f;
-        }
-    }
-    panic!("could not find field");
+    fields.iter().find(|f| f.name == *ident).expect("could not find field")
 }
 
 /// Check that every update statement actually refers to a valid field.
@@ -177,7 +167,7 @@ fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Resu
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(span, id, _) => {
-            if id.to_string() == field.name.to_string() {
+            if *id == field.name {
                 Ok(Some(*span))
             } else {
                 Ok(None)
@@ -240,7 +230,7 @@ fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> parse::Re
         TransitionStmt::Initialize(_, _, _) => Ok(None),
         TransitionStmt::SubUpdate(..) => Ok(None),
         TransitionStmt::Update(span, id, _) => {
-            if id.to_string() == field.name.to_string() {
+            if *id == field.name {
                 Ok(Some(*span))
             } else {
                 Ok(None)
@@ -709,7 +699,7 @@ fn check_label_param(sm: &SM, tr: &Transition, errors: &mut Vec<Error>) {
                                         GenericParam::Type(tp),
                                     ) => match path.get_ident() {
                                         Some(id) => {
-                                            if id.to_string() != tp.ident.to_string() {
+                                            if *id != tp.ident {
                                                 return false;
                                             }
                                         }

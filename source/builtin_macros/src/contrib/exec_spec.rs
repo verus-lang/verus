@@ -118,6 +118,7 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
         // we don't implement ExecSpecType for it (to avoid
         // conflicting with SpecString)
         Type::Path(type_path) => {
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if type_path.path.segments.len() == 1 {
                 if type_path.path.segments[0].ident.to_string() == "Seq" {
                     let type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
@@ -833,6 +834,7 @@ fn compile_pattern(
     match pat {
         Pat::Ident(pat_ident) => {
             // TODO: why do we need this case?
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if pat_ident.ident.to_string() == "None" {
                 return Ok(quote! { #pat });
             }

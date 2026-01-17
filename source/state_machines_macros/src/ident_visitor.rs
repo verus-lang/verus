@@ -211,17 +211,17 @@ impl IdentVisitor {
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
-        if node.to_string() == "post" {
+        if node == "post" {
             self.errors.push(Error::new(
                 node.span(),
                 "cannot refer directly to `post` in a transition definition",
             ));
-        } else if node.to_string() == "pre" {
+        } else if node == "pre" {
             if self.kind == TransitionKind::Init {
                 self.errors.push(Error::new(node.span(),
                     "cannot refer to `pre` in an 'init' routine; there is no previous state to refer to"));
             }
-        } else if node.to_string() == "self" {
+        } else if node == "self" {
             self.errors.push(Error::new(node.span(),
                   "identifier `self` is meaningless in transition definition; use `pre` to refer to the previous state (in non-init transitions)"));
         } else {
@@ -344,7 +344,7 @@ impl<'ast> Visit<'ast> for SuperVisitor {
     }
 
     fn visit_path(&mut self, node: &'ast Path) {
-        if node.segments[0].ident.to_string() == "super" {
+        if node.segments[0].ident == "super" {
             self.errors.push(Error::new(
                 node.span(),
                 format!("state machine error: `super::` path not allowed here"),

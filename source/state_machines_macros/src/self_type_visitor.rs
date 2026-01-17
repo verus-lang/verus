@@ -187,7 +187,7 @@ struct SelfVisitor<'a> {
 
 impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
-        if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
+        if path.leading_colon.is_none() && path.segments[0].ident == "Self" {
             let orig_span = path.segments[0].ident.span();
             let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
             for seg in self.subst_path.segments.iter() {

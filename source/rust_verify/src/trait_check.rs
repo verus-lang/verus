@@ -217,12 +217,12 @@ impl rustc_span::source_map::FileLoader for TCFileLoader {
     }
 
     fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.clone())
     }
 
     fn read_binary_file(&self, path: &std::path::Path) -> Result<Arc<[u8]>, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.as_bytes().into())
     }
 }

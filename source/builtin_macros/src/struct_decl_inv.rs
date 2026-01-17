@@ -1016,21 +1016,13 @@ fn get_partial_field_by_name<'a>(
     partial_fields: &'a Vec<PartialField>,
     name: &str,
 ) -> Option<&'a PartialField> {
-    for pf in partial_fields.iter() {
-        if pf.name.to_string() == name {
-            return Some(pf);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    partial_fields.iter().find(|pf| pf.name.to_string() == name)
 }
 
 fn get_field_by_name<'a>(fields: &'a Vec<Field>, name: &str) -> Option<&'a Field> {
-    for f in fields.iter() {
-        if f.ident.as_ref().unwrap().to_string() == name {
-            return Some(f);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().find(|f| f.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_invariant_decls_by_name<'a>(
@@ -1040,6 +1032,7 @@ fn get_invariant_decls_by_name<'a>(
     let mut res = Vec::new();
     for invdecl in invariant_decls.iter() {
         if let InvariantDecl::Invariant { field_name, .. } = invdecl {
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if field_name.to_string() == name {
                 res.push(invdecl);
             }
@@ -1103,12 +1096,8 @@ impl VisitMut for FillInferVisitor {
 }
 
 fn fields_contains(fields: &Vec<Field>, name: &str) -> bool {
-    for field in fields.iter() {
-        if field.ident.as_ref().unwrap().to_string() == name {
-            return true;
-        }
-    }
-    false
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().any(|field| field.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_self_type(item_struct: &ItemStruct) -> Type {

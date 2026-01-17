@@ -179,7 +179,7 @@ fn get_single_child(node: &NodeRef) -> Option<NodeRef> {
 fn is_element(node: &NodeRef, name: &str) -> bool {
     match node.as_element() {
         None => false,
-        Some(data) => data.name.local == name.to_string(),
+        Some(data) => *data.name.local == *name,
     }
 }
 
