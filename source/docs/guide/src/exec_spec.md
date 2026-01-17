@@ -58,11 +58,17 @@ Currently, `exec_spec!` supports these basic features:
         - `<op>` is either `<=` or `<`
         - `<lowerI>` and `<upperI>` can mention `xJ` for all `J < I`
     - `<typeI>` is a Rust primitive integer (`i<N>`, `isize`, `u<N>`, `usize`) or `char`
-  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `to_multiset`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`
-  - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and `len`, `count`
+  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), `seq!` literals, and these functions/methods:
+    - equality, `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `to_multiset`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`, `is_suffix_of`, `is_prefix_of`, `contains`, `index_of`, `index_of_first`, `index_of_last`
+  - `Map<T>` (compiled to `HashMap<T>`), and these functions/methods:
+    - equality, `len`, indexing, `empty`, `dom`, `insert`, `remove`
+  - `Set<T>` (compiled to `HashSet<T>`), and these functions/methods:
+    - equality, `len`, `empty`, `contains`, `insert`, `remove`, `union`, `intersect`, `difference`
+  - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and these functions/methods: 
+    - equality, `len`, `count`, `empty`, `singleton`, `add`, `sub`
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
-  - User-defined structs and enums
+  - User-defined structs and enums. These types should be defined within the macro using spec-compatible types for the fields (e.g. `Seq`). Such types are then compiled to their `Exec-` versions, which use the exec versions of each field's type (e.g. `Vec` or slices).
   - Primitive integer/boolean types (`i<N>`, `isize`, `u<N>`, `usize`, `char`, etc.). Note that `int` and `nat` cannot be used in `exec_spec!`.
   - Equality between Seq, String, and arithmetic types
 
