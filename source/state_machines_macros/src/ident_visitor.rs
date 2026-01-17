@@ -276,8 +276,8 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in vec!["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
-        if ident.to_string() == kw {
+    for kw in ["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
+        if ident == kw {
             return Err(Error::new(
                 ident.span(),
                 format!("'{kw:}' is a reserved identifier in state machine definitions"),
@@ -285,7 +285,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         }
     }
 
-    for prefix in vec!["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
+    for prefix in ["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),

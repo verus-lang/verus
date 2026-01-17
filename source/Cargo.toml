@@ -59,7 +59,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 cmp_owned = "allow"
 large_enum_variant = "allow"
 result_large_err = "allow"
-useless_vec = "allow"
 vec_init_then_push = "allow"
 
 # suspicious

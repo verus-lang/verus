@@ -265,7 +265,7 @@ pub(crate) fn check_trait_conflicts<'tcx>(
     if let Some(mut file) = tc_log_file {
         write!(file, "{}", &rust_code).expect("error writing to trait-conflict log file");
     }
-    let rustc_args = vec![TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
+    let rustc_args = [TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         // avoid warning about jobserver fd
