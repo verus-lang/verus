@@ -415,7 +415,6 @@ pub(crate) fn translate_impl<'tcx>(
                             FunctionKind::Static
                         };
 
-
                         check_item_fn(
                             ctxt,
                             &mut vir.functions,

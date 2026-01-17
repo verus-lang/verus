@@ -405,10 +405,13 @@ fn compare_clasue_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
             let projection_term_eq = pred1.projection_term.def_id == pred2.projection_term.def_id;
-            let term_eq = if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) = (pred1.term.kind(), pred2.term.kind()){
-                compare_external_ty(tcx,verus_items, &ty1, &ty2, external_trait_from_to)
-                }else{
-                    pred1.term ==pred2.term
+            let term_eq =
+                if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
+                    (pred1.term.kind(), pred2.term.kind())
+                {
+                    compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
+                } else {
+                    pred1.term == pred2.term
                 };
             projection_term_eq && term_eq
         }
@@ -450,7 +453,7 @@ fn compare_external_ty<'tcx>(
 ) -> bool {
     if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
-    } 
+    }
     // we recursively reach all the nested opaque types.
     else if let (
         rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
@@ -464,21 +467,25 @@ fn compare_external_ty<'tcx>(
             return false;
         }
         for (bound1, bound2) in ty1_bounds.iter().zip(ty2_bounds.iter()) {
-            if !compare_clasue_kind(tcx, verus_items, &bound1.kind().skip_binder(), &bound2.kind().skip_binder(), external_trait_from_to) {
+            if !compare_clasue_kind(
+                tcx,
+                verus_items,
+                &bound1.kind().skip_binder(),
+                &bound2.kind().skip_binder(),
+                external_trait_from_to,
+            ) {
                 return false;
             }
         }
         return true;
-    } else if let (
-        rustc_middle::ty::TyKind::Tuple(tys1),
-        rustc_middle::ty::TyKind::Tuple(tys2),
-    ) = (ty1.kind(), ty2.kind())
+    } else if let (rustc_middle::ty::TyKind::Tuple(tys1), rustc_middle::ty::TyKind::Tuple(tys2)) =
+        (ty1.kind(), ty2.kind())
     {
-        if tys1.len() != tys2.len(){
+        if tys1.len() != tys2.len() {
             false
-        }else{
+        } else {
             for (ty1, ty2) in tys1.iter().zip(tys2.iter()) {
-                if !compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to){
+                if !compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to) {
                     return false;
                 }
             }
@@ -490,19 +497,15 @@ fn compare_external_ty<'tcx>(
     ) = (ty1.kind(), ty2.kind())
     {
         compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
-    } else if let (
-        rustc_middle::ty::TyKind::Pat(ty1, _),
-        rustc_middle::ty::TyKind::Pat(ty2, _),
-    ) = (ty1.kind(), ty2.kind())
+    } else if let (rustc_middle::ty::TyKind::Pat(ty1, _), rustc_middle::ty::TyKind::Pat(ty2, _)) =
+        (ty1.kind(), ty2.kind())
     {
         compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
-    } else if let (
-        rustc_middle::ty::TyKind::Slice(ty1),
-        rustc_middle::ty::TyKind::Slice(ty2),
-    ) = (ty1.kind(), ty2.kind())
+    } else if let (rustc_middle::ty::TyKind::Slice(ty1), rustc_middle::ty::TyKind::Slice(ty2)) =
+        (ty1.kind(), ty2.kind())
     {
         compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to)
-    }else {
+    } else {
         ty1 == ty2
     }
 }
@@ -527,7 +530,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    
+
     Ok(c1 == c2)
 }
 

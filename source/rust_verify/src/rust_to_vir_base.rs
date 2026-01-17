@@ -2121,7 +2121,7 @@ pub(crate) fn ty_remove_references<'tcx>(
 /// Add the OpaqueDef to vir if the function returns an opaque type.
 /// If the opaque type is defined by assume specification,
 /// check the opaque type defined by the original external function too.
-/// Note: We have checked that the return types of the external function and 
+/// Note: We have checked that the return types of the external function and
 /// assume specification match exactly.
 pub(crate) fn check_fn_opaque_ty<'tcx>(
     ctxt: &Context<'tcx>,
@@ -2130,18 +2130,17 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     span: Span,
     external_def_id: Option<&DefId>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-
     let ty = ctxt.tcx.fn_sig(fn_def_id).skip_binder().output().skip_binder();
     let external_ty = if let Some(external_def_id) = external_def_id {
-        if ctxt.tcx.def_kind(external_def_id).is_fn_like(){
+        if ctxt.tcx.def_kind(external_def_id).is_fn_like() {
             Some(ctxt.tcx.fn_sig(external_def_id).skip_binder().output().skip_binder())
-        }else{
+        } else {
             None
         }
-    }else{
+    } else {
         None
     };
-    opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty,span, external_ty.as_ref())
+    opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty, span, external_ty.as_ref())
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
@@ -2152,13 +2151,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     span: Span,
     external_ty: Option<&rustc_middle::ty::Ty<'tcx>>,
 ) -> Result<Option<OpaqueType>, VirErr> {
-        let unmatch_err_msg = "opaque type of assume external specification does not match the opaque type of the orginal function";
-        let unmatch_err = || {
-            crate::internal_err!(
-                span,
-                unmatch_err_msg
-            )
-        };
+    let unmatch_err_msg = "opaque type of assume external specification does not match the opaque type of the orginal function";
+    let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
     match ty.kind() {
         rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
             let span = ctxt.tcx.def_span(al_ty.def_id);
@@ -2193,7 +2187,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             let instantiated_bounds =
                 ctxt.tcx.item_bounds(al_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
 
-            // If the opaque type is defined by assume specification, recursively reveal the 
+            // If the opaque type is defined by assume specification, recursively reveal the
             // bounds of the external opaque type too.
             let external_ty_instantiated_bounds = if let Some(external_ty) = external_ty {
                 if let rustc_middle::ty::TyKind::Alias(
@@ -2254,7 +2248,9 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 {
                                     let external_item_def_id = external_pred.projection_term.def_id;
 
-                                    if Some(external_item_def_id) == ctxt.tcx.lang_items().fn_once_output() {
+                                    if Some(external_item_def_id)
+                                        == ctxt.tcx.lang_items().fn_once_output()
+                                    {
                                         return unmatch_err();
                                     }
 
@@ -2276,7 +2272,14 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
                         // recurse. one level deeper into both the external opaque type and the current opaque type
                         let typ = if let TermKind::Ty(ty) = pred.term.kind() {
-                            opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty, span, external_ty)?;
+                            opaque_def_to_vir(
+                                ctxt,
+                                opaque_types,
+                                fn_def_id,
+                                &ty,
+                                span,
+                                external_ty,
+                            )?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
@@ -2328,7 +2331,10 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             }
 
             let external_opaque_ty_vir = if let Some(external_ty) = external_ty {
-                Some(opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &external_ty, span, None)?.expect(unmatch_err_msg))
+                Some(
+                    opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &external_ty, span, None)?
+                        .expect(unmatch_err_msg),
+                )
             } else {
                 None
             };
@@ -2352,13 +2358,13 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         }
         rustc_middle::ty::TyKind::Tuple(tys) => {
             for i in 0..tys.len() {
-                let external_ty = if let Some(external_ty) = external_ty{
-                    if let rustc_middle::ty::TyKind::Tuple(external_tys) = external_ty.kind(){
+                let external_ty = if let Some(external_ty) = external_ty {
+                    if let rustc_middle::ty::TyKind::Tuple(external_tys) = external_ty.kind() {
                         Some(external_tys.get(i).expect(unmatch_err_msg))
-                    }else{
+                    } else {
                         return unmatch_err();
                     }
-                }else{
+                } else {
                     None
                 };
                 opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &tys[i], span, external_ty)?;
@@ -2366,39 +2372,39 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             Ok(None)
         }
         rustc_middle::ty::TyKind::Array(ty, _) => {
-            let external_ty = if let Some(external_ty) = external_ty{
-                if let rustc_middle::ty::TyKind::Array(external_ty, _) = external_ty.kind(){
+            let external_ty = if let Some(external_ty) = external_ty {
+                if let rustc_middle::ty::TyKind::Array(external_ty, _) = external_ty.kind() {
                     Some(external_ty)
-                }else{
+                } else {
                     return unmatch_err();
                 }
-            }else{
+            } else {
                 None
             };
             opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty, span, external_ty)?;
             Ok(None)
         }
         rustc_middle::ty::TyKind::Pat(ty, _) => {
-            let external_ty = if let Some(external_ty) = external_ty{
-                if let rustc_middle::ty::TyKind::Pat(external_ty, _) = external_ty.kind(){
+            let external_ty = if let Some(external_ty) = external_ty {
+                if let rustc_middle::ty::TyKind::Pat(external_ty, _) = external_ty.kind() {
                     Some(external_ty)
-                }else{
+                } else {
                     return unmatch_err();
                 }
-            }else{
+            } else {
                 None
             };
             opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty, span, external_ty)?;
             Ok(None)
         }
         rustc_middle::ty::TyKind::Slice(ty) => {
-            let external_ty = if let Some(external_ty) = external_ty{
-                if let rustc_middle::ty::TyKind::Slice(external_ty) = external_ty.kind(){
+            let external_ty = if let Some(external_ty) = external_ty {
+                if let rustc_middle::ty::TyKind::Slice(external_ty) = external_ty.kind() {
                     Some(external_ty)
-                }else{
+                } else {
                     return unmatch_err();
                 }
-            }else{
+            } else {
                 None
             };
             opaque_def_to_vir(ctxt, opaque_types, fn_def_id, &ty, span, external_ty)?;

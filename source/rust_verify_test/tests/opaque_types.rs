@@ -336,7 +336,7 @@ test_verify_one_file! {
         }
         assume_specification [ return_opaque_variable ]() -> (ret: impl DummyTrait<Output = impl DummyTrait>)
             ensures ret.get_self().bar()
-            ;   
+            ;
 
         fn test(){
             let ret = return_opaque_variable();
@@ -378,7 +378,7 @@ test_verify_one_file! {
         }
         assume_specification [ return_opaque_variable ]() -> (ret: impl DummyTrait<Output = impl DummyTrait>)
             ensures ret.get_self().bar()
-            ;   
+            ;
     } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
