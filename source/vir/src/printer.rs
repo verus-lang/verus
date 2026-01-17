@@ -81,7 +81,7 @@ impl<'a> NodeWriter<'a> {
     pub fn node_to_string(&mut self, node: &Node) -> String {
         use sise::Writer;
         let indentation = " ";
-        let style = sise::SpacedStringWriterStyle { line_break: &("\n".to_string()), indentation };
+        let style = sise::SpacedStringWriterStyle { line_break: "\n", indentation };
         let mut result = String::new();
         let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
         self.write_node(&mut string_writer, &node, 120, false, false);

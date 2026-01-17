@@ -270,7 +270,7 @@ fn make_cargo_command(
     // TODO: use the "+ ... toolchain" argument?
     let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
-    cmd.arg(subcommand.to_owned()).args(cargo_args);
+    cmd.arg(subcommand).args(cargo_args);
 
     cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
 

@@ -1254,35 +1254,35 @@ impl Verifier {
             diagnostics,
             &mut air_context,
             &trait_decl_commands,
-            &("Trait-Decls".to_string()),
+            "Trait-Decls",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &datatype_commands,
-            &("Datatypes".to_string()),
+            "Datatypes",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &trait_type_bounds_commands,
-            &("Trait-Bounds".to_string()),
+            "Trait-Bounds",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
         );
         for commands in &*function_decl_commands {
             self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
@@ -1374,7 +1374,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &trait_decl_commands,
-            &("Trait-Decls".to_string()),
+            "Trait-Decls",
         );
 
         let assoc_type_decl_commands =
@@ -1384,7 +1384,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
 
         let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
@@ -1396,13 +1396,7 @@ impl Verifier {
                 .cloned()
                 .collect(),
         );
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &datatype_commands,
-            &("Datatypes".to_string()),
-        );
+        self.run_commands(bucket_id, reporter, &mut air_context, &datatype_commands, "Datatypes");
 
         let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
         self.run_commands(
@@ -1410,7 +1404,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &trait_type_bounds_commands,
-            &("Trait-Bounds".to_string()),
+            "Trait-Bounds",
         );
 
         let assoc_type_impl_commands =
@@ -1420,7 +1414,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
         );
 
         // Declare opaque type defs
@@ -1431,7 +1425,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &opaque_type_impl_commands,
-            &("Opaque-Type-Constructors".to_string()),
+            "Opaque-Type-Constructors",
         );
 
         let mut function_decl_commands = vec![];
