@@ -135,6 +135,26 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
                         TypeKind::Owned => Ok(quote_spanned! { span => ExecMultiset<#param> }),
                         TypeKind::Ref => Ok(quote_spanned! { span => &ExecMultiset<#param> }),
                     };
+                } else if type_path.path.segments[0].ident.to_string() == "Map" {
+                    // todo(nneamtu):
+                    // impl ExecSpecType for Map to avoid this special case
+                    let key_type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
+                    let key_param = compile_type(key_type_arg, TypeKind::Owned)?;
+                    let val_type_arg = get_seg_type_arg(&type_path.path.segments[0], 1)?;
+                    let val_param = compile_type(val_type_arg, TypeKind::Owned)?;
+                    return match ctx {
+                        TypeKind::Owned => Ok(quote_spanned! { span => HashMap<#key_param, #val_param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &HashMap<#key_param, #val_param> }),
+                    };
+                } else if type_path.path.segments[0].ident.to_string() == "Set" {
+                    // todo(nneamtu):
+                    // impl ExecSpecType for Map to avoid this special case
+                    let key_type_arg = get_seg_type_arg(&type_path.path.segments[0], 0)?;
+                    let key_param = compile_type(key_type_arg, TypeKind::Owned)?;
+                    return match ctx {
+                        TypeKind::Owned => Ok(quote_spanned! { span => HashSet<#key_param> }),
+                        TypeKind::Ref => Ok(quote_spanned! { span => &HashSet<#key_param> }),
+                    };
                 } else if type_path.path.segments[0].ident.to_string() == "Option" {
                     // TODO: implement ExecSpecType for Option<T> so that
                     // we don't need this special case
@@ -342,11 +362,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
+    let attrs = &item_struct.attrs.clone();
+
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
         #item_struct
 
+        #[derive(Eq, Hash, PartialEq)]
         #vis struct #exec_name #exec_fields
 
         impl vstd::contrib::exec_spec::ExecSpecType for #spec_name {
@@ -893,6 +916,36 @@ fn compile_expr_path(
 
         new_path.segments[0] = PathSegment {
             ident: Ident::new("Vec", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Map" {
+        let seg = &new_path.segments[0];
+        let mut new_path = new_path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("HashMap", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Set" {
+        let seg = &new_path.segments[0];
+        let mut new_path = new_path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("HashSet", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Multiset" {
+        let seg = &new_path.segments[0];
+        let mut new_path = new_path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("ExecMultiset", seg.ident.span()),
             arguments: seg.arguments.clone(),
         };
 
@@ -1816,14 +1869,22 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 quote! { #receiver.exec_len() }
             },
 
+            "dom" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_dom().get_ref() },
+
+                    // Clone to avoid partial moves
+                    VarMode::Owned => quote! { #receiver.exec_dom().get_ref().get_owned() },
+                }
+            },
+
             "index" => {
                 let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
                 let index = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #base.exec_index(#index).get_ref().get_owned() },
                 }
             },
@@ -1833,8 +1894,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_first() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_drop_first().get_owned() },
                 }
             },
@@ -1844,8 +1903,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_last() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_drop_last().get_owned() },
                 }
             },
@@ -1856,8 +1913,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_add(#arg).get_ref().get_owned() },
                 }
             },
@@ -1868,8 +1923,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_push(#arg).get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_push(#arg).get_ref().get_owned() },
                 }
             },
@@ -1881,8 +1934,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_update(#index, #arg).get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_update(#index, #arg).get_ref().get_owned() },
                 }
             },
@@ -1894,8 +1945,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_subrange(#arg1, #arg2) },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_subrange(#arg1, #arg2).get_owned() },
                 }
             },
@@ -1904,9 +1953,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
 
                 match mode {
-                    VarMode::Ref => quote! { #receiver.exec_to_multiset() },
-
-                    VarMode::Owned => quote! { #receiver.exec_to_multiset().get_owned() },
+                    VarMode::Ref => quote! { #receiver.exec_to_multiset().get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_to_multiset().get_ref().get_owned() },
                 }
             },
 
@@ -1916,8 +1964,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_take(#arg) },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_take(#arg).get_owned() },
                 }
             },
@@ -1928,8 +1974,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_skip(#arg) },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_skip(#arg).get_owned() },
                 }
             },
@@ -1939,8 +1983,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_last().get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_last().get_ref().get_owned() },
                 }
             },
@@ -1950,19 +1992,157 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_first().get_ref() },
-
-                    // Clone to avoid partial moves
                     VarMode::Owned => quote! { #receiver.exec_first().get_ref().get_owned() },
                 }
             },
 
             "count" => {
                 let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_count(#value) },
                     VarMode::Owned => quote! { #base.exec_count(#value) },
+                }
+            },
+
+            "is_prefix_of" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_is_prefix_of(#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_is_prefix_of(#arg) },
+                }
+            },
+
+            "is_suffix_of" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_is_suffix_of(#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_is_suffix_of(#arg) },
+                }
+            },
+
+            "contains" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_contains(&#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_contains(&#arg) },
+                }
+            },
+
+            "index_of" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_index_of(&#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_index_of(&#arg) },
+                }
+            },
+
+            "index_of_first" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_index_of_first(&#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_index_of_first(&#arg).get_ref().get_owned() },
+                }
+            },
+
+            "index_of_last" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_index_of_last(&#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_index_of_last(&#arg).get_ref().get_owned() },
+                }
+            },
+
+            "insert" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                if expr_method_call.args.len() == 2 {
+                    let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                    let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned)?;
+
+                    match mode {
+                        VarMode::Ref => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref() },
+                        VarMode::Owned => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref().get_owned() },
+                    }
+                } else {
+                    let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                    match mode {
+                        VarMode::Ref => quote! { #receiver.exec_insert(#arg).get_ref() },
+                        VarMode::Owned => quote! { #receiver.exec_insert(#arg).get_ref().get_owned() },
+                    }
+                }
+            },
+
+            "remove" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_remove(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_remove(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "intersect" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_intersect(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_intersect(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "union" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_union(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_union(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "difference" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_difference(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_difference(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "add" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_add(#arg).get_ref().get_owned() },
+                }
+            },
+
+            "sub" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_sub(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_sub(#arg).get_ref().get_owned() },
                 }
             },
 
