@@ -240,6 +240,7 @@ pub const QID_TRAIT_TYPE_BOUNDS: &str = "trait_type_bounds";
 pub const QID_ASSOC_TYPE_BOUND: &str = "assoc_type_bound";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 pub const QID_OPAQUE_TYPE_BOUND: &str = "opaque_type_bound";
+pub const QID_EXTERNAL_OPAQUE_TYPE_EQUAL: &str = "external_opaque_type_equal";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 

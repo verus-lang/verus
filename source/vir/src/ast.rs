@@ -1590,6 +1590,12 @@ pub struct OpaqueTypeX {
     pub name: Path,
     pub typ_params: Typs,
     pub typ_bounds: GenericBounds,
+    /// If the opaque type is defined by assume specification,
+    /// there's another different (but conceptually the same) opaque type
+    /// that is defined by the original external function.
+    /// We need to tell the SMT solver that they are the same type
+    /// (recursively if the return value of the function creates mutiple opaque types)
+    pub external_fn_opaque_type: Option<OpaqueType>,
 }
 
 pub type OpaqueType = Arc<Spanned<OpaqueTypeX>>;

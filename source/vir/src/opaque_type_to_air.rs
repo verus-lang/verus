@@ -10,7 +10,7 @@ use crate::traits::{const_typ_bound_to_air, typ_equality_bound_to_air};
 use air::ast::BindX;
 use air::ast::Triggers;
 use air::ast::{Command, CommandX, Commands, DeclX};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_unnamed_axiom, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_unnamed_axiom, str_typ, str_var};
 use core::panic;
 use std::sync::Arc;
 
@@ -57,7 +57,7 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<OpaqueType>) -> Command
 
         // Axioms for trait bounds and associate types
         if opaque_type.x.typ_params.len() != 0 {
-            // The OpaqueType takes no argument to instantiate. Use const instead of functions
+            // The OpaqueType takes some arguments to instantiate. Use functions
             let self_dcr = ident_apply(&crate::def::prefix_dcr_id(&opaque_type.x.name), &args);
             let self_type = ident_apply(&crate::def::prefix_type_id(&opaque_type.x.name), &args);
 
@@ -74,8 +74,10 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<OpaqueType>) -> Command
                         binders.push(ident_binder(&x.lower(), &str_typ(t)));
                     }
                 }
-                let triggers: Triggers =
-                    Arc::new(vec![Arc::new(vec![self_dcr]), Arc::new(vec![self_type])]);
+                let triggers: Triggers = Arc::new(vec![
+                    Arc::new(vec![self_dcr.clone()]),
+                    Arc::new(vec![self_type.clone()]),
+                ]);
                 let qid = new_internal_qid(ctx, name);
                 Arc::new(BindX::Quant(air::ast::Quant::Forall, Arc::new(binders), triggers, qid))
             };
@@ -100,7 +102,48 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<OpaqueType>) -> Command
             let forall = mk_bind_expr(&bind, &and);
             let axiom = mk_unnamed_axiom(forall);
             commands.push(Arc::new(CommandX::Global(axiom)));
+
+            if let Some(external_opaque_type) = &opaque_type.x.external_fn_opaque_type {
+                let external_axiom_name: String = format!(
+                    "{}_{}",
+                    path_as_friendly_rust_name(&opaque_type.x.name),
+                    crate::def::QID_EXTERNAL_OPAQUE_TYPE_EQUAL
+                );
+                let external_dcr =
+                    ident_apply(&crate::def::prefix_dcr_id(&external_opaque_type.x.name), &args);
+                let external_type =
+                    ident_apply(&crate::def::prefix_type_id(&external_opaque_type.x.name), &args);
+
+                let external_axiom_bind = {
+                    let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+                    for typ_param in type_params.iter() {
+                        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
+                            binders.push(ident_binder(&x.lower(), &str_typ(t)));
+                        }
+                    }
+                    let triggers: Triggers = Arc::new(vec![
+                        Arc::new(vec![self_dcr.clone()]),
+                        Arc::new(vec![self_type.clone()]),
+                        Arc::new(vec![external_dcr.clone()]),
+                        Arc::new(vec![external_type.clone()]),
+                    ]);
+                    let qid = new_internal_qid(ctx, external_axiom_name);
+                    Arc::new(BindX::Quant(
+                        air::ast::Quant::Forall,
+                        Arc::new(binders),
+                        triggers,
+                        qid,
+                    ))
+                };
+                let dcr_eq = air::ast_util::mk_eq(&self_dcr, &external_dcr);
+                let type_eq = air::ast_util::mk_eq(&self_type, &external_type);
+                let external_and = air::ast_util::mk_and(&vec![dcr_eq, type_eq]);
+                let external_forall = mk_bind_expr(&external_axiom_bind, &external_and);
+                let external_axiom = mk_unnamed_axiom(external_forall);
+                commands.push(Arc::new(CommandX::Global(external_axiom)));
+            }
         } else {
+            // The OpaqueType takes no argument to instantiate. Use const.
             let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
             for bound in opaque_type.x.typ_bounds.iter() {
                 match &**bound {
@@ -121,6 +164,23 @@ pub fn opaque_types_to_air(ctx: &Ctx, opaque_types: &Vec<OpaqueType>) -> Command
             let and = air::ast_util::mk_and(&bound_exprs);
             let axiom = mk_unnamed_axiom(and);
             commands.push(Arc::new(CommandX::Global(axiom)));
+
+            if let Some(external_opaque_type) = &opaque_type.x.external_fn_opaque_type {
+                let self_dcr = str_var(&crate::def::prefix_dcr_id(&opaque_type.x.name));
+                let self_type = str_var(&crate::def::prefix_type_id(&opaque_type.x.name));
+
+                let external_dcr =
+                    str_var(&crate::def::prefix_dcr_id(&external_opaque_type.x.name));
+                let external_type =
+                    str_var(&crate::def::prefix_type_id(&external_opaque_type.x.name));
+
+                let dcr_eq = air::ast_util::mk_eq(&self_dcr, &external_dcr);
+                let type_eq = air::ast_util::mk_eq(&self_type, &external_type);
+
+                let and = air::ast_util::mk_and(&vec![dcr_eq, type_eq]);
+                let axiom = mk_unnamed_axiom(and);
+                commands.push(Arc::new(CommandX::Global(axiom)));
+            }
         }
     }
 
