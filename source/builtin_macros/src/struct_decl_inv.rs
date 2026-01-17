@@ -97,8 +97,8 @@ enum InvariantDecl {
         field_name: Ident,
         depends_on: Vec<Ident>,
         quants: Vec<PatType>,
-        condition: Option<Expr>,
-        specifically: Option<Expr>,
+        condition: Option<Box<Expr>>,
+        specifically: Option<Box<Expr>>,
         params: Vec<FnArg>,
         params_span: Span,
         predicate: Block,
@@ -183,7 +183,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };
@@ -193,7 +193,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };

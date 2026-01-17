@@ -1679,7 +1679,7 @@ fn translate_transition(
             return Ok(());
         }
         TransitionStmt::Split(span, split_kind, splits) => {
-            match split_kind {
+            match &**split_kind {
                 SplitKind::Special(id, op, _proof, pat_opt) => {
                     let field = ctxt.get_field_or_panic(id);
                     let condition_ts_opt =
@@ -1713,8 +1713,9 @@ fn translate_transition(
 
                             let pat = pat_opt.as_ref().expect("expected pat");
                             if let Some((pat1, init1)) = assign_pat_or_arbitrary(pat, &assign_e) {
-                                let kind = SplitKind::Let(pat1, None, LetKind::Normal, init1);
-                                Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                                let kind =
+                                    SplitKind::Let(Box::new(pat1), None, LetKind::Normal, init1);
+                                Some(TransitionStmt::Split(*span, Box::new(kind), splits.clone()))
                             } else {
                                 Some(splits[0].clone())
                             }
@@ -1862,7 +1863,7 @@ fn token_matches_elt(
     token_is_ref: bool,
     token_name: &Ident,
     elt: &MonoidElt,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     ctxt: &Ctxt,
     field: &Field,
     output: bool,
@@ -1945,7 +1946,7 @@ fn translate_special_condition(
     span: Span,
     field: &Field,
     op: &SpecialOp,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     errors: &mut Vec<Error>,
 ) -> Option<TransitionStmt> {
     match op {
@@ -2160,7 +2161,7 @@ fn translate_elt(
         MonoidElt::SingletonKV(e1, Some(e2)) => {
             let e1 = translate_expr(ctxt, e1, birds_eye, errors);
             let e2 = translate_expr(ctxt, e2, birds_eye, errors);
-            MonoidElt::SingletonKV(e1, Some(e2))
+            MonoidElt::SingletonKV(e1, Some(Box::new(e2)))
         }
         MonoidElt::True => MonoidElt::True,
         MonoidElt::General(e) => {
@@ -2184,8 +2185,8 @@ fn translate_value_expr(
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::General(e)
         | MonoidElt::SingletonMultiset(e)
-        | MonoidElt::SingletonSet(e)
-        | MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
+        | MonoidElt::SingletonSet(e) => Some(translate_expr(ctxt, e, birds_eye, errors)),
+        MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
         MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None) => None,
         MonoidElt::True => {
             // bool is not supported for storage types.
@@ -2327,7 +2328,7 @@ fn get_new_field_value(field: &Field) -> Expr {
 enum PrequelElement {
     AssertCondition(Expr),
     Condition(Expr),
-    Let(Pat, Option<Type>, Expr),
+    Let(Box<Pat>, Option<Box<Type>>, Expr),
     Match(Expr, Vec<Arm>, usize),
 }
 
@@ -2345,57 +2346,59 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _lk, init_e), es) => {
-            assert!(es.len() == 1);
-            let child = &es[0];
+        TransitionStmt::Split(_span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(pat, ty, _lk, init_e) => {
+                assert!(es.len() == 1);
+                let child = &es[0];
 
-            let mut p = prequel.clone();
-            p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
-            let _ = exchange_collect(ctxt, child, p);
+                let mut p = prequel.clone();
+                p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
+                let _ = exchange_collect(ctxt, child, p);
 
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::If(cond_e), es) => {
-            assert!(es.len() == 2);
+            SplitKind::If(cond_e) => {
+                assert!(es.len() == 2);
 
-            let cond = PrequelElement::Condition(cond_e.clone());
-            let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
+                let cond = PrequelElement::Condition(cond_e.clone());
+                let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
 
-            let mut p1 = prequel.clone();
-            p1.push(cond);
-            let _ = exchange_collect(ctxt, &es[0], p1)?;
-
-            let mut p2 = prequel.clone();
-            p2.push(not_cond);
-            let _ = exchange_collect(ctxt, &es[1], p2)?;
-
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
-            }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::Match(match_e, arms), es) => {
-            assert!(arms.len() == es.len());
-            for i in 0..arms.len() {
-                let elem = PrequelElement::Match(match_e.clone(), arms.clone(), i);
                 let mut p1 = prequel.clone();
-                p1.push(elem);
-                let _ = exchange_collect(ctxt, &es[i], p1)?;
+                p1.push(cond);
+                let _ = exchange_collect(ctxt, &es[0], p1)?;
+
+                let mut p2 = prequel.clone();
+                p2.push(not_cond);
+                let _ = exchange_collect(ctxt, &es[1], p2)?;
+
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+            SplitKind::Match(match_e, arms) => {
+                assert!(arms.len() == es.len());
+                for i in 0..arms.len() {
+                    let elem = PrequelElement::Match(match_e.clone(), arms.clone(), i);
+                    let mut p1 = prequel.clone();
+                    p1.push(elem);
+                    let _ = exchange_collect(ctxt, &es[i], p1)?;
+                }
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(..), _) => {
-            panic!("should have been removed in preprocessing");
-        }
+            SplitKind::Special(..) => {
+                panic!("should have been removed in preprocessing");
+            }
+        },
         TransitionStmt::Require(_span, req_e) => {
             ctxt.requires.push(with_prequel(&prequel, true, req_e.clone()));
             Ok(prequel)
@@ -2488,13 +2491,8 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
             let pruned_splits: Vec<Option<TransitionStmt>> =
                 splits.into_iter().map(|split| prune_irrelevant_ops_rec(ctxt, split)).collect();
 
-            let mut is_nontrivial = pruned_splits.iter().any(|s| s.is_some());
-            match split_kind {
-                SplitKind::Special(..) => {
-                    is_nontrivial = true;
-                }
-                SplitKind::Let(..) | SplitKind::If(..) | SplitKind::Match(..) => {}
-            }
+            let is_nontrivial = matches!(*split_kind, SplitKind::Special(..))
+                || pruned_splits.iter().any(|s| s.is_some());
 
             if !is_nontrivial {
                 None
@@ -2576,7 +2574,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                         Some(e) => e,
                     })
                     .collect();
-                match split_kind {
+                match &**split_kind {
                     SplitKind::If(cond_e) => {
                         assert!(cases.len() == 2);
                         let e1 = &cases[0];
@@ -2628,48 +2626,52 @@ fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
             }
             o
         }
-        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _, e), es) => {
-            let ty_tokens = match ty {
-                None => TokenStream::new(),
-                Some(ty) => quote! { : #ty },
-            };
-            assert!(es.len() == 1);
-            let child = &es[0];
-            match asserts_to_single_predicate(child) {
-                None => None,
-                Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
-            }
-        }
-        TransitionStmt::Split(_span, SplitKind::If(cond), es) => {
-            assert!(es.len() == 2);
-            let x1 = asserts_to_single_predicate(&es[0]);
-            let x2 = asserts_to_single_predicate(&es[1]);
-            match (x1, x2) {
-                (None, None) => None,
-                (Some(e1), None) => Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, #e1) }),
-                (None, Some(e2)) => {
-                    Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), #e2) })
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(pat, ty, _, e) => {
+                let ty_tokens = match ty {
+                    None => TokenStream::new(),
+                    Some(ty) => quote! { : #ty },
+                };
+                assert!(es.len() == 1);
+                let child = &es[0];
+                match asserts_to_single_predicate(child) {
+                    None => None,
+                    Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
                 }
-                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             }
-        }
-        TransitionStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
-            let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| asserts_to_single_predicate(e)).collect();
-            if opts.iter().any(|o| o.is_some()) {
-                let cases = opts
-                    .into_iter()
-                    .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
-                    .collect();
-                let m = emit_match(*span, match_e, arms, &cases);
-                Some(quote! {#m})
-            } else {
-                None
+            SplitKind::If(cond) => {
+                assert!(es.len() == 2);
+                let x1 = asserts_to_single_predicate(&es[0]);
+                let x2 = asserts_to_single_predicate(&es[1]);
+                match (x1, x2) {
+                    (None, None) => None,
+                    (Some(e1), None) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, #e1) })
+                    }
+                    (None, Some(e2)) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), #e2) })
+                    }
+                    (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
+                }
             }
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(..), _es) => {
-            panic!("Special should have been translated out");
-        }
+            SplitKind::Match(match_e, arms) => {
+                let opts: Vec<Option<TokenStream>> =
+                    es.iter().map(|e| asserts_to_single_predicate(e)).collect();
+                if opts.iter().any(|o| o.is_some()) {
+                    let cases = opts
+                        .into_iter()
+                        .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
+                        .collect();
+                    let m = emit_match(*span, match_e, arms, &cases);
+                    Some(quote! {#m})
+                } else {
+                    None
+                }
+            }
+            SplitKind::Special(..) => {
+                panic!("Special should have been translated out");
+            }
+        },
         TransitionStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
         TransitionStmt::PostCondition(..)
         | TransitionStmt::Require(..)

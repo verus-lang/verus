@@ -84,7 +84,7 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
             }
         }
         TransitionStmt::Split(_, split_kind, es) => {
-            match split_kind {
+            match &mut **split_kind {
                 SplitKind::Let(pat, ty, _lk, e) => {
                     replace_self_pat(pat, path);
                     match ty {

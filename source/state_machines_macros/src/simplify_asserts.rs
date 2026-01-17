@@ -28,7 +28,7 @@ pub fn simplify_asserts(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
         let initial = SimplStmt::Assign(
             span,
             ident,
-            Type::Verbatim(quote! { ::core::primitive::bool }),
+            Box::new(Type::Verbatim(quote! { ::core::primitive::bool })),
             Expr::Verbatim(quote! { true }),
             false,
         );
@@ -85,7 +85,7 @@ fn simplify_asserts_stmt(sop: &SimplStmt, assert_ident: &Ident) -> SimplStmt {
         SimplStmt::Assert(span, expr, _assert_proof) => SimplStmt::Assign(
             *span,
             assert_ident.clone(),
-            Type::Verbatim(quote! { ::core::primitive::bool }),
+            Box::new(Type::Verbatim(quote! { ::core::primitive::bool })),
             Expr::Verbatim(quote! {
                 #assert_ident && (#expr)
             }),

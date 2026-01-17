@@ -270,7 +270,7 @@ struct ProofFnOptions {
 
 enum ProofFnTypeArg {
     Usage(ProofFnUsage),
-    ReqEns(Option<Type>),
+    ReqEns(Option<Box<Type>>),
     Copy,
     Send,
     Sync,
@@ -366,7 +366,7 @@ impl ProofFnOptions {
         let usage = ProofFnTypeArg::Usage(self.usage).to_type(span);
         let req_ens = match &self.req_ens {
             None => ProofFnTypeArg::ReqEns(None).to_type(span),
-            Some(t) => ProofFnTypeArg::ReqEns(Some(t.clone())).to_type(span),
+            Some(t) => ProofFnTypeArg::ReqEns(Some(Box::new(t.clone()))).to_type(span),
         };
         let f = |b: bool, arg: ProofFnTypeArg| {
             (if b { arg } else { ProofFnTypeArg::Zero }).to_type(span)
@@ -4338,7 +4338,7 @@ enum MacroElement {
     Semi(Token![;]),
     FatArrow(Token![=>]),
     Colon(Token![:]),
-    Expr(Expr),
+    Expr(Box<Expr>),
 }
 
 #[derive(Debug)]
@@ -4347,7 +4347,7 @@ enum MacroElementExplicitExpr {
     Semi(Token![;]),
     FatArrow(Token![=>]),
     Colon(Token![:]),
-    ExplicitExpr(Token![@], Token![@], Expr),
+    ExplicitExpr(Token![@], Token![@], Box<Expr>),
     TT(TokenTree),
 }
 

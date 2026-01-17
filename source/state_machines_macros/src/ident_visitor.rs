@@ -55,7 +55,7 @@ fn validate_idents_transition_stmt(
         }
         TransitionStmt::Split(_, split_kind, es) => {
             let mut bound_names_per_arm = vec![];
-            match split_kind {
+            match &**split_kind {
                 SplitKind::Let(pat, _ty, _lk, e) => {
                     validate_idents_expr(e, kind, bound_names, field_names)?;
                     validate_idents_pat(pat, kind)?;
