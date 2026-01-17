@@ -2133,27 +2133,27 @@ impl Visitor {
             Ok(ExtractQuantTriggersFound::Auto) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
-                    closure.body = Box::new(Expr::Verbatim(
+                    *closure.body = Expr::Verbatim(
                         quote_spanned!(span => #[verus::internal(auto_trigger)] (#body)),
-                    ));
+                    );
                 }
                 _ => panic!("expected closure for quantifier"),
             },
             Ok(ExtractQuantTriggersFound::AllTriggers) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
-                    closure.body = Box::new(Expr::Verbatim(
+                    *closure.body = Expr::Verbatim(
                         quote_spanned!(span => #[verus::internal(all_triggers)] (#body)),
-                    ));
+                    );
                 }
                 _ => panic!("expected closure for quantifier"),
             },
             Ok(ExtractQuantTriggersFound::Triggers(tuple)) => match &mut *arg {
                 Expr::Closure(closure) => {
                     let body = take_expr(&mut closure.body);
-                    closure.body = Box::new(Expr::Verbatim(
+                    *closure.body = Expr::Verbatim(
                         quote_spanned_builtin!(verus_builtin, span => #verus_builtin::with_triggers(#tuple, #body)),
-                    ));
+                    );
                 }
                 _ => panic!("expected closure for quantifier"),
             },
@@ -2837,19 +2837,19 @@ impl Visitor {
         let mut arg = assert.expr;
         match self.extract_quant_triggers(assert.attrs, span) {
             Ok(ExtractQuantTriggersFound::Auto) => {
-                arg = Box::new(Expr::Verbatim(
+                *arg = Expr::Verbatim(
                     quote_spanned!(arg.span() => #[verus::internal(auto_trigger)] #arg),
-                ));
+                );
             }
             Ok(ExtractQuantTriggersFound::AllTriggers) => {
-                arg = Box::new(Expr::Verbatim(
+                *arg = Expr::Verbatim(
                     quote_spanned!(arg.span() => #[verus::internal(all_triggers)] #arg),
-                ));
+                );
             }
             Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
-                arg = Box::new(Expr::Verbatim(
+                *arg = Expr::Verbatim(
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::with_triggers(#tuple, #arg)),
-                ));
+                );
             }
             Ok(ExtractQuantTriggersFound::None) => {}
             Err(err_expr) => {
@@ -3683,7 +3683,7 @@ impl VisitMut for Visitor {
             visit_expr_mut(self, expr);
         }
         if let Expr::Assign(assign) = expr {
-            assign.left = Box::new(assign_left.expect("assign_left"));
+            *assign.left = assign_left.expect("assign_left");
         }
         self.inside_arith = is_inside_arith;
         self.assign_to = is_assign_to;

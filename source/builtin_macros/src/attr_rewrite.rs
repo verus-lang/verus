@@ -546,7 +546,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 #(#spec_stmts)*
                 {#body}
             );
-            closure.body = Box::new(Expr::Verbatim(new_body));
+            *closure.body = Expr::Verbatim(new_body);
             closure.to_token_stream().into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {

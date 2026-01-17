@@ -1788,8 +1788,7 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
                 match &mut arm.guard {
                     None => {}
                     Some((_, g)) => {
-                        let e = translate_expr(ctxt, g, false, errors);
-                        *g = Box::new(e);
+                        **g = translate_expr(ctxt, g, false, errors);
                     }
                 }
             }
