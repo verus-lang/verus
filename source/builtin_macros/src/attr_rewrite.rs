@@ -141,7 +141,7 @@ pub(crate) fn rewrite_verus_attribute(
                         .expect("unsupported tokens in verus_verify(dual_spec(...))")
                 } else {
                     syn::Ident::new(
-                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident.to_string()),
+                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident),
                         f.sig.ident.span(),
                     )
                 };

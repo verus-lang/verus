@@ -347,7 +347,7 @@ impl ProofFnOptions {
                 ("Send", PathArguments::None) if !options.send => options.send = true,
                 ("Sync", PathArguments::None) if !options.sync => options.sync = true,
                 _ => {
-                    return Err(format!("unexpected option {}", path.ident.to_string()));
+                    return Err(format!("unexpected option {}", path.ident));
                 }
             }
         }
@@ -2087,7 +2087,7 @@ impl Visitor {
                     {
                         let err = format!(
                             "forall, choose, and exists do not allow parentheses, use `{}|<vars>| expr` instead",
-                            path.segments[0].ident.to_string()
+                            path.segments[0].ident
                         );
                         *expr = Expr::Verbatim(quote_spanned!(expr.span() => compile_error!(#err)));
                         return true;

@@ -175,8 +175,7 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_struct.ident;
-    let exec_name: Ident =
-        Ident::new(&format!("Exec{}", item_struct.ident.to_string()), item_struct.span());
+    let exec_name: Ident = Ident::new(&format!("Exec{}", item_struct.ident), item_struct.span());
 
     // Generate the fields
     let exec_fields = match &item_struct.fields {
@@ -339,8 +338,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_enum.ident;
-    let exec_name: Ident =
-        Ident::new(&format!("Exec{}", item_enum.ident.to_string()), item_enum.span());
+    let exec_name: Ident = Ident::new(&format!("Exec{}", item_enum.ident), item_enum.span());
 
     // Compile the type of each variant
     let exec_variants = item_enum
@@ -568,7 +566,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
 
     let vis = &item_fn.vis;
     let spec_name = &item_fn.sig.ident;
-    let exec_name = Ident::new(&format!("exec_{}", spec_name.to_string()), spec_name.span());
+    let exec_name = Ident::new(&format!("exec_{spec_name}"), spec_name.span());
 
     // Generate a specification stating that
     //   requires <recommends clause of spec_f>

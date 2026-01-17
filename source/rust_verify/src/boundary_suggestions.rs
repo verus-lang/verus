@@ -374,7 +374,7 @@ fn build_where_clauses<'tcx>(
                             "{}({}) -> {}",
                             ctxt.tcx.def_path_str(trait_ref.def_id),
                             args_tuple_ty_str,
-                            projection_predicate.term.to_string(),
+                            projection_predicate.term,
                         ),
                     ))
                 } else {
@@ -384,7 +384,7 @@ fn build_where_clauses<'tcx>(
                             "{}<{} = {}>",
                             ctxt.tcx.def_path_str_with_args(trait_ref.def_id, proj_term_args),
                             ctxt.tcx.item_name(projected_item_id).as_str(),
-                            projection_predicate.term.to_string()
+                            projection_predicate.term
                         ),
                     ))
                 }

@@ -1860,7 +1860,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
                         .top('-'),
                 ),
             );
-        println!("{}", table.to_string());
+        println!("{}", table);
     } else {
         let kinds_map: HashMap<_, _> = kinds
             .iter()

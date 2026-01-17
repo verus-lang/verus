@@ -72,7 +72,7 @@ pub fn main() {
             }
         }
         Err(f) => {
-            eprintln!("Error: {}", f.to_string());
+            eprintln!("Error: {f}");
             print_usage();
             std::process::exit(-1);
         }

@@ -50,10 +50,7 @@ fn check_updates_refer_to_valid_fields(
             match kind {
                 SplitKind::Special(f, _, _, _) => {
                     if !fields_contain(fields, f) {
-                        errors.push(Error::new(
-                            span.span(),
-                            format!("field '{}' not found", f.to_string()),
-                        ));
+                        errors.push(Error::new(span.span(), format!("field '{f}' not found")));
                     }
                 }
                 _ => {}
@@ -68,8 +65,7 @@ fn check_updates_refer_to_valid_fields(
         | TransitionStmt::SubUpdate(span, f, _, _)
         | TransitionStmt::Initialize(span, f, _) => {
             if !fields_contain(fields, f) {
-                errors
-                    .push(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
+                errors.push(Error::new(span.span(), format!("field '{f}' not found")));
             }
         }
         TransitionStmt::PostCondition(..) => {}
@@ -85,10 +81,7 @@ fn check_exactly_one_init(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>)
             Ok(None) => {
                 errors.push(Error::new(
                     *ts.get_span(),
-                    format!(
-                        "itialization procedure does not initialize field '{}'",
-                        f.name.to_string()
-                    ),
+                    format!("itialization procedure does not initialize field '{}'", f.name),
                 ));
             }
             Err(e) => errors.push(e),
@@ -109,10 +102,7 @@ fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Resu
                     (Some(_s1), Some(s2)) => {
                         return Err(Error::new(
                             s2,
-                            format!(
-                                "field '{}' might be initialized multiple times",
-                                field.name.to_string()
-                            ),
+                            format!("field '{}' might be initialized multiple times", field.name),
                         ));
                     }
                 };
@@ -227,10 +217,7 @@ fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> parse::Re
                     (Some(_s1), Some(s2)) => {
                         return Err(Error::new(
                             s2,
-                            format!(
-                                "field '{}' might be updated multiple times",
-                                field.name.to_string()
-                            ),
+                            format!("field '{}' might be updated multiple times", field.name),
                         ));
                     }
                 };
