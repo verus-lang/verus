@@ -1833,15 +1833,9 @@ pub(crate) fn check_item_external_generics<'tcx>(
     generics_params.extend(generics.params.iter().cloned());
 
     if skip_implicit_lifetimes {
-        generics_params = generics_params
-            .into_iter()
-            .filter(|gp| {
-                !matches!(
-                    gp.kind,
-                    GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) }
-                )
-            })
-            .collect();
+        generics_params.retain(|gp| {
+            !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) })
+        });
     }
 
     use rustc_middle::ty::ScalarInt;
