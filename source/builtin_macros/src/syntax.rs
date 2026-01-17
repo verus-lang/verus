@@ -619,7 +619,7 @@ impl Visitor {
                     }
                     Ok(ExtractQuantTriggersFound::None) => true,
                     Err(err_expr) => {
-                        exprs.exprs[0] = err_expr;
+                        exprs.exprs[0] = *err_expr;
                         false
                     }
                 };
@@ -2159,7 +2159,7 @@ impl Visitor {
             },
             Ok(ExtractQuantTriggersFound::None) => {}
             Err(err_expr) => {
-                *expr = err_expr;
+                *expr = *err_expr;
                 return true;
             }
         }
@@ -2853,7 +2853,7 @@ impl Visitor {
             }
             Ok(ExtractQuantTriggersFound::None) => {}
             Err(err_expr) => {
-                *expr = err_expr;
+                *expr = *err_expr;
                 return true;
             }
         }
@@ -3538,7 +3538,7 @@ impl Visitor {
         &mut self,
         inner_attrs: Vec<Attribute>,
         span: Span,
-    ) -> Result<ExtractQuantTriggersFound, Expr> {
+    ) -> Result<ExtractQuantTriggersFound, Box<Expr>> {
         let mut triggers: Vec<Expr> = Vec::new();
         for attr in inner_attrs {
             use verus_syn::Meta;
@@ -3576,13 +3576,15 @@ impl Visitor {
                     let span = attr.span();
                     let err = err.to_string();
 
-                    return Err(Expr::Verbatim(quote_spanned!(span => compile_error!(#err))));
+                    return Err(Box::new(Expr::Verbatim(
+                        quote_spanned!(span => compile_error!(#err)),
+                    )));
                 }
                 _ => {
                     let span = attr.span();
-                    return Err(Expr::Verbatim(
+                    return Err(Box::new(Expr::Verbatim(
                         quote_spanned!(span => compile_error!("expected trigger")),
-                    ));
+                    )));
                 }
             }
         }

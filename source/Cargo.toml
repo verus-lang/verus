@@ -58,7 +58,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # perf
 cmp_owned = "allow"
 large_enum_variant = "allow"
-result_large_err = "allow"
 
 # suspicious
 # do not remove: see https://github.com/verus-lang/verus/pull/2091#discussion_r2710412679 for a discussion
