@@ -242,6 +242,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_tuple_opaque_type_assume_spec_ok verus_code! {
+        use vstd::prelude::*;
+        trait DummyTrait{
+            type Output;
+            fn foo(&self) -> (ret: bool)
+            ensures
+                ret == false;
+
+            spec fn bar(&self) -> bool;
+        }
+        impl<T> DummyTrait for T{
+            type Output = T;
+            fn foo(&self) -> (ret: bool)
+            {
+                false
+            }
+            spec fn bar(&self) -> bool{
+                true
+            }
+        }
+        #[verifier::external]
+        fn return_opaque_variable<T>(x:T, y:T) -> (impl DummyTrait<Output = T>, impl DummyTrait<Output = T>)
+        {
+            (x, y)
+        }
+        assume_specification<T> [ return_opaque_variable::<T> ](x:T, y:T) -> (ret: (impl DummyTrait<Output = T>, impl DummyTrait<Output = T>))
+            ensures ret.0.bar();
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_opaque_type_assume_spec_fail verus_code! {
         use vstd::prelude::*;
         trait DummyTrait{
@@ -270,6 +301,85 @@ test_verify_one_file! {
         assume_specification<T> [ return_opaque_variable::<T> ](x:T) -> (ret: impl DummyTrait)
             ensures ret.bar();
     }  => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
+}
+
+test_verify_one_file! {
+    #[test] test_nested_opaque_type_assume_spec_ok verus_code! {
+        use vstd::prelude::*;
+         trait DummyTrait{
+            type Output;
+            fn foo(&self) -> (ret: bool)
+            ensures
+                ret == false;
+
+            spec fn bar(&self) -> bool;
+            spec fn get_self(&self) -> Self::Output;
+        }
+        impl DummyTrait for bool{
+            type Output = bool;
+            fn foo(&self) -> (ret: bool)
+            {
+                false
+            }
+            spec fn bar(&self) -> bool{
+                true
+            }
+
+            spec fn get_self(&self) -> Self::Output{
+                *self
+            }
+        }
+        #[verifier::external]
+        fn return_opaque_variable() -> impl DummyTrait<Output = impl DummyTrait>
+        {
+            true
+        }
+        assume_specification [ return_opaque_variable ]() -> (ret: impl DummyTrait<Output = impl DummyTrait>)
+            ensures ret.get_self().bar()
+            ;   
+
+        fn test(){
+            let ret = return_opaque_variable();
+            assert(ret.get_self().bar());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_nested_opaque_type_assume_spec_fail verus_code! {
+        use vstd::prelude::*;
+         trait DummyTrait{
+            type Output;
+            fn foo(&self) -> (ret: bool)
+            ensures
+                ret == false;
+
+            spec fn bar(&self) -> bool;
+            spec fn get_self(&self) -> Self::Output;
+        }
+        impl DummyTrait for bool{
+            type Output = bool;
+            fn foo(&self) -> (ret: bool)
+            {
+                false
+            }
+            spec fn bar(&self) -> bool{
+                true
+            }
+
+            spec fn get_self(&self) -> Self::Output{
+                *self
+            }
+        }
+        #[verifier::external]
+        fn return_opaque_variable() -> impl DummyTrait<Output = impl DummyTrait<Output = bool>>
+        {
+            true
+        }
+        assume_specification [ return_opaque_variable ]() -> (ret: impl DummyTrait<Output = impl DummyTrait>)
+            ensures ret.get_self().bar()
+            ;   
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {

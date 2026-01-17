@@ -415,11 +415,6 @@ pub(crate) fn translate_impl<'tcx>(
                             FunctionKind::Static
                         };
 
-                        let _ = crate::rust_to_vir_base::check_fn_opaque_ty(
-                            ctxt,
-                            vir,
-                            &impl_item.owner_id.to_def_id(),
-                        )?;
 
                         check_item_fn(
                             ctxt,
@@ -438,6 +433,7 @@ pub(crate) fn translate_impl<'tcx>(
                             None,
                             external_info,
                             autoderive_action.as_ref(),
+                            &mut vir.opaque_types,
                         )?;
                     }
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_id),

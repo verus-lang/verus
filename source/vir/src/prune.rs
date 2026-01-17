@@ -654,6 +654,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     // type params like "T", not some types defined somewhere else.
                     traverse_typ(ctxt, state, t);
                 }
+                if let Some(external_fn_opaque_ty) = &opaque_type.x.external_fn_opaque_type {
+                    reach_opaque_type(ctxt, state, &external_fn_opaque_ty.x.name);
+                }
             }
             continue;
         }
