@@ -651,7 +651,7 @@ impl Verifier {
             );
             let bnd_info = qid_map
                 .get(&cost.quant)
-                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+                .unwrap_or_else(|| panic!("Failed to find quantifier {}", cost.quant));
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used

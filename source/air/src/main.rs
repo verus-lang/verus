@@ -87,7 +87,7 @@ pub fn main() {
     {
         File::open(in_filename)
             .and_then(|mut file| file.read_to_end(&mut in_bytes))
-            .expect(&format!("could not read file {}", in_filename));
+            .unwrap_or_else(|e| panic!("could not read file {}: {:?}", in_filename, e));
     }
     in_bytes.push(')' as u8);
 

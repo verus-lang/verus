@@ -257,8 +257,9 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    let call_with_spec = verus_syn::parse2(with_args.clone())
-                        .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
+                    let call_with_spec = verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
+                        panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
+                    });
                     rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
                     with_args = TokenStream::new();
                 }
