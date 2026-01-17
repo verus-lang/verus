@@ -1392,8 +1392,8 @@ impl Verifier {
             &krate
                 .datatypes
                 .iter()
-                .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
+                .cloned()
                 .collect(),
         );
         self.run_commands(

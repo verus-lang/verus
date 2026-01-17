@@ -57,7 +57,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 # perf
 cmp_owned = "allow"
-iter_overeager_cloned = "allow"
 large_enum_variant = "allow"
 manual_retain = "allow"
 map_entry = "allow"
