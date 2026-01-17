@@ -158,10 +158,12 @@ impl SpanContextX {
                             original_end_pos: BytePos(original.end_pos),
                             info: Arc::new(Mutex::new(info)),
                         };
-                        if !imported_crates.contains_key(&imported_crate) {
-                            imported_crates.insert(imported_crate, CrateInfo { files: Vec::new() });
-                        }
-                        imported_crates.get_mut(&imported_crate).unwrap().files.push(file);
+
+                        imported_crates
+                            .entry(imported_crate)
+                            .or_insert(CrateInfo { files: Vec::new() })
+                            .files
+                            .push(file);
                     }
                 }
             }

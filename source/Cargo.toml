@@ -58,7 +58,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # perf
 cmp_owned = "allow"
 large_enum_variant = "allow"
-map_entry = "allow"
 missing_const_for_thread_local = "allow"
 replace_box = "allow"
 result_large_err = "allow"
