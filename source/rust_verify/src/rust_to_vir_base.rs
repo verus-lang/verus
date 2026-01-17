@@ -33,7 +33,7 @@ use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 // TODO: eventually, this should just always be true
 thread_local! {
     pub(crate) static MULTI_CRATE: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+        const { std::sync::atomic::AtomicBool::new(false) };
 }
 
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
