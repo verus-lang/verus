@@ -575,7 +575,7 @@ fn process_file(input_path: &Path, output_dir: &Path) -> Result<ProcessFileOutpu
     let roots: Vec<Instantiation> =
         pruned_graph.iter().map(|x| x.0).filter(|x| !all_tgts.contains(*x)).cloned().collect();
 
-    let total_insts = graph.instantiations.iter().count() as u64;
+    let total_insts = graph.instantiations.len() as u64;
 
     let file_stem = input_path.file_stem().ok_or(format!("invalid input filename"))?;
 
