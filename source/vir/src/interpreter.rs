@@ -185,8 +185,7 @@ impl State {
     }
 
     fn log(&self, s: String) {
-        if self.log.is_some() {
-            let mut log = self.log.as_ref().unwrap();
+        if let Some(mut log) = self.log.as_ref() {
             writeln!(log, "{}", s).expect("I/O error writing to the interpreter's log");
         }
     }
@@ -2007,8 +2006,8 @@ fn eval_expr_launch(
     };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
-    if state.log.is_some() {
-        log.replace(state.log.unwrap());
+    if let Some(state_log) = state.log {
+        log.replace(state_log);
     }
 
     match result {

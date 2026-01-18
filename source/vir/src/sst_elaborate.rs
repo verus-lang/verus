@@ -25,33 +25,32 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-            if let Some(func) = fun_ssts.get(fun) {
-                if func.x.attrs.inline
-                    && func.x.axioms.spec_axioms.is_some()
-                    && func.x.kind.inline_okay()
-                {
-                    let typ_params = &func.x.typ_params;
-                    let pars = &func.x.pars;
-                    let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
-                    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                    assert!(typ_params.len() == typs.len());
-                    for (name, typ) in typ_params.iter().zip(typs.iter()) {
-                        assert!(!typ_substs.contains_key(name));
-                        typ_substs.insert(name.clone(), typ.clone());
-                    }
-                    assert!(pars.len() == args.len());
-                    for (par, arg) in pars.iter().zip(args.iter()) {
-                        let unique = unique_local(&par.x.name);
-                        assert!(!substs.contains_key(&unique));
-                        substs.insert(unique, arg.clone());
-                    }
-                    let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
-                    // keep the original outer span for better trigger messages
-                    // keep the original type so that poly.rs can perform the proper box/unbox on e
-                    let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
-                    return Ok(e);
+            if let Some(func) = fun_ssts.get(fun)
+                && let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
+                && func.x.attrs.inline
+                && func.x.kind.inline_okay()
+            {
+                let typ_params = &func.x.typ_params;
+                let pars = &func.x.pars;
+                let body = &spec_axioms.body_exp;
+                let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+                assert!(typ_params.len() == typs.len());
+                for (name, typ) in typ_params.iter().zip(typs.iter()) {
+                    assert!(!typ_substs.contains_key(name));
+                    typ_substs.insert(name.clone(), typ.clone());
                 }
+                assert!(pars.len() == args.len());
+                for (par, arg) in pars.iter().zip(args.iter()) {
+                    let unique = unique_local(&par.x.name);
+                    assert!(!substs.contains_key(&unique));
+                    substs.insert(unique, arg.clone());
+                }
+                let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
+                // keep the original outer span for better trigger messages
+                // keep the original type so that poly.rs can perform the proper box/unbox on e
+                let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
+                return Ok(e);
             }
             Ok(exp.clone())
         }

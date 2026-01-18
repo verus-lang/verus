@@ -2148,14 +2148,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .fun
                         .as_ref()
                         .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map_or(None, |fun| Some(fun.x.ret.x.typ.clone()));
-                    if ret_op.is_some() {
+                        .map(|fun| fun.x.ret.x.typ.clone());
+                    if let Some(ret) = ret_op {
                         stmts.extend(opaque_ty_additional_stmts(
                             ctx,
                             state,
                             &ret_exp.span,
                             &ret_exp.typ,
-                            &ret_op.unwrap(),
+                            &ret,
                         )?);
                     }
 
