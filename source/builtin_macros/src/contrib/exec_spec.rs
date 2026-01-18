@@ -912,7 +912,13 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
         return ExprPathKind::StructOrEnum;
     }
 
-    println!("Inferring path kind for {:?}", path);
+    if is_path_eq(path, &["Some"])
+        || is_path_eq(path, &["None"])
+        || is_path_eq(path, &["Ok"])
+        || is_path_eq(path, &["Err"])
+    {
+        return ExprPathKind::StructOrEnum;
+    }
 
     // e.g. usize::MAX, usize::MIN, ...
     if path.segments.len() == 2 {
@@ -978,6 +984,59 @@ fn compile_expr_path(
         return Ok((path.clone(), ExprPathKind::StructOrEnum));
     }
 
+    // Special case: convert Seq to Vec
+    // todo(nneamtu): this part is quite brittle, only seems to work with return type of StructOrEnum
+    if path.segments.len() >= 1 && path.segments[0].ident == "Seq"
+    {
+        let seg = &path.segments[0];
+        let mut new_path = path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("Vec", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        new_path = prefix_nth_segment(&new_path, "exec_", new_path.segments.len() - 1)?;
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if path.segments.len() >= 1 && path.segments[0].ident == "Map" {
+        let seg = &path.segments[0];
+        let mut new_path = path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("HashMap", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        new_path = prefix_nth_segment(&new_path, "exec_", new_path.segments.len() - 1)?;
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if path.segments.len() >= 1 && path.segments[0].ident == "Set" {
+        let seg = &path.segments[0];
+        let mut new_path = path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("HashSet", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        new_path = prefix_nth_segment(&new_path, "exec_", new_path.segments.len() - 1)?;
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    } else if path.segments.len() >= 1 && path.segments[0].ident == "Multiset" {
+        let seg = &path.segments[0];
+        let mut new_path = path.clone();
+
+        new_path.segments[0] = PathSegment {
+            ident: Ident::new("ExecMultiset", seg.ident.span()),
+            arguments: seg.arguments.clone(),
+        };
+
+        new_path = prefix_nth_segment(&new_path, "exec_", new_path.segments.len() - 1)?;
+
+        return Ok((new_path, ExprPathKind::StructOrEnum));
+    }
+
     // Get or infer the path kind
     let kind = if let Some(kind) = known_kind { kind } else { infer_expr_path_kind(ctx, path) };
 
@@ -989,50 +1048,6 @@ fn compile_expr_path(
         ExprPathKind::Constant => path.clone(),
         ExprPathKind::Unknown => return Err(Error::new_spanned(path, "unknown path kind")),
     };
-
-    // Special case: convert Seq to Vec
-    if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Seq"
-    {
-        let seg = &new_path.segments[0];
-        let mut new_path = new_path.clone();
-
-        new_path.segments[0] = PathSegment {
-            ident: Ident::new("Vec", seg.ident.span()),
-            arguments: seg.arguments.clone(),
-        };
-
-        return Ok((new_path, ExprPathKind::StructOrEnum));
-    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Map" {
-        let seg = &new_path.segments[0];
-        let mut new_path = new_path.clone();
-
-        new_path.segments[0] = PathSegment {
-            ident: Ident::new("HashMap", seg.ident.span()),
-            arguments: seg.arguments.clone(),
-        };
-
-        return Ok((new_path, ExprPathKind::StructOrEnum));
-    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Set" {
-        let seg = &new_path.segments[0];
-        let mut new_path = new_path.clone();
-
-        new_path.segments[0] = PathSegment {
-            ident: Ident::new("HashSet", seg.ident.span()),
-            arguments: seg.arguments.clone(),
-        };
-
-        return Ok((new_path, ExprPathKind::StructOrEnum));
-    } else if new_path.segments.len() >= 1 && new_path.segments[0].ident == "Multiset" {
-        let seg = &new_path.segments[0];
-        let mut new_path = new_path.clone();
-
-        new_path.segments[0] = PathSegment {
-            ident: Ident::new("ExecMultiset", seg.ident.span()),
-            arguments: seg.arguments.clone(),
-        };
-
-        return Ok((new_path, ExprPathKind::StructOrEnum));
-    }
 
     Ok((new_path, kind))
 }
@@ -2077,16 +2092,13 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
         //
         // TODO: this assumption might be a bit brittle
         Expr::Call(expr_call) => {
-            println!("Compiling function call: {}", quote! { #expr_call });
 
             // Assume that the function is a path
             let Expr::Path(fn_path) = expr_call.func.as_ref() else {
                 return Err(Error::new_spanned(expr_call, "unsupported callee"));
             };
 
-            let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, Some(ExprPathKind::FnName))?;
-            println!("Compiled call to exec fn path: {}", quote! { #exec_fn_path });
-            println!("Callee kind: {:?}", kind);
+            let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, None)?;
 
             let owned = match kind {
                 // Struct/enums requires owned arguments
@@ -2100,10 +2112,6 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 }
 
                 ExprPathKind::FnName => {
-                    if expr_call.args.len() > 0 {
-                        let arg = &expr_call.args[0];
-                        println!("First arg: {}", quote! { #arg });
-                    }
                     let args = expr_call
                         .args
                         .iter()
