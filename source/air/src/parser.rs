@@ -36,13 +36,9 @@ fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
 }
 
 fn underscore_atom_atom_expr(s1: &str, s2: &str) -> Option<Constant> {
-    if s1.starts_with("bv") {
-        let value = Arc::new(s1["bv".len()..].to_string());
-        if let Ok(width) = s2.parse::<u32>() {
-            return Some(Constant::BitVec(value, width));
-        }
-    }
-    None
+    let value = s1.strip_prefix("bv")?;
+    let width = s2.parse::<u32>().ok()?;
+    Some(Constant::BitVec(Arc::new(value.to_owned()), width))
 }
 
 fn relation_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
