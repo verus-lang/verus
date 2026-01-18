@@ -1804,15 +1804,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
     }
 
-    let loop_isolation = || {
-        if let Some(flag) = expr_vattrs.loop_isolation {
-            flag
-        } else if let Some(flag) =
-            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
-        {
-            flag
+    let loop_isolation = {
+        if let Some(b) = expr_vattrs.loop_isolation {
+            b
         } else {
-            true
+            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+                .unwrap_or(true)
         }
     };
 
@@ -2496,7 +2493,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
-            let loop_isolation = loop_isolation();
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
@@ -2577,7 +2573,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 *header_span,
                 &expr_typ()?,
                 ExprX::Loop {
-                    loop_isolation: loop_isolation(),
+                    loop_isolation,
                     is_for_loop: false,
                     label,
                     cond,
