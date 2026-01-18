@@ -2860,13 +2860,8 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
-            Some(e)
-        } else if let Err(e) = check_crate_result {
-            Some(e)
-        } else {
-            None
-        };
+        let mut first_error: Option<VirErr> =
+            check_crate_result1.err().or(check_crate_result.err());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {

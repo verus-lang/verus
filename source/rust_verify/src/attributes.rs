@@ -350,16 +350,10 @@ pub(crate) enum Attr {
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
-    let i = match attr_tree {
-        AttrTree::Fun(_, name, None) => match name.parse::<u64>() {
-            Ok(i) => Some(i),
-            _ => None,
-        },
-        _ => None,
-    };
-    match i {
-        Some(i) => Ok(i),
-        None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
+    let err_fn = || err_span(span, format!("expected integer constant, found {:?}", &attr_tree));
+    match attr_tree {
+        AttrTree::Fun(_, name, None) => name.parse::<u64>().or_else(|_e| err_fn()),
+        _ => err_fn(),
     }
 }
 
