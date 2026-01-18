@@ -155,7 +155,7 @@ pub fn main() {
             verifier: &rust_verify::verifier::Verifier,
             f: impl Fn(&rust_verify::verifier::BucketStats) -> std::time::Duration,
         ) -> u128 {
-            verifier.bucket_stats.iter().map(|(_, v)| f(v)).sum::<std::time::Duration>().as_millis()
+            verifier.bucket_stats.values().map(|v| f(v)).sum::<std::time::Duration>().as_millis()
         }
 
         #[derive(Debug, Clone)]

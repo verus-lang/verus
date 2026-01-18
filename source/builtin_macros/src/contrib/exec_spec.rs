@@ -1046,8 +1046,8 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // we have to convert all variables in the context to their spec versions via deep_view
     let local_view: Vec<TokenStream2> = ctx
         .vars
-        .iter()
-        .map(|(name, _)| {
+        .keys()
+        .map(|name| {
             quote! { let #name = #name.deep_view(); }
         })
         .collect();
