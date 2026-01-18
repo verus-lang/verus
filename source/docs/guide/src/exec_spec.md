@@ -18,6 +18,8 @@ the equivalence between the spec and the exec code is not proven by Verus.
 The trusted macro currently supports a larger fragment of Verus, and is ideal for scenarios
 where the compiled code is not invoked in a verified project 
 (e.g., testing specifications on example inputs).
+Skipping the proof generation sidesteps potential proof debugging in the
+compiled exec code.
 
 ## The `exec_spec!` macro
 
