@@ -362,8 +362,6 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
         quote_spanned! { span => closed }
     };
 
-    let attrs = &item_struct.attrs.clone();
-
     let span = item_struct.span();
     Ok(quote_spanned! { span =>
         #[verifier::ext_equal]
@@ -554,6 +552,75 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             }
         });
 
+    // Match arms in the ExecSpecEq implementation
+    let eq_variant_arms = item_enum.variants.iter()
+        .map(|variant| {
+            let variant_name = &variant.ident;
+
+            // Generate match arms for each variant
+            match &variant.fields {
+                Fields::Named(fields_named) => {
+                    let span = fields_named.span();
+                    let field_names_this = fields_named.named.iter()
+                        .enumerate()
+                        .map(|(i, field)| Ident::new(&format!("this_{}", i), field.span()))
+                        .collect::<Vec<_>>();
+                    let field_names_other = fields_named.named.iter()
+                        .enumerate()
+                        .map(|(i, field)| Ident::new(&format!("other_{}", i), field.span()))
+                        .collect::<Vec<_>>();
+                    let field_eqs = fields_named.named.iter().enumerate().map(|(i, field)| {
+                        let field_name_this = &field_names_this[i];
+                        let field_name_other = &field_names_other[i];
+                        let field_type = compile_type(&field.ty, TypeKind::Ref)?;
+                        let span = field.span();
+                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                    }).collect::<Result<Vec<_>, Error>>()?;
+
+                    let field_matches_this = fields_named.named.iter().enumerate().map(|(i, field)| {
+                        let field_name_this = &field_names_this[i];
+                        let ident = &field.ident;
+                        let span = field.span();
+                        quote_spanned! { span => #ident: #field_name_this }
+                    });
+                    let field_matches_other = fields_named.named.iter().enumerate().map(|(i, field)| {
+                        let field_name_other = &field_names_other[i];
+                        let ident = &field.ident;
+                        let span = field.span();
+                        quote_spanned! { span => #ident: #field_name_other }
+                    });
+
+                    Ok(quote_spanned! { span => (#exec_name::#variant_name { #(#field_matches_this,)* }, #exec_name::#variant_name { #(#field_matches_other,)* }) => #(#field_eqs)&&* })
+                }
+                Fields::Unnamed(fields_unnamed) => {
+                    let span = fields_unnamed.span();
+                    let field_names_this = fields_unnamed.unnamed.iter()
+                        .enumerate()
+                        .map(|(i, field)| Ident::new(&format!("this_{}", i), field.span()))
+                        .collect::<Vec<_>>();
+                    let field_names_other = fields_unnamed.unnamed.iter()
+                        .enumerate()
+                        .map(|(i, field)| Ident::new(&format!("other_{}", i), field.span()))
+                        .collect::<Vec<_>>();
+                    let field_eqs: Vec<_> = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
+                        let field_name_this = &field_names_this[i];
+                        let field_name_other = &field_names_other[i];
+                        let field_type = compile_type(&field.ty, TypeKind::Ref)?;
+                        let span = field.span();
+                        Ok(quote_spanned! { span => <#field_type>::exec_eq(#field_name_this.get_ref(), #field_name_other.get_ref()) })
+                    }).collect::<Result<Vec<_>, Error>>()?;
+
+                    Ok(quote_spanned! { span => (#exec_name::#variant_name ( #(#field_names_this,)* ), #exec_name::#variant_name ( #(#field_names_other,)* )) => #(#field_eqs)&&* })
+                }
+                Fields::Unit => {
+                    let span = variant.span();
+                    Ok(quote_spanned! { span =>
+                        (#exec_name::#variant_name { .. }, #exec_name::#variant_name { .. }) => true
+                    })
+                }
+            }
+        }).collect::<Result<Vec<_>, Error>>()?;
+
     let vis = &item_enum.vis;
 
     let span = item_enum.vis.span();
@@ -568,6 +635,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         #[verifier::ext_equal]
         #item_enum
 
+        #[derive(Eq, Hash, PartialEq)]
         #vis enum #exec_name {
             #(#exec_variants,)*
         }
@@ -604,6 +672,18 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             fn deep_clone(&self) -> Self {
                 match self {
                     #(#clone_variant_arms,)*
+                }
+            }
+        }
+
+        #[allow(unreachable_patterns)] // false branch may be unreachable if enum has only one variant
+        impl<'a> vstd::contrib::exec_spec::ExecSpecEq<'a> for &'a #exec_name {
+            type Other = &'a #exec_name;
+
+            fn exec_eq(this: Self, other: Self::Other) -> bool {
+                match (this, other) {
+                    #(#eq_variant_arms,)*
+                    (_, _) => false
                 }
             }
         }
@@ -831,6 +911,8 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
     {
         return ExprPathKind::StructOrEnum;
     }
+
+    println!("Inferring path kind for {:?}", path);
 
     // e.g. usize::MAX, usize::MIN, ...
     if path.segments.len() == 2 {
@@ -1062,7 +1144,7 @@ fn compile_pattern(
 }
 
 /// Compiles a match arm.
-fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
+fn compile_match_arm(ctx: &LocalCtx, arm: &Arm, trusted: bool) -> Result<TokenStream2, Error> {
     let mut ctx = ctx.clone();
     let mut new_locals = HashSet::new();
 
@@ -1075,7 +1157,7 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
         }
     });
 
-    let body = compile_expr(&ctx, &arm.body, VarMode::Owned)?;
+    let body = compile_expr(&ctx, &arm.body, VarMode::Owned, trusted)?;
 
     Ok(quote! {
         #pat => {
@@ -1083,6 +1165,210 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
             #body
         }
     })
+}
+
+struct GuardedQuantifierUntrusted {
+    quant_var: Ident,
+    quant_type: Box<Type>,
+    lower: Box<Expr>,
+    upper: Box<Expr>,
+    guard_op: BinOp,
+    body: Box<Expr>,
+}
+
+/// Matches the closure to the form
+///   `|x| <lower> <= x < <upper> ==> <body>`
+/// or
+///   `|x| <lower> <= x < <upper> && <body>`
+fn get_guarded_range_quant_untrusted(closure: &ExprClosure) -> Result<GuardedQuantifierUntrusted, Error> {
+    if closure.inputs.len() != 1 {
+        return Err(Error::new_spanned(closure, "only support single quantified variable"));
+    }
+
+    let (quant_var, Some(quant_type)) = get_simple_pat(&closure.inputs[0].pat)? else {
+        return Err(Error::new_spanned(closure, "only supports a typed variable as quantifier"));
+    };
+
+    // |x| <guard> ==>/&& <body>
+    let Expr::Binary(ExprBinary { left: guard, op: guard_op, right: body, .. }) =
+        closure.body.as_ref()
+    else {
+        return Err(Error::new_spanned(closure, "unsupported quantified expression"));
+    };
+
+    // <guard> == <lower> <= x < <upper>
+    let Expr::Binary(ExprBinary { left: lower_guard, op: BinOp::Lt(..), right: upper, .. }) =
+        guard.as_ref()
+    else {
+        return Err(Error::new_spanned(guard, "unsupported quantifier guard upper bound"));
+    };
+
+    let Expr::Binary(ExprBinary { left: lower, op: BinOp::Le(..), right: guard_var, .. }) =
+        lower_guard.as_ref()
+    else {
+        return Err(Error::new_spanned(lower_guard, "unsupported quantifier guard lower bound"));
+    };
+
+    // Parses the guard variable as a one-component path
+    let guard_var = if let Expr::Path(ExprPath { path, .. }) = guard_var.as_ref() {
+        let segments: Vec<_> = path.segments.iter().collect();
+        if segments.len() == 1 {
+            &segments[0].ident
+        } else {
+            return Err(Error::new_spanned(guard_var, "expect a simple variable"));
+        }
+    } else {
+        return Err(Error::new_spanned(guard_var, "expect a simple variable"));
+    };
+
+    if guard_var != quant_var {
+        return Err(Error::new_spanned(
+            guard_var,
+            "quantified variable does not match the guard variable",
+        ));
+    }
+
+    Ok(GuardedQuantifierUntrusted {
+        quant_var: quant_var.clone(),
+        quant_type,
+        lower: lower.clone(),
+        upper: upper.clone(),
+        guard_op: guard_op.clone(),
+        body: body.clone(),
+    })
+}
+
+/// Compiles some forms of forall/exists quantifiers to loops.
+fn compile_guarded_quant_untrusted(ctx: &LocalCtx, op: &UnOp, expr: &Expr, trusted: bool) -> Result<TokenStream2, Error> {
+    // Quantified variables and the body of the quantified expression
+    // is expected to be described as a closure.
+    let Expr::Closure(closure) = expr else {
+        return Err(Error::new_spanned(expr, "ill-formed quantified expression"));
+    };
+
+    // TODO: support other forms of quantifiers
+    let quant = get_guarded_range_quant_untrusted(closure)?;
+
+    let quant_var = &quant.quant_var;
+    let quant_type = &quant.quant_type;
+    let body = &quant.body;
+    let compiled_lower = compile_expr(ctx, &quant.lower, VarMode::Owned, trusted)?;
+    let compiled_upper = compile_expr(ctx, &quant.upper, VarMode::Owned, trusted)?;
+
+    let mut body_ctx = ctx.clone();
+    body_ctx.add(quant_var.clone(), VarMode::Owned);
+    let compiled_body = compile_expr(&body_ctx, &quant.body, VarMode::Ref, trusted)?;
+    let mut quant_attrs = closure.inner_attrs.clone();
+
+    if quant_attrs.len() == 0 {
+        quant_attrs.push(Attribute {
+            pound_token: Default::default(),
+            style: AttrStyle::Inner(Default::default()),
+            bracket_token: Default::default(),
+            meta: Meta::Path(Path::from(Ident::new("auto", Span::call_site()))),
+        });
+    }
+
+    // Since #body and #expr will be used as spec code in exec mode
+    // we have to convert all variables in the context to their spec versions via deep_view
+    let local_view: Vec<TokenStream2> = ctx
+        .vars
+        .iter()
+        .map(|(name, _)| {
+            quote! { let #name = #name.deep_view(); }
+        })
+        .collect();
+
+    // Some common pieces
+    let expr_span = expr.span();
+    let inv_bound = quote_spanned! { expr_span => _lower <= #quant_var <= _upper };
+    let decreases = quote_spanned! { expr_span => _upper - #quant_var };
+    let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
+
+    // Generate a fresh trigger function
+    let trigger_fn_name = ctx.gen_fresh_trigger_fn(&quant.quant_type);
+
+    match (op, &quant.guard_op) {
+        (UnOp::Forall(..), BinOp::Imply(..)) => {
+            // Generate some pieces separately so that we can attach spans to them
+            let inv = quote_spanned! { expr_span => _res == {
+                let _upper = #quant_var;
+                #(#local_view)*
+                forall |#quant_var: #quant_type|
+                    #![trigger #trigger_fn_name(#quant_var)]
+                    #(#quant_attrs)* !(_lower <= #quant_var < _upper) || (#body)
+            }};
+            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* !(#body) } };
+
+            Ok(quote! {
+                {
+                    let _lower = #compiled_lower;
+                    let _upper = #compiled_upper;
+                    let mut _res = true;
+                    let mut #quant_var = _lower;
+
+                    if _lower < _upper {
+                        while #quant_var < _upper
+                            invariant #inv_bound, #inv,
+                            decreases #decreases,
+                        {
+                            if !(#compiled_body) {
+                                proof { let _ = #trigger_fn_name(#quant_var); }
+                                assert(#assert_trigger);
+                                _res = false;
+                                break;
+                            }
+                            #quant_var += 1;
+                        }
+                    }
+                    proof { let _ = #trigger_fn_name(_lower); }
+                    assert(#final_assert);
+                    _res
+                }
+            })
+        }
+
+        (UnOp::Exists(..), BinOp::And(..)) => {
+            let inv = quote_spanned! { expr_span => _res == {
+                let _upper = #quant_var;
+                #(#local_view)*
+                exists |#quant_var: #quant_type|
+                    #![trigger #trigger_fn_name(#quant_var)]
+                    #(#quant_attrs)*
+                    (_lower <= #quant_var < _upper) && (#body)
+            }};
+            let assert_trigger = quote_spanned! { expr_span => { #(#local_view)* (#body) } };
+
+            Ok(quote! {
+                {
+                    let _lower = #compiled_lower;
+                    let _upper = #compiled_upper;
+                    let mut _res = false;
+                    let mut #quant_var = _lower;
+
+                    if _lower < _upper {
+                        while #quant_var < _upper
+                            invariant #inv_bound, #inv,
+                            decreases #decreases,
+                        {
+                            if (#compiled_body) {
+                                proof { let _ = #trigger_fn_name(#quant_var); }
+                                assert(#assert_trigger);
+                                _res = true;
+                                break;
+                            }
+                            #quant_var += 1;
+                        }
+                    }
+                    proof { let _ = #trigger_fn_name(_lower); }
+                    assert(#final_assert);
+                    _res
+                }
+            })
+        }
+
+        _ => Err(Error::new_spanned(expr, "unsupported quantified expression")),
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1242,14 +1528,14 @@ fn get_guarded_range_quant(closure: &ExprClosure, ) -> Result<GuardedQuantifier,
     })
 }
 
-fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
+fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar, trusted: bool) -> Result<(TokenStream2, TokenStream2, TokenStream2, TokenStream2), Error> {
     let quant_var = &var.quant_var;
     let quant_type = &var.quant_type;
-    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned)?;
+    let mut compiled_lower = compile_expr(ctx, &var.bounds.lower, VarMode::Owned, trusted)?;
     if let BinOp::Lt(..) = var.bounds.lower_op {
         compiled_lower = quote! { #compiled_lower + 1 };
     };
-    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned)?;
+    let mut compiled_upper = compile_expr(ctx, &var.bounds.upper, VarMode::Owned, trusted)?;
     if let BinOp::Le(..) = var.bounds.upper_op {
         compiled_upper = quote! { #compiled_upper + 1 };
     };
@@ -1288,14 +1574,14 @@ fn compile_single_quant_var(ctx: &LocalCtx, var: &GuardedQuantVar) -> Result<(To
     Ok((init, update, init_cond, while_cond))
 }
 
-fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op: &BinOp, body: &Expr, guarded_vars: &Vec<GuardedQuantVar>) -> Result<TokenStream2, Error> {
-    let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0])?;
+fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op: &BinOp, body: &Expr, guarded_vars: &Vec<GuardedQuantVar>, trusted: bool) -> Result<TokenStream2, Error> {
+    let (init, update, init_cond, while_cond) = compile_single_quant_var(ctx, &guarded_vars[0], trusted)?;
 
     let mut body_ctx = ctx.clone();
     body_ctx.add(guarded_vars[0].quant_var.clone(), VarMode::Owned);
     let compiled_body;
     if guarded_vars.len() == 1 {
-        let compiled_body_expr = compile_expr(&body_ctx, &body, VarMode::Ref)?;
+        let compiled_body_expr = compile_expr(&body_ctx, &body, VarMode::Ref, trusted)?;
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 if !(#compiled_body_expr) {
@@ -1320,7 +1606,7 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
     } else {
         let mut next_vars = guarded_vars.clone();
         next_vars.remove(0);
-        let compiled_inner = compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars)?;
+        let compiled_inner = compile_guarded_quant_loops(&body_ctx, op, expr, guard_op, body, &next_vars, trusted)?;
         compiled_body = match op {
             UnOp::Forall(..) => quote! {
                 #compiled_inner
@@ -1405,7 +1691,7 @@ fn compile_guarded_quant_loops(ctx: &LocalCtx, op: &UnOp, expr: &Expr, guard_op:
 }
 
 /// Compiles some forms of forall/exists quantifiers to loops.
-fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<TokenStream2, Error> {
+fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr, trusted: bool) -> Result<TokenStream2, Error> {
     // Quantified variables and the body of the quantifier expression
     // is expected to be described as a closure.
     let Expr::Closure(closure) = expr else {
@@ -1415,7 +1701,7 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
     // TODO: support other forms of quantifiers
     let quant = get_guarded_range_quant(closure)?;
 
-    let loops = compile_guarded_quant_loops(ctx, op, expr, &quant.guard_op, &quant.body, &quant.guarded_vars)?;
+    let loops = compile_guarded_quant_loops(ctx, op, expr, &quant.guard_op, &quant.body, &quant.guarded_vars, trusted)?;
 
     match op {
         UnOp::Forall(..) => 
@@ -1444,52 +1730,6 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
             }),
         _ => Err(Error::new_spanned(expr, "Unsupported quantifier expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG)),
     }
-
-    /*let mut quant_attrs = closure.inner_attrs.clone();
-
-    if quant_attrs.len() == 0 {
-        quant_attrs.push(Attribute {
-            pound_token: Default::default(),
-            style: AttrStyle::Inner(Default::default()),
-            bracket_token: Default::default(),
-            meta: Meta::Path(Path::from(Ident::new("auto", Span::call_site()))),
-        });
-    }*/
-
-    // Since #body and #expr will be used as spec code in exec mode
-    // we have to convert all variables in the context to their spec versions via deep_view
-    /*let local_view: Vec<TokenStream2> = ctx
-        .vars
-        .iter()
-        .map(|(name, _)| {
-            quote! { let #name = #name.deep_view(); }
-        })
-        .collect();*/
-
-    // Some common pieces
-    //let expr_span = expr.span();
-    /*let bound_expr = match (quant.lower_op, quant.upper_op) {
-        (BinOp::Lt(..), BinOp::Lt(..)) => quote! { _lower < #quant_var <= _upper },
-        (BinOp::Le(..), BinOp::Lt(..)) => quote! { _lower <= #quant_var <= _upper },
-        (BinOp::Lt(..), BinOp::Le(..)) => quote! { _lower < #quant_var <= _upper + 1 },
-        (BinOp::Le(..), BinOp::Le(..)) => quote! { _lower <= #quant_var <= _upper + 1 },
-        (_, _) => return Err(Error::new_spanned(expr, "Ill-formed quantified expression.\n".to_owned() + UNSUPPORTED_QUANTIFIER_ERROR_MSG))
-    };
-    let inv_bound = quote_spanned! { expr_span => #bound_expr };
-    let decreases = if is_char { 
-        quote_spanned! { expr_span => _upper as u32 - #quant_var as u32 }
-    } else {
-        quote_spanned! { expr_span => _upper - #quant_var }
-    };*/
-    // let quant_var_update = if is_char {
-    //     quote! { #quant_var = char::from_u32(#quant_var as u32 + 1).unwrap(); }
-    // } else {
-    //     quote! { #quant_var += 1; }
-    // };
-    /*let final_assert = quote_spanned! { expr_span => _res == { #(#local_view)* #op #expr } };
-
-    // Generate a fresh trigger function
-    let trigger_fn_name = ctx.gen_fresh_trigger_fn(&quant.quant_type);*/
 }
 
 /// Compiles an expression
@@ -1499,7 +1739,7 @@ fn compile_guarded_quant(ctx: &LocalCtx, op: &UnOp, expr: &Expr) -> Result<Token
 /// have the type
 /// - `T::ExecRefType<'_>` if mode is `VarMode::Ref`
 /// - `T::ExecOwnedType` if mode is `VarMode::Owned`
-fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStream2, Error> {
+fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Result<TokenStream2, Error> {
     let expr_ts = match expr {
         Expr::Lit(lit) => match &lit.lit {
             Lit::Str(..) => match mode {
@@ -1518,7 +1758,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         // Blocks have the owned type, so we need to
         // convert back a reference again
         Expr::Block(expr_block) => {
-            let block_expr = compile_block(ctx, &expr_block.block)?;
+            let block_expr = compile_block(ctx, &expr_block.block, trusted)?;
 
             match mode {
                 VarMode::Ref => quote! { #block_expr.get_ref() },
@@ -1539,7 +1779,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 let args = args
                     .0
                     .iter()
-                    .map(|arg| compile_expr(ctx, arg, VarMode::Owned))
+                    .map(|arg| compile_expr(ctx, arg, VarMode::Owned, trusted))
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 // We need to convert each argument to the owned type
@@ -1561,14 +1801,14 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         }
 
         Expr::Paren(expr_paren) => {
-            let inner = compile_expr(ctx, &expr_paren.expr, mode)?;
+            let inner = compile_expr(ctx, &expr_paren.expr, mode, trusted)?;
             quote! { #inner } // we'll insert the parenthesis in the end
         }
 
         Expr::Field(expr_field) => {
             // The base of a field is always get as a reference
             // since we want to avoid partially moving the base
-            let expr = compile_expr(ctx, &expr_field.base, VarMode::Ref)?;
+            let expr = compile_expr(ctx, &expr_field.base, VarMode::Ref, trusted)?;
             let field = &expr_field.member;
             // By default, x.y have the owned type of field y
             // so we need to take the reference and convert it
@@ -1627,14 +1867,14 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         Expr::Binary(expr_binary) => match &expr_binary.op {
             // `bool` has the same owned and borrowed types, so no need to convert here
             BinOp::Eq(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
                 quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
                 quote! { !vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -1666,30 +1906,30 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             | BinOp::Ge(..)
             | BinOp::Gt(..) => {
                 let op = &expr_binary.op;
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
 
                 quote! { #left #op #right }
             }
 
             // `a ==> b` to `!a || b`
             BinOp::Imply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
                 quote! { !(#left) || (#right) }
             }
 
             // `a <== b` to `!b || a`
             BinOp::Exply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
                 quote! { !(#right) || (#left) }
             }
 
             // `a <==> b` to `a == b`
             BinOp::Equiv(..) => {
-                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
-                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref, trusted)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref, trusted)?;
                 quote! { vstd::contrib::exec_spec::ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -1715,12 +1955,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 if is_path_eq(&type_path.path, &["int"])
                     || is_path_eq(&type_path.path, &["nat"]) =>
             {
-                compile_expr(ctx, &expr_cast.expr, mode)?
+                compile_expr(ctx, &expr_cast.expr, mode, trusted)?
             }
 
             _ => {
                 let typ = compile_type(&expr_cast.ty, TypeKind::Ref)?;
-                let expr = compile_expr(ctx, &expr_cast.expr, mode)?;
+                let expr = compile_expr(ctx, &expr_cast.expr, mode, trusted)?;
 
                 quote! {
                     (#expr as #typ)
@@ -1729,8 +1969,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         },
 
         Expr::If(expr_if) => {
-            let cond = compile_expr(ctx, &expr_if.cond, VarMode::Ref)?;
-            let then_branch = compile_block(ctx, &expr_if.then_branch)?;
+            let cond = compile_expr(ctx, &expr_if.cond, VarMode::Ref, trusted)?;
+            let then_branch = compile_block(ctx, &expr_if.then_branch, trusted)?;
 
             // let e = &expr_if.else_branch.as_ref().unwrap().1;
             // println!("???: {}", quote! { #e });
@@ -1746,6 +1986,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                     ))?
                     .1,
                 VarMode::Owned, // to align with the owned type of then_branch
+                trusted,
             )?;
 
             let owned = quote! {
@@ -1765,7 +2006,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         // View expressions are ignored (e.g. "abc"@ => "abc")
         // TODO: more strict rules here
         Expr::View(view) => {
-            let expr = compile_expr(ctx, &view.expr, mode)?;
+            let expr = compile_expr(ctx, &view.expr, mode, trusted)?;
             quote! { #expr }
         }
 
@@ -1773,8 +2014,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         // but NOT SpecString, whose exec version (String)
         // does not have a direct indexing operator
         Expr::Index(expr_index) => {
-            let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref)?;
-            let index = compile_expr(ctx, &expr_index.index, VarMode::Ref)?;
+            let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref, trusted)?;
+            let index = compile_expr(ctx, &expr_index.index, VarMode::Ref, trusted)?;
 
             match mode {
                 VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
@@ -1788,15 +2029,25 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         Expr::Unary(expr_unary) => match &expr_unary.op {
             UnOp::Neg(..) | UnOp::Not(..) => {
                 let op = &expr_unary.op;
-                let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref)?;
+                let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref, trusted)?;
                 quote! { #op #expr }
             }
             UnOp::Forall(..) | UnOp::Exists(..) => {
-                let compiled = compile_guarded_quant(ctx, &expr_unary.op, &expr_unary.expr)?;
-                match mode {
-                    VarMode::Ref => quote! { #compiled.get_ref() },
-                    VarMode::Owned => compiled,
+                // todo(nneamtu) - should support all features in both modes
+                if trusted {
+                    let compiled = compile_guarded_quant(ctx, &expr_unary.op, &expr_unary.expr, trusted)?;
+                    match mode {
+                        VarMode::Ref => quote! { #compiled.get_ref() },
+                        VarMode::Owned => compiled,
+                    }
+                } else {
+                    let compiled = compile_guarded_quant_untrusted(ctx, &expr_unary.op, &expr_unary.expr, trusted)?;
+                    match mode {
+                        VarMode::Ref => quote! { #compiled.get_ref() },
+                        VarMode::Owned => compiled,
+                    }
                 }
+                
             }
             _ => return Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
         },
@@ -1805,7 +2056,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             let exprs = big_and
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, trusted))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))&&* }
         }
@@ -1814,7 +2065,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             let exprs = big_or
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref, trusted))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))||* }
         }
@@ -1826,12 +2077,16 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         //
         // TODO: this assumption might be a bit brittle
         Expr::Call(expr_call) => {
+            println!("Compiling function call: {}", quote! { #expr_call });
+
             // Assume that the function is a path
             let Expr::Path(fn_path) = expr_call.func.as_ref() else {
                 return Err(Error::new_spanned(expr_call, "unsupported callee"));
             };
 
             let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, Some(ExprPathKind::FnName))?;
+            println!("Compiled call to exec fn path: {}", quote! { #exec_fn_path });
+            println!("Callee kind: {:?}", kind);
 
             let owned = match kind {
                 // Struct/enums requires owned arguments
@@ -1839,16 +2094,20 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                     let args = expr_call
                         .args
                         .iter()
-                        .map(|arg| compile_expr(ctx, arg, VarMode::Owned))
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Owned, trusted))
                         .collect::<Result<Vec<_>, Error>>()?;
                     quote! { #exec_fn_path(#(#args),*) }
                 }
 
                 ExprPathKind::FnName => {
+                    if expr_call.args.len() > 0 {
+                        let arg = &expr_call.args[0];
+                        println!("First arg: {}", quote! { #arg });
+                    }
                     let args = expr_call
                         .args
                         .iter()
-                        .map(|arg| compile_expr(ctx, arg, VarMode::Ref))
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Ref, trusted))
                         .collect::<Result<Vec<_>, Error>>()?;
                     quote! { #exec_fn_path(#(#args),*) }
                 }
@@ -1865,12 +2124,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         // We only permit a limited set of method calls
         Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
             "len" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 quote! { #receiver.exec_len() }
             },
 
             "dom" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_dom().get_ref() },
 
@@ -1880,8 +2139,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "index" => {
-                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let index = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let index = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
@@ -1890,7 +2149,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "drop_first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_first() },
@@ -1899,7 +2158,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "drop_last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_drop_last() },
@@ -1908,8 +2167,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "add" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
@@ -1918,8 +2177,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "push" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_push(#arg).get_ref() },
@@ -1928,9 +2187,9 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "update" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let index = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let index = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_update(#index, #arg).get_ref() },
@@ -1939,9 +2198,9 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "subrange" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
-                let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
+                let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_subrange(#arg1, #arg2) },
@@ -1950,7 +2209,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "to_multiset" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_to_multiset().get_ref() },
@@ -1959,8 +2218,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "take" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_take(#arg) },
@@ -1969,8 +2228,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "skip" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_skip(#arg) },
@@ -1979,7 +2238,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_last().get_ref() },
@@ -1988,7 +2247,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_first().get_ref() },
@@ -1997,8 +2256,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "count" => {
-                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let base = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let value = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #base.exec_count(#value) },
@@ -2007,8 +2266,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "is_prefix_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_is_prefix_of(#arg) },
@@ -2017,8 +2276,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "is_suffix_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_is_suffix_of(#arg) },
@@ -2027,8 +2286,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "contains" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_contains(&#arg) },
@@ -2037,8 +2296,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "index_of" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of(&#arg) },
@@ -2047,8 +2306,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "index_of_first" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of_first(&#arg).get_ref() },
@@ -2057,8 +2316,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "index_of_last" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_index_of_last(&#arg).get_ref() },
@@ -2067,17 +2326,17 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "insert" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
                 if expr_method_call.args.len() == 2 {
-                    let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
-                    let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned)?;
+                    let arg1 = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+                    let arg2 = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Owned, trusted)?;
 
                     match mode {
                         VarMode::Ref => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref() },
                         VarMode::Owned => quote! { #receiver.exec_insert(#arg1, #arg2).get_ref().get_owned() },
                     }
                 } else {
-                    let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                    let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                     match mode {
                         VarMode::Ref => quote! { #receiver.exec_insert(#arg).get_ref() },
@@ -2087,8 +2346,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "remove" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_remove(#arg).get_ref() },
@@ -2097,8 +2356,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "intersect" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_intersect(#arg).get_ref() },
@@ -2107,8 +2366,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "union" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_union(#arg).get_ref() },
@@ -2117,8 +2376,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             },
 
             "difference" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.last().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_difference(#arg).get_ref() },
@@ -2126,19 +2385,9 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                 }
             },
 
-            "add" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
-
-                match mode {
-                    VarMode::Ref => quote! { #receiver.exec_add(#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_add(#arg).get_ref().get_owned() },
-                }
-            },
-
             "sub" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
-                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Ref, trusted)?;
 
                 match mode {
                     VarMode::Ref => quote! { #receiver.exec_sub(#arg).get_ref() },
@@ -2150,11 +2399,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
         },
 
         Expr::Match(expr_match) => {
-            let expr = compile_expr(ctx, &expr_match.expr, VarMode::Ref)?;
+            let expr = compile_expr(ctx, &expr_match.expr, VarMode::Ref, trusted)?;
             let arms = expr_match
                 .arms
                 .iter()
-                .map(|arm| compile_match_arm(ctx, arm))
+                .map(|arm| compile_match_arm(ctx, arm, trusted))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             let owned = quote! {
@@ -2173,7 +2422,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             let exprs = expr_tuple
                 .elems
                 .iter()
-                .map(|e| compile_expr(ctx, e, VarMode::Owned))
+                .map(|e| compile_expr(ctx, e, VarMode::Owned, trusted))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             match mode {
@@ -2201,7 +2450,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
                             "unsupported unamed field in struct expression",
                         ));
                     };
-                    let value = compile_expr(ctx, &field.expr, VarMode::Owned)?;
+                    let value = compile_expr(ctx, &field.expr, VarMode::Owned, trusted)?;
                     Ok(quote! { #name: #value })
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
@@ -2226,10 +2475,10 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
             let mut new_locals = HashSet::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
 
-            let lhs = compile_expr(&ctx, lhs, VarMode::Ref)?;
+            let lhs = compile_expr(&ctx, lhs, VarMode::Ref, trusted)?;
 
             let true_rhs = if let Some(MatchesOpExpr { rhs, .. }) = op_expr {
-                let rhs = compile_expr(&ctx, rhs, VarMode::Owned)?;
+                let rhs = compile_expr(&ctx, rhs, VarMode::Owned, trusted)?;
                 quote! { { #rhs } }
             } else {
                 quote! { true }
@@ -2312,7 +2561,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStrea
 /// TODO: to avoid issues of `temporary value dropped while borrowed`
 /// the return value of a block has the owned type instead of the ref type
 /// This might incur some performance overhead.
-fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
+fn compile_block(ctx: &LocalCtx, block: &Block, trusted: bool) -> Result<TokenStream2, Error> {
     let mut ts = Vec::new();
     let mut ctx = ctx.clone();
 
@@ -2333,7 +2582,7 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
                     ));
                 };
 
-                let expr = compile_expr(&ctx, &local_init.expr, VarMode::Owned)?;
+                let expr = compile_expr(&ctx, &local_init.expr, VarMode::Owned, trusted)?;
 
                 ctx.add(var.clone(), VarMode::Owned);
                 ts.push(quote! { let #var = #expr; });
@@ -2341,7 +2590,7 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
 
             // NOTE: this is expected to be the last expression
             Stmt::Expr(expr, ..) => {
-                let expr = compile_expr(&ctx, expr, VarMode::Owned)?;
+                let expr = compile_expr(&ctx, expr, VarMode::Owned, trusted)?;
                 ts.push(quote! { #expr });
             }
 
@@ -2379,7 +2628,7 @@ fn compile_spec_fn(item_fn: &ItemFn, trusted: bool) -> Result<TokenStream2, Erro
     let mut ctx = LocalCtx::new(&item_fn.sig.ident);
 
     let sig = compile_sig(&mut ctx, item_fn, trusted)?;
-    let body = compile_block(&ctx, &item_fn.block)?;
+    let body = compile_block(&ctx, &item_fn.block, trusted)?;
 
     // Generate all promised trigger functions
     let trigger_fns = ctx

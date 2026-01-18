@@ -5,6 +5,7 @@
 use crate::prelude::*;
 use crate::multiset::*;
 pub use verus_builtin_macros::exec_spec;
+pub use verus_builtin_macros::exec_spec_trusted;
 use std::collections::HashMap;
 
 mod seq;

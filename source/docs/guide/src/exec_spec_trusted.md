@@ -1,24 +1,25 @@
-# Producing executable code from spec functions with the `exec_spec!` macro
+# Producing executable code from spec functions with the `exec_spec_trusted!` macro
 
 When writing proofs in Verus, we occasionally need to
 implement some simple function or data structure in both exec
-and spec modes, and then establish their equivalence.
-This process can be tedious for simple functions.
+and spec modes. This process can be tedious for simple functions.
 
-The `exec_spec!` macro simplifies this process: you only need
+The `exec_spec_trusted!` macro simplifies this process: you only need
 to write the desired functions/structs/enums in spec mode within
-the supported fragment of `exec_spec!`, and then the macro can
+the supported fragment of `exec_spec_trusted!`, and then the macro can
 automatically generate exec counterparts of these spec items,
-as well as proofs of equivalence.
+as well as proofs of equivalence. The `exec_spec!` macro is similar in that
+does the same generation of exec code, but it also provides proofs of equivalence,
+and currently supports a smaller fragment of Verus.
 
 Here is an example:
 ```rust
-{{#include ../../../../examples/guide/exec_spec.rs:example}}
+{{#include ../../../../examples/guide/exec_spec_trusted.rs:example}}
 ```
 In the example, we define a simple spec function `on_line` to check if
 the given sequence of `Point`s have the same coordinates.
 
-The `exec_spec!` macro call in this example takes all spec items in
+The `exec_spec_trusted!` macro call in this example takes all spec items in
 its scope, and then derives executable counterparts along the lines of
 the following definitions:
 ```
@@ -39,13 +40,14 @@ fn exec_on_line(points: &[ExecPoint]) -> (res: bool)
 
 After the macro invocation, we have the original spec items
 as before (`Point` and `on_line`), but also new items `ExecPoint` and
-`exec_on_line` with a suitable equivalence verified.
-We can test the equivalence using the following sanity check:
+`exec_on_line`.
+We can run the executable function `exec_on_line` to check the output of
+the spec on a specific input using the following sanity check:
 ```rust
-{{#include ../../../../examples/guide/exec_spec.rs:check}}
+{{#include ../../../../examples/guide/exec_spec_trusted.rs:check}}
 ```
 
-Currently, `exec_spec!` supports these basic features:
+Currently, `exec_spec_trusted!` supports these basic features:
   - Basic arithmetic operations
   - Logical operators (&&, ||, &&&, |||, not, ==>)
   - If, match and "matches"
@@ -67,11 +69,5 @@ Currently, `exec_spec!` supports these basic features:
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
   - User-defined structs and enums. These types should be defined within the macro using spec-compatible types for the fields (e.g. `Seq`). Such types are then compiled to their `Exec-` versions, which use the exec versions of each field's type (e.g. `Vec` or slices).
-  - Primitive integer/boolean types (`i<N>`, `isize`, `u<N>`, `usize`, `char`, etc.). Note that `int` and `nat` cannot be used in `exec_spec!`.
+  - Primitive integer/boolean types (`i<N>`, `isize`, `u<N>`, `usize`, `char`, etc.). Note that `int` and `nat` cannot be used in `exec_spec_trusted!`.
   - Equality between Seq, String, and arithmetic types
-
-## Related
-
-`exec_spec!` compiles spec items to exec items, which might not cover your use case.
-For example, you may want to go from [exec to spec](exec_to_spec.html), 
-or use the [`when_used_as_spec` attribute](reference-attributes.html).
