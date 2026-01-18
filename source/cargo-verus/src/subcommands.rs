@@ -357,7 +357,7 @@ fn make_cargo_command(
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
-    args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
+    args.flat_map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).collect()
 }
 
 fn get_verus_driver_path() -> PathBuf {

@@ -882,7 +882,7 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
         typ
     };
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
-    let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
+    let exps = Arc::new(arr.iter().flat_map(|e| cleanup_exp(e)).collect());
     let exp = exp_new(ExpX::ArrayLiteral(exps));
     exp
 }
