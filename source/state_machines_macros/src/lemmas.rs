@@ -27,12 +27,7 @@ pub fn get_transition<'a>(
     transitions: &'a Vec<Transition>,
     name: &String,
 ) -> Option<&'a Transition> {
-    for t in transitions.iter() {
-        if t.name == *name {
-            return Some(t);
-        }
-    }
-    None
+    transitions.iter().find(|t| t.name == *name)
 }
 
 /// Check that each lemma is valid by making sure it has the right arguments.
