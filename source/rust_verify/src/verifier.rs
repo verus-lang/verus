@@ -2979,16 +2979,11 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             let entries = std::fs::read_dir(dir).map_err(|err| {
                 io_vir_err(format!("could not read directory {}", dir.display()), err)
             })?;
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if entry.path().is_file() {
-                        std::fs::remove_file(entry.path()).map_err(|err| {
-                            io_vir_err(
-                                format!("could not remove file {}", entry.path().display()),
-                                err,
-                            )
-                        })?;
-                    }
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    std::fs::remove_file(entry.path()).map_err(|err| {
+                        io_vir_err(format!("could not remove file {}", entry.path().display()), err)
+                    })?;
                 }
             }
         } else {
