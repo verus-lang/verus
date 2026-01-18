@@ -35,6 +35,7 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::PCM;
 use vstd::resource::Loc;
 use vstd::resource::Resource;
@@ -53,12 +54,12 @@ impl<T> AgreementResourceValue<T> {
     }
 }
 
-impl<T> PCM for AgreementResourceValue<T> {
-    open spec fn pcm_valid(self) -> bool {
+impl<T> ResourceAlgebra for AgreementResourceValue<T> {
+    open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn pcm_op(a: Self, b: Self) -> Self {
+    open spec fn op(a: Self, b: Self) -> Self {
         match (a, b) {
             (AgreementResourceValue::<T>::Empty, _) => b,
             (_, AgreementResourceValue::<T>::Empty) => a,
@@ -75,17 +76,19 @@ impl<T> PCM for AgreementResourceValue<T> {
         }
     }
 
+    proof fn valid_op(a: Self, b: Self) {
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+
+impl<T> PCM for AgreementResourceValue<T> {
     open spec fn unit() -> Self {
         AgreementResourceValue::<T>::Empty {  }
-    }
-
-    proof fn pcm_valid_op(a: Self, b: Self) {
-    }
-
-    proof fn pcm_commutative(a: Self, b: Self) {
-    }
-
-    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
     proof fn op_unit(self) {

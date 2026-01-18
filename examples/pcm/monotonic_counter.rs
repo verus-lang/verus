@@ -55,7 +55,7 @@ use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
-use vstd::resource::copy_duplicable_part;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
@@ -86,12 +86,12 @@ pub enum MonotonicCounterResourceValue {
 
 // To use `MonotonicCounterResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for MonotonicCounterResourceValue {
-    open spec fn pcm_valid(self) -> bool {
+impl ResourceAlgebra for MonotonicCounterResourceValue {
+    open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn pcm_op(a: Self, b: Self) -> Self {
+    open spec fn op(a: Self, b: Self) -> Self {
         match (a, b) {
             // Two lower bounds can be combined into a lower bound
             // that's the maximum of the two lower bounds.
@@ -160,17 +160,19 @@ impl PCM for MonotonicCounterResourceValue {
         }
     }
 
+    proof fn valid_op(a: Self, b: Self) {
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+
+impl PCM for MonotonicCounterResourceValue {
     open spec fn unit() -> Self {
         MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
-    }
-
-    proof fn pcm_valid_op(a: Self, b: Self) {
-    }
-
-    proof fn pcm_commutative(a: Self, b: Self) {
-    }
-
-    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
     proof fn op_unit(self) {
@@ -223,7 +225,7 @@ impl MonotonicCounterResource {
             self@.n() == other@.n(),
         ensures
             r.id() == self.id(),
-            r@.n() == MonotonicCounterResourceValue::pcm_op(self@, other@).n(),
+            r@.n() == MonotonicCounterResourceValue::op(self@, other@).n(),
     {
         let tracked mut r = self.r.join(other.r);
         Self { r }
@@ -303,7 +305,7 @@ impl MonotonicCounterResource {
     {
         self.r.validate();
         let v = MonotonicCounterResourceValue::LowerBound { lower_bound: self@.n() };
-        let tracked r = copy_duplicable_part(&self.r, v);
+        let tracked r = self.r.duplicate_previous(v);
         Self { r }
     }
 

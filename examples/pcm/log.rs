@@ -48,7 +48,7 @@ use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
-use vstd::resource::copy_duplicable_part;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
@@ -69,12 +69,12 @@ pub open spec fn is_prefix<T>(s1: Seq<T>, s2: Seq<T>) -> bool {
     &&& forall|i| 0 <= i < s1.len() ==> s1[i] == s2[i]
 }
 
-impl<T> PCM for LogResourceValue<T> {
-    open spec fn pcm_valid(self) -> bool {
+impl<T> ResourceAlgebra for LogResourceValue<T> {
+    open spec fn valid(self) -> bool {
         &&& !(self is Invalid)
     }
 
-    open spec fn pcm_op(a: Self, b: Self) -> Self {
+    open spec fn op(a: Self, b: Self) -> Self {
         match (a, b) {
             (
                 Self::PrefixKnowledge { prefix: prefix1 },
@@ -130,22 +130,24 @@ impl<T> PCM for LogResourceValue<T> {
         }
     }
 
-    open spec fn unit() -> Self {
-        Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
+    proof fn valid_op(a: Self, b: Self) {
     }
 
-    proof fn pcm_valid_op(a: Self, b: Self) {
-    }
-
-    proof fn pcm_commutative(a: Self, b: Self) {
+    proof fn commutative(a: Self, b: Self) {
         assert(forall|log1: Seq<T>, log2: Seq<T>|
             is_prefix(log1, log2) && is_prefix(log2, log1) ==> log1 =~= log2);
     }
 
-    proof fn pcm_associative(a: Self, b: Self, c: Self) {
+    proof fn associative(a: Self, b: Self, c: Self) {
         assert(forall|log1: Seq<T>, log2: Seq<T>|
             is_prefix(log1, log2) && is_prefix(log2, log1) <==> log1 =~= log2);
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
+    }
+}
+
+impl<T> PCM for LogResourceValue<T> {
+    open spec fn unit() -> Self {
+        Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
     }
 
     proof fn op_unit(self) {
@@ -253,7 +255,7 @@ impl<T> LogResource<T> {
             out@.log() == self@.log(),
     {
         let v = LogResourceValue::<T>::PrefixKnowledge { prefix: self@.log() };
-        let tracked r = copy_duplicable_part(&self.r, v);
+        let tracked r = self.r.duplicate_previous(v);
         Self { r }
     }
 

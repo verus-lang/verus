@@ -69,6 +69,7 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
@@ -98,12 +99,12 @@ pub enum OneShotResourceValue {
 
 // To use `OneShotResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for OneShotResourceValue {
-    open spec fn pcm_valid(self) -> bool {
+impl ResourceAlgebra for OneShotResourceValue {
+    open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn pcm_op(a: Self, b: Self) -> Self {
+    open spec fn op(a: Self, b: Self) -> Self {
         match (a, b) {
             (OneShotResourceValue::Empty, _) => b,
             (_, OneShotResourceValue::Empty) => a,
@@ -119,17 +120,19 @@ impl PCM for OneShotResourceValue {
         }
     }
 
+    proof fn valid_op(a: Self, b: Self) {
+    }
+
+    proof fn commutative(a: Self, b: Self) {
+    }
+
+    proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+
+impl PCM for OneShotResourceValue {
     open spec fn unit() -> Self {
         OneShotResourceValue::Empty {  }
-    }
-
-    proof fn pcm_valid_op(a: Self, b: Self) {
-    }
-
-    proof fn pcm_commutative(a: Self, b: Self) {
-    }
-
-    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
     proof fn op_unit(self) {
