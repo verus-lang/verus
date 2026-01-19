@@ -28,6 +28,7 @@ use super::calc_macro::*;
 use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
+use super::set_lib::{group_set_lib_default, group_set_properties};
 use crate::vstd::endian::*;
 use crate::vstd::layout;
 use crate::vstd::primitive_int::PrimitiveInt;
@@ -91,10 +92,10 @@ impl Provenance {
     pub uninterp spec fn start_addr(&self) -> usize;
 
     /// The length of the pointer's allocation in bytes.
-    pub uninterp spec fn alloc_len(&self) -> int;
+    pub uninterp spec fn alloc_len(&self) -> nat;
 
     /// The alignment of the pointer's allocation. Must be a power of 2 bounded by `isize::MAX + 1`.
-    pub uninterp spec fn alignment(&self) -> int;
+    pub uninterp spec fn alignment(&self) -> nat;
 
     /// The ID of the `Allocator` instance used to allocate this memory.
     pub uninterp spec fn alloc_id(&self) -> AllocId;
@@ -509,18 +510,18 @@ impl<T> PointsTo<[T]> {
     pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
         ensures
             m.addrs() == slice_ptr_addrs(self.ptr()),
-            forall|i: nat|
+            forall|i: usize|
             // TODO: revisit triggers
-            // #![trigger m.addrs().contains(i)]
+            #![trigger m.addrs().contains(i)]
 
-                #![trigger self.mem_contents_seq()[i as int]]
+                // #![trigger self.mem_contents_seq()[i as int]]
             // #![trigger m[i].mem_contents()]
             // m.addrs().contains(i) ==> m[i].mem_contents() == self.mem_contents_seq()[(i - self.ptr()@.addr) / layout::size_of::<T>()],
-
-                0 <= i < self.mem_contents_seq().len() ==> m[addr_from_index(
-                    self.ptr(),
-                    i,
-                )].mem_contents() == self.mem_contents_seq()[i as int],
+                m.addrs().contains(i) ==> m[i].mem_contents() == self.mem_contents_seq()[index_from_addr(self.ptr(), i) as int],
+                // 0 <= i < self.mem_contents_seq().len() ==> m[addr_from_index(
+                //     self.ptr(),
+                //     i,
+                // )].mem_contents() == self.mem_contents_seq()[i as int],
             m.ptr() == self.ptr(),
     ;
 }
@@ -592,6 +593,7 @@ pub axiom fn into_slice<T>(tracked mpt: MapPointsTo<T>) -> (tracked pt: PointsTo
         pt.ptr() == mpt.ptr(),
 ;
 
+// Q: Should I expect the ptr address to be aligned? 
 pub open spec fn addr_from_index<T>(ptr: *mut [T], i: nat) -> usize
     recommends
         ptr@.addr + i * layout::size_of::<T>() <= usize::MAX,
@@ -599,7 +601,59 @@ pub open spec fn addr_from_index<T>(ptr: *mut [T], i: nat) -> usize
     (ptr@.addr + i * layout::size_of::<T>()) as usize
 }
 
-pub open spec fn slice_ptr_addrs<T>(ptr: *mut [T]) -> Set<usize>
+// Q: Should I expect the ptr address and addr to be aligned?
+pub open spec fn index_from_addr<T>(ptr: *mut [T], addr: usize) -> nat
+    recommends 
+        ptr@.addr <= addr,
+        (addr - ptr@.addr) as nat % layout::size_of::<T>() == 0,
+{
+    (addr - ptr@.addr) as nat / layout::size_of::<T>()
+}
+
+proof fn index_preserved<T>(ptr: *mut [T], i: nat) 
+    requires
+        ptr@.addr + i * layout::size_of::<T>() <= usize::MAX,
+    ensures
+        index_from_addr(ptr, addr_from_index(ptr, i)) == i,
+{
+    calc! {
+        (==)
+        index_from_addr(ptr, addr_from_index(ptr, i)); {}
+        (((ptr@.addr + i * layout::size_of::<T>()) as usize) - ptr@.addr) as nat / layout::size_of::<T>(); {}
+        i * layout::size_of::<T>() / layout::size_of::<T>(); {
+            broadcast use lemma_div_by_multiple;
+            assume(layout::size_of::<T>() != 0);
+        }
+        i;
+    }
+}
+
+proof fn addr_preserved<T>(ptr: *mut [T], addr: usize)
+    requires
+        ptr@.addr <= addr,
+        (addr - ptr@.addr) as nat % layout::size_of::<T>() == 0,
+    ensures
+        addr_from_index(ptr, index_from_addr(ptr, addr) as nat) == addr,
+{
+    calc! {
+        (==)
+        addr_from_index(ptr, index_from_addr(ptr, addr) as nat); {}
+        (ptr@.addr + ((addr - ptr@.addr) as nat / layout::size_of::<T>()) * layout::size_of::<T>()) as usize; {
+            broadcast use lemma_mul_is_commutative;
+        }
+        (ptr@.addr + layout::size_of::<T>() * ((addr - ptr@.addr) as nat / layout::size_of::<T>())) as usize; {}
+        (ptr@.addr + layout::size_of::<T>() * ((addr - ptr@.addr) as nat / layout::size_of::<T>()) + (addr - ptr@.addr) as nat % layout::size_of::<T>()) as usize; {
+            assume(layout::size_of::<T>() != 0);
+            assert((addr - ptr@.addr) as nat == layout::size_of::<T>() * ((addr - ptr@.addr) as nat / layout::size_of::<T>()) + (addr - ptr@.addr) as nat % layout::size_of::<T>()) by {
+                lemma_fundamental_div_mod((addr - ptr@.addr), layout::size_of::<T>() as int);
+            }
+        }
+        (ptr@.addr + (addr - ptr@.addr) as nat) as usize; {}
+        addr;
+    }
+}    
+
+pub open spec fn slice_ptr_addrs<T>(ptr: *const [T]) -> Set<usize>
     recommends
         ptr@.addr + (ptr@.metadata * layout::size_of::<T>()) <= usize::MAX + 1,
 {
@@ -617,6 +671,44 @@ pub open spec fn range_addrs(start_addr: usize, len: nat, size: nat) -> Set<usiz
     // TODO: Should this be phrased differently? Not sure if it makes sense when size == 0
     // Set::new(|a: usize| exists |i: nat| 0 <= i < len && a == (start_addr + i * size) as usize)
 
+}
+
+pub open spec fn in_range(i: nat, longer: nat) -> bool {
+    0 <= i < longer
+}
+
+pub proof fn subset_len(start_addr: usize, shorter: nat, longer: nat, size: nat)
+    requires
+        start_addr + (shorter * size) <= usize::MAX + 1,
+        start_addr + (longer * size) <= usize::MAX + 1,
+        shorter <= longer,
+    ensures
+        range_addrs(start_addr, shorter, size).subset_of(range_addrs(start_addr, longer, size)),
+{
+    broadcast use group_seq_axioms, group_set_properties, group_set_lib_default;
+    broadcast use crate::vstd::group_vstd_default;
+    let fewer_indices = Set::new(|i: nat| 0 <= i < shorter);
+    let more_indices = Set::new(|i: nat| 0 <= i < longer);
+    let smaller = range_addrs(start_addr, shorter, size);
+    let bigger = range_addrs(start_addr, longer, size);
+    assert(smaller == fewer_indices.map(|i: nat| (start_addr + i * size) as usize));
+    assert(bigger == more_indices.map(|i: nat| (start_addr + i * size) as usize));
+    assert(forall |i| fewer_indices.contains(i) ==> 0 <= i < shorter);
+    assert(forall |i: nat| 0 <= i < shorter ==> in_range(i, longer));
+    assert(forall |i| in_range(i, longer) ==> more_indices.contains(i));
+    assert(fewer_indices.subset_of(more_indices));
+    // If one set is a subset of the other set, and you apply the same mapping function, the resulting set will be a subset of the other set. 
+    subset_map(fewer_indices, more_indices, |i: nat| (start_addr + i * size) as usize);
+}
+
+pub proof fn subset_map<A, B>(s1: Set<A>, s2: Set<A>, f: spec_fn(A) -> B)
+    requires
+        s1.subset_of(s2),
+    ensures
+        s1.map(f).subset_of(s2.map(f)),
+{
+    broadcast use crate::vstd::group_vstd_default;
+    broadcast use group_seq_axioms, group_set_properties, group_set_lib_default;
 }
 
 impl<T> MapPointsTo<T> {
@@ -722,7 +814,7 @@ impl<T> MapPointsTo<T> {
             begin + len <= old(self).ptr()@.metadata,
             old(self).ptr()@.addr + begin * layout::size_of::<T>() <= usize::MAX,
             old(self).ptr()@.addr + (begin + len) * layout::size_of::<T>() <= usize::MAX + 1,
-            0 < len,
+            // 0 < len,
             // Should we also require size_of::<T>() > 0?
             range_addrs(
                 addr_from_index(old(self).ptr(), begin),
@@ -1496,7 +1588,7 @@ impl<V> MapPointsTo<V> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                self.ptr().addr() + size_of::<V>() * self.ptr()@.metadata,
+                size_of::<V>() * self.ptr()@.metadata,
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -1513,7 +1605,7 @@ impl<V> MapPointsTo<V> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                self.ptr().addr() + size_of::<V>() * self.ptr()@.metadata,
+                size_of::<V>() * self.ptr()@.metadata,
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
