@@ -692,16 +692,16 @@ fn output_invariant(
                 quote_spanned! { field_name.span() => self.#field_name }
             };
 
+            let publish_kind = match &sdi.wf_sig.publish {
+                verus_syn::Publish::Default => quote! { open },
+                other => quote! { #other },
+            };
+
             if partial_type.is_atomic_ghost {
                 let v_type = &partial_type.concrete_args[0];
                 let g_type = &partial_type.concrete_args[1];
                 let v_pat = &v_pats[0];
                 let g_pat = &v_pats[1];
-
-                let publish_kind = match &sdi.wf_sig.publish {
-                    verus_syn::Publish::Default => quote! { open },
-                    other => quote! { #other },
-                };
 
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
@@ -721,11 +721,6 @@ fn output_invariant(
             } else {
                 let v_type = maybe_tuple(&partial_type.concrete_args);
                 let v_pat = maybe_tuple(&v_pats);
-
-                let publish_kind = match &sdi.wf_sig.publish {
-                    verus_syn::Publish::Default => quote! { open },
-                    other => quote! { #other },
-                };
 
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
