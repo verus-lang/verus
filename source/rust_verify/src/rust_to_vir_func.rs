@@ -1361,6 +1361,7 @@ pub(crate) fn check_item_fn<'tcx>(
             }
             vir_mut_params
                 .push((vir_param.clone(), is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
+
             // TODO(new_mut_ref): resolve_inference expects no shadowing
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
@@ -1383,7 +1384,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 span,
                 vir::ast::StmtX::Decl {
                     pattern: new_binding_pat,
-                    mode: Some(mode),
+                    mode: Some((mode, vir::ast::DeclProph::Default)),
                     init: Some(new_init_expr),
                     els: None,
                 },

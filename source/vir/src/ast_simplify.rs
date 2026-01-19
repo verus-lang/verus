@@ -102,12 +102,8 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let temp = state.next_temp();
     let name = temp.clone();
     let pattern = PatternX::simple_var(name, &expr.span, &expr.typ);
-    let decl = StmtX::Decl {
-        pattern,
-        mode: Some(Mode::Exec),
-        init: Some(PlaceX::spec_temporary(expr.clone())),
-        els: None,
-    };
+    let decl =
+        StmtX::Decl { pattern, mode: None, init: Some(PlaceX::spec_temporary(expr.clone())), els: None };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, temp)
 }
@@ -150,7 +146,7 @@ fn pattern_to_exprs(
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Exec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
@@ -264,7 +260,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                 pattern.span.clone(),
                 StmtX::Decl {
                     pattern: v_pattern,
-                    mode: Some(Mode::Exec), // mode doesn't matter anymore
+                    mode: None, // mode doesn't matter anymore
                     init: None,
                     els: None,
                 },
@@ -933,7 +929,7 @@ fn exec_closure_spec_requires(
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Spec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };
@@ -996,7 +992,7 @@ fn exec_closure_spec_ensures(
         let tuple_field = tuple_get_field_expr(state, span, typ, &tuple_var, params.len(), i);
         let decl = StmtX::Decl {
             pattern,
-            mode: Some(Mode::Spec),
+            mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };

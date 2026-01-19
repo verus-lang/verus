@@ -3192,7 +3192,9 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let mode = get_var_mode(bctx.mode, attrs);
-    let infer_mode = parse_attrs_opt(attrs, None).contains(&Attr::InferMode);
+    let parsed_attrs = parse_attrs_opt(attrs, None);
+    let infer_mode = parsed_attrs.contains(&Attr::InferMode);
+    let prophetic = parsed_attrs.contains(&Attr::Prophetic);
     let els = if let Some(els) = els {
         if matches!(mode, Mode::Spec | Mode::Proof) {
             unsupported_err!(els.span, "let-else in spec/proof", els);
@@ -3210,9 +3212,9 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
         None => None,
     };
 
-    if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
-        .contains(&Attr::UnwrappedBinding)
-    {
+    let unwrapped_binding = parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
+        .contains(&Attr::UnwrappedBinding);
+    if unwrapped_binding {
         let pat_typ = &bctx.types.node_type(pattern.hir_id);
         if let TyKind::Adt(AdtDef(adt_def_data), _args) = pat_typ.kind() {
             let pat_typ_verus_item = bctx.ctxt.verus_items.id_to_name.get(&adt_def_data.did);
@@ -3236,8 +3238,24 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
         }
     }
 
+    if infer_mode && prophetic {
+        crate::internal_err!(pattern.span, "decl is marked infer_mode and prophetic");
+    }
+
+    let proph_mode = if prophetic {
+        vir::ast::DeclProph::Prophetic
+    } else if parsed_attrs.contains(&Attr::InferProph) {
+        if mode == Mode::Spec {
+            vir::ast::DeclProph::DelayedInfer
+        } else {
+            vir::ast::DeclProph::Default
+        }
+    } else {
+        vir::ast::DeclProph::Default
+    };
+
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
-    let mode = if infer_mode { None } else { Some(mode) };
+    let mode = if infer_mode { None } else { Some((mode, proph_mode)) };
     Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init, els })])
 }
 
