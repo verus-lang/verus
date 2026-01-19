@@ -16,6 +16,7 @@ mod map;
 pub use map::*;
 mod set;
 pub use set::*;
+pub use crate::multiset::*;
 
 verus! {
 

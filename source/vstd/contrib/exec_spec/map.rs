@@ -83,6 +83,7 @@ pub trait ExecSpecMapEmpty: Sized {
 }
 
 /// Spec for executable version of [`Map`] indexing.
+/// todo(nneamtu): this only works for primtive key types right now
 pub trait ExecSpecMapIndex<'a>: Sized + DeepView<V = Map<<Self::Key as DeepView>::V, <Self::Value as DeepView>::V>> {
     type Key: DeepView;
     type Value: DeepView;
@@ -115,7 +116,13 @@ pub trait ExecSpecMapDom<'a>: Sized + DeepView  {
     fn exec_dom(self) -> HashSet<Self::Key>;
 }
 
+/// Spec for executable version of [`Set::get`].
+pub trait ExecSpecMapGet<'a>: Sized + DeepView {
+    type Key: DeepView + DeepViewClone;
+    type Value: DeepView + DeepViewClone;
 
+    fn exec_get(self, k: Self::Key) -> Option<Self::Value>;
+}
 
 /// Impls for executable versions of Map methods
 
@@ -195,6 +202,26 @@ impl<'a, K, V> ExecSpecMapDom<'a> for &'a HashMap<K, V>
             m.insert(key.deep_clone());
         }
         m
+    }
+}
+
+impl<'a, K, V> ExecSpecMapGet<'a> for &'a HashMap<K, V> 
+    where K: DeepView + DeepViewClone + std::hash::Hash + std::cmp::Eq, V: DeepView + DeepViewClone
+{
+    type Key = K;
+    type Value = V;
+
+    #[verifier::external_body]
+    #[inline(always)]
+    fn exec_get(self, k: Self::Key) -> (res: Option<Self::Value>)
+        ensures
+            match (res, self.deep_view().get(k.deep_view())) {
+                (Some(v1), Some(v2)) => v1.deep_view() == v2,
+                (None, None) => true,
+                (_, _) => false,
+            }
+    {
+        self.get(&k).map(|v| v.deep_clone())
     }
 }
 }

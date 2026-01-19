@@ -354,8 +354,8 @@ impl<'a, T: DeepView> ExecSpecSeqIsSuffixOf<'a> for &'a [T] where &'a T: ExecSpe
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqContains<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Elem = &'a T;
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqContains<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Elem = T;
 
     #[verifier::external_body]
     #[inline(always)]
@@ -363,17 +363,13 @@ impl<'a, T: DeepView> ExecSpecSeqContains<'a> for &'a [T] where &'a T: ExecSpecE
         ensures
             res == self.deep_view().contains(needle.deep_view()),
     {
-        for i in 0..self.exec_len() {
-            if <&T>::exec_eq(&self[i], &needle) {
-                return true;
-            }
-        }
-        false
+        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
+        self.contains(&needle)
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Elem = &'a T;
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Elem = T;
 
     #[verifier::external_body]
     #[inline(always)]
@@ -381,8 +377,9 @@ impl<'a, T: DeepView> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T: ExecSpecEq
         ensures
             0 <= res < self.len() ==> res as int == self.deep_view().index_of(needle.deep_view()),
     {
+        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         for i in 0..self.exec_len() {
-            if <&T>::exec_eq(&self[i], &needle) {
+            if self[i] == needle {
                 return i;
             }
         }
@@ -390,8 +387,8 @@ impl<'a, T: DeepView> ExecSpecSeqIndexOf<'a> for &'a [T] where &'a T: ExecSpecEq
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Elem = &'a T;
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Elem = T;
 
     #[verifier::external_body]
     #[inline(always)]
@@ -402,8 +399,9 @@ impl<'a, T: DeepView> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where &'a T: ExecS
                 None => self.deep_view().index_of_first(needle.deep_view()) == None::<int>,
             },
     {
+        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         for i in 0..self.exec_len() {
-            if <&T>::exec_eq(&self[i], &needle) {
+            if self[i] == needle {
                 return Some(i);
             }
         }
@@ -411,8 +409,8 @@ impl<'a, T: DeepView> ExecSpecSeqIndexOfFirst<'a> for &'a [T] where &'a T: ExecS
     }
 }
 
-impl<'a, T: DeepView> ExecSpecSeqIndexOfLast<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Elem = &'a T;
+impl<'a, T: DeepView + PartialEq> ExecSpecSeqIndexOfLast<'a> for &'a [T] where &'a T: ExecSpecEq<'a, Other = &'a T> {
+    type Elem = T;
 
     #[verifier::external_body]
     #[inline(always)]
@@ -423,8 +421,9 @@ impl<'a, T: DeepView> ExecSpecSeqIndexOfLast<'a> for &'a [T] where &'a T: ExecSp
                 None => self.deep_view().index_of_last(needle.deep_view()) == None::<int>,
             },
     {
+        // todo(nneamtu): should this use <&T>::exec_eq to do the equality check instead?
         for i in (0..self.exec_len()).rev() {
-            if <&T>::exec_eq(&self[i], &needle) {
+            if self[i] == needle {
                 return Some(i);
             }
         }

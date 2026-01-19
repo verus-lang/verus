@@ -2063,6 +2063,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                     }
                 }
                 
+            },
+            // skip compilation of proof blocks
+            // todo(nneamtu) - is this the best approach?
+            UnOp::Proof(..) => {
+                return Ok(TokenStream2::new())
             }
             _ => return Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
         },
@@ -2298,8 +2303,18 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
-                    VarMode::Ref => quote! { #receiver.exec_contains(&#arg) },
-                    VarMode::Owned => quote! { #receiver.exec_contains(&#arg) },
+                    VarMode::Ref => quote! { #receiver.exec_contains(#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_contains(#arg) },
+                }
+            },
+
+            "get" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+                let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_get(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_get(#arg).get_ref().get_owned() },
                 }
             },
 
@@ -2308,8 +2323,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
-                    VarMode::Ref => quote! { #receiver.exec_index_of(&#arg) },
-                    VarMode::Owned => quote! { #receiver.exec_index_of(&#arg) },
+                    VarMode::Ref => quote! { #receiver.exec_index_of(#arg) },
+                    VarMode::Owned => quote! { #receiver.exec_index_of(#arg) },
                 }
             },
 
@@ -2318,8 +2333,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
-                    VarMode::Ref => quote! { #receiver.exec_index_of_first(&#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_index_of_first(&#arg).get_ref().get_owned() },
+                    VarMode::Ref => quote! { #receiver.exec_index_of_first(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_index_of_first(#arg).get_ref().get_owned() },
                 }
             },
 
@@ -2328,8 +2343,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 let arg = compile_expr(ctx, &expr_method_call.args.first().unwrap(), VarMode::Owned, trusted)?;
 
                 match mode {
-                    VarMode::Ref => quote! { #receiver.exec_index_of_last(&#arg).get_ref() },
-                    VarMode::Owned => quote! { #receiver.exec_index_of_last(&#arg).get_ref().get_owned() },
+                    VarMode::Ref => quote! { #receiver.exec_index_of_last(#arg).get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_index_of_last(#arg).get_ref().get_owned() },
                 }
             },
 

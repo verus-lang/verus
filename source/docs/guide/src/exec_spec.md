@@ -64,12 +64,20 @@ Currently, `exec_spec!` supports these basic features:
   - Field expressions
   - Spec function calls and recursion
   - Bounded quantifiers of the form `forall |i| <lower> <= i < <upper> ==> <expr>` and `exists |i| <lower> <= i < <upper> && <expr>`
-  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), indexing, len, `seq!` literals
+  - `Seq<T>` (compiled to `Vec<T>` or `&[T]` depending on the context), indexing, len, `seq!` literals.
   - `SpecString` (an alias to `Seq<char>` to syntactically indicate that we want `String`/`&str`), indexing, len, string literals
   - `Option<T>`
   - User-defined structs and enums. These types should be defined within the macro using spec-compatible types for the fields (e.g. `Seq`). Such types are then compiled to their `Exec-` versions, which use the exec versions of each field's type (e.g. `Vec`/slice).
   - Primitive integer/boolean types (`i<N>`, `isize`, `u<N>`, `usize`, `char`, etc.). Note that `int` and `nat` cannot be used in `exec_spec!` or `exec_spec_trusted!`.
   - Equality between Seq, String, and arithmetic types
+
+Note: when performing indexing on a `Seq`, the compilation process expects a `usize` which is cast to an `int`. E.g.,
+```
+pub open spec fn my_index(s: Seq<u8>, i: usize) -> u8 {
+    s[i as int]
+}
+```
+Using a type other than `usize` for the index value will result in type errors.
 
 ## The `exec_spec_trusted!` macro
 
@@ -101,8 +109,9 @@ The `exec_spec_trusted!` macro supports all of the same features of Verus as `ex
     - `<typeI>` is a Rust primitive integer (`i<N>`, `isize`, `u<N>`, `usize`) or `char`. Note that `char` is not supported by `exec_spec!` within quantifiers.
   - `Seq<T>` functions/methods:
     - equality, `len`, indexing, `subrange`, `add`, `push`, `update`, `empty`, `new`, `to_multiset`, `drop_first`, `drop_last`, `take`, `skip`, `first`, `last`, `is_suffix_of`, `is_prefix_of`, `contains`, `index_of`, `index_of_first`, `index_of_last`
-  - `Map<T>` (compiled to `HashMap<T>`), and these functions/methods:
-    - equality, `len`, indexing, `empty`, `dom`, `insert`, `remove`
+  - `Map<K, V>` (compiled to `HashMap<K, V>`), and these functions/methods:
+    - equality, `len`, indexing, `empty`, `dom`, `insert`, `remove`, `get`
+    - Note: indexing is only supported on `Map<K, V>` where `K` is a primitive type (e.g. `usize`); for other types `K`, use `get` instead.
   - `Set<T>` (compiled to `HashSet<T>`), and these functions/methods:
     - equality, `len`, `empty`, `contains`, `insert`, `remove`, `union`, `intersect`, `difference`
   - `Multiset<T>` (compiled to `ExecMultiset<T>`, a type implemented in `vstd::contrib::exec_spec` whose internal representation is a `HashMap`), and these functions/methods: 
