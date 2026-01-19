@@ -995,7 +995,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Special binary operation
     BinaryOpr(BinaryOpr, Expr, Expr),
-    /// Primitive multi-operand operation
+    /// Primitive multi-operand operation.
+    /// No short-circuiting: all expressions are evaluated unconditionally, and in order.
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, VarBinders<Typ>, Expr),

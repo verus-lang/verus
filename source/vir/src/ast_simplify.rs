@@ -86,9 +86,11 @@ struct LocalCtxt {
     typ_params: Vec<Ident>,
 }
 
+/// Should only return true if this expression is guaranteed constant
+/// (i.e., does not depend on evaluation order, i.e., does not depend on any mutable variable)
 fn is_small_expr(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
+        ExprX::Const(_) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExprX::Loc(_) => panic!("expr is a location"),
@@ -557,14 +559,11 @@ fn simplify_one_expr(
             assert!(args.len() == ops.len() + 1);
             let mut stmts: Vec<Stmt> = Vec::new();
             let mut es: Vec<Expr> = Vec::new();
+            // Execute each argument in order; no short-circuiting
             for i in 0..args.len() {
-                if i == 0 || i == args.len() - 1 {
-                    es.push(args[i].clone());
-                } else {
-                    let (decls, e) = small_or_temp(state, &args[i]);
-                    stmts.extend(decls);
-                    es.push(e);
-                }
+                let (decl, e) = temp_expr(state, &args[i]);
+                stmts.push(decl);
+                es.push(e);
             }
             let mut conjunction: Expr = es[0].clone();
             for i in 0..ops.len() {
