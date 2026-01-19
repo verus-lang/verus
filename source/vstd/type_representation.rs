@@ -11,6 +11,32 @@ use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
 
+//! This module defines (i.e., axiomatizes) the byte-level encoding for primitive types (integers, boolean, raw pointers),
+//! as well as encodings for structs and enums derived from these primitive encodings.
+//!
+//! The uninterpreted functions `abs_encode`, `abs_decode`, and `can_be_encoded` define the encoding, decoding, 
+//! and validity of transumute operations for a given type. This encoding is to the `AbstractByte` type, which encodes
+//! a byte value as well as an optional `Provenance` for initialized memory. These functions are unspecified for a given type 
+//! unless they are explicitly implemented (see below).
+//!
+//! The `AbstractEncoding` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, 
+//! and `can_be_encoded` for that type. This trait is used to ensure that the encoding axioms satisfy certain validity
+//! properties, e.g. that the resulting encoding is the correct length for the value/type, and that a value's encoding
+//! can be decoded back to the same value (see: https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties).
+//! `AbstractEncoding` is implemented here for primitive integers (e.g., `u8`, `isize`), `bool`, `()`, and raw pointers.
+//! `AbstractEncodingUnsized` is a version of this trait for unsized types.
+//!
+//! The `PrimitiveRepresentation`, `TransparentRepresentation`, and `ScalarRangeRepresentation` traits are used to help
+//! implement `AbstractEncoding` for enums or structs with primitive, transparent, or scalar range representations.
+//! (See: https://doc.rust-lang.org/reference/type-layout.html for more about primitive and transparent representations.
+//! For scalar range representations, see the non-zero niche types for an example: https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html.)
+//!
+//! The `TypeRepresentation` trait is used to make intermediate definitions. It is essentially the same as `AbstractEncoding`,
+//! except that it does not include axioms tying the definitions to `abs_encode`, `abs_decode`, and `can_be_encoded`.
+//! This is useful for when many types may share the same underlying encoding, e.g. zero-sized types or `*const` and `*mut` pointers.
+//! The encoding is defined once on a `TypeRepresentation`, and then `AbstractEncoding` is derived from the `TypeRepresentation`
+//! for each of the relevant types (see: the `encoding_from_type_representation!` macro).
+
 verus! {
 
 // https://github.com/minirust/minirust/blob/master/spec/mem/interface.md#abstract-bytes
@@ -774,6 +800,8 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
 /// The encoding is defined for `T: ?Sized`, and can be used to conditionally implement the encoding for raw pointers.
 /// The condition is whether a suitable encoding has been implemented for the pointer's metadata type `<T as core::ptr::Pointee>::Metadata` (see: [Pointee::Metadata](https://doc.rust-lang.org/1.88.0/core/ptr/trait.Pointee.html#pointer-metadata)).
 /// This is defined as `ptr_metadata_encoding_well_defined::<T>()`.
+///
+/// *Note:* This encoding assumes that the pointer address is encoded first, followed by the pointer metadata. This is, to our knowledge, not a stable assumption.
 ///
 /// The encoding for raw pointers is divided into two parts:
 ///
