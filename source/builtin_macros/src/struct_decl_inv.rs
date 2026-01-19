@@ -721,12 +721,12 @@ fn output_invariant(
             } else {
                 let v_type = maybe_tuple(&partial_type.concrete_args);
                 let v_pat = maybe_tuple(&v_pats);
-                
+
                 let publish_kind = match &sdi.wf_sig.publish {
                     verus_syn::Publish::Default => quote! { open },
                     other => quote! { #other },
                 };
-                
+
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
                     impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {

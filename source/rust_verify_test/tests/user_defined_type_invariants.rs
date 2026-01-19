@@ -2095,7 +2095,7 @@ test_verify_one_file! {
 
         struct_with_invariants!{
             pub struct S {
-                x: AtomicUsize<_,(),_>,   
+                x: AtomicUsize<_,(),_>,
             }
 
             closed spec fn wf(self) -> bool {
