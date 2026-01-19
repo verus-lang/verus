@@ -748,7 +748,7 @@ test_verify_one_file_with_options! {
         axiom fn new_x() -> (tracked x: X);
         axiom fn new_x_gho() -> (x: X);
 
-        fn test<X>(tracked x1: X, tracked x2: X) {
+        fn test<X>() {
             let mut j = (Tracked(new_x()), Ghost(new_x_gho()));
 
             proof { let y = *j.1.borrow_mut(); }
@@ -756,7 +756,7 @@ test_verify_one_file_with_options! {
             assert(has_resolved(j));
         }
 
-        fn test2<X>(tracked x1: X, tracked x2: X) {
+        fn test2<X>() {
             let mut j = (Tracked(new_x()), Ghost(new_x_gho()));
 
             // This is an ownership error ("cannot move out of a mutable reference"),
