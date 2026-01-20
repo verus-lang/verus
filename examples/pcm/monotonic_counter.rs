@@ -56,11 +56,11 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource::copy_duplicable_part;
+use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
 use vstd::resource::Loc;
-use vstd::resource::Resource;
 
 verus! {
 
@@ -91,8 +91,8 @@ impl PCM for MonotonicCounterResourceValue {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
             // Two lower bounds can be combined into a lower bound
             // that's the maximum of the two lower bounds.
             (
@@ -164,7 +164,7 @@ impl PCM for MonotonicCounterResourceValue {
         MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -173,7 +173,7 @@ impl PCM for MonotonicCounterResourceValue {
     proof fn associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -223,7 +223,7 @@ impl MonotonicCounterResource {
             self@.n() == other@.n(),
         ensures
             r.id() == self.id(),
-            r@.n() == self@.op(other@).n(),
+            r@.n() == MonotonicCounterResourceValue::op(self@, other@).n(),
     {
         let tracked mut r = self.r.join(other.r);
         Self { r }
