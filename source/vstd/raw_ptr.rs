@@ -349,8 +349,8 @@ impl<T> PointsTo<[T]> {
     /// the corresponding index in the sequence holds that value.
     /// Otherwise, the value at that index is meaningless.
     // #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T> 
-        recommends 
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
             self.is_init(),
     {
         Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
@@ -545,6 +545,12 @@ impl<T> MemContents<T> {
 // Pointers are equivalent to their model
 /// Constructs a pointer from its underlying model.
 pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData<T>) -> *mut T;
+
+/// Constructs a tracked pointer from the underlying data. This is safe because the pointer itself does contain store any tracked data.
+pub axiom fn tracked_ptr_mut_from_data<T: ?Sized>(data: PtrData<T>) -> (tracked out: *mut T)
+    ensures
+        out == ptr_mut_from_data::<T>(data),
+;
 
 /// Constructs a pointer from its underlying model.
 /// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),

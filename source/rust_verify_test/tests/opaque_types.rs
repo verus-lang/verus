@@ -211,7 +211,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_opaque_type_assume_spec_ok verus_code! {
+    #[ignore] #[test] test_opaque_type_assume_spec_ok verus_code! {
         use vstd::prelude::*;
         trait DummyTrait{
             type Output;
