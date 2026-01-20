@@ -440,6 +440,12 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_expand_errors = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-expand-errors")
+        .map(|p| args.remove(p))
+        .is_some();
+
     let vstd_no_verusfmt = args
         .iter()
         .position(|x| x.as_str() == "--vstd-no-verusfmt")
@@ -1383,6 +1389,9 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                         }
                         if vstd_no_lifetime {
                             vstd_build = vstd_build.arg("--no-lifetime");
+                        }
+                        if vstd_expand_errors {
+                            vstd_build = vstd_build.arg("--expand-errors");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");
