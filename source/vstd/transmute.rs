@@ -36,7 +36,7 @@ pub open spec fn transmute_pre_unsized<T: ?Sized, U: ?Sized>(src: &T, dst: Track
     &&& abs_can_be_encoded::<T>()
 }
 
-pub broadcast proof fn abs_encode_impl<T: AbstractEncoding>(v: T, b: Seq<AbstractByte>)
+pub broadcast proof fn abs_encode_impl<T: AbstractByteRepresentation>(v: T, b: Seq<AbstractByte>)
     requires
         T::can_be_encoded(),
     ensures
@@ -47,19 +47,19 @@ pub broadcast proof fn abs_encode_impl<T: AbstractEncoding>(v: T, b: Seq<Abstrac
         abs_encode::<T>(&v, b) <==> T::encode(v, b),
         abs_decode::<T>(b, &v) <==> T::decode(b, v),
 {
-    <T as AbstractEncoding>::abs_encode_impl(v, b);
+    <T as AbstractByteRepresentation>::abs_encode_impl(v, b);
 }
 
-pub broadcast proof fn abs_can_be_encoded_impl<T: AbstractEncoding>()
+pub broadcast proof fn abs_can_be_encoded_impl<T: AbstractByteRepresentation>()
     requires
         T::can_be_encoded(),
     ensures
         #[trigger] abs_can_be_encoded::<T>(),
 {
-    <T as AbstractEncoding>::abs_can_be_encoded_impl();
+    <T as AbstractByteRepresentation>::abs_can_be_encoded_impl();
 }
 
-pub broadcast proof fn abs_encode_impl_unsized<T: ?Sized, EncodingT: AbstractEncodingUnsized<T>>(
+pub broadcast proof fn abs_encode_impl_unsized<T: ?Sized, EncodingT: AbstractByteRepresentationUnsized<T>>(
     v: &T,
     b: Seq<AbstractByte>,
 )
@@ -74,7 +74,7 @@ pub broadcast proof fn abs_encode_impl_unsized<T: ?Sized, EncodingT: AbstractEnc
     EncodingT::abs_encode_impl(v, b);
 }
 
-pub proof fn abs_can_be_encoded_impl_unsized<T: ?Sized, EncodingT: AbstractEncodingUnsized<T>>()
+pub proof fn abs_can_be_encoded_impl_unsized<T: ?Sized, EncodingT: AbstractByteRepresentationUnsized<T>>()
     requires
         EncodingT::can_be_encoded(),
     ensures
@@ -107,7 +107,7 @@ macro_rules! transmute_refl_unique_lemma {
                 broadcast use group_transmute_axioms;
 
                 assert forall|bytes| abs_encode::<$typ>(&x, bytes) implies abs_decode::<$typ>(bytes, &(y@)) by {
-                    <$typ as AbstractEncoding>::encoding_invertible(x, bytes);
+                    <$typ as AbstractByteRepresentation>::encoding_invertible(x, bytes);
                 }
             }
 
@@ -120,7 +120,7 @@ macro_rules! transmute_refl_unique_lemma {
             {
                 broadcast use group_transmute_axioms;
 
-                let bytes = <$typ as AbstractEncoding>::encoding_exists(&x);
+                let bytes = <$typ as AbstractByteRepresentation>::encoding_exists(&x);
             }
         }
     )+};
@@ -156,7 +156,7 @@ pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: Tracke
         bytes,
         &(y@),
     ) by {
-        <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
+        <*mut T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
@@ -169,7 +169,7 @@ pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: Trac
 {
     broadcast use group_transmute_axioms;
 
-    let bytes = <*mut T as AbstractEncoding>::encoding_exists(&x);
+    let bytes = <*mut T as AbstractByteRepresentation>::encoding_exists(&x);
 }
 
 /// A value `x: *const T` for `T: Sized` can be transmuted to itself.
@@ -185,7 +185,7 @@ pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: Tr
         bytes,
         &(y@),
     ) by {
-        <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
+        <*const T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
@@ -198,7 +198,7 @@ pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: 
 {
     broadcast use group_transmute_axioms;
 
-    let bytes = <*const T as AbstractEncoding>::encoding_exists(&x);
+    let bytes = <*const T as AbstractByteRepresentation>::encoding_exists(&x);
 }
 
 // we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
@@ -216,7 +216,7 @@ pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tra
         bytes,
         &(y@),
     ) by {
-        <*mut T as AbstractEncoding>::encoding_invertible(x, bytes);
+        <*mut T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
@@ -234,7 +234,7 @@ pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y:
         bytes,
         &(y@),
     ) by {
-        <*const T as AbstractEncoding>::encoding_invertible(x, bytes);
+        <*const T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
@@ -263,9 +263,9 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (dst: Trac
     Tracked(dst)
 }
 
-impl<T: AbstractEncoding> PointsTo<T> {
+impl<T: AbstractByteRepresentation> PointsTo<T> {
     // TODO: version for nondeterministic targets
-    pub axiom fn transmute_shared<'a, U: AbstractEncoding>(
+    pub axiom fn transmute_shared<'a, U: AbstractByteRepresentation>(
         tracked &'a self,
         tracked target: Tracked<U>,
     ) -> (tracked ret: &'a PointsTo<U>)
