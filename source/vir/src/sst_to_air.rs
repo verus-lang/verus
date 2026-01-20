@@ -775,6 +775,7 @@ pub(crate) enum ExprMode {
     Spec,
     Body,
     BodyPre,
+    BodyPost,
 }
 
 #[derive(Debug, Clone)]
@@ -873,11 +874,19 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::Var(x) => match expr_ctxt.mode {
+            ExprMode::Spec | ExprMode::Body | ExprMode::BodyPre => {
+                string_var(&suffix_local_unique_id(x)),
+            }
+            ExprMode::BodyPost => {
+                // In the postcondition, a variable is always interpreted as its pre-state
+                // *Except* for old-style mutable references
+            }
+        }
         ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
             ExprMode::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
-            ExprMode::Body => {
+            ExprMode::Body | ExprMode::BodyPost => {
                 Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
@@ -3089,7 +3098,7 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
-        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyBody);
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
@@ -3098,7 +3107,7 @@ pub(crate) fn body_stm_to_air(
         UnwindSst::MayUnwind => UnwindAir::MayUnwind,
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
         UnwindSst::NoUnwindWhen(exp) => {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPost);
             let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
             UnwindAir::NoUnwindWhen(e)
         }
