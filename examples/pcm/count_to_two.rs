@@ -10,6 +10,7 @@ use std::sync::Arc;
 use vstd::atomic::*;
 use vstd::atomic_ghost::*;
 use vstd::invariant::*;
+use vstd::resource::Loc;
 
 verus! {
 
@@ -40,8 +41,8 @@ pub struct CounterTrackedState {
 // `oneshot1_id` -- the ID of thread 1's one-shot
 pub struct CounterInvariantConstants {
     pub x_id: int,
-    pub oneshot0_id: int,
-    pub oneshot1_id: int,
+    pub oneshot0_id: Loc,
+    pub oneshot1_id: Loc,
 }
 
 // This is the invariant predicate that will be maintained for the
@@ -99,7 +100,7 @@ impl CounterSharedState {
 
     // This function gets, from the shared state's constants, the ID
     // of the one-shot associated with the given thread.
-    pub open spec fn get_oneshot_id(self, which_thread: int) -> int
+    pub open spec fn get_oneshot_id(self, which_thread: int) -> Loc
         recommends
             which_thread == 0 || which_thread == 1,
     {
