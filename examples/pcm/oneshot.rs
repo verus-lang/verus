@@ -68,11 +68,11 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
 use vstd::resource::update_mut;
 use vstd::resource::Loc;
-use vstd::resource::Resource;
 
 verus! {
 
@@ -102,10 +102,10 @@ impl PCM for OneShotResourceValue {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
-            (OneShotResourceValue::Empty, _) => other,
-            (_, OneShotResourceValue::Empty) => self,
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (OneShotResourceValue::Empty, _) => b,
+            (_, OneShotResourceValue::Empty) => a,
             (
                 OneShotResourceValue::HalfRightToComplete,
                 OneShotResourceValue::HalfRightToComplete,
@@ -122,7 +122,7 @@ impl PCM for OneShotResourceValue {
         OneShotResourceValue::Empty {  }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -131,7 +131,7 @@ impl PCM for OneShotResourceValue {
     proof fn associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
