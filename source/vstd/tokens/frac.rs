@@ -1,6 +1,8 @@
 use super::super::modes::*;
-use super::super::pcm::*;
 use super::super::prelude::*;
+use super::super::resource::Loc;
+use super::super::resource::Resource;
+use super::super::resource::pcm::PCM;
 use super::super::storage_protocol::*;
 use super::*;
 
