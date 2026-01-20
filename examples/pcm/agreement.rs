@@ -30,12 +30,14 @@
 //! assert(r2@ == r1@);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource;
+use vstd::resource::pcm::PCM;
+use vstd::resource::Loc;
+use vstd::resource::Resource;
 
 verus! {
 
@@ -134,7 +136,7 @@ impl<T> AgreementResource<T> {
             self@ == result@,
             self@ == old(self)@,
     {
-        let tracked r = duplicate(&self.r);
+        let tracked r = resource::duplicate(&self.r);
         AgreementResource::<T> { r }
     }
 

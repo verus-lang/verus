@@ -63,12 +63,16 @@
 //! assert(knowledge@ is Complete);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
+use vstd::resource::Resource;
 
 verus! {
 
@@ -239,7 +243,7 @@ impl OneShotResource {
             other.id() == self.id(),
             other@ is Complete,
     {
-        let tracked r = duplicate(&self.r);
+        let tracked r = resource::duplicate(&self.r);
         Self { r }
     }
 

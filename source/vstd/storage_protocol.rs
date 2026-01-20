@@ -1,5 +1,5 @@
-use super::pcm::Loc;
 use super::prelude::*;
+use super::resource::Loc;
 
 verus! {
 
@@ -7,7 +7,7 @@ broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
-/// of "PCM" ghost state, which we also have an interface for [here](crate::pcm::Resource).
+/// of "PCM" ghost state, which we also have an interface for [here](crate::resource::Resource).
 /// The unique feature of a storage protocol is the ability to use [`guard`](StorageResource::guard)
 /// to manipulate _shared_ references of ghost state.
 ///
@@ -39,7 +39,7 @@ pub tracked struct StorageResource<K, V, P> {
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
 
-    /// Note that `rel`, in contrast to [`PCM::valid`](crate::pcm::PCM::valid), is not
+    /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::pcm::PCM::valid), is not
     /// necessarily closed under inclusion.
     spec fn rel(self, s: Map<K, V>) -> bool;
 

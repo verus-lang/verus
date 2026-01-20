@@ -44,12 +44,16 @@
 //! assert(half_auth2@ == half_auth1@);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource::copy_duplicable_part;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
+use vstd::resource::Resource;
 
 verus! {
 
