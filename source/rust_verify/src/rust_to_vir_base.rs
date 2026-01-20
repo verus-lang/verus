@@ -1362,7 +1362,27 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
     }
 }
 
-pub(crate) fn typ_of_node<'tcx>(
+pub(crate) fn typ_of_expr_adjusted<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    id: &HirId,
+    allow_mut_ref: bool,
+) -> Result<Typ, VirErr> {
+    let rustc_hir::Node::Expr(e) = bctx.ctxt.tcx.hir_node(*id) else {
+        panic!("typ_of_expr_adjusted expected Expr");
+    };
+    mid_ty_to_vir(
+        bctx.ctxt.tcx,
+        &bctx.ctxt.verus_items,
+        None,
+        bctx.fun_id,
+        span,
+        &bctx.types.expr_ty_adjusted(e),
+        allow_mut_ref,
+    )
+}
+
+pub(crate) fn typ_of_node_unadjusted<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id: &HirId,
@@ -1379,7 +1399,7 @@ pub(crate) fn typ_of_node<'tcx>(
     )
 }
 
-pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
+pub(crate) fn typ_of_node_unadjusted_expect_mut_ref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id: &HirId,
@@ -1425,7 +1445,10 @@ pub(crate) fn is_smt_equality<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span, id1, false)?, typ_of_node(bctx, span, id2, false)?);
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span, id1, false)?,
+        typ_of_expr_adjusted(bctx, span, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
@@ -1450,7 +1473,10 @@ pub(crate) fn is_smt_arith<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span1, id1, false)?, typ_of_node(bctx, span2, id2, false)?);
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span1, id1, false)?,
+        typ_of_expr_adjusted(bctx, span2, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
