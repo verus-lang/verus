@@ -61,13 +61,11 @@ impl InvariantPredicate<
         // For each thread's one-shot, the invariant holds a resource that's either
         // (1) half authority to complete that one-shot or (2) knowledge that that
         // one-shot is complete.
-
         &&& cts.oneshot0_inv_half@ is HalfRightToComplete || cts.oneshot0_inv_half@ is Complete
         &&& cts.oneshot1_inv_half@ is HalfRightToComplete
             || cts.oneshot1_inv_half@ is Complete
         // The key invariant is that the value of `x` is the count
         // of how many threads' one-shots have completed.
-
         &&& cts.x_perm@.value == (if cts.oneshot0_inv_half@ is Complete {
             1int
         } else {
@@ -291,9 +289,9 @@ pub fn count_to_two() -> (result: Result<u32, ()>)
             ensures
                 return_value@.id() == shared_state.get_oneshot_id(0),
                 return_value@@ is Complete,
-            {
-                thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0))
-            }
+        // WARNING: we cannot run verusfmt on this file -- it thinks that this block is an
+        // expression on ensures, adding a comma and making actual verification parsing fail
+            { thread_routine(shared_state_clone, Tracked(oneshot0_thread_half), Ghost(0)) }
     );
     let shared_state_clone = shared_state.clone();
     let join_handle1 = vstd::thread::spawn(
@@ -301,9 +299,9 @@ pub fn count_to_two() -> (result: Result<u32, ()>)
             ensures
                 return_value@.id() == shared_state.get_oneshot_id(1),
                 return_value@@ is Complete,
-            {
-                thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1))
-            }
+        // WARNING: we cannot run verusfmt on this file -- it thinks that this block is an
+        // expression on ensures, adding a comma and making actual verification parsing fail
+            { thread_routine(shared_state_clone, Tracked(oneshot1_thread_half), Ghost(1)) }
     );
     // Let the threads run in parallel, then join them both when
     // they're done.

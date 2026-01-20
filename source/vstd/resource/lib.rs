@@ -1,13 +1,15 @@
 #![allow(unused_imports)]
-use super::map::*;
-use super::modes::*;
+use super::super::map::*;
+use super::super::modes::*;
+use super::super::prelude::*;
+use super::super::seq::*;
+use super::Loc;
+use super::Resource;
 use super::pcm::*;
-use super::prelude::*;
-use super::seq::*;
 
 verus! {
 
-broadcast use super::group_vstd_default;
+broadcast use super::super::group_vstd_default;
 
 /// Combines a list of values into one value using P::op().
 pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P

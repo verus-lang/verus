@@ -51,12 +51,16 @@
 //! assert(lower_bound_duplicate@.n() == 1);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource::copy_duplicable_part;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
+use vstd::resource::Resource;
 
 verus! {
 
@@ -212,12 +216,11 @@ impl MonotonicCounterResource {
         Self { r }
     }
 
-
     // Join two resources
     pub proof fn join(tracked self: Self, tracked other: Self) -> (tracked r: Self)
         requires
             self.id() == other.id(),
-            self@.n() == other@.n()
+            self@.n() == other@.n(),
         ensures
             r.id() == self.id(),
             r@.n() == self@.op(other@).n(),
@@ -311,7 +314,6 @@ impl MonotonicCounterResource {
             other@ is LowerBound && self@ is FullRightToAdvance ==> other@.n() <= self@.n(),
             self@ is LowerBound && other@ is HalfRightToAdvance ==> self@.n() <= other@.n(),
             other@ is LowerBound && self@ is HalfRightToAdvance ==> other@.n() <= self@.n(),
-
     {
         self.r.validate_2(&other.r)
     }
@@ -344,7 +346,6 @@ fn main() {
     assert(lower_bound@.n() == 1);
     let tracked lower_bound_duplicate = lower_bound.extract_lower_bound();
     assert(lower_bound_duplicate@.n() == 1);
-
 
     proof {
         let tracked reconstructed_full = half1.join(half2);
