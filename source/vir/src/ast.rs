@@ -767,6 +767,7 @@ pub struct PatternBinding {
     pub by_ref: ByRef,
     pub typ: Typ,
     /// Marked mutable at the source level? Use None for variables introduced in lowering passes.
+    /// TODO: This field can probably be removed.
     pub user_mut: Option<bool>,
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
