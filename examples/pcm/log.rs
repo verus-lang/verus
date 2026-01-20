@@ -205,7 +205,8 @@ impl<T> LogResource<T> {
                 let (half1, half2) = halves;
                 &&& half1@ is HalfAuthority
                 &&& half2@ is HalfAuthority
-                &&& half1.id() == half2.id() == self.id()
+                &&& half1.id() == self.id()
+                &&& half2.id() == self.id()
                 &&& half1@.log() == self@.log()
                 &&& half2@ == half1@
             }),
@@ -234,7 +235,8 @@ impl<T> LogResource<T> {
             old(self).id() == old(other).id(),
         ensures
             self@ is HalfAuthority,
-            self.id() == other.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
             self@.log() == old(self)@.log() + seq![v],
             other@ == self@,
     {

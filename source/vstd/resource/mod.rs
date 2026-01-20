@@ -13,6 +13,7 @@ pub use lib::*;
 
 verus! {
 
-pub type Loc = int;
+#[derive(Eq, PartialEq)]
+pub struct Loc(int);
 
 } // verus!
