@@ -325,8 +325,8 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
         true
     }
 
-    uninterp fn seq(&self) -> Seq<Self::Item>;
-    uninterp fn completes(&self) -> bool;
+    uninterp spec fn seq(&self) -> Seq<Self::Item>;
+    uninterp spec fn completes(&self) -> bool;
 
     open spec fn initial_value_inv(&self, init: Option<&Self>) -> bool {
         // &&& self.elts() == self.seq().map_values(|v: &T| *v)
@@ -335,7 +335,7 @@ impl <T, A: Allocator> IteratorSpecImpl for IntoIter<T, A> {
         &&& init matches Some(v) && into_iter_elts(*v) == into_iter_elts(*self)
     }
 
-    uninterp fn decrease(&self) -> Option<nat>;
+    uninterp spec fn decrease(&self) -> Option<nat>;
 }
 
 // This is used by `vec![x; n]`
