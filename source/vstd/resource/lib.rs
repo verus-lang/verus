@@ -114,7 +114,8 @@ pub proof fn split_mut<P: PCM>(tracked r: &mut Resource<P>, left: P, right: P) -
     requires
         old(r).value() == P::op(left, right),
     ensures
-        r.loc() == other.loc() == old(r).loc(),
+        r.loc() == old(r).loc(),
+        other.loc() == old(r).loc(),
         r.value() == left,
         other.value() == right,
 {
@@ -152,7 +153,8 @@ pub proof fn redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         P::op(old(r1).value(), old(r2).value()) == P::op(v1, v2),
     ensures
-        r1.loc() == r2.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
         r1.value() == v1,
         r2.value() == v2,
 {
@@ -178,7 +180,8 @@ pub proof fn update_and_redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         frame_preserving_update(P::op(old(r1).value(), old(r2).value()), P::op(v1, v2)),
     ensures
-        r1.loc() == r2.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
         r1.value() == v1,
         r2.value() == v2,
 {
