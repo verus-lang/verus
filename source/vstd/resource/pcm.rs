@@ -7,39 +7,58 @@ verus! {
 
 broadcast use super::super::set::group_set_axioms;
 
-/// See [`Resource`] for more information.
+/// A Partial Commutative Monoid is a special type of `ResourceAlgebra`, where all elements have
+/// the same core (which belongs in the carrier), the unit. For this reason, they are also called
+/// unitary resource algebras[^note].
+///
+/// [^note]: This is slightly misleading. PCMs are partial in the sense that the operation is not
+/// defined for certain inputs. Because Verus does not support partial functions, we model that
+/// partiality with the validity predicate, which does make it a unitary resource algebra.
+// TODO(bsdinis): it should probably not be required that ghost things be sized, but that sounds
+// like a relatively complicated change -- needs to be done across the codebase
 pub trait PCM: Sized {
+    /// Whether an element is valid
     spec fn valid(self) -> bool;
 
-    spec fn op(self, other: Self) -> Self;
+    /// Compose two elements
+    spec fn op(a: Self, b: Self) -> Self;
 
+    /// The unit of the monoid, i.e., the carrier value that composed with any other carrier value
+    /// yields the identity function
     spec fn unit() -> Self;
 
-    proof fn closed_under_incl(a: Self, b: Self)
+    /// The operation is associative
+    proof fn associative(a: Self, b: Self, c: Self)
+        ensures
+            Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
+    ;
+
+    /// The operation is commutative
+    proof fn commutative(a: Self, b: Self)
+        ensures
+            Self::op(a, b) == Self::op(b, a),
+    ;
+
+    /// The operation is closed under inclusion
+    /// (i.e., if the result of the operation is valid then its parts are also valid)
+    proof fn valid_op(a: Self, b: Self)
         requires
             Self::op(a, b).valid(),
         ensures
             a.valid(),
     ;
 
-    proof fn commutative(a: Self, b: Self)
+    /// The core of an element `a` is, by definition, some other element `x`
+    /// such that `a op x = a`
+    proof fn op_unit(self)
         ensures
-            Self::op(a, b) == Self::op(b, a),
+            Self::op(self, Self::unit()) == self,
     ;
 
-    proof fn associative(a: Self, b: Self, c: Self)
-        ensures
-            Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
-    ;
-
-    proof fn op_unit(a: Self)
-        ensures
-            Self::op(a, Self::unit()) == a,
-    ;
-
+    /// The unit is always a valid element
     proof fn unit_valid()
         ensures
-            Self::valid(Self::unit()),
+            Self::unit().valid(),
     ;
 }
 
@@ -52,13 +71,16 @@ pub open spec fn conjunct_shared<P: PCM>(a: P, b: P, c: P) -> bool {
 }
 
 pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
-    forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
+    forall|c|
+        #![trigger P::op(a, c), P::op(b, c)]
+        P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
 pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
-        P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
+        P::op(a, c).valid() ==> exists|b| #[trigger]
+            bs.contains(b) && P::op(b, c).valid()
 }
 
 pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {

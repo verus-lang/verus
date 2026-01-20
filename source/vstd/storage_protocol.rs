@@ -39,7 +39,7 @@ pub tracked struct StorageResource<K, V, P> {
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
 
-    /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::pcm::PCM::valid), is not
+    /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::pcm::PCM::pcm_valid), is not
     /// necessarily closed under inclusion.
     spec fn rel(self, s: Map<K, V>) -> bool;
 

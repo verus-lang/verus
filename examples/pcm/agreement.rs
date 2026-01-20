@@ -54,21 +54,21 @@ impl<T> AgreementResourceValue<T> {
 }
 
 impl<T> PCM for AgreementResourceValue<T> {
-    open spec fn valid(self) -> bool {
+    open spec fn pcm_valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
-            (AgreementResourceValue::<T>::Empty, _) => other,
-            (_, AgreementResourceValue::<T>::Empty) => self,
+    open spec fn pcm_op(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (AgreementResourceValue::<T>::Empty, _) => b,
+            (_, AgreementResourceValue::<T>::Empty) => a,
             (AgreementResourceValue::<T>::Invalid, _) => AgreementResourceValue::<T>::Invalid {  },
             (_, AgreementResourceValue::<T>::Invalid) => AgreementResourceValue::<T>::Invalid {  },
             (
                 AgreementResourceValue::<T>::Chosen { c: c1 },
                 AgreementResourceValue::<T>::Chosen { c: c2 },
             ) => if c1 == c2 {
-                self
+                a
             } else {
                 AgreementResourceValue::<T>::Invalid {  }
             },
@@ -79,16 +79,16 @@ impl<T> PCM for AgreementResourceValue<T> {
         AgreementResourceValue::<T>::Empty {  }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn pcm_valid_op(a: Self, b: Self) {
     }
 
-    proof fn commutative(a: Self, b: Self) {
+    proof fn pcm_commutative(a: Self, b: Self) {
     }
 
-    proof fn associative(a: Self, b: Self, c: Self) {
+    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {

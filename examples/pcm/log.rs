@@ -70,20 +70,20 @@ pub open spec fn is_prefix<T>(s1: Seq<T>, s2: Seq<T>) -> bool {
 }
 
 impl<T> PCM for LogResourceValue<T> {
-    open spec fn valid(self) -> bool {
+    open spec fn pcm_valid(self) -> bool {
         &&& !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
+    open spec fn pcm_op(a: Self, b: Self) -> Self {
+        match (a, b) {
             (
                 Self::PrefixKnowledge { prefix: prefix1 },
                 Self::PrefixKnowledge { prefix: prefix2 },
             ) => if is_prefix(prefix1, prefix2) {
-                other
+                b
             } else {
                 if is_prefix(prefix2, prefix1) {
-                    self
+                    a
                 } else {
                     Self::Invalid
                 }
@@ -92,7 +92,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                other
+                b
             } else {
                 Self::Invalid
             },
@@ -100,7 +100,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                self
+                a
             } else {
                 Self::Invalid
             },
@@ -108,7 +108,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                other
+                b
             } else {
                 Self::Invalid
             },
@@ -116,7 +116,7 @@ impl<T> PCM for LogResourceValue<T> {
                 prefix,
                 log,
             ) {
-                self
+                a
             } else {
                 Self::Invalid
             },
@@ -134,21 +134,21 @@ impl<T> PCM for LogResourceValue<T> {
         Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn pcm_valid_op(a: Self, b: Self) {
     }
 
-    proof fn commutative(a: Self, b: Self) {
+    proof fn pcm_commutative(a: Self, b: Self) {
         assert(forall|log1: Seq<T>, log2: Seq<T>|
             is_prefix(log1, log2) && is_prefix(log2, log1) ==> log1 =~= log2);
     }
 
-    proof fn associative(a: Self, b: Self, c: Self) {
+    proof fn pcm_associative(a: Self, b: Self, c: Self) {
         assert(forall|log1: Seq<T>, log2: Seq<T>|
             is_prefix(log1, log2) && is_prefix(log2, log1) <==> log1 =~= log2);
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
     }
 

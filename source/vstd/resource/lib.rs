@@ -34,7 +34,7 @@ pub proof fn lemma_pcm_properties<P: PCM>()
         P::valid(P::unit()),
 {
     assert forall|a: P, b: P| (#[trigger] P::op(a, b)).valid() implies a.valid() by {
-        P::closed_under_incl(a, b);
+        P::valid_op(a, b);
     }
     assert forall|a: P, b: P| (#[trigger] P::op(a, b)) == P::op(b, a) by {
         P::commutative(a, b);
@@ -444,7 +444,10 @@ pub proof fn validate_5<P: PCM>(
     m.tracked_insert(4, extract(r5));
     assert(combine_values(values) == P::op(
         old(r1).value(),
-        P::op(old(r2).value(), P::op(old(r3).value(), P::op(old(r4).value(), old(r5).value()))),
+        P::op(
+            old(r2).value(),
+            P::op(old(r3).value(), P::op(old(r4).value(), old(r5).value())),
+        ),
     )) by {
         lemma_pcm_properties::<P>();
         reveal_with_fuel(combine_values, 6);

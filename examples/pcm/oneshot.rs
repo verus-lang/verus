@@ -98,14 +98,14 @@ pub enum OneShotResourceValue {
 // To use `OneShotResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
 impl PCM for OneShotResourceValue {
-    open spec fn valid(self) -> bool {
+    open spec fn pcm_valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
-            (OneShotResourceValue::Empty, _) => other,
-            (_, OneShotResourceValue::Empty) => self,
+    open spec fn pcm_op(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (OneShotResourceValue::Empty, _) => b,
+            (_, OneShotResourceValue::Empty) => a,
             (
                 OneShotResourceValue::HalfRightToComplete,
                 OneShotResourceValue::HalfRightToComplete,
@@ -122,16 +122,16 @@ impl PCM for OneShotResourceValue {
         OneShotResourceValue::Empty {  }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn pcm_valid_op(a: Self, b: Self) {
     }
 
-    proof fn commutative(a: Self, b: Self) {
+    proof fn pcm_commutative(a: Self, b: Self) {
     }
 
-    proof fn associative(a: Self, b: Self, c: Self) {
+    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {

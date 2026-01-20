@@ -87,12 +87,12 @@ pub enum MonotonicCounterResourceValue {
 // To use `MonotonicCounterResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
 impl PCM for MonotonicCounterResourceValue {
-    open spec fn valid(self) -> bool {
+    open spec fn pcm_valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
+    open spec fn pcm_op(a: Self, b: Self) -> Self {
+        match (a, b) {
             // Two lower bounds can be combined into a lower bound
             // that's the maximum of the two lower bounds.
             (
@@ -164,16 +164,16 @@ impl PCM for MonotonicCounterResourceValue {
         MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn pcm_valid_op(a: Self, b: Self) {
     }
 
-    proof fn commutative(a: Self, b: Self) {
+    proof fn pcm_commutative(a: Self, b: Self) {
     }
 
-    proof fn associative(a: Self, b: Self, c: Self) {
+    proof fn pcm_associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -223,7 +223,7 @@ impl MonotonicCounterResource {
             self@.n() == other@.n(),
         ensures
             r.id() == self.id(),
-            r@.n() == self@.op(other@).n(),
+            r@.n() == MonotonicCounterResourceValue::pcm_op(self@, other@).n(),
     {
         let tracked mut r = self.r.join(other.r);
         Self { r }
