@@ -240,7 +240,8 @@ impl MonotonicCounterResource {
             ({
                 let (r1, r2) = return_value;
                 let value = self@->FullRightToAdvance_value;
-                &&& r1.id() == r2.id() == self.id()
+                &&& r1.id() == self.id()
+                &&& r2.id() == self.id()
                 &&& r1@ == (MonotonicCounterResourceValue::HalfRightToAdvance { value })
                 &&& r2@ == r1@
             }),
@@ -281,7 +282,8 @@ impl MonotonicCounterResource {
             old(other)@ is HalfRightToAdvance,
         ensures
             old(self)@ == old(other)@,
-            self.id() == other.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
             other@ == self@,
             self@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
                 value: old(self)@->HalfRightToAdvance_value + 1,
@@ -339,7 +341,8 @@ fn main() {
     proof {
         half1.increment_using_two_halves(&mut half2);
     }
-    assert(half1.id() == half2.id() == id);
+    assert(half1.id() == id);
+    assert(half2.id() == id);
     assert(half1@.n() == half2@.n() == v1 + 1);
     assert(half1@.n() == 1);
     let tracked mut lower_bound = half1.extract_lower_bound();
