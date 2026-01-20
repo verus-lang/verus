@@ -1086,8 +1086,9 @@ impl<'a> Builder<'a> {
             }
             ExprX::AssignToPlace { place, rhs, op, resolve } => {
                 assert!(resolve.is_none());
-                let (p, bb) = self.build_place_and_intern(place, bb)?;
+                // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
+                let (p, bb) = self.build_place_and_intern(place, bb)?;
                 match &p {
                     ComputedPlace::Partial(_) => {
                         if op.is_none() {

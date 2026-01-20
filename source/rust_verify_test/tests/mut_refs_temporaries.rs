@@ -3872,3 +3872,42 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] assign_eval_ordering_with_temporary ["new-mut-ref"] => verus_code! {
+        fn mut_ref_id(a: &mut u64) -> (ret: &mut u64)
+            ensures
+                mut_ref_current(ret) == 30,
+                mut_ref_future(a) == mut_ref_future(ret),
+        {
+            *a = 30;
+            a
+        }
+
+        fn test1() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) = a;
+            assert(a == 20);
+        }
+
+        fn fails1() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) = a;
+            assert(a == 20);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) += a;
+            assert(a == 50);
+        }
+
+        fn fails2() {
+            let mut a: u64 = 20;
+            *mut_ref_id(&mut a) += a;
+            assert(a == 50);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}

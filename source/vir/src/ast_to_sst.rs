@@ -170,6 +170,16 @@ macro_rules! unwrap_or_return_never {
             }
         }
     };
+    ($e:expr, $stms:expr, $stms2:expr) => {
+        match $e {
+            Maybe::Some(e) => e,
+            Maybe::Never => {
+                let mut all_stms = $stms;
+                all_stms.extend($stms2);
+                return Ok((all_stms, Maybe::Never));
+            }
+        }
+    };
 }
 
 /// Like unwrap_or_return_never, but also converts the Value to an Exp
@@ -1384,22 +1394,27 @@ pub(crate) fn expr_to_stm_opt(
             // No support for short-circuit ops here
             assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
 
-            let (stms1, exps) = place_to_exp_pair(ctx, state, place)?;
-            let (lhs_exp, e1) = unwrap_or_return_never!(exps, stms1);
+            let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
+            let e_r = to_exp_or_return_never!(e_r, stms_r);
 
-            let (stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
+            let (stms_l, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, e_l) = unwrap_or_return_never!(exps, stms_r, stms_l);
 
             let mut sequr = Sequencer::new();
             push_or_return_never!(sequr.push(
-                stms1,
-                Maybe::Some(Value::Exp(e1)),
+                stms_r,
+                Maybe::Some(Value::Exp(e_r)),
                 Immutable(LocalDeclKind::TempViaAssign)
             ));
-            push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
+            push_or_return_never!(sequr.push(
+                stms_l,
+                Maybe::Some(Value::Exp(e_l)),
+                Immutable(LocalDeclKind::TempViaAssign)
+            ));
 
-            let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state);
+            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
             let (mut stms3, bin) =
-                binary_op_exp(ctx, state, &expr.span, &place.typ, *binary_op, &e1, &e2);
+                binary_op_exp(ctx, state, &expr.span, &place.typ, *binary_op, &e_l, &e_r);
             stms.append(&mut stms3);
 
             let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: bin };
@@ -1408,25 +1423,37 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::AssignToPlace { place, rhs, op: None, resolve } => {
-            let (mut stms1, exps) = place_to_exp_pair(ctx, state, place)?;
-            let (lhs_exp, e1) = unwrap_or_return_never!(exps, stms1);
+            let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
+            let e_r = to_exp_or_return_never!(e_r, stms_r);
 
-            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, rhs)?;
-            stms1.append(&mut stms2);
+            let (stms_l, exps) = place_to_exp_pair(ctx, state, place)?;
+            let (lhs_exp, e_l) = unwrap_or_return_never!(exps, stms_r, stms_l);
 
-            let e2 = to_exp_or_return_never!(e2, stms1);
+            let mut sequr = Sequencer::new();
+            push_or_return_never!(sequr.push(
+                stms_r,
+                Maybe::Some(Value::Exp(e_r)),
+                Immutable(LocalDeclKind::TempViaAssign)
+            ));
+            push_or_return_never!(sequr.push(
+                stms_l,
+                Maybe::Some(Value::Exp(e_l)),
+                Immutable(LocalDeclKind::TempViaAssign)
+            ));
+
+            let (mut stms, e_r, e_l) = sequr.into_stms_exps_expect_2(state);
 
             if let Some(t) = resolve {
-                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e1.clone());
+                let resx = ExpX::UnaryOpr(UnaryOpr::HasResolved(t.clone()), e_l.clone());
                 let res = SpannedTyped::new(&expr.span, &bool_typ(), resx);
                 let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(res));
-                stms1.push(assume_stm);
+                stms.push(assume_stm);
             }
 
-            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e2 };
-            stms1.push(Spanned::new(expr.span.clone(), assign));
+            let assign = StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: false }, rhs: e_r };
+            stms.push(Spanned::new(expr.span.clone(), assign));
 
-            Ok((stms1, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::Assign { lhs: lhs_expr, rhs: expr2, op } => {
             if op.is_some() {

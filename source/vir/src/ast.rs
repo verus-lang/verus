@@ -1037,6 +1037,11 @@ pub enum ExprX {
     /// `assume(has_resolved(place))` immediately before the mutation.
     /// This flag may be set by resolution analysis.
     ///
+    /// Note that the right-hand-side is evaluated BEFORE the left-hand-side (place).
+    /// See: [https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.assign.evaluation-order]
+    /// (Also note that this does not apply to overloaded compound assignment, which should
+    /// lower to a Call node instead.)
+    ///
     /// Used only when new-mut-refs is enabled.
     AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
     /// Reveal definition of an opaque function with some integer fuel amount
