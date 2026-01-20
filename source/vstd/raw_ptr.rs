@@ -606,6 +606,7 @@ pub open spec fn index_from_addr<T>(ptr: *mut [T], addr: usize) -> nat
     recommends 
         ptr@.addr <= addr,
         (addr - ptr@.addr) as nat % layout::size_of::<T>() == 0,
+        layout::size_of::<T>() != 0,
 {
     (addr - ptr@.addr) as nat / layout::size_of::<T>()
 }
