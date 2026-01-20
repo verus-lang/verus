@@ -1,8 +1,8 @@
 use super::super::modes::*;
 use super::super::prelude::*;
 use super::Loc;
-use super::Resource;
 use super::pcm::PCM;
+use super::pcm::Resource;
 use super::storage_protocol::*;
 use super::*;
 
@@ -32,13 +32,13 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
         }
     }
 
-    closed spec fn op(self, b: Self) -> Self {
-        match self {
+    closed spec fn op(a: Self, b: Self) -> Self {
+        match a {
             FractionalCarrier::Invalid => FractionalCarrier::Invalid,
             FractionalCarrier::Empty => b,
             FractionalCarrier::Value { v: sv, n: sn } => match b {
                 FractionalCarrier::Invalid => FractionalCarrier::Invalid,
-                FractionalCarrier::Empty => self,
+                FractionalCarrier::Empty => a,
                 FractionalCarrier::Value { v: ov, n: on } => {
                     if sv != ov {
                         FractionalCarrier::Invalid
@@ -56,7 +56,7 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
         FractionalCarrier::Empty
     }
 
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -65,7 +65,7 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
     proof fn associative(a: Self, b: Self, c: Self) {
     }
 
-    proof fn op_unit(a: Self) {
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
