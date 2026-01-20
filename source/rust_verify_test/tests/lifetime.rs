@@ -522,22 +522,21 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "variable `a` is not marked mutable")
 }
 
-// TODO Currently this causes a panic. However, it definitely needs to error,
-// so we should fix the test and un-ignore it.
+// TODO It would probably be better for this to error about 'a' not being marked mutable:
 
 test_verify_one_file! {
-    #[ignore] #[test] test_ghost_at_assignment_double_assignment verus_code! {
+    #[test] test_ghost_at_assignment_double_assignment verus_code! {
         fn foo() {
             let a: Ghost<nat>;
             proof {
                 a@ = 4;
                 a@ = 7;
             }
-            assert(a@ == 4);
+            assert(a@ == 4); // FAILS
             assert(a@ == 7);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "variable `a` is not marked mutable")
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {
@@ -559,9 +558,9 @@ test_verify_one_file_with_options! {
             let x: u8;
             x = 5;
             x = 7;
-            assert(false);
+            assert(false); // FAILS
         }
-    } => Ok(())
+    } => Err(err) => assert_fails(err, 1)
 }
 
 test_verify_one_file! {

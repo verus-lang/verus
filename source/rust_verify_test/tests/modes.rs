@@ -360,7 +360,7 @@ test_verify_one_file_with_options! {
             x = 23;
             x
         }
-    } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
+    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
 }
 
 test_verify_one_file_with_options! {
@@ -380,7 +380,31 @@ test_verify_one_file_with_options! {
             x = 3;
             verus_builtin::assert_(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] decl_init_let_spec_fail2 verus_code! {
+        fn test1() {
+            let ghost x: u64; // TODO should probably require this to be mut
+            proof {
+                x = 2;
+                x = 3;
+            }
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] decl_init_let_spec_fail3 verus_code! {
+        proof fn test1() {
+            let x: u64;
+            x = 2;
+            x = 3;
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 const FIELD_UPDATE: &str = code_str! {

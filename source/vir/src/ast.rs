@@ -766,7 +766,9 @@ pub struct PatternBinding {
     pub name: VarIdent,
     pub by_ref: ByRef,
     pub typ: Typ,
-    pub mutable: bool,
+    /// Marked mutable at the source level? Use None for variables introduced in lowering passes.
+    /// TODO: This field can probably be removed.
+    pub user_mut: Option<bool>,
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
     pub copy: bool,
@@ -1025,11 +1027,10 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     ///
     /// Not used when new-mut-refs is enabled.
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Assign to the given place.
     ///
     /// If `resolve` is set, then we also emit
@@ -1215,7 +1216,9 @@ pub struct ParamX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    /// An &mut parameter
+    /// Marked 'mut' at the source level?
+    pub user_mut: bool,
+    /// An &mut parameter (only used outside new-mut-ref)
     pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).
