@@ -66,8 +66,8 @@
 use super::super::map::*;
 use super::super::map_lib::*;
 use super::super::modes::*;
-use super::super::pcm::*;
 use super::super::prelude::*;
+use super::super::resource::Loc;
 use super::super::set::*;
 use super::super::set_lib::*;
 use super::map::GhostMapAuth;
