@@ -78,6 +78,7 @@ impl<'a> MetadataIndex<'a> {
         self.entries.get(id).unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn entries(&self) -> impl Iterator<Item = &MetadataIndexEntry<'a>> {
         self.entries.values()
     }
