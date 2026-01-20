@@ -278,6 +278,32 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_new_vars_no_parens ["exec_allows_no_decreases_clause"] => verus_code! {
+        proof fn test6(x: int)
+            requires x == 5
+        {
+            assert({let z: int = 2; x * z == 10}) by(nonlinear_arith)
+                requires {let z: int = 5; x == z}
+            {
+                let y: nat = mul(x as nat, 2);
+                assert(y == 10);
+            }
+            assert(x * 2 == 10);
+        }
+
+        fn test7(n: u32) {
+            loop {
+                assert(true) by (nonlinear_arith)
+                    requires
+                        {let q = n; q <= n}
+                { }
+                break;
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[ignore] // Z3 is too slow with this test
     #[test] nlarith1 verus_code! {
