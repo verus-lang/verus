@@ -41,7 +41,8 @@
 //! ```
 //! let ghost id = half1.id();
 //! proof { half1.perform_using_two_halves(&mut half2); }
-//! assert(half1.id() == half2.id() == id);
+//! assert(half1.id() == id);
+//! assert(half2.id() == id);
 //! assert(half1@ is Complete);
 //! assert(half2@ is Complete);
 //! ```
@@ -173,7 +174,8 @@ impl OneShotResource {
                 let (half1, half2) = return_value;
                 &&& half1@ is HalfRightToComplete
                 &&& half2@ is HalfRightToComplete
-                &&& half2.id() == half1.id() == self.id()
+                &&& half1.id() == self.id()
+                &&& half2.id() == self.id()
             }),
     {
         let half = OneShotResourceValue::HalfRightToComplete {  };
@@ -219,7 +221,8 @@ impl OneShotResource {
             old(other)@ is HalfRightToComplete,
             self@ is Complete,
             other@ is Complete,
-            other.id() == self.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
     {
         self.r.validate();
         other.r.validate();
@@ -277,11 +280,13 @@ fn main() {
     proof {
         half1.perform_using_two_halves(&mut half2);
     }
-    assert(half1.id() == half2.id() == id);
+    assert(half1.id() == id);
+    assert(half2.id() == id);
     assert(half1@ is Complete);
     assert(half2@ is Complete);
     let tracked knowledge = half1.duplicate();
-    assert(knowledge.id() == half1.id() == id);
+    assert(knowledge.id() == id);
+    assert(half1.id() == id);
     assert(knowledge@ is Complete);
 }
 

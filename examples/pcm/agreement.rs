@@ -132,7 +132,8 @@ impl<T> AgreementResource<T> {
         ensures
             self.inv(),
             result.inv(),
-            self.id() == result.id() == old(self).id(),
+            self.id() == old(self).id(),
+            result.id() == old(self).id(),
             self@ == result@,
             self@ == old(self)@,
     {

@@ -640,7 +640,7 @@ impl<K, V> GhostSubmap<K, V> {
     }
 
     /// Instantiate an empty [`GhostSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == id,
             result@ == Map::<K, V>::empty(),
@@ -1016,7 +1016,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     }
 
     /// Instantiate an empty [`GhostPersistentSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostPersistentSubmap<K, V>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
             result.id() == id,
             result@ == Map::<K, V>::empty(),

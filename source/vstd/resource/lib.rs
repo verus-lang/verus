@@ -99,7 +99,8 @@ pub proof fn split_mut<P: PCM>(tracked r: &mut Resource<P>, left: P, right: P) -
     requires
         old(r).value() == P::op(left, right),
     ensures
-        r.loc() == other.loc() == old(r).loc(),
+        r.loc() == old(r).loc(),
+        other.loc() == old(r).loc(),
         r.value() == left,
         other.value() == right,
 {
@@ -115,7 +116,8 @@ pub proof fn split_mut<P: PCM>(tracked r: &mut Resource<P>, left: P, right: P) -
 /// value of `r`.
 pub proof fn extract<P: PCM>(tracked r: &mut Resource<P>) -> (tracked other: Resource<P>)
     ensures
-        other.loc() == r.loc() == old(r).loc(),
+        r.loc() == old(r).loc(),
+        other.loc() == old(r).loc(),
         r.value() == P::unit(),
         other.value() == old(r).value(),
 {
@@ -152,7 +154,8 @@ pub proof fn redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         P::op(old(r1).value(), old(r2).value()) == P::op(v1, v2),
     ensures
-        r1.loc() == r2.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
         r1.value() == v1,
         r2.value() == v2,
 {
@@ -178,7 +181,8 @@ pub proof fn update_and_redistribute<P: PCM>(
         old(r1).loc() == old(r2).loc(),
         frame_preserving_update(P::op(old(r1).value(), old(r2).value()), P::op(v1, v2)),
     ensures
-        r1.loc() == r2.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
         r1.value() == v1,
         r2.value() == v2,
 {
@@ -200,9 +204,11 @@ pub proof fn validate_3<P: PCM>(
     tracked r3: &Resource<P>,
 )
     requires
-        old(r1).loc() == old(r2).loc() == r3.loc(),
+        old(r1).loc() == r3.loc(),
+        old(r2).loc() == r3.loc(),
     ensures
-        r1.loc() == r2.loc() == r3.loc(),
+        r1.loc() == r3.loc(),
+        r2.loc() == r3.loc(),
         r1.value() == old(r1).value(),
         r2.value() == old(r2).value(),
         P::op(r1.value(), P::op(r2.value(), r3.value())).valid(),
@@ -222,7 +228,7 @@ pub proof fn validate_3<P: PCM>(
 // not meant for public export.
 proof fn aggregate_resources_from_map_starting_at_offset<P: PCM>(
     tracked m: &mut Map<int, Resource<P>>,
-    id: int,
+    id: Loc,
     values: Seq<P>,
     offset: int,
 ) -> (tracked all: Resource<P>)
@@ -283,7 +289,7 @@ proof fn aggregate_resources_from_map_starting_at_offset<P: PCM>(
 // not meant for public export.
 proof fn store_resources_into_map_starting_at_offset<P: PCM>(
     tracked m: &mut Map<int, Resource<P>>,
-    id: int,
+    id: Loc,
     values: Seq<P>,
     offset: int,
     tracked p: Resource<P>,
@@ -338,7 +344,7 @@ proof fn store_resources_into_map_starting_at_offset<P: PCM>(
 /// `values` -- the sequence of resources
 pub proof fn validate_multiple<P: PCM>(
     tracked m: &mut Map<int, Resource<P>>,
-    loc: int,
+    loc: Loc,
     values: Seq<P>,
 )
     requires
@@ -379,9 +385,14 @@ pub proof fn validate_4<P: PCM>(
     tracked r4: &mut Resource<P>,
 )
     requires
-        old(r1).loc() == old(r2).loc() == old(r3).loc() == old(r4).loc(),
+        old(r1).loc() == old(r2).loc(),
+        old(r2).loc() == old(r3).loc(),
+        old(r3).loc() == old(r4).loc(),
     ensures
-        r1.loc() == r2.loc() == r3.loc() == r4.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
+        r3.loc() == old(r1).loc(),
+        r4.loc() == old(r1).loc(),
         r1.value() == old(r1).value(),
         r2.value() == old(r2).value(),
         r3.value() == old(r3).value(),
@@ -421,9 +432,16 @@ pub proof fn validate_5<P: PCM>(
     tracked r5: &mut Resource<P>,
 )
     requires
-        old(r1).loc() == old(r2).loc() == old(r3).loc() == old(r4).loc() == old(r5).loc(),
+        old(r1).loc() == old(r2).loc(),
+        old(r2).loc() == old(r3).loc(),
+        old(r3).loc() == old(r4).loc(),
+        old(r4).loc() == old(r5).loc(),
     ensures
-        r1.loc() == r2.loc() == r3.loc() == r4.loc() == r5.loc() == old(r1).loc(),
+        r1.loc() == old(r1).loc(),
+        r2.loc() == old(r1).loc(),
+        r3.loc() == old(r1).loc(),
+        r4.loc() == old(r1).loc(),
+        r5.loc() == old(r1).loc(),
         r1.value() == old(r1).value(),
         r2.value() == old(r2).value(),
         r3.value() == old(r3).value(),

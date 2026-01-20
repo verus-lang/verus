@@ -196,7 +196,8 @@ impl<T, const TOTAL: u64> FracGhost<T, TOTAL> {
         requires
             0 < n < old(self).frac(),
         ensures
-            result.id() == self.id() == old(self).id(),
+            result.id() == old(self).id(),
+            self.id() == old(self).id(),
             self@ == old(self)@,
             result@ == old(self)@,
             self.frac() + result.frac() == old(self).frac(),
@@ -311,7 +312,7 @@ impl<T> GhostVar<T> {
         self.frac.frac() == 1
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 
@@ -358,7 +359,7 @@ impl<T> GhostVarAuth<T> {
         self.frac.frac() == 1
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 
@@ -541,7 +542,8 @@ impl<T, const TOTAL: u64> Frac<T, TOTAL> {
         requires
             0 < n < old(self).frac(),
         ensures
-            result.id() == self.id() == old(self).id(),
+            self.id() == old(self).id(),
+            result.id() == old(self).id(),
             self.resource() == old(self).resource(),
             result.resource() == old(self).resource(),
             self.frac() + result.frac() == old(self).frac(),
@@ -559,7 +561,8 @@ impl<T, const TOTAL: u64> Frac<T, TOTAL> {
             0 < n < old(r).value()->n,
             old(r).value() matches FractionalCarrierOpt::Value { v: Some(_), .. },
         ensures
-            result.id() == r.loc() == old(r).loc(),
+            r.loc() == old(r).loc(),
+            result.id() == old(r).loc(),
             r.value()->v.unwrap() == old(r).value()->v.unwrap(),
             result.resource() == old(r).value()->v.unwrap(),
             r.value()->n + result.frac() == old(r).value()->n,

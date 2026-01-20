@@ -1,5 +1,6 @@
 use super::super::modes::*;
 use super::super::prelude::*;
+use super::super::resource::Loc;
 use super::map::*;
 
 verus! {
@@ -79,7 +80,7 @@ impl<V> GhostSeqAuth<V> {
         &&& self.auth@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.auth.id()
     }
 
@@ -203,7 +204,7 @@ impl<V> GhostSubseq<V> {
         self.off
     }
 
-    pub closed spec fn id(self) -> int {
+    pub closed spec fn id(self) -> Loc {
         self.frac.id()
     }
 

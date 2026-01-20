@@ -310,7 +310,7 @@ impl<T> GhostSubset<T> {
     }
 
     /// Instantiate an empty [`GhostSubset`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostSubset<T>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostSubset<T>)
         ensures
             result.id() == id,
             result@ == Set::<T>::empty(),
@@ -518,7 +518,7 @@ impl<T> GhostPersistentSubset<T> {
     }
 
     /// Instantiate an empty [`GhostPersistentSubset`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostPersistentSubset<T>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostPersistentSubset<T>)
         ensures
             result.id() == id,
             result@ == Set::<T>::empty(),

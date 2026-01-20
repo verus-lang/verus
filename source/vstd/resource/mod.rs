@@ -51,6 +51,7 @@ pub tracked struct Resource<P> {
     p: core::marker::PhantomData<P>,
 }
 
-pub type Loc = int;
+#[derive(Eq, PartialEq)]
+pub struct Loc(int);
 
 } // verus!
