@@ -1,14 +1,14 @@
 //! This module defines (i.e., axiomatizes) the Rust abstract machine's representation for primitive types (integers, boolean, raw pointers),
 //! as well as encodings for structs and enums derived from these primitive types.
 //!
-//! The uninterpreted functions `abs_encode`, `abs_decode`, and `can_be_encoded` define the encoding, decoding, and validity of transumute operations for a given type. 
-//! The abstract representation is encoded on a `Seq<AbstractByte>`, which encodes byte values as well as an optional `Provenance` for initialized memory. 
-//! Note that these functions are defined as relations between values and byte sequences, meaning that some byte sequences can be decoded to 
+//! The uninterpreted functions `abs_encode`, `abs_decode`, and `can_be_encoded` define the encoding, decoding, and validity of transumute operations for a given type.
+//! The abstract representation is encoded on a `Seq<AbstractByte>`, which encodes byte values as well as an optional `Provenance` for initialized memory.
+//! Note that these functions are defined as relations between values and byte sequences, meaning that some byte sequences can be decoded to
 //! multiple possible values (this is done to account for ghost state, which is not encoded in the abstract representation.)
 //! These relations are unspecified for a given type unless they are explicitly implemented (see next paragraph).
 //!
-//! The `AbstractByteRepresentation` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, and `can_be_encoded` for that type. 
-//! The trait is used to ensure that the encoding axioms satisfy certain validity properties, e.g. that the resulting byte sequence is the correct length for the value/type, 
+//! The `AbstractByteRepresentation` trait is implemented on a given type in order to add axioms for `abs_encode`, `abs_decode`, and `can_be_encoded` for that type.
+//! The trait is used to ensure that the encoding axioms satisfy certain validity properties, e.g. that the resulting byte sequence is the correct length for the value/type,
 //! and that a value's encoding can be decoded back to the same value (see: https://github.com/minirust/minirust/blob/master/spec/lang/representation.md#generic-properties).
 //! `AbstractByteRepresentation` is implemented here for primitive integers (e.g., `u8`, `isize`), `bool`, `()`, and raw pointers.
 //! `AbstractByteRepresentationUnsized` is the version of this trait for unsized types.
@@ -18,14 +18,13 @@
 //! (See: https://doc.rust-lang.org/reference/type-layout.html for more about primitive and transparent representations.
 //! For scalar range representations, see the non-zero niche types for an example: https://doc.rust-lang.org/1.88.0/src/core/num/niche_types.rs.html.)
 //!
-//! The `AbstractByteEncoding` trait is used to make intermediate or shared definitions about encodings to byte sequences. 
+//! The `AbstractByteEncoding` trait is used to make intermediate or shared definitions about encodings to byte sequences.
 //! It is essentially the same as `AbstractByteRepresentation`, except that it does not include axioms tying the definitions to `abs_encode`, `abs_decode`, and `can_be_encoded`.
 //! This is useful for when many types may share the same underlying byte-level representation, e.g. zero-sized types or `*const` and `*mut` pointers.
 //! The representation is defined once on a `AbstractByteEncoding`, and then `AbstractByteRepresentation` is derived from the `AbstractByteEncoding`
-//! for each of the relevant types (see: the `encoding_from_type_representation!` macro). 
-//! In other words, `AbstractByteRepresentation` defines *the* representation for a given type, whereas `AbstractByteEncoding` is a carrier for 
+//! for each of the relevant types (see: the `encoding_from_type_representation!` macro).
+//! In other words, `AbstractByteRepresentation` defines *the* representation for a given type, whereas `AbstractByteEncoding` is a carrier for
 //! potentially shared definitions.
-
 #![allow(unused_imports)]
 
 use super::arithmetic::power::*;
@@ -769,21 +768,36 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
         abs_encode::<<T as core::ptr::Pointee>::Metadata>(&value, bytes) implies size_of::<
         <T as core::ptr::Pointee>::Metadata,
     >() == bytes.len() by {
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(value, bytes);
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(value, bytes);
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(
+            value,
+            bytes,
+        );
     }
     assert forall|value, bytes| #[trigger]
         abs_decode::<<T as core::ptr::Pointee>::Metadata>(bytes, &value) implies size_of::<
         <T as core::ptr::Pointee>::Metadata,
     >() == bytes.len() by {
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(value, bytes);
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(value, bytes);
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_size(
+            value,
+            bytes,
+        );
     }
     assert forall|value, bytes| #[trigger]
         abs_encode::<<T as core::ptr::Pointee>::Metadata>(&value, bytes) implies abs_decode::<
         <T as core::ptr::Pointee>::Metadata,
     >(bytes, &value) by {
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(value, bytes);
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
         <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::encoding_invertible(
             value,
             bytes,
@@ -792,7 +806,10 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>(
     assert forall|value| #[trigger]
         encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value) by {
         let bytes = Seq::<AbstractByte>::empty();
-        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(value, bytes);
+        <<T as core::ptr::Pointee>::Metadata as AbstractByteRepresentation>::abs_encode_impl(
+            value,
+            bytes,
+        );
     }
 }
 
@@ -997,7 +1014,9 @@ raw_ptr_encoding_from_type_representation! {
 /// This trait is used to define a `AbstractByteEncoding` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
 /// This representation uses `<Primitive as AbstractByteRepresentation>::encode` and `<Primitive as AbstractByteRepresentation>::decode` after invoking `Self::to_primitive`.
 /// `PrimitiveRepresentationEncoding<Primitive, Self>` can then be used to implement `AbstractByteRepresentation` on `Self`.
-pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation + PrimitiveInt> where Self: Sized {
+pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation + PrimitiveInt> where
+    Self: Sized,
+ {
     spec fn to_primitive(v: Self) -> Primitive;
 
     proof fn to_primitive_tracked(tracked v: &Self) -> (tracked p: &Primitive)

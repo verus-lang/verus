@@ -59,10 +59,10 @@ pub broadcast proof fn abs_can_be_encoded_impl<T: AbstractByteRepresentation>()
     <T as AbstractByteRepresentation>::abs_can_be_encoded_impl();
 }
 
-pub broadcast proof fn abs_encode_impl_unsized<T: ?Sized, EncodingT: AbstractByteRepresentationUnsized<T>>(
-    v: &T,
-    b: Seq<AbstractByte>,
-)
+pub broadcast proof fn abs_encode_impl_unsized<
+    T: ?Sized,
+    EncodingT: AbstractByteRepresentationUnsized<T>,
+>(v: &T, b: Seq<AbstractByte>)
     requires
         EncodingT::can_be_encoded(),
     ensures
@@ -74,7 +74,10 @@ pub broadcast proof fn abs_encode_impl_unsized<T: ?Sized, EncodingT: AbstractByt
     EncodingT::abs_encode_impl(v, b);
 }
 
-pub proof fn abs_can_be_encoded_impl_unsized<T: ?Sized, EncodingT: AbstractByteRepresentationUnsized<T>>()
+pub proof fn abs_can_be_encoded_impl_unsized<
+    T: ?Sized,
+    EncodingT: AbstractByteRepresentationUnsized<T>,
+>()
     requires
         EncodingT::can_be_encoded(),
     ensures
