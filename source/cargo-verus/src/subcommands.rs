@@ -155,6 +155,10 @@ pub fn run_cargo(cfg: CargoRunConfig) -> Result<ExitCode> {
         packages_to_verify,
     )?;
 
+    if cfg.options.verbose {
+        eprintln!("running cargo command:\n{command:?}");
+    }
+
     let exit_status = command
         .spawn()
         .context("Failed to spawn cargo")?

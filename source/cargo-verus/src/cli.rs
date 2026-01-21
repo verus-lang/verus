@@ -58,6 +58,10 @@ pub struct VerifyCommand {
         help = "Arguments passed to 'verus' after `--`"
     )]
     pub verus_args: Vec<String>,
+
+    /// Make cargo-verus verbose
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 #[derive(Clone, Debug, Args)]
