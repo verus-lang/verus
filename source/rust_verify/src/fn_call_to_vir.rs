@@ -1292,6 +1292,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
                     mk_expr(ExprX::If(source_vir, one, Some(zero)))
                 }
+                ((TypX::Real, _), TypX::Int(IntRange::Int)) => {
+                    mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))
+                }
+                ((TypX::Real, _), TypX::Int(_)) => {
+                    let real_to_int = mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))?;
+                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+                    Ok(mk_ty_clip(&to_ty, &real_to_int, expr_vattrs.truncate))
+                }
                 ((_, true), TypX::Int(IntRange::Int)) => {
                     mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
                 }
@@ -1315,33 +1324,44 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, bool, real, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecNeg) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            match *undecorate_typ(&typ_of_expr_adjusted(
+            let arg_typ = undecorate_typ(&typ_of_expr_adjusted(
                 bctx,
                 args[0].span,
                 &args[0].hir_id,
                 false,
-            )?) {
-                TypX::Int(_) => {}
-                _ => {
-                    return err_span(expr.span, "spec_neg expected int type");
-                }
-            }
+            )?);
 
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
-            let zero_const = vir::ast_util::const_int_from_u128(0);
-            let zero = mk_expr(ExprX::Const(zero_const))?;
-            mk_expr(ExprX::Binary(
-                BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
-                zero,
-                varg,
-            ))
+
+            match &*arg_typ {
+                TypX::Int(_) => {
+                    let zero_const = vir::ast_util::const_int_from_u128(0);
+                    let zero = mk_expr(ExprX::Const(zero_const))?;
+                    mk_expr(ExprX::Binary(
+                        BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
+                        zero,
+                        varg,
+                    ))
+                }
+                TypX::Real => {
+                    let zero = mk_expr(ExprX::Const(Constant::Real("0.0".to_string())))?;
+                    mk_expr(ExprX::Binary(
+                        BinaryOp::RealArith(vir::ast::RealArithOp::Sub),
+                        zero,
+                        varg,
+                    ))
+                }
+                _ => {
+                    return err_span(expr.span, "spec_neg expected int or real type");
+                }
+            }
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);

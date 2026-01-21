@@ -445,7 +445,7 @@ test_verify_one_file! {
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, real, enum (unit-only or field-less), `char`, and pointer types to integer types")
 }
 
 test_verify_one_file! {

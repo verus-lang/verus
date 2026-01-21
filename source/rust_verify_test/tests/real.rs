@@ -14,6 +14,8 @@ test_verify_one_file! {
             let q: real = 5u8 as real;
             assert(q == 5real);
             assert((i + 1) as real == i as real + 1.0);
+            assert((2.7real as int) == 2);
+            assert((-2.7real as int) == -3);
             assert(x >= 0.0 ==> x / 3.0 > 0.0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -35,4 +37,22 @@ test_verify_one_file! {
             assert(a >= 0.0 && b >= 0.0 && a * a + b * b == (a * b + 1.0) * q ==> q >= 0.0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file!{
+    #[test] archimedean_nat verus_code! {
+        pub open spec fn nat_to_real(n: nat) -> real {
+            n as real
+        }
+
+        proof fn archimedean_nat(x: real)
+            requires
+                x >= 0real,
+            ensures
+                exists |n: nat| #[trigger] nat_to_real(n) >= x,
+        {
+            let a = x as nat;
+            assert(x < nat_to_real(a + 1));
+        }
+    } => Ok(())
 }

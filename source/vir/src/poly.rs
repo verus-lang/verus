@@ -562,6 +562,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::Clip { .. }
                 | UnaryOp::FloatToBits
                 | UnaryOp::IntToReal
+                | UnaryOp::RealToInt
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {

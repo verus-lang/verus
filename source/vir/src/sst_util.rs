@@ -450,6 +450,9 @@ impl ExpX {
                 UnaryOp::IntToReal => {
                     (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::RealToInt => {
+                    (format!("real_to_int({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }

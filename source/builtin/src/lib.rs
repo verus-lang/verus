@@ -1344,6 +1344,8 @@ impl_unary_op!(SpecNeg, spec_neg, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
+impl_unary_op!(SpecNeg, spec_neg, real, [real]);
+
 impl_binary_op!(SpecAdd, spec_add, int, [
     int
     usize u8 u16 u32 u64 u128

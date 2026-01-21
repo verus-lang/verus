@@ -247,6 +247,7 @@ impl Parser {
                     Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
                     Node::Atom(s) if s.to_string() == "bvnot" => Some(UnaryOp::BitNot),
                     Node::Atom(s) if s.to_string() == "to_real" => Some(UnaryOp::ToReal),
+                    Node::Atom(s) if s.to_string() == "to_int" => Some(UnaryOp::RealToInt),
                     Node::List(nodes)
                         if nodes.len() == 4
                             && nodes[0] == Node::Atom("_".to_string())
