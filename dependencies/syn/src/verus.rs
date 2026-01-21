@@ -585,8 +585,6 @@ ast_struct! {
 
 #[cfg(feature = "parsing")]
 pub mod parsing {
-    use proc_macro2::TokenTree;
-
     use super::*;
     use crate::parse::{Parse, ParseStream, Result};
 
