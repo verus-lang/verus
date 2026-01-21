@@ -610,16 +610,6 @@ pub open spec fn get_index_offset<T>(base_ptr: *mut [T], other_ptr: *mut [T]) ->
     (other_ptr@.addr - base_ptr@.addr) as nat / layout::size_of::<T>()
 }
 
-// pub open spec fn map_keys<K, V, J>(map: Map<K, V>, key_map: Map<J, K>) -> Map<J, V>
-//     recommends
-//         forall |j| key_map.dom().contains(j) ==> old_map.dom().contains(key_map.index(j)),
-//         forall |j1, j2| {
-//             !equal(j1, j2) && key_map.dom().contains(j1) && key_map.dom().contains(j2)
-//                 ==> !equal(key_map.index(j1), key_map.index(j2))
-//         },
-// {
-//     Map::new(|k: K| )
-// }
 pub open spec fn map_keys<T>(map: Map<nat, T>, offset: nat) -> Map<nat, T>
     recommends
         forall|i| map.contains_key(i) ==> i >= offset,
