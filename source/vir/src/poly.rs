@@ -1184,26 +1184,26 @@ fn visit_func_check_sst(
 }
 
 fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
-    let FunctionSstX {
-        name,
-        kind,
-        body_visibility,
-        opaqueness,
-        owning_module,
+    let &FunctionSstX {
+        ref name,
+        ref kind,
+        ref body_visibility,
+        ref opaqueness,
+        ref owning_module,
         mode: mut function_mode,
-        typ_params,
-        typ_bounds,
-        pars,
-        ret,
-        ens_has_return,
-        item_kind,
-        attrs,
-        has,
-        decl,
-        axioms,
-        exec_proof_check,
-        recommends_check,
-        safe_api_check,
+        ref typ_params,
+        ref typ_bounds,
+        ref pars,
+        ref ret,
+        ref ens_has_return,
+        ref item_kind,
+        ref attrs,
+        ref has,
+        ref decl,
+        ref axioms,
+        ref exec_proof_check,
+        ref recommends_check,
+        ref safe_api_check,
     } = &function.x;
 
     if attrs.is_decrease_by {
