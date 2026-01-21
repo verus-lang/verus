@@ -7,6 +7,19 @@ use std::marker::PhantomData;
 
 verus! {
 
+/// Escrow, in the style of https://plv.mpi-sws.org/igps/igps-full.pdf
+
+/// Define a trait for guards so that we can ensure exclusivity of such resources
+pub trait Guard : Sized {
+    spec fn id(&self) -> int;
+
+    proof fn excl(tracked self, tracked other: Self) -> (tracked out: Self)
+        ensures
+            self.id() == other.id() ==> false,
+            out == self
+        ;
+}
+
 /// Token PCM
 enum TokenCarrier {
     Tok,
@@ -73,18 +86,6 @@ impl Token {
         let tracked t = Resource::alloc(carrier);
         Self { t }
     }
-}
-
-/// Escrow, in the style of https://plv.mpi-sws.org/igps/igps-full.pdf
-
-pub trait Guard : Sized {
-    spec fn id(&self) -> int;
-
-    proof fn excl(tracked self, tracked other: Self) -> (tracked out: Self)
-        ensures
-            self.id() == other.id() ==> false,
-            out == self
-        ;
 }
 
 impl Guard for Token {
