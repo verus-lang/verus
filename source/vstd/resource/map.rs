@@ -77,10 +77,10 @@ use super::super::map::*;
 use super::super::map_lib::*;
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::resource::Loc;
-use super::super::resource::Resource;
-use super::super::resource::pcm::PCM;
 use super::super::set_lib::*;
+use super::Loc;
+use super::Resource;
+use super::pcm::PCM;
 
 verus! {
 
@@ -165,8 +165,8 @@ impl<K, V> PCM for MapCarrier<K, V> {
         }
     }
 
-    closed spec fn op(self, other: Self) -> Self {
-        let auth = match (self.auth, other.auth) {
+    closed spec fn op(self, b: Self) -> Self {
+        let auth = match (self.auth, b.auth) {
             // Invalid carriers absorb
             (AuthCarrier::Invalid, _) => AuthCarrier::Invalid,
             (_, AuthCarrier::Invalid) => AuthCarrier::Invalid,
@@ -176,10 +176,10 @@ impl<K, V> PCM for MapCarrier<K, V> {
             (AuthCarrier::Frac, AuthCarrier::Frac) => AuthCarrier::Frac,
             // Whoever is the auth has precedence
             (AuthCarrier::Auth(_), _) => self.auth,
-            (_, AuthCarrier::Auth(_)) => other.auth,
+            (_, AuthCarrier::Auth(_)) => b.auth,
         };
 
-        let frac = match (self.frac, other.frac) {
+        let frac = match (self.frac, b.frac) {
             // Invalid fracs remain invalid
             (FracCarrier::Invalid, _) => FracCarrier::Invalid,
             (_, FracCarrier::Invalid) => FracCarrier::Invalid,
@@ -189,19 +189,19 @@ impl<K, V> PCM for MapCarrier<K, V> {
             //  - there is no real way to express this in the typesystem
             //  - we need to allow that through (because it does not equal Invalid)
             (
-                FracCarrier::Frac { owning: self_owning, dup: self_dup },
-                FracCarrier::Frac { owning: other_owning, dup: other_dup },
+                FracCarrier::Frac { owning: a_owning, dup: a_dup },
+                FracCarrier::Frac { owning: b_owning, dup: b_dup },
             ) => {
                 let non_overlapping = {
-                    &&& self_owning.dom().disjoint(other_dup.dom())
-                    &&& other_owning.dom().disjoint(self_dup.dom())
-                    &&& self_owning.dom().disjoint(other_owning.dom())
+                    &&& a_owning.dom().disjoint(b_dup.dom())
+                    &&& b_owning.dom().disjoint(a_dup.dom())
+                    &&& a_owning.dom().disjoint(b_owning.dom())
                 };
-                let aggreement = self_dup.agrees(other_dup);
+                let aggreement = a_dup.agrees(b_dup);
                 if non_overlapping && aggreement {
                     FracCarrier::Frac {
-                        owning: self_owning.union_prefer_right(other_owning),
-                        dup: self_dup.union_prefer_right(other_dup),
+                        owning: a_owning.union_prefer_right(b_owning),
+                        dup: a_dup.union_prefer_right(b_dup),
                     }
                 } else {
                     FracCarrier::Invalid
@@ -640,7 +640,7 @@ impl<K, V> GhostSubmap<K, V> {
     }
 
     /// Instantiate an empty [`GhostSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == id,
             result@ == Map::<K, V>::empty(),
@@ -713,8 +713,7 @@ impl<K, V> GhostSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
+        let tracked mut r = super::lib::extract(&mut self.r);
         r.validate_2(&other.r);
         self.r = r.join(other.r);
     }
@@ -1016,13 +1015,12 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     }
 
     /// Instantiate an empty [`GhostPersistentSubmap`] of a particular id
-    pub proof fn empty(id: int) -> (tracked result: GhostPersistentSubmap<K, V>)
+    pub proof fn empty(id: Loc) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
             result.id() == id,
             result@ == Map::<K, V>::empty(),
     {
-        let tracked r = Resource::create_unit(id);
-        GhostPersistentSubmap { r }
+        GhostSubmap::empty(id).persist()
     }
 
     /// Duplicate the [`GhostPersistentSubmap`]
@@ -1097,8 +1095,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
+        let tracked mut r = super::lib::extract(&mut self.r);
         r.validate_2(&other.r);
         self.r = r.join(other.r);
     }

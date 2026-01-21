@@ -1,7 +1,12 @@
 use super::prelude::*;
 
+pub mod frac;
 mod lib;
+pub mod map;
 pub mod pcm;
+pub mod seq;
+pub mod set;
+pub mod storage_protocol;
 
 pub use lib::*;
 
