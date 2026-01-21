@@ -15,7 +15,7 @@ fn ty_to_stable_string_partial<'tcx>(
         TyKind::Int(t) => format!("{}", t.name_str()),
         TyKind::Uint(t) => format!("{}", t.name_str()),
         TyKind::Float(t) => format!("{}", t.name_str()),
-        TyKind::RawPtr(ty, tm) => format!(
+        TyKind::RawPtr(ref ty, ref tm) => format!(
             "*{} {}",
             match tm {
                 rustc_ast::Mutability::Mut => "mut",
@@ -32,14 +32,14 @@ fn ty_to_stable_string_partial<'tcx>(
             ty_to_stable_string_partial(tcx, ty)?,
         ),
         TyKind::Never => format!("!"),
-        TyKind::Tuple(tys) => format!(
+        TyKind::Tuple(ref tys) => format!(
             "({})",
             tys.iter()
                 .map(|ty| ty_to_stable_string_partial(tcx, &ty))
                 .collect::<Option<Vec<_>>>()?
                 .join(",")
         ),
-        TyKind::Param(param_ty) => format!("{}", param_ty.name.as_str()),
+        TyKind::Param(ref param_ty) => format!("{}", param_ty.name.as_str()),
         TyKind::Adt(def, _substs) => {
             return Some(def_id_to_stable_rust_path(tcx, def.did())?);
         }

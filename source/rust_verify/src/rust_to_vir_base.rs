@@ -1612,17 +1612,17 @@ pub(crate) fn check_generic_bound<'tcx>(
 //  - For synthetic params, use impl%{index} for the name.
 //  - For other type params, just use the user-given type param name.
 
-fn generic_param_def_to_vir_name(r#gen: &rustc_middle::ty::GenericParamDef) -> String {
-    let is_synthetic = match r#gen.kind {
+fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
+    let is_synthetic = match gen.kind {
         GenericParamDefKind::Type { synthetic, .. } => synthetic,
         GenericParamDefKind::Const { .. } => false,
         _ => panic!("expected GenericParamDefKind::Type"),
     };
 
     if is_synthetic {
-        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &r#gen.index.to_string()
+        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &gen.index.to_string()
     } else {
-        r#gen.name.as_str().to_string()
+        gen.name.as_str().to_string()
     }
 }
 
@@ -1764,8 +1764,8 @@ pub(crate) fn check_item_external_generics<'tcx>(
     span: Span,
 ) -> Result<(), VirErr> {
     let mut generics_params: Vec<GenericParam> = vec![];
-    if let Some((r#gen, _)) = self_generics {
-        generics_params.extend(r#gen.params.iter().cloned());
+    if let Some((gen, _)) = self_generics {
+        generics_params.extend(gen.params.iter().cloned());
     }
     generics_params.extend(generics.params.iter().cloned());
 

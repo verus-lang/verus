@@ -895,13 +895,10 @@ impl Verifier {
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
                         if !self.expand_flag {
-                            match &mut *diagnostics_to_report.borrow_mut() {
-                                Some(collected) => {
-                                    collected.as_mut().push((error.clone(), level));
-                                }
-                                _ => {
-                                    reporter.report_as(&error.clone().to_any(), level);
-                                }
+                            if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
+                                collected.as_mut().push((error.clone(), level));
+                            } else {
+                                reporter.report_as(&error.clone().to_any(), level);
                             }
                         }
                     }
@@ -2252,9 +2249,10 @@ impl Verifier {
             let mut local_msgs: VecDeque<ReporterMessage> = VecDeque::new();
             let reporter = Reporter::new(spans, compiler);
             loop {
-                let msg = match local_msgs.pop_front() {
-                    Some(msg) => msg,
-                    _ => receiver.recv().expect("receiving message failed"),
+                let msg = if let Some(msg) = local_msgs.pop_front() {
+                    msg
+                } else {
+                    receiver.recv().expect("receiving message failed")
                 };
                 match msg {
                     ReporterMessage::Messages(id, mut msgs, now) => {

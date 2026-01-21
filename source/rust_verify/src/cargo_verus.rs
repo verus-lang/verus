@@ -173,6 +173,5 @@ fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
 }
 
 fn set_rustc_bootstrap() {
-    // TODO: Audit that the environment access only happens in single-threaded code.
-    unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
+    env::set_var("RUSTC_BOOTSTRAP", "1");
 }

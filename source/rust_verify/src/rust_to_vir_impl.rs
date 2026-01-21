@@ -344,7 +344,7 @@ pub(crate) fn translate_impl<'tcx>(
             let impl_def_id = item.owner_id.to_def_id();
             external_info.internal_trait_impls.insert(impl_def_id);
             let path_span = path.span.to(impll.self_ty.span);
-            match trait_impl_to_vir(
+            if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
                 ctxt,
                 item.span,
                 path_span,
@@ -355,11 +355,10 @@ pub(crate) fn translate_impl<'tcx>(
                 false,
                 vattrs.external_trait_blanket,
             )? {
-                Some((trait_path, types, trait_impl)) => {
-                    vir.trait_impls.push(trait_impl);
-                    Some((trait_path, types))
-                }
-                _ => None,
+                vir.trait_impls.push(trait_impl);
+                Some((trait_path, types))
+            } else {
+                None
             }
         } else {
             None
@@ -637,7 +636,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                         ) {
                             continue 'impls;
                         }
-                        match translate_assoc_type(
+                        if let Ok(assoc_type_impl) = translate_assoc_type(
                             ctxt,
                             name,
                             span,
@@ -648,12 +647,9 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                             trait_path.clone(),
                             trait_typ_args.clone(),
                         ) {
-                            Ok(assoc_type_impl) => {
-                                assoc_type_impls.push(assoc_type_impl);
-                            }
-                            _ => {
-                                continue 'impls;
-                            }
+                            assoc_type_impls.push(assoc_type_impl);
+                        } else {
+                            continue 'impls;
                         }
                     }
                     _ => {}

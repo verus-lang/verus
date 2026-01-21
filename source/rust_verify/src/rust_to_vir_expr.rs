@@ -2263,26 +2263,25 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     )?))
                 }
                 (Res::Def(DefKind::AssocConst, id), _) => {
-                    match int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id) {
-                        Some(vir_expr) => {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.resolved_calls.push((
-                                expr.hir_id,
-                                expr.span.data(),
-                                ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
-                            ));
-                            return Ok(ExprOrPlace::Expr(vir_expr));
-                        }
-                        _ => {
-                            let path = bctx.ctxt.def_id_to_vir_path(id);
-                            let fun = FunX { path };
-                            let autospec_usage = if bctx.in_ghost {
-                                AutospecUsage::IfMarked
-                            } else {
-                                AutospecUsage::Final
-                            };
-                            mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
-                        }
+                    if let Some(vir_expr) =
+                        int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id)
+                    {
+                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        erasure_info.resolved_calls.push((
+                            expr.hir_id,
+                            expr.span.data(),
+                            ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                        ));
+                        return Ok(ExprOrPlace::Expr(vir_expr));
+                    } else {
+                        let path = bctx.ctxt.def_id_to_vir_path(id);
+                        let fun = FunX { path };
+                        let autospec_usage = if bctx.in_ghost {
+                            AutospecUsage::IfMarked
+                        } else {
+                            AutospecUsage::Final
+                        };
+                        mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                     }
                 }
                 (Res::Def(DefKind::Const, id), _) => {
