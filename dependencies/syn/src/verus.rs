@@ -740,7 +740,6 @@ pub mod parsing {
         input.peek(token::Brace)
             && (input.peek2(Token![,])
                 || input.peek2(token::Brace)
-                || input.peek2(Token![;])
                 || input.peek2(Token![invariant_except_break])
                 || input.peek2(Token![invariant])
                 || input.peek2(Token![invariant_ensures])
