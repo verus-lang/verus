@@ -693,10 +693,7 @@ pub mod parsing {
     impl Parse for Specification {
         fn parse(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            loop {
-                if input.is_empty() || !is_next_clause_valid(input) {
-                    break;
-                }
+            while !input.is_empty() && is_next_clause_valid(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
