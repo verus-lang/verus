@@ -39,7 +39,7 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file!{
+test_verify_one_file! {
     #[test] archimedean_nat verus_code! {
         pub open spec fn nat_to_real(n: nat) -> real {
             n as real

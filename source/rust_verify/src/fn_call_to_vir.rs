@@ -1331,12 +1331,8 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecNeg) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            let arg_typ = undecorate_typ(&typ_of_expr_adjusted(
-                bctx,
-                args[0].span,
-                &args[0].hir_id,
-                false,
-            )?);
+            let arg_typ =
+                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, false)?);
 
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
 

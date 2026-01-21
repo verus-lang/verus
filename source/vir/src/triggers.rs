@@ -269,7 +269,10 @@ fn check_trigger_expr(
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
-                UnaryOp::Clip { .. } | UnaryOp::FloatToBits | UnaryOp::IntToReal | UnaryOp::RealToInt => {
+                UnaryOp::Clip { .. }
+                | UnaryOp::FloatToBits
+                | UnaryOp::IntToReal
+                | UnaryOp::RealToInt => {
                     check_trigger_expr_arg(state, arg);
                     Ok(())
                 }
