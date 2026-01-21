@@ -734,8 +734,7 @@ pub mod parsing {
 
     fn is_next_clause_in_braces(input: ParseStream) -> bool {
         input.peek(token::Brace)
-            && (input.peek2(parse::End)
-                || input.peek2(Token![,])
+            && (input.peek2(Token![,])
                 || input.peek2(token::Brace)
                 || input.peek2(Token![;])
                 || input.peek2(Token![invariant_except_break])
