@@ -6,7 +6,7 @@ use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, is_smt_arith, is_type_std_rc_or_arc_or_ref,
-    typ_of_node, typ_of_node_expect_mut_ref,
+    typ_of_expr_adjusted, typ_of_node_unadjusted, typ_of_node_unadjusted_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
     ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir,
@@ -57,7 +57,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
-    let expr_typ = || typ_of_node(bctx, expr.span, &expr.hir_id, false);
+    let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, false);
 
     let rust_item = verus_items::get_rust_item(tcx, f);
     let verus_item = bctx.ctxt.get_verus_item(f);
@@ -897,7 +897,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 )) = &args[0].kind
                 {
                     if let Node::Pat(pat) = tcx.hir_node(*id) {
-                        let typ = typ_of_node_expect_mut_ref(bctx, args[0].span, &expr.hir_id)?;
+                        let typ = typ_of_node_unadjusted_expect_mut_ref(
+                            bctx,
+                            args[0].span,
+                            &expr.hir_id,
+                        )?;
                         return Ok(bctx.spanned_typed_new(
                             expr.span,
                             &typ,
@@ -1503,7 +1507,12 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecNeg) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            match *undecorate_typ(&typ_of_node(bctx, args[0].span, &args[0].hir_id, false)?) {
+            match *undecorate_typ(&typ_of_expr_adjusted(
+                bctx,
+                args[0].span,
+                &args[0].hir_id,
+                false,
+            )?) {
                 TypX::Int(_) => {}
                 _ => {
                     return err_span(expr.span, "spec_neg expected int type");
@@ -1719,7 +1728,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Spec,
                 kind: ModeCoercion::BorrowMut,
             };
-            let typ = typ_of_node(bctx, expr.span, &expr.hir_id, true)?;
+            let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, true)?;
             Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut) => {
@@ -1735,15 +1744,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::BorrowMut,
             };
-            let typ = typ_of_node(bctx, expr.span, &expr.hir_id, true)?;
+            let typ = typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id, true)?;
             Ok(bctx.spanned_typed_new(expr.span, &typ, ExprX::Unary(op, vir_arg)))
         }
         VerusItem::BinaryOp(BinaryOpItem::Equality(equ_item)) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
             if matches!(equ_item, EqualityItem::SpecEq) {
-                let t1 = typ_of_node(bctx, args[0].span, &args[0].hir_id, true)?;
-                let t2 = typ_of_node(bctx, args[1].span, &args[1].hir_id, true)?;
+                let t1 = typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, true)?;
+                let t2 = typ_of_expr_adjusted(bctx, args[1].span, &args[1].hir_id, true)?;
                 // REVIEW: there's some code that (harmlessly) uses == on types that are
                 // different in decoration; Rust would reject this, but we currently allow it:
                 let t1 = undecorate_typ(&t1);

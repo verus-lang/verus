@@ -144,10 +144,12 @@ fn workspace_workdir() {
     let hasdeps = "hasdeps";
 
     let workspace_dir = MockWorkspace::new()
-        .member(MockPackage::new(optin).lib().verify(true))
-        .member(MockPackage::new(optout).lib().verify(false))
-        .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .members([
+            MockPackage::new(optin).lib().verify(true),
+            MockPackage::new(optout).lib().verify(false),
+            MockPackage::new(unset).lib(),
+            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+        ])
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -179,10 +181,12 @@ fn workspace_manifest() {
     let hasdeps = "hasdeps";
 
     let workspace_dir = MockWorkspace::new()
-        .member(MockPackage::new(optin).lib().verify(true))
-        .member(MockPackage::new(optout).lib().verify(false))
-        .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .members([
+            MockPackage::new(optin).lib().verify(true),
+            MockPackage::new(optout).lib().verify(false),
+            MockPackage::new(unset).lib(),
+            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+        ])
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -220,10 +224,12 @@ fn workspace_manifest_package_optin() {
     let hasdeps = "hasdeps";
 
     let workspace_dir = MockWorkspace::new()
-        .member(MockPackage::new(optin).lib().verify(true))
-        .member(MockPackage::new(optout).lib().verify(false))
-        .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .members([
+            MockPackage::new(optin).lib().verify(true),
+            MockPackage::new(optout).lib().verify(false),
+            MockPackage::new(unset).lib(),
+            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+        ])
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");
@@ -257,9 +263,7 @@ fn workspace_manifest_package_optin() {
     data.assert_env_sets_key_prefix(&verify_optin_prefix, "1");
     data.assert_env_has_no_key_prefix(&verify_optout_prefix);
     data.assert_env_has_no_key_prefix(&verify_unset_prefix);
-    // TODO: `cargo-verus` should be fixed in a follow-up change to have
-    //       the correct behavior, i.e. not mark `hasdeps` to be verified
-    data.assert_env_sets_key_prefix(&verify_hasdeps_prefix, "1");
+    data.assert_env_has_no_key_prefix(&verify_hasdeps_prefix);
 }
 
 #[test]
@@ -270,10 +274,12 @@ fn workspace_manifest_package_hasdeps() {
     let hasdeps = "hasdeps";
 
     let workspace_dir = MockWorkspace::new()
-        .member(MockPackage::new(optin).lib().verify(true))
-        .member(MockPackage::new(optout).lib().verify(false))
-        .member(MockPackage::new(unset).lib())
-        .member(MockPackage::new(hasdeps).lib().dep(optin).verify(true))
+        .members([
+            MockPackage::new(optin).lib().verify(true),
+            MockPackage::new(optout).lib().verify(false),
+            MockPackage::new(unset).lib(),
+            MockPackage::new(hasdeps).lib().deps([MockDep::workspace(optin)]).verify(true),
+        ])
         .materialize();
 
     let verify_optin_prefix = format!("__VERUS_DRIVER_VERIFY_{optin}-0.1.0-");

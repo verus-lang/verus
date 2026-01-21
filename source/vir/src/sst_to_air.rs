@@ -703,7 +703,7 @@ pub(crate) fn ctor_to_apply<'a>(
     dt: &Dt,
     variant: &Ident,
     binders: &'a Binders<Exp>,
-) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
+) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>> + use<'a>) {
     let fields = &get_variant(&ctx.datatype_map[dt].x.variants, variant).fields;
     let variant = variant_ident(dt, &variant);
     let field_exps = fields.iter().map(move |f| get_field(binders, &f.name));
@@ -992,10 +992,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             str_apply(f, &vec![typ_to_id(ctx, c)])
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
-            if let Some(e) = crate::traits::trait_bound_to_air(ctx, p, ts) {
-                e
-            } else {
-                air::ast_util::mk_true()
+            match crate::traits::trait_bound_to_air(ctx, p, ts) {
+                Some(e) => e,
+                _ => air::ast_util::mk_true(),
             }
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(p, ts, x, t)) => {
@@ -1141,10 +1140,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                if let Some(inv) = typ_invariant(ctx, typ, &expr) {
-                    inv
-                } else {
-                    air::ast_util::mk_true()
+                match typ_invariant(ctx, typ, &expr) {
+                    Some(inv) => inv,
+                    _ => air::ast_util::mk_true(),
                 }
             }
             UnaryOpr::IsVariant { datatype, variant } => {

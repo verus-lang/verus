@@ -24,7 +24,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -42,7 +42,7 @@ jobs:
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -67,7 +67,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -103,7 +103,7 @@ jobs:
           - build: linux
             os: ubuntu-22.04
           - build: windows
-            os: windows-latest
+            os: windows-2022
 
     runs-on: ${{ matrix.os }}
 
@@ -124,7 +124,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -152,7 +152,7 @@ jobs:
       matrix:
         features: [record-history, no-std, no-alloc, singular]
 
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -171,7 +171,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -237,7 +237,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: build docs
         working-directory: ./source
@@ -263,7 +263,7 @@ jobs:
         build: [macos, macos-x86_64, linux, windows]
         include:
           - build: macos
-            os: macos-latest
+            os: macos-14
             release_name: verus-arm64-macos
           - build: macos-x86_64
             os: macos-15-intel
@@ -272,7 +272,7 @@ jobs:
             os: ubuntu-22.04
             release_name: verus-x86-linux
           - build: windows
-            os: windows-latest
+            os: windows-2022
             release_name: verus-x86-win
 
     runs-on: ${{ matrix.os }}
@@ -294,7 +294,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
 
       - name: build
         working-directory: ./source
@@ -309,7 +309,7 @@ jobs:
           ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
           cp -R ./target-verus/release ../${{ matrix.release_name }}
           cd ..;
-          if [ ${{ matrix.os }} == "windows-latest" ]; then
+          if [ ${{ matrix.os }} == "windows-2022" ]; then
             7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
           else
             zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}

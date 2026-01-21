@@ -8,23 +8,23 @@ description = "A Cargo subcommand that enables verification of Rust code as part
 integration-tests = []
 
 [dependencies]
-cargo_metadata = "0.18.1"
+cargo_metadata = "0.23.1"
 clap = { version = "4.5.53", features = ["derive"] }
-clap-cargo = "0.18.3"
+clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
 rustc_tools_util = "0.3.0"
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = "1.0.145"
 sha2 = "0.10.2"
 hex = "0.4.3"
 colored = "3.0.0"
+tempfile = "3"
 
 [build-dependencies]
 rustc_tools_util = "0.3.0"
 
 [dev-dependencies]
 assert_cmd = "2.0"
-tempfile = "3"
 
 [[bin]]
 name = "fake-cargo"

@@ -766,7 +766,9 @@ pub struct PatternBinding {
     pub name: VarIdent,
     pub by_ref: ByRef,
     pub typ: Typ,
-    pub mutable: bool,
+    /// Marked mutable at the source level? Use None for variables introduced in lowering passes.
+    /// TODO: This field can probably be removed.
+    pub user_mut: Option<bool>,
     /// True if the type of this variable is copy.
     /// This is used by resolution analysis; it is meaningless post-simplification.
     pub copy: bool,
@@ -1006,7 +1008,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Special binary operation
     BinaryOpr(BinaryOpr, Expr, Expr),
-    /// Primitive multi-operand operation
+    /// Primitive multi-operand operation.
+    /// No short-circuiting: all expressions are evaluated unconditionally, and in order.
     Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, VarBinders<Typ>, Expr),
@@ -1035,16 +1038,20 @@ pub enum ExprX {
     /// Manually supply triggers for body of quantifier
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
-    /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
     /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     ///
     /// Not used when new-mut-refs is enabled.
-    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
+    Assign { lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Assign to the given place.
     ///
     /// If `resolve` is set, then we also emit
     /// `assume(has_resolved(place))` immediately before the mutation.
     /// This flag may be set by resolution analysis.
+    ///
+    /// Note that the right-hand-side is evaluated BEFORE the left-hand-side (place).
+    /// See: [https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.assign.evaluation-order]
+    /// (Also note that this does not apply to overloaded compound assignment, which should
+    /// lower to a Call node instead.)
     ///
     /// Used only when new-mut-refs is enabled.
     AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, resolve: Option<Typ> },
@@ -1235,7 +1242,9 @@ pub struct ParamX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    /// An &mut parameter
+    /// Marked 'mut' at the source level?
+    pub user_mut: bool,
+    /// An &mut parameter (only used outside new-mut-ref)
     pub is_mut: bool,
     /// If the parameter uses a Ghost(x) or Tracked(x) pattern to unwrap the value, this is
     /// the mode of the resulting unwrapped x variable (Spec for Ghost(x), Proof for Tracked(x)).

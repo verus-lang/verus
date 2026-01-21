@@ -812,10 +812,9 @@ pub(crate) fn typ_equality_bound_to_air(
 pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
     let f = crate::ast_util::const_generic_to_primitive(t);
     let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(ctx, c)]);
-    if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr) {
-        inv
-    } else {
-        air::ast_util::mk_true()
+    match crate::sst_to_air::typ_invariant(ctx, t, &expr) {
+        Some(inv) => inv,
+        _ => air::ast_util::mk_true(),
     }
 }
 
@@ -1044,13 +1043,13 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
     let (typ_params, eqs) =
         crate::sst_to_air_func::hide_projections_air(ctx, &imp.x.typ_params, holes);
-    let tr_bound = if let Some(tr_bound) =
-        trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args)
-    {
-        tr_bound
-    } else {
-        return Arc::new(vec![]);
-    };
+    let tr_bound =
+        match trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args) {
+            Some(tr_bound) => tr_bound,
+            _ => {
+                return Arc::new(vec![]);
+            }
+        };
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];

@@ -1103,8 +1103,9 @@ impl<'a> Builder<'a> {
             }
             ExprX::AssignToPlace { place, rhs, op, resolve } => {
                 assert!(resolve.is_none());
-                let (p, bb) = self.build_place_and_intern(place, bb)?;
+                // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
+                let (p, bb) = self.build_place_and_intern(place, bb)?;
                 match &p {
                     ComputedPlace::Partial(_) => {
                         if op.is_none() {
@@ -1596,9 +1597,9 @@ pub fn expr_all_bound_vars_with_ownership(
         &mut |_env, _scope_map, _stmt| Ok(()),
         &mut |_env, _scope_map, pattern| {
             match &pattern.x {
-                PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+                PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
                 | PatternX::Binding {
-                    binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                    binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
                     sub_pat: _,
                 } => {
                     let spec = matches!(&modes[name], Mode::Spec);
@@ -1632,9 +1633,9 @@ pub fn pattern_all_bound_vars_with_ownership(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ })
+            PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable: _, by_ref: _, typ, copy: _ },
+                binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
                 sub_pat: _,
             } => {
                 let spec = matches!(&modes[name], Mode::Spec);
@@ -1706,9 +1707,9 @@ fn moves_and_muts_for_pattern(
     ) {
         match &pattern.x {
             PatternX::Wildcard(_) => {}
-            PatternX::Var(PatternBinding { name, mutable: _, by_ref, typ: _, copy })
+            PatternX::Var(PatternBinding { name, user_mut: _, by_ref, typ: _, copy })
             | PatternX::Binding {
-                binding: PatternBinding { name, mutable: _, by_ref, typ: _, copy },
+                binding: PatternBinding { name, user_mut: _, by_ref, typ: _, copy },
                 sub_pat: _,
             } => {
                 // no need to descend into subpat, already moving or borrowing the whole thing
@@ -2906,7 +2907,7 @@ fn apply_resolutions(
         scope_map
             .insert(
                 param.x.name.clone(),
-                crate::ast_visitor::ScopeEntry::new(&param.x.typ, false, true),
+                crate::ast_visitor::ScopeEntry::new(&param.x.typ, Some(param.x.user_mut), true),
             )
             .unwrap();
     }
@@ -3284,7 +3285,7 @@ fn add_decls_for_temps(
                 stmts.push(Spanned::new(
                     expr.span.clone(),
                     StmtX::Decl {
-                        pattern: PatternX::simple_var(x, true, &expr.span, typ),
+                        pattern: PatternX::simple_var(x, &expr.span, typ),
                         mode: Some(Mode::Exec), // doesn't matter
                         init: None,
                         els: None,

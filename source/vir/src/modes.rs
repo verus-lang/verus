@@ -479,13 +479,13 @@ fn add_pattern_rec(
 
     match &pattern.x {
         PatternX::Wildcard(_dd) => Ok(()),
-        PatternX::Var(PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ }) => {
+        PatternX::Var(PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ }) => {
             check_binding(&pattern.span, by_ref, mode)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
         PatternX::Binding {
-            binding: PatternBinding { name: x, mutable: _, by_ref, typ: _, copy: _ },
+            binding: PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ },
             sub_pat,
         } => {
             check_binding(&pattern.span, by_ref, mode)?;
@@ -618,7 +618,6 @@ fn get_var_loc_mode(
     outer_mode: Mode,
     expr_inner_mode: Option<Mode>,
     expr: &Expr,
-    init_not_mut: bool,
 ) -> Result<Mode, VirErr> {
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
@@ -637,7 +636,6 @@ fn get_var_loc_mode(
             UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind: ModeCoercion::BorrowMut },
             e1,
         ) => {
-            assert!(!init_not_mut);
             if ctxt.check_ghost_blocks {
                 if (*op_mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
                     return Err(error(
@@ -652,15 +650,7 @@ fn get_var_loc_mode(
                     format!("cannot perform operation with mode {}", op_mode),
                 ));
             }
-            let mode1 = get_var_loc_mode(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                Some(*to_mode),
-                e1,
-                init_not_mut,
-            )?;
+            let mode1 = get_var_loc_mode(ctxt, record, typing, outer_mode, Some(*to_mode), e1)?;
             if !mode_le(mode1, *from_mode) {
                 return Err(error(
                     &expr.span,
@@ -673,15 +663,8 @@ fn get_var_loc_mode(
             UnaryOpr::Field(FieldOpr { datatype, variant: _, field, get_variant, check: _ }),
             rcvr,
         ) => {
-            let rcvr_mode = get_var_loc_mode(
-                ctxt,
-                record,
-                typing,
-                outer_mode,
-                expr_inner_mode,
-                rcvr,
-                init_not_mut,
-            )?;
+            let rcvr_mode =
+                get_var_loc_mode(ctxt, record, typing, outer_mode, expr_inner_mode, rcvr)?;
             record
                 .type_inv_info
                 .field_loc_needs_check
@@ -705,25 +688,18 @@ fn get_var_loc_mode(
         }
         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
             // For now, only support the special case for Tracked::borrow_mut.
-            get_var_loc_mode(ctxt, record, typing, outer_mode, None, e1, init_not_mut)?
+            get_var_loc_mode(ctxt, record, typing, outer_mode, None, e1)?
         }
         ExprX::Ghost { alloc_wrapper: false, tracked: true, expr: e1 } => {
             // For now, only support the special case for Tracked::borrow_mut.
             let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-            let mode =
-                get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1, init_not_mut)?;
+            let mode = get_var_loc_mode(ctxt, record, &mut typing, outer_mode, None, e1)?;
             mode
         }
         _ => {
             panic!("unexpected loc {:?}", expr);
         }
     };
-    if x_mode == Mode::Spec && init_not_mut {
-        return Err(error(
-            &expr.span,
-            "delayed assignment to non-mut let not allowed for spec variables",
-        ));
-    }
     match &expr.x {
         ExprX::Ghost { .. } => {}
         _ => {
@@ -1572,7 +1548,7 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, typing, outer_mode, rhs, lhs_mode)?;
             Ok(lhs_mode)
         }
-        ExprX::Assign { init_not_mut, lhs, rhs, op: _ } => {
+        ExprX::Assign { lhs, rhs, op: _ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -1594,8 +1570,7 @@ fn check_expr_handle_mut_arg(
                     }
                 }
             }
-            let x_mode =
-                get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs, *init_not_mut)?;
+            let x_mode = get_var_loc_mode(ctxt, record, typing, outer_mode, None, lhs)?;
             if !mode_le(outer_mode, x_mode) {
                 return Err(error(
                     &expr.span,
@@ -2128,7 +2103,7 @@ fn check_stmt(
                 (
                     PatternX::Var(PatternBinding {
                         name: x,
-                        mutable: _,
+                        user_mut: _,
                         by_ref: _,
                         typ: _,
                         copy: _,
