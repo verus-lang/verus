@@ -693,7 +693,6 @@ pub mod parsing {
     impl Parse for Specification {
         fn parse(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-
             loop {
                 if input.is_empty() || !is_next_clause_valid(input) {
                     break;
@@ -706,11 +705,6 @@ pub mod parsing {
                 let punct = input.parse()?;
                 exprs.push_punct(punct);
             }
-
-            if exprs.is_empty() {
-                return Err(input.error("Expected at least one clause here."));
-            }
-
             Ok(Specification { exprs })
         }
     }
