@@ -1,7 +1,9 @@
 
-use super::prelude::*;
-use super::pcm::*;
+use crate::prelude::*;
+use crate::pcm::*;
 use crate::simple_pptr::*;
+use crate::tokens::*;
+use std::marker::PhantomData;
 
 verus! {
 
@@ -64,6 +66,13 @@ impl Token {
     closed spec fn resource(&self) -> Resource<TokenCarrier> {
         self.t
     }
+
+    pub proof fn new() -> (tracked result: Self)
+    {
+        let tracked carrier = TokenCarrier::Tok;
+        let tracked t = Resource::alloc(carrier);
+        Self { t }
+    }
 }
 
 /// Escrow, in the style of https://plv.mpi-sws.org/igps/igps-full.pdf
@@ -98,20 +107,64 @@ impl Guard for Token {
     }
 }
 
-pub trait Escrow<T, P: Guard> : Sized {
-    // payload type (Q) will always be PointsTo for now. this avoids complication in footnote 7
+/// VerusSync tokens
+pub struct UniqueSimpleTokenGuard<T: UniqueSimpleToken> {
+    pub t: T
+}
 
-    spec fn guard(&self) -> P;
+impl<T: UniqueSimpleToken> Guard for UniqueSimpleTokenGuard<T> {
+    closed spec fn id(&self) -> int {
+        self.t.instance_id().0
+    }
+
+    proof fn excl(tracked self, tracked other: Self) -> (tracked out: Self) {
+        if (self.id() == other.id()) {
+            let tracked mut s = self;
+            s.t.unique(&other.t);
+            assert(false);
+            proof_from_false()
+        } else {
+            self
+        }
+    }
+}
+
+pub struct UniqueValueTokenGuard<V, T: UniqueValueToken<V>> {
+    pub t: T,
+    _v: PhantomData<V>
+}
+
+impl<V, T: UniqueValueToken<V>> Guard for UniqueValueTokenGuard<V, T> {
+    closed spec fn id(&self) -> int {
+        self.t.instance_id().0
+    }
+
+    proof fn excl(tracked self, tracked other: Self) -> (tracked out: Self) {
+        if (self.id() == other.id()) {
+            let tracked mut s = self;
+            s.t.unique(&other.t);
+            assert(false);
+            proof_from_false()
+        } else {
+            self
+        }
+    }
+}
+
+pub trait Escrow<T, G: Guard> : Sized {
+    // payload type will always be PointsTo for now. this avoids complication in footnote 7 in iGPS paper
+
+    spec fn guard(&self) -> G;
 
     spec fn payload(&self) -> PointsTo<T>;
 
-    proof fn intro(tracked payload: PointsTo<T>, guard_data: P) -> (tracked out: Self)
+    proof fn intro(tracked payload: PointsTo<T>, guard_data: G) -> (tracked out: Self)
         ensures
             out.guard() == guard_data,
             out.payload() == payload
         ;
 
-    proof fn elim(tracked &self, tracked guard: P) -> (tracked out: PointsTo<T>)
+    proof fn elim(tracked &self, tracked guard: G) -> (tracked out: PointsTo<T>)
         requires
             self.guard() == guard
         ensures
