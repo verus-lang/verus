@@ -291,7 +291,7 @@ impl PointsTo<str> {
             self.is_init(),
         ensures
             ret.is_init(),
-            ret.value() == target@,
+            ret.value() == target@@,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
             ret.ptr()@.metadata == self.ptr()@.metadata,
