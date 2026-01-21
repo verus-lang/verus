@@ -69,7 +69,6 @@ pub mod shared;
 pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
-pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
