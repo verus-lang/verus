@@ -1220,16 +1220,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             let triggers_tuples = expr_to_vir_consume(bctx, args[0], modifier)?;
             let body = expr_to_vir_consume(bctx, args[1], modifier)?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
-            if let Some(triggers) = unpack_tuple(&triggers_tuples) {
-                for trigger_tuple in triggers.iter() {
-                    if let Some(terms) = unpack_tuple(trigger_tuple) {
-                        trigs.push(Arc::new(terms));
-                    } else {
-                        return err_span(expr.span, "expected tuple arguments to with_triggers");
+            match unpack_tuple(&triggers_tuples) {
+                Some(triggers) => {
+                    for trigger_tuple in triggers.iter() {
+                        match unpack_tuple(trigger_tuple) {
+                            Some(terms) => {
+                                trigs.push(Arc::new(terms));
+                            }
+                            _ => {
+                                return err_span(
+                                    expr.span,
+                                    "expected tuple arguments to with_triggers",
+                                );
+                            }
+                        }
                     }
                 }
-            } else {
-                return err_span(expr.span, "expected tuple arguments to with_triggers");
+                _ => {
+                    return err_span(expr.span, "expected tuple arguments to with_triggers");
+                }
             }
             let triggers = Arc::new(trigs);
             mk_expr(ExprX::WithTriggers { triggers, body })
