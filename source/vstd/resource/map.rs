@@ -77,10 +77,10 @@ use super::super::map::*;
 use super::super::map_lib::*;
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::resource::Loc;
-use super::super::resource::Resource;
-use super::super::resource::pcm::PCM;
 use super::super::set_lib::*;
+use super::Loc;
+use super::Resource;
+use super::pcm::PCM;
 
 verus! {
 
@@ -713,8 +713,7 @@ impl<K, V> GhostSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
+        let tracked mut r = super::lib::extract(&mut self.r);
         r.validate_2(&other.r);
         self.r = r.join(other.r);
     }
@@ -1021,8 +1020,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             result.id() == id,
             result@ == Map::<K, V>::empty(),
     {
-        let tracked r = Resource::create_unit(id);
-        GhostPersistentSubmap { r }
+        GhostSubmap::empty(id).persist()
     }
 
     /// Duplicate the [`GhostPersistentSubmap`]
@@ -1097,8 +1095,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = Resource::alloc(MapCarrier::unit());
-        tracked_swap(&mut self.r, &mut r);
+        let tracked mut r = super::lib::extract(&mut self.r);
         r.validate_2(&other.r);
         self.r = r.join(other.r);
     }

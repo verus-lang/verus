@@ -1,9 +1,9 @@
-use super::prelude::*;
-use super::resource::Loc;
+use super::super::prelude::*;
+use super::Loc;
 
 verus! {
 
-broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
+broadcast use {super::super::set::group_set_axioms, super::super::map::group_map_axioms};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -32,14 +32,14 @@ broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
 #[verifier::accept_recursive_types(V)]
 pub tracked struct StorageResource<K, V, P> {
     _p: core::marker::PhantomData<(K, V, P)>,
-    _send_sync: super::state_machine_internal::SyncSendIfSyncSend<Map<K, V>>,
+    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<Map<K, V>>,
 }
 
 /// See [`StorageResource`] for more information.
 pub trait Protocol<K, V>: Sized {
     spec fn op(self, other: Self) -> Self;
 
-    /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::pcm::PCM::pcm_valid), is not
+    /// Note that `rel`, in contrast to [`ResourceAlgebra::valid`](crate::resource::algebra::ResourceAlgebra::valid), is not
     /// necessarily closed under inclusion.
     spec fn rel(self, s: Map<K, V>) -> bool;
 
@@ -241,7 +241,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         P::op_unit(p.value());
         let tracked (selff, unit) = p.split(p.value(), P::unit());
         let new_values0 = set_op(new_values, P::unit());
-        super::set_lib::assert_sets_equal!(new_values0, new_values, v => {
+        super::super::set_lib::assert_sets_equal!(new_values0, new_values, v => {
             P::op_unit(v.0);
             if new_values.contains(v) {
                 assert(new_values0.contains(v));

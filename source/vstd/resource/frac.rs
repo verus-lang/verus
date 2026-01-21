@@ -1,9 +1,9 @@
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::resource::Loc;
-use super::super::resource::Resource;
-use super::super::resource::pcm::PCM;
-use super::super::storage_protocol::*;
+use super::Loc;
+use super::Resource;
+use super::pcm::PCM;
+use super::storage_protocol::*;
 use super::*;
 
 verus! {
@@ -196,8 +196,8 @@ impl<T, const TOTAL: u64> FracGhost<T, TOTAL> {
         requires
             0 < n < old(self).frac(),
         ensures
-            result.id() == old(self).id(),
             self.id() == old(self).id(),
+            result.id() == self.id(),
             self@ == old(self)@,
             result@ == old(self)@,
             self.frac() + result.frac() == old(self).frac(),

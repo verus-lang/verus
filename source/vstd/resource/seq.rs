@@ -1,6 +1,6 @@
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::resource::Loc;
+use super::Loc;
 use super::map::*;
 
 verus! {
