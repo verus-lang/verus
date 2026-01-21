@@ -134,7 +134,8 @@ pub fn main() {
         }
     }
 
-    std::env::set_var("RUSTC_BOOTSTRAP", "1");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { std::env::set_var("RUSTC_BOOTSTRAP", "1") };
 
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
