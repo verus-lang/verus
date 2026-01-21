@@ -1245,6 +1245,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                 _ => err_span(expr.span, "Only integer types can be cast to real"),
             }
         }
+        VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
+            record_spec_fn_allow_proof_args(bctx, expr);
+            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
+            let source_ty = undecorate_typ(&source_vir.typ);
+            match &*source_ty {
+                TypX::Real => mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir)),
+                _ => err_span(expr.span, "floor expected real type"),
+            }
+        }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
             let to_ty = undecorate_typ(&expr_typ()?);
@@ -1292,15 +1303,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
                     mk_expr(ExprX::If(source_vir, one, Some(zero)))
                 }
-                ((TypX::Real, _), TypX::Int(IntRange::Int)) => {
-                    mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))
-                }
-                ((TypX::Real, _), TypX::Int(_)) => {
-                    let real_to_int = mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))?;
-                    let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
-                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
-                    Ok(mk_ty_clip(&to_ty, &real_to_int, expr_vattrs.truncate))
-                }
                 ((_, true), TypX::Int(IntRange::Int)) => {
                     mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
                 }
@@ -1322,9 +1324,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
                 }
+                ((TypX::Real, _), TypX::Int(_)) => err_span(
+                    expr.span,
+                    "cannot cast real to int directly; use .floor() instead (e.g., x.floor() or x.floor() as u64)",
+                ),
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, bool, real, enum (unit-only or field-less), `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }

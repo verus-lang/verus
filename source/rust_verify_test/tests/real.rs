@@ -14,8 +14,8 @@ test_verify_one_file! {
             let q: real = 5u8 as real;
             assert(q == 5real);
             assert((i + 1) as real == i as real + 1.0);
-            assert((2.7real as int) == 2);
-            assert((-2.7real as int) == -3);
+            assert((2.7real).floor() == 2);
+            assert((-2.7real).floor() == -3);
             assert(x >= 0.0 ==> x / 3.0 > 0.0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -51,7 +51,7 @@ test_verify_one_file! {
             ensures
                 exists |n: nat| #[trigger] nat_to_real(n) >= x,
         {
-            let a = x as nat;
+            let a: nat = x.floor() as nat;
             assert(x < nat_to_real(a + 1));
         }
     } => Ok(())

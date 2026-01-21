@@ -708,6 +708,17 @@ impl core::cmp::Ord for nat {
 #[derive(Clone, Copy)]
 pub struct real;
 
+impl real {
+    /// Returns the largest integer less than or equal to `self` (i.e., floor function).
+    /// This is equivalent to `self as int` when casting from real to int.
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::real::floor"]
+    #[verifier::spec]
+    pub fn floor(self) -> int {
+        int::CONST_DEFAULT
+    }
+}
+
 //
 // Structural
 //
