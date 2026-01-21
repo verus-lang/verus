@@ -819,7 +819,6 @@ impl<T> MapPointsTo<T> {
     /// and that the memory corresponding to `other.ptr()` is contained in the memory corresponding to `old(self).ptr()`,
     /// we can unify them into a single permission containing the union of the permissions,
     /// with the same pointer as `old(self).ptr()`.
-    #[verifier::spinoff_prover]
     pub proof fn disjoint_union(tracked &mut self, tracked other: Self)
         requires
             layout::size_of::<T>() != 0,
@@ -828,12 +827,7 @@ impl<T> MapPointsTo<T> {
             other.ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>() 
                 <= old(self).ptr()@.addr + old(self).ptr()@.metadata * layout::size_of::<T>(),
             (other.ptr()@.addr - old(self).ptr()@.addr) as nat % layout::size_of::<T>() == 0,
-            // Disjointness should follow from the fact that there can be at most 1 PointsTo for each address
-            // old(self).indices().map(
-            //     |i: nat| (i + get_index_offset(old(self).ptr(), other.ptr())) as nat,
-            // ).disjoint(other.indices()),
             other.indices().map(|i: nat| i + get_index_offset(old(self).ptr(), other.ptr())).subset_of(old(self).all_indices()),
-
         ensures
             self.points_to() == old(self).points_to().union_prefer_right(map_keys(other.points_to(), get_index_offset(self.ptr(), other.ptr()))),
             self.ptr() == old(self).ptr(),
@@ -845,22 +839,10 @@ impl<T> MapPointsTo<T> {
         use_type_invariant(other);
 
         let begin = get_index_offset(self.ptr(), other.ptr());
-        let len = other.ptr()@.metadata as nat;
-
-        // assert(forall|i| other.indices().contains(i) ==> i < other.ptr()@.metadata);
-        // assert(forall|i| other.indices().contains(i) ==> other[i].ptr()@.provenance == other.ptr()@.provenance);
-        // assert(forall|i| other.indices().contains(i) ==> other[i].ptr()@.addr == other.ptr()@.addr + i * layout::size_of::<T>());
-
+        let len = other.ptr()@.metadata;
         let mapped_other = map_keys(other.points_to(), begin); 
 
-        // assert(forall|i| mapped_other.dom().contains(i) ==> i - begin < other.ptr()@.metadata);
-        // assert(forall|i| mapped_other.dom().contains(i) ==> i < other.ptr()@.metadata + begin);
-
-        // assert(forall|i| mapped_other.dom().contains(i) ==> mapped_other[i].ptr()@.provenance == other.ptr()@.provenance);
-        // assert(forall|i| mapped_other.dom().contains(i) ==> mapped_other[i].ptr()@.provenance == self.ptr()@.provenance);
-
-        // assert(forall|i| mapped_other.dom().contains(i) ==> mapped_other[i].ptr()@.addr == other.ptr()@.addr + (i - begin) * layout::size_of::<T>());
-        assert forall|i| mapped_other.dom().contains(i) implies mapped_other[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>() by {
+        assert forall|i| #[trigger] mapped_other.dom().contains(i) implies mapped_other[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>() by {
             calc! {
                 (==)
                 mapped_other[i].ptr()@.addr as int; {}
@@ -875,38 +857,19 @@ impl<T> MapPointsTo<T> {
             }
         }
 
-        // assert(forall|i| self.all_indices().contains(i) ==> i < self.ptr()@.metadata);
-        // Follows from rearranging precondition, by definition of begin
-        assert(other.ptr()@.metadata + begin <= self.ptr()@.metadata) by {
-            broadcast use {lemma_div_is_ordered, lemma_div_by_multiple, lemma_hoist_over_denominator};
-            // assert(other.ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>() 
-            //     <= old(self).ptr()@.addr + old(self).ptr()@.metadata * layout::size_of::<T>());
-            // assert(other.ptr()@.addr - old(self).ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>() 
-            //     <= old(self).ptr()@.metadata * layout::size_of::<T>());
-            assert((other.ptr()@.addr - old(self).ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>()) / layout::size_of::<T>() as int
-                <= old(self).ptr()@.metadata * layout::size_of::<T>() / layout::size_of::<T>() as int);
-            // assert(old(self).ptr()@.metadata * layout::size_of::<T>() / layout::size_of::<T>() as int == old(self).ptr()@.metadata);
-            assert((other.ptr()@.addr - old(self).ptr()@.addr) / layout::size_of::<T>() as int + other.ptr()@.metadata == (other.ptr()@.addr - old(self).ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>()) / layout::size_of::<T>() as int);
-            // assert(begin == (other.ptr()@.addr - old(self).ptr()@.addr) / layout::size_of::<T>() as int);
-        }
-        // assert(forall|i| mapped_other.dom().contains(i) ==> i < self.ptr()@.metadata);
-        // assert(forall|i| self.indices().contains(i) ==> i < self.ptr()@.metadata);
-        assert(forall|i| self.indices().contains(i) <==> self.points_to().dom().contains(i));
-        // assert(forall|i| self.points_to().dom().contains(i) ==> i < self.ptr()@.metadata);
-        assert(forall|i| self.points_to().dom().contains(i) ==> self[i].ptr()@.provenance == self.ptr()@.provenance);
-
+        assert(forall|i| #[trigger] self.points_to().dom().contains(i) ==> self[i].ptr()@.provenance == self.ptr()@.provenance);
+        // PROOF INSTABILITY: Commenting out the `old_self` declaration, even though it is not referenced later, causes the proof to fail.
         let old_self = self.points_to();
-        // assert(forall|i| old_self.dom().contains(i) ==> i < self.ptr()@.metadata);
         let tmp = self.points_to.union_prefer_right(mapped_other);
-        // assert(forall|i| tmp.dom().contains(i) ==> old_self.dom().contains(i) || mapped_other.dom().contains(i));
+        assert(forall|i| #[trigger] tmp.dom().contains(i) ==> tmp[i].ptr()@.provenance == self.ptr()@.provenance);
 
-        assert forall|i| tmp.dom().contains(i) implies tmp[i].ptr()@.provenance == self.ptr()@.provenance by {
-            assert(forall|i| tmp.dom().contains(i) ==> old_self.dom().contains(i) || mapped_other.dom().contains(i));
-            assert(forall|i| old_self.dom().contains(i) ==> old_self[i].ptr()@.provenance == self.ptr()@.provenance);
-            assert(forall|i| mapped_other.dom().contains(i) ==> mapped_other[i].ptr()@.provenance == self.ptr()@.provenance);
+        assert(len + begin <= self.ptr()@.metadata) by {
+            broadcast use {lemma_div_is_ordered, lemma_div_by_multiple, lemma_hoist_over_denominator};
+
+            assert((other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>()) / layout::size_of::<T>() as int
+                <= old(self).ptr()@.metadata * layout::size_of::<T>() / layout::size_of::<T>() as int);
+            assert((other.ptr()@.addr - old(self).ptr()@.addr) / layout::size_of::<T>() as int + len == (other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>()) / layout::size_of::<T>() as int);
         }
-        // assert(forall|i| tmp.dom().contains(i) ==> tmp[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>());
-        // assert(forall|i| tmp.dom().contains(i) ==> i < self.ptr()@.metadata);
 
         self.points_to.tracked_union_prefer_right(map_keys(other.points_to(), get_index_offset(self.ptr(), other.ptr())));
     }
