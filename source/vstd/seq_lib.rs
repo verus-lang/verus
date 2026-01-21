@@ -1145,7 +1145,6 @@ impl<A> Seq<A> {
     /// Appending an element to a sequence and converting to set, is equal
     /// to converting to set and inserting it.
     pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
-        requires
         ensures
             #[trigger] (sq + seq![elt]).to_set() =~= sq.to_set().insert(elt),
     {
