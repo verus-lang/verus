@@ -995,6 +995,12 @@ impl<T> MemContents<T> {
 /// Constructs a pointer from its underlying model.
 pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData<T>) -> *mut T;
 
+/// Constructs a tracked pointer from the underlying data. This is safe because the pointer itself does contain store any tracked data.
+pub axiom fn tracked_ptr_mut_from_data<T: ?Sized>(data: PtrData<T>) -> (tracked out: *mut T)
+    ensures
+        out == ptr_mut_from_data::<T>(data),
+;
+
 /// Constructs a pointer from its underlying model.
 /// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),
 /// we can define this operation in terms of the operation on `*mut T`.
