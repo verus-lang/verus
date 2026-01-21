@@ -522,8 +522,6 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "cannot borrow `a` as mutable, as it is not declared as mutable")
 }
 
-// TODO It would probably be better for this to error about 'a' not being marked mutable:
-
 test_verify_one_file! {
     #[test] test_ghost_at_assignment_double_assignment verus_code! {
         fn foo() {
@@ -536,7 +534,7 @@ test_verify_one_file! {
             assert(a@ == 7);
             assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_rust_error_msg(err, "used binding `a` isn't initialized")
 }
 
 test_verify_one_file! {
