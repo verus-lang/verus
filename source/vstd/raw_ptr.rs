@@ -610,10 +610,7 @@ pub open spec fn get_index_offset<T>(base_ptr: *mut [T], other_ptr: *mut [T]) ->
     (other_ptr@.addr - base_ptr@.addr) as nat / layout::size_of::<T>()
 }
 
-pub open spec fn map_keys<T>(map: Map<nat, T>, offset: nat) -> Map<nat, T>
-    recommends
-        forall|i| map.contains_key(i) ==> i >= offset,
-{
+pub open spec fn map_keys<T>(map: Map<nat, T>, offset: nat) -> Map<nat, T> {
     Map::new(
         |i: nat| map.dom().map(|i: nat| i + offset).contains(i),
         |i: nat| map[(i - offset) as nat],
