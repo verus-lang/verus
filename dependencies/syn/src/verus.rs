@@ -693,21 +693,7 @@ pub mod parsing {
     impl Parse for Specification {
         fn parse(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !(input.is_empty()
-                || input.peek(token::Brace)
-                || input.peek(Token![;])
-                || input.peek(Token![invariant_except_break])
-                || input.peek(Token![invariant])
-                || input.peek(Token![invariant_ensures])
-                || input.peek(Token![ensures])
-                || input.peek(Token![default_ensures])
-                || input.peek(Token![returns])
-                || input.peek(Token![decreases])
-                || input.peek(Token![via])
-                || input.peek(Token![when])
-                || input.peek(Token![no_unwind])
-                || input.peek(Token![opens_invariants]))
-            {
+            while !spec_should_stop(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
@@ -741,6 +727,23 @@ pub mod parsing {
             }
             Ok(Specification { exprs })
         }
+    }
+
+    fn spec_should_stop(input: ParseStream) -> bool {
+        input.is_empty()
+            || input.peek(token::Brace)
+            || input.peek(Token![;])
+            || input.peek(Token![invariant_except_break])
+            || input.peek(Token![invariant])
+            || input.peek(Token![invariant_ensures])
+            || input.peek(Token![ensures])
+            || input.peek(Token![default_ensures])
+            || input.peek(Token![returns])
+            || input.peek(Token![decreases])
+            || input.peek(Token![via])
+            || input.peek(Token![when])
+            || input.peek(Token![no_unwind])
+            || input.peek(Token![opens_invariants])
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
