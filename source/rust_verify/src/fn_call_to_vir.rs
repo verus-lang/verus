@@ -1251,10 +1251,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
-            match &*source_ty {
-                TypX::Real => mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir)),
-                _ => err_span(expr.span, "floor expected real type"),
-            }
+            assert!(matches!(&*source_ty, TypX::Real));
+            mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
