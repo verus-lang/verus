@@ -8,6 +8,8 @@ pub use verus_builtin_macros::exec_spec;
 pub use verus_builtin_macros::exec_spec_trusted;
 use std::collections::HashMap;
 
+mod option;
+pub use option::*;
 mod seq;
 pub use seq::*;
 mod multiset;
@@ -144,44 +146,6 @@ impl_primitives! {
     bool, char,
 }
 
-impl<'a, T: Sized + DeepView> ToRef<&'a Option<T>> for &'a Option<T> {
-    #[inline(always)]
-    fn get_ref(self) -> &'a Option<T> {
-        self
-    }
-}
-
-impl<'a, T: DeepView + DeepViewClone> ToOwned<Option<T>> for &'a Option<T> {
-    #[inline(always)]
-    fn get_owned(self) -> Option<T> {
-        self.deep_clone()
-    }
-}
-
-impl<T: DeepViewClone> DeepViewClone for Option<T> {
-    #[inline(always)]
-    fn deep_clone(&self) -> Self {
-        match self {
-            Some(t) => Some(t.deep_clone()),
-            None => None,
-        }
-    }
-}
-
-impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where &'a T: ExecSpecEq<'a, Other = &'a T> {
-    type Other = &'a Option<T>;
-
-    #[inline(always)]
-    fn exec_eq(this: Self, other: Self::Other) -> bool {
-        match (this, other) {
-            (Some(t1), Some(t2)) => <&'a T>::exec_eq(t1, t2),
-            (None, None) => true,
-            _ => false,
-        }
-    }
-}
-
-/// TODO: generalize to more tuple types
 // note: practical limitation on tuple length is effectively 12 for impls of some common traits: 
 // https://github.com/WebAssembly/component-model/issues/373
 // https://users.rust-lang.org/t/why-can-tuples-only-handle-12-elements-at-max/29715

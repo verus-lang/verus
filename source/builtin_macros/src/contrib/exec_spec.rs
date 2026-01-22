@@ -2418,6 +2418,15 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode, trusted: bool) -> Re
                 }
             },
 
+            "unwrap" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, trusted)?;
+
+                match mode {
+                    VarMode::Ref => quote! { #receiver.exec_unwrap().get_ref() },
+                    VarMode::Owned => quote! { #receiver.exec_unwrap().get_ref().get_owned() },
+                }
+            },
+
             _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
         },
 
