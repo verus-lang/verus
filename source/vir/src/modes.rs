@@ -628,6 +628,8 @@ fn get_var_loc_mode(
         ExprX::VarLoc(x) => {
             let x_mode = typing.get(x, &expr.span)?;
 
+            record.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
+
             if ctxt.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
                 && x_mode != Mode::Exec
@@ -705,13 +707,6 @@ fn get_var_loc_mode(
             panic!("unexpected loc {:?}", expr);
         }
     };
-    match &expr.x {
-        ExprX::Ghost { .. } => {}
-        _ => {
-            let push_mode = expr_inner_mode.unwrap_or(x_mode);
-            record.erasure_modes.var_modes.push((expr.span.clone(), push_mode));
-        }
-    }
     Ok(x_mode)
 }
 
@@ -801,8 +796,17 @@ fn check_place(
         }
     };
 
-    if let Some(var_place) = crate::ast_util::place_get_local(place) {
-        record.erasure_modes.var_modes.push((var_place.span.clone(), final_mode));
+    // How we do erasure depends on whether we are accessing the place mutably or not.
+    // For an expression like `x.f`, if the local variable `x` is non-spec and `x.f` is spec,
+    // then for *mutations* we want to keep the expression during erasure.
+    // So then `consume(x); x.f = ...` will give an "x has been moved" error.
+    // However, if we're just reading from the place, we want to erase the whole expression.
+    // Thus, for non-mut, we record the mode of the *whole expression*, and for mut,
+    // we stor the mode of the local (the second case is in `check_place_rec`).
+    if !access.is_mut() {
+        if let Some(var_place) = crate::ast_util::place_get_local(place) {
+            record.erasure_modes.var_modes.push((var_place.span.clone(), final_mode));
+        }
     }
 
     Ok(final_mode)
@@ -873,7 +877,16 @@ fn check_place_rec_inner(
             // even if the reference itself is only tracked.
             Ok(Mode::Exec)
         }
-        PlaceX::Local(var) => typing.get(var, &place.span),
+        PlaceX::Local(var) => {
+            let mode = typing.get(var, &place.span)?;
+
+            // Other case is handled in `check_place`; see the explanation there.
+            if access.is_mut() {
+                record.erasure_modes.var_modes.push((place.span.clone(), mode));
+            }
+
+            Ok(mode)
+        }
         PlaceX::Temporary(e) => {
             let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
             if ctxt.new_mut_ref {

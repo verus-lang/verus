@@ -1494,7 +1494,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             if tracked_mode {
                 record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
             } else {
-                record_spec_fn_no_proof_args(bctx, expr);
+                record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
             }
             let mwm = if tracked_mode { ModeWrapperMode::Proof } else { ModeWrapperMode::Spec };
 
@@ -1540,7 +1540,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
 
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut)) => {
-            record_spec_fn_no_proof_args(bctx, expr);
+            record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
 
             assert!(args.len() == 1);
             let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
