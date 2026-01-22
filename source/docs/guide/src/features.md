@@ -399,7 +399,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td><a href="reference-unions.html">Supported</a></td>
   </tr>
   <tr>
-    <td><cod>UnsafeCell</code></td>
+    <td><code>UnsafeCell</code></td>
     <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/cell/struct.PCell.html">vstd equivalent</a>)</td>
   </tr>
   </tbody>
