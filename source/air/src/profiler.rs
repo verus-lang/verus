@@ -28,7 +28,7 @@ pub struct Profiler {
     instantiation_graph: InstantiationGraph,
 }
 
-pub struct InstantiationGraph {
+pub struct InstantiationGraph {  
     pub edges: HashMap<(u64, usize), HashSet<(u64, usize)>>,
     pub names: HashMap<(u64, usize), String>,
     pub nodes: HashSet<(u64, usize)>,
@@ -149,7 +149,7 @@ impl Profiler {
         }
 
         // Build QuantCost entries for user quantifiers
-        let mut user_quant_costs: Vec<QuantCost> = quant_data
+        let user_quant_costs_per_idx: Vec<QuantCost> = quant_data
             .into_iter()
             .filter_map(|(quant_idx, (count, total_cost))| {
                 let quant = &parser.quantifiers()[quant_idx];
@@ -164,6 +164,23 @@ impl Profiler {
                     }
                 }
                 None
+            })
+            .collect();
+
+        // Merge entries with the same quantifier name
+        // there are multiple QuantIdx values for the same user-defined quantifier
+        let mut merged: HashMap<String, (u64, f64)> = HashMap::new();
+        for cost in user_quant_costs_per_idx {
+            let entry = merged.entry(cost.quant).or_insert((0, 0.0));
+            entry.0 += cost.instantiations;
+            entry.1 += cost.cost as f64; // cost is total cost for this QuantIdx
+        }
+        let mut user_quant_costs: Vec<QuantCost> = merged
+            .into_iter()
+            .map(|(quant, (instantiations, total_cost))| QuantCost {
+                quant,
+                instantiations,
+                cost: total_cost.round() as u64,
             })
             .collect();
 
@@ -231,7 +248,7 @@ impl Profiler {
         for cost in &self.quantifier_stats {
             let count = cost.instantiations;
             let msg = format!(
-                "Instantiated {} {} times ({}% of the total)\n",
+                "Instantiated heyhey{}heyhey {} times ({}% of the total)\n",
                 cost.quant,
                 count,
                 100 * count / self.total_instantiations()
