@@ -1173,6 +1173,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Clip { .. }
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
@@ -1295,6 +1296,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Trigger(_)
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | CoerceMode { .. }
                         | ToDyn
                         | StrLen

@@ -263,6 +263,7 @@ pub(crate) enum UnaryOpItem {
     SpecNeg,
     SpecCastInteger,
     SpecCastReal,
+    RealFloor,
     SpecGhostTracked(SpecGhostTrackedItem),
 }
 
@@ -523,6 +524,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
         ("verus::verus_builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
         ("verus::verus_builtin::spec_cast_real"   ,       VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::real::floor",             VerusItem::UnaryOp(UnaryOpItem::RealFloor)),
         ("verus::verus_builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
         ("verus::verus_builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::verus_builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),

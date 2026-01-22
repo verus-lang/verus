@@ -392,6 +392,8 @@ pub enum UnaryOp {
     },
     /// Convert integer type to real type (SMT to_real operation)
     IntToReal,
+    /// Convert real type to integer type (SMT to_int operation, works like floor function)
+    RealToInt,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked

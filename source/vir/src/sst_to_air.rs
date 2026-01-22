@@ -1054,6 +1054,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 Arc::new(ExprX::Unary(air::ast::UnaryOp::ToReal, expr))
             }
+            UnaryOp::RealToInt => {
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                Arc::new(ExprX::Unary(air::ast::UnaryOp::RealToInt, expr))
+            }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }

@@ -708,6 +708,17 @@ impl core::cmp::Ord for nat {
 #[derive(Clone, Copy)]
 pub struct real;
 
+impl real {
+    /// Returns the largest integer less than or equal to `self` (i.e., floor function).
+    /// This is equivalent to `self as int` when casting from real to int.
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::real::floor"]
+    #[verifier::spec]
+    pub fn floor(self) -> int {
+        int::CONST_DEFAULT
+    }
+}
+
 //
 // Structural
 //
@@ -1343,6 +1354,8 @@ impl_unary_op!(SpecNeg, spec_neg, int, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+impl_unary_op!(SpecNeg, spec_neg, real, [real]);
 
 impl_binary_op!(SpecAdd, spec_add, int, [
     int
