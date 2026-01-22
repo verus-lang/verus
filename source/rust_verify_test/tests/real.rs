@@ -56,3 +56,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_chained verus_code! {
+        proof fn test1(n: nat) {
+            assert(0real <= 0real < n as real + 1real < n as real + 2real);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_reject_mixed verus_code! {
+        proof fn test() {
+            assert(0real <= 1int <= 2real);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: chained inequalities require all elements to have the same type (all integers or all reals)")
+}

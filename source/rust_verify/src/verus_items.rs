@@ -335,6 +335,7 @@ pub(crate) enum BuiltinTypeItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinTraitItem {
     Integer,
+    Chainable,
     Sealed,
 }
 
@@ -592,6 +593,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
         ("verus::verus_builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
+        ("verus::verus_builtin::Chainable",               VerusItem::BuiltinTrait(BuiltinTraitItem::Chainable)),
         ("verus::verus_builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
 
         ("verus::verus_builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
