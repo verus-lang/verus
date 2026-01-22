@@ -48,110 +48,6 @@ impl std::fmt::Display for ProfilerError {
 }
 
 impl Profiler {
-    /// Instantiate a new (singleton) profiler
-    pub fn parse(
-        message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
-        filename: &std::path::Path,
-        description: Option<&str>,
-        diagnostics: &impl Diagnostics,
-    ) -> Result<Self, ProfilerError> {
-        if let Some(description) = description {
-            diagnostics.report_now(&message_interface.bare(
-                MessageLevel::Note,
-                &format!("Analyzing prover log for {} ...", description),
-            ));
-        }
-
-        let (_, stream_parser) = Z3Parser::from_file(filename)
-            .map_err(|e| ProfilerError::InvalidTrace(format!("Failed to parse file: {}", e)))?;
-
-        let parser = stream_parser
-            .process_all()
-            .map_err(|e| ProfilerError::InvalidTrace(format!("Failed to process log: {}", e)))?;
-
-        // Build instantiation graph once and pass to both functions
-        let inst_graph = InstGraph::new(&parser).map_err(|e| {
-            ProfilerError::InvalidTrace(format!("Failed to build instantiation graph: {:?}", e))
-        })?;
-
-        let instantiation_graph = Self::make_instantiation_graph(&parser, &inst_graph)?;
-        let user_quant_costs = Self::compute_quantifier_costs(&parser, &inst_graph)?;
-
-        if let Some(description) = description {
-            diagnostics.report_now(
-                &message_interface.bare(
-                    MessageLevel::Note,
-                    &format!("Log analysis complete for {}", description),
-                ),
-            );
-        }
-
-        Ok(Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph })
-    }
-
-    pub fn instantiation_graph(&self) -> &InstantiationGraph {
-        &self.instantiation_graph
-    }
-
-    fn compute_quantifier_costs(
-        parser: &Z3Parser,
-        inst_graph: &InstGraph,
-    ) -> Result<Vec<QuantCost>, ProfilerError> {
-        let graph = &inst_graph.raw.graph;
-
-        // Extract costs from the graph nodes (smt-scope already computed them)
-        // Map from InstIdx to cost
-        let mut inst_costs: HashMap<usize, f64> = HashMap::new();
-
-        for node_idx in graph.node_indices() {
-            if let Some(node) = graph.node_weight(node_idx) {
-                // The node index corresponds to the instantiation index
-                let inst_idx = node_idx.index();
-                inst_costs.insert(inst_idx, node.cost);
-            }
-        }
-
-        // Aggregate costs per quantifier
-        let mut quant_data: HashMap<QuantIdx, (u64, f64)> = HashMap::new();
-
-        for (inst_idx, inst) in parser.instantiations().iter_enumerated() {
-            let match_data = &parser[inst.match_];
-            if let Some(quant_idx) = match_data.kind.quant_idx() {
-                let idx_usize = usize::from(inst_idx);
-                let inst_cost = inst_costs.get(&idx_usize).copied().unwrap_or(1.0);
-
-                let entry = quant_data.entry(quant_idx).or_insert((0, 0.0));
-                entry.0 += 1; // count
-                entry.1 += inst_cost; // total cost
-            }
-        }
-
-        // Build QuantCost entries for user quantifiers
-        let mut user_quant_costs: Vec<QuantCost> = quant_data
-            .into_iter()
-            .filter_map(|(quant_idx, (count, total_cost))| {
-                let quant = &parser.quantifiers()[quant_idx];
-                if let Some(name_istring) = quant.kind.user_name() {
-                    let name_str = &parser[name_istring];
-                    if name_str.starts_with(USER_QUANT_PREFIX) {
-                        return Some(QuantCost {
-                            quant: name_str.to_string(),
-                            instantiations: count,
-                            cost: total_cost.round() as u64,
-                        });
-                    }
-                }
-                None
-            })
-            .collect();
-
-        // Sort by total cost * instantiations
-        user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
-        user_quant_costs.reverse();
-
-        Ok(user_quant_costs)
-    }
-
     fn make_instantiation_graph(
         parser: &Z3Parser,
         inst_graph: &InstGraph,
@@ -217,6 +113,110 @@ impl Profiler {
         }
 
         Ok(InstantiationGraph { edges, names, nodes })
+    }
+
+    fn compute_quantifier_costs(
+        parser: &Z3Parser,
+        inst_graph: &InstGraph,
+    ) -> Result<Vec<QuantCost>, ProfilerError> {
+        let graph = &inst_graph.raw.graph;
+
+        // Extract costs from the graph nodes (smt-scope already computed them)
+        // Map from InstIdx to cost
+        let mut inst_costs: HashMap<usize, f64> = HashMap::new();
+
+        for node_idx in graph.node_indices() {
+            if let Some(node) = graph.node_weight(node_idx) {
+                // The node index corresponds to the instantiation index
+                let inst_idx = node_idx.index();
+                inst_costs.insert(inst_idx, node.cost);
+            }
+        }
+
+        // Aggregate costs per quantifier
+        let mut quant_data: HashMap<QuantIdx, (u64, f64)> = HashMap::new();
+
+        for (inst_idx, inst) in parser.instantiations().iter_enumerated() {
+            let match_data = &parser[inst.match_];
+            if let Some(quant_idx) = match_data.kind.quant_idx() {
+                let idx_usize = usize::from(inst_idx);
+                let inst_cost = inst_costs.get(&idx_usize).copied().unwrap_or(1.0);
+
+                let entry = quant_data.entry(quant_idx).or_insert((0, 0.0));
+                entry.0 += 1; // count
+                entry.1 += inst_cost; // total cost
+            }
+        }
+
+        // Build QuantCost entries for user quantifiers
+        let mut user_quant_costs: Vec<QuantCost> = quant_data
+            .into_iter()
+            .filter_map(|(quant_idx, (count, total_cost))| {
+                let quant = &parser.quantifiers()[quant_idx];
+                if let Some(name_istring) = quant.kind.user_name() {
+                    let name_str = &parser[name_istring];
+                    if name_str.starts_with(USER_QUANT_PREFIX) {
+                        return Some(QuantCost {
+                            quant: name_str.to_string(),
+                            instantiations: count,
+                            cost: total_cost.round() as u64,
+                        });
+                    }
+                }
+                None
+            })
+            .collect();
+
+        // Sort by total cost * instantiations
+        user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
+        user_quant_costs.reverse();
+
+        Ok(user_quant_costs)
+    }
+
+    /// Instantiate a new (singleton) profiler
+    pub fn parse(
+        message_interface: std::sync::Arc<dyn crate::messages::MessageInterface>,
+        filename: &std::path::Path,
+        description: Option<&str>,
+        diagnostics: &impl Diagnostics,
+    ) -> Result<Self, ProfilerError> {
+        if let Some(description) = description {
+            diagnostics.report_now(&message_interface.bare(
+                MessageLevel::Note,
+                &format!("Analyzing prover log for {} ...", description),
+            ));
+        }
+
+        let (_, stream_parser) = Z3Parser::from_file(filename)
+            .map_err(|e| ProfilerError::InvalidTrace(format!("Failed to parse file: {}", e)))?;
+
+        let parser = stream_parser
+            .process_all()
+            .map_err(|e| ProfilerError::InvalidTrace(format!("Failed to process log: {}", e)))?;
+
+        // Build instantiation graph once and pass to both functions
+        let inst_graph = InstGraph::new(&parser).map_err(|e| {
+            ProfilerError::InvalidTrace(format!("Failed to build instantiation graph: {:?}", e))
+        })?;
+
+        let instantiation_graph = Self::make_instantiation_graph(&parser, &inst_graph)?;
+        let user_quant_costs = Self::compute_quantifier_costs(&parser, &inst_graph)?;
+
+        if let Some(description) = description {
+            diagnostics.report_now(
+                &message_interface.bare(
+                    MessageLevel::Note,
+                    &format!("Log analysis complete for {}", description),
+                ),
+            );
+        }
+
+        Ok(Profiler { message_interface, quantifier_stats: user_quant_costs, instantiation_graph })
+    }
+
+    pub fn instantiation_graph(&self) -> &InstantiationGraph {
+        &self.instantiation_graph
     }
 
     pub fn quant_count(&self) -> usize {
