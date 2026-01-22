@@ -28,7 +28,7 @@ pub struct Profiler {
     instantiation_graph: InstantiationGraph,
 }
 
-pub struct InstantiationGraph {  
+pub struct InstantiationGraph {
     pub edges: HashMap<(u64, usize), HashSet<(u64, usize)>>,
     pub names: HashMap<(u64, usize), String>,
     pub nodes: HashSet<(u64, usize)>,
