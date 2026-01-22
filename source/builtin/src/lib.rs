@@ -948,6 +948,12 @@ unsafe impl Decimal for f64 {
     const CONST_DEFAULT: Self = 0.0;
 }
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Chainable")]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub unsafe trait Chainable: Copy {}
+unsafe impl<T: Integer> Chainable for T {}
+unsafe impl Chainable for real {}
+
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_literal_integer"]
@@ -1159,6 +1165,7 @@ pub trait SpecShr<Rhs = Self> {
 }
 
 // Chained inequalities x <= y < z
+// Supports both integer types and real
 pub struct SpecChain {
     data: PhantomData<int>,
 }
@@ -1166,35 +1173,35 @@ pub struct SpecChain {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_value"]
 #[verifier::spec]
-pub fn spec_chained_value<IntegerType: Integer>(_a: IntegerType) -> SpecChain {
+pub fn spec_chained_value<T: Chainable>(_a: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_le"]
 #[verifier::spec]
-pub fn spec_chained_le<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_le<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_lt"]
 #[verifier::spec]
-pub fn spec_chained_lt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_lt<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_ge"]
 #[verifier::spec]
-pub fn spec_chained_ge<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_ge<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_gt"]
 #[verifier::spec]
-pub fn spec_chained_gt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_gt<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
@@ -1208,7 +1215,7 @@ pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_eq"]
 #[verifier::spec]
-pub fn spec_chained_eq<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_eq<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 

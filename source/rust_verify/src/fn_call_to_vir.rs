@@ -1379,9 +1379,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_)),
+                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_) | TypX::Real),
                         expr.span,
-                        "chained inequalities for non-integer types",
+                        "chained inequalities require integer or real types",
                         &args
                     );
                     let exprx = ExprX::Multi(
@@ -1407,11 +1407,27 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_)),
+                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_) | TypX::Real),
                         expr.span,
-                        "chained inequalities for non-integer types",
+                        "chained inequalities require integer or real types",
                         &args
                     );
+                    if let ExprX::Multi(MultiOp::Chained(_), es) = &vir_args[0].x {
+                        if es.len() > 0 {
+                            let first_typ = undecorate_typ(&es[0].typ);
+                            let new_typ = undecorate_typ(&vir_args[1].typ);
+                            let types_match = match (&*first_typ, &*new_typ) {
+                                (TypX::Int(_), TypX::Int(_)) => true,
+                                (TypX::Real, TypX::Real) => true,
+                                _ => false,
+                            };
+                            unsupported_err_unless!(
+                                types_match,
+                                expr.span,
+                                "chained inequalities require all elements to have the same type (all integers or all reals)"
+                            );
+                        }
+                    }
                     let op = match chained_item {
                         ChainedItem::Le => ChainedOp::Inequality(InequalityOp::Le),
                         ChainedItem::Lt => ChainedOp::Inequality(InequalityOp::Lt),
