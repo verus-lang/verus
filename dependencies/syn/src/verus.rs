@@ -702,7 +702,6 @@ pub mod parsing {
                 let punct = input.parse()?;
                 exprs.push_punct(punct);
             }
-            // TODO: Consider failing with an error if `exprs` is empty.
             Ok(Specification { exprs })
         }
     }
