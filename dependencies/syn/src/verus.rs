@@ -728,7 +728,7 @@ pub mod parsing {
     }
 
     fn is_next_clause_in_braces(input: ParseStream) -> bool {
-        input.peek(token::Brace) && (input.peek2(Token![,]) || input.peek2(Token![;]))
+        input.peek(token::Brace) && input.peek2(Token![,])
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
