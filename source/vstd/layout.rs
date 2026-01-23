@@ -437,8 +437,11 @@ pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
         #![trigger spec_size_of_val::<str>(x)]
-        spec_align_of_val::<str>(x) == align_of::<u8>(),
-        spec_size_of_val::<str>(x) == x@.len() * size_of::<u8>(),
+        spec_align_of_val::<str>(x) == align_of::<
+            u8,
+        >(),
+// todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
+
 ;
 
 pub broadcast group group_align_properties {
