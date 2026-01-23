@@ -1686,7 +1686,7 @@ test_verify_one_file_with_options! {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            }
+            },
         {
             &mut x.0
         }
@@ -1696,7 +1696,7 @@ test_verify_one_file_with_options! {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
                 mut_ref_current(x).0 == mut_ref_current(ret) &&
                 mut_ref_future(x).0 == mut_ref_future(ret)
-            }
+            },
         {
             let r = &mut x.0;
             return r;
