@@ -257,6 +257,22 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
     })
 }
 
+/// Multiple basic message, each with a note and a single span to be highlighted with ^^^^^^
+pub fn multiple_message<'a, S: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    spans: impl Iterator<Item = &'a Span>,
+) -> Message {
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: spans.cloned().collect(),
+        labels: Vec::new(),
+        help: None,
+        fancy_note: None,
+    })
+}
+
 // Convenience functions
 
 /// Bare note without any spans
@@ -287,6 +303,14 @@ pub fn error_bare<S: Into<String>>(note: S) -> Message {
 /// Basic error, with a message and a single span to be highlighted with ^^^^^^
 pub fn error<S: Into<String>>(span: &Span, note: S) -> Message {
     message(MessageLevel::Error, note, span)
+}
+
+/// Multiple basic errors, each with a message and a single span to be highlighted with ^^^^^^
+pub fn multiple_errors<'a, S: Into<String>>(
+    spans: impl Iterator<Item = &'a Span>,
+    note: S,
+) -> Message {
+    multiple_message(MessageLevel::Error, note, spans)
 }
 
 /// Prepend the error with "Verus Internal Error"
