@@ -2602,12 +2602,12 @@ pub(crate) fn expr_to_stm_opt(
                             assert_id: state.next_assert_id(),
                         },
                     ));
-                    stms.push(assume_false(&expr.span));
                 }
                 Some(closure_state) => {
                     closure_emit_postconditions(ctx, state, closure_state, &ret_exp, &mut stms);
                 }
             }
+            stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
         ExprX::BreakOrContinue { label, is_break } => {

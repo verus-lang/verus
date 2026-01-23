@@ -1819,3 +1819,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] return_in_loop_in_closure verus_code! {
+        #[verifier::loop_isolation(true)]
+        #[allow(unreachable_code)]
+        fn test_loop() {
+            let r = || {
+                loop decreases 0int {
+                    return;
+                }
+            };
+        }
+    } => Ok(())
+}
