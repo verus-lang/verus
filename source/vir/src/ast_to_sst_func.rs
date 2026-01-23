@@ -720,6 +720,25 @@ pub fn func_def_to_sst(
         );
     }
 
+    // When emitting an expression that refers to input variables, but which is embedded
+    // in the body of the function, we need to redirect to the pre-snapshot version of the variable.
+    // Specifically, we need to do this for any variable that isn't an old-style mut ref param.
+    // Collect all such vars here.
+    let mut params_to_use_pre = HashSet::<VarIdent>::new();
+    for param in function.x.params.iter() {
+        if !param.x.is_mut {
+            params_to_use_pre.insert(param.x.name.clone());
+        }
+    }
+    // We need to perform this translation on:
+    //  - Postcondition
+    //  - Unwind specs
+    //  - Mask specs
+    // Note: Requires only appear at the beginning
+    // Note: Decreases are handled by a different mechanism
+    let exp_pre = |exp: &Exp| crate::sst_util::exp_with_vars_at_pre_state(exp, &params_to_use_pre);
+    let stm_pre = |stm: &Stm| crate::sst_util::stm_with_vars_at_pre_state(stm, &params_to_use_pre);
+
     // This is used for lowering expressions from the function
     let lo_current = Lowerer::current(&function, &ens_pars, diagnostics);
 
@@ -755,8 +774,9 @@ pub fn func_def_to_sst(
 
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
-    let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+    let mask_sst = mask_ast.map_to_sst(&mut |expr| {
+        Ok(exp_pre(&lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?))
+    })?;
     state.mask = Some(mask_sst);
 
     // Unwind spec: take from trait method if it exists
@@ -784,7 +804,7 @@ pub fn func_def_to_sst(
             )?;
             if !ctx.checking_spec_preconditions() {
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-                enss.push(exp);
+                enss.push(exp_pre(&exp));
             }
         }
     }
@@ -792,7 +812,7 @@ pub fn func_def_to_sst(
         let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
         if !ctx.checking_spec_preconditions() {
             let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
+            enss.push(exp_pre(&exp));
         }
     }
 
@@ -820,10 +840,12 @@ pub fn func_def_to_sst(
     }
 
     let stm = state.finalize_stm(&ctx, &stm)?;
-    let ens_spec_precondition_stms: Result<Vec<_>, _> =
-        ens_spec_precondition_stms.iter().map(|s| state.finalize_stm(&ctx, &s)).collect();
+    let ens_spec_precondition_stms: Result<Vec<_>, VirErr> = ens_spec_precondition_stms
+        .iter()
+        .map(|s| Ok(stm_pre(&state.finalize_stm(&ctx, &s)?)))
+        .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
-    let unwind_sst = unwind_sst.map(&|e| state.finalize_exp(&ctx, e))?;
+    let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
 
     // Check termination
     let exec_with_no_termination_check = function.x.mode == Mode::Exec
