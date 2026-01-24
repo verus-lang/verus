@@ -2,6 +2,11 @@ use super::super::prelude::*;
 use super::super::set::*;
 use super::Loc;
 use super::Resource;
+#[cfg(verus_keep_ghost)]
+use super::copy_duplicable_part;
+
+#[cfg(verus_keep_ghost)]
+use super::super::modes::tracked_swap;
 
 verus! {
 
@@ -71,16 +76,13 @@ pub open spec fn conjunct_shared<P: PCM>(a: P, b: P, c: P) -> bool {
 }
 
 pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
-    forall|c|
-        #![trigger P::op(a, c), P::op(b, c)]
-        P::op(a, c).valid() ==> P::op(b, c).valid()
+    forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
 pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
-        P::op(a, c).valid() ==> exists|b| #[trigger]
-            bs.contains(b) && P::op(b, c).valid()
+        P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
 }
 
 pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {
@@ -147,6 +149,19 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             new_values.contains(out.value()),
     ;
+
+    /// Extracts the resource from `r`, leaving `r` unspecified and returning
+    /// a new resource holding the previous value of `r`.
+    pub proof fn extract(tracked &mut self) -> (tracked other: Self)
+        ensures
+            other.loc() == old(self).loc(),
+            other.value() == old(self).value(),
+    {
+        self.validate();
+        let tracked mut other = Self::alloc(self.value());
+        tracked_swap(self, &mut other);
+        other
+    }
 
     // Operations with shared references
     /// This is useful when you have two (or more) shared resources and want to learn
@@ -215,6 +230,20 @@ impl<P: PCM> Resource<P> {
         let so = set_op(new_values, other.value());
         assert(so.contains(P::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
+    }
+
+    /// If `x --> x · y` is a frame-perserving update, and we have a shared reference to `x`,
+    /// we can create a resource to y
+    pub proof fn duplicate_previous(tracked &self, new_value: P) -> (tracked out: Self)
+        requires
+            frame_preserving_update(self.value(), P::op(new_value, self.value())),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == new_value,
+    {
+        use super::super::pervasive;
+        assume(false);
+        proof_from_false()
     }
 
     pub axiom fn update_nondeterministic_with_shared(

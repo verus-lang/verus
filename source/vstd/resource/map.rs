@@ -80,7 +80,11 @@ use super::super::prelude::*;
 use super::super::set_lib::*;
 use super::Loc;
 use super::Resource;
+#[cfg(verus_keep_ghost)]
+use super::incorporate;
 use super::pcm::PCM;
+#[cfg(verus_keep_ghost)]
+use super::split_mut;
 
 verus! {
 
@@ -401,7 +405,8 @@ impl<K, V> GhostMapAuth<K, V> {
             result@ == Map::<K, V>::empty(),
     {
         use_type_invariant(self);
-        GhostSubmap::<K, V>::empty(self.id())
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostSubmap { r }
     }
 
     /// Insert a [`Map`] of values, receiving the [`GhostSubmap`] that asserts ownership over the key
@@ -639,13 +644,14 @@ impl<K, V> GhostSubmap<K, V> {
         submap
     }
 
-    /// Instantiate an empty [`GhostSubmap`] of a particular id
-    pub proof fn empty(id: Loc) -> (tracked result: GhostSubmap<K, V>)
+    /// Create an empty [`GhostSubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
         ensures
-            result.id() == id,
+            result.id() == self.id(),
             result@ == Map::<K, V>::empty(),
     {
-        let tracked r = Resource::create_unit(id);
+        use_type_invariant(self);
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
         GhostSubmap { r }
     }
 
@@ -659,7 +665,7 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Self::empty(self.id());
+        let tracked mut r = self.empty();
         tracked_swap(self, &mut r);
         r
     }
@@ -713,9 +719,8 @@ impl<K, V> GhostSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = super::lib::extract(&mut self.r);
-        r.validate_2(&other.r);
-        self.r = r.join(other.r);
+        self.r.validate_2(&other.r);
+        incorporate(&mut self.r, other.r);
     }
 
     /// Combining a [`GhostPointsTo`] into [`GhostSubmap`] is possible, in a similar way to the way to combine
@@ -810,29 +815,25 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Resource::alloc(MapCarrier::<K, V>::unit());
-        tracked_swap(&mut self.r, &mut r);
-
         let self_carrier = MapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
-                owning: r.value().frac.owning_map().remove_keys(s),
-                dup: r.value().frac.dup_map(),
+                owning: self.r.value().frac.owning_map().remove_keys(s),
+                dup: self.r.value().frac.dup_map(),
             },
         };
 
         let res_carrier = MapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
-                owning: r.value().frac.owning_map().restrict(s),
-                dup: r.value().frac.dup_map(),
+                owning: self.r.value().frac.owning_map().restrict(s),
+                dup: self.r.value().frac.dup_map(),
             },
         };
 
-        assert(r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
-        let tracked (self_r, res_r) = r.split(self_carrier, res_carrier);
-        self.r = self_r;
-        GhostSubmap { r: res_r }
+        assert(self.r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
+        let tracked r = split_mut(&mut self.r, self_carrier, res_carrier);
+        GhostSubmap { r }
     }
 
     /// We can separate a single key out of a [`GhostSubmap`]
@@ -1014,13 +1015,15 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         owned.persist()
     }
 
-    /// Instantiate an empty [`GhostPersistentSubmap`] of a particular id
-    pub proof fn empty(id: Loc) -> (tracked result: GhostPersistentSubmap<K, V>)
+    /// Create an empty [`GhostPersistentSubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
-            result.id() == id,
+            result.id() == self.id(),
             result@ == Map::<K, V>::empty(),
     {
-        GhostSubmap::empty(id).persist()
+        use_type_invariant(self);
+        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostSubmap { r }.persist()
     }
 
     /// Duplicate the [`GhostPersistentSubmap`]
@@ -1033,7 +1036,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut owned = Self::empty(self.id());
+        let tracked mut owned = self.empty();
         let carrier = self.r.value();
         assert(carrier == MapCarrier::op(carrier, carrier));
 
@@ -1095,9 +1098,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
         use_type_invariant(&other);
 
-        let tracked mut r = super::lib::extract(&mut self.r);
-        r.validate_2(&other.r);
-        self.r = r.join(other.r);
+        self.r.validate_2(&other.r);
+        incorporate(&mut self.r, other.r);
     }
 
     /// Combining a [`GhostPersistentPointsTo`] into [`GhostPersistentSubmap`] is possible, in a similar way to the way to combine

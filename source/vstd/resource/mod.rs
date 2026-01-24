@@ -50,6 +50,7 @@ extension with additional capabilities for interacting with shared resources.
 [VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
 "swiss army knife" for building useful ghost resources.
 */
+// Resource must be external_body, otherwise it could be constructed directly
 #[verifier::external_body]
 #[verifier::accept_recursive_types(P)]
 pub tracked struct Resource<P> {
