@@ -481,7 +481,7 @@ pub(crate) fn translate_impl<'tcx>(
                     unsupported_err!(item.span, "not yet supported: const trait member")
                 }
                 if let ImplItemKind::Const(_ty, body_id) = &impl_item.kind {
-                    let def_id = body_id.hir_id.owner.to_def_id();
+                    let def_id = body_id.hir_id().owner.to_def_id();
                     let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
                     let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false)?;
                     crate::rust_to_vir_func::check_item_const_or_static(

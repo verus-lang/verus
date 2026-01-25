@@ -80,7 +80,7 @@ fn check_item<'tcx>(
                 item.span,
                 "const generics with broadcast"
             );
-            let _def_id = body_id.hir_id.owner.to_def_id();
+            let _def_id = body_id.hir_id().owner.to_def_id();
 
             let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
 

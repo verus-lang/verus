@@ -33,7 +33,7 @@ pub(crate) fn process_const_early<'tcx>(
             item.span,
             "const generics"
         );
-        let def_id = body_id.hir_id.owner.to_def_id();
+        let def_id = body_id.hir_id().owner.to_def_id();
 
         let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
 
