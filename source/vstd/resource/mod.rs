@@ -11,6 +11,7 @@ pub mod relations;
 pub mod seq;
 pub mod set;
 pub mod storage_protocol;
+pub mod sum;
 
 pub use lib::*;
 
