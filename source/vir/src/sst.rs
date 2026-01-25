@@ -347,6 +347,7 @@ pub type KrateSst = Arc<KrateSstX>;
 pub struct KrateSstX {
     pub functions: Vec<FunctionSst>,
     pub datatypes: Vec<crate::ast::Datatype>,
+    pub opaque_types: Vec<crate::ast::OpaqueType>,
     pub traits: Vec<crate::ast::Trait>,
     pub trait_impls: Vec<crate::ast::TraitImpl>,
     pub assoc_type_impls: Vec<crate::ast::AssocTypeImpl>,

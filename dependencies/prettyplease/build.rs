@@ -11,6 +11,17 @@ fn main() {
 
     let pkg_version = cargo_env_var("CARGO_PKG_VERSION");
     println!("cargo:VERSION={}", pkg_version.to_str().unwrap());
+
+    // See https://github.com/verus-lang/verus/pull/1438
+    /*
+    let pkg_version_major = cargo_env_var("CARGO_PKG_VERSION_MAJOR");
+    let pkg_version_minor = cargo_env_var("CARGO_PKG_VERSION_MINOR");
+    let manifest_links = cargo_env_var("CARGO_MANIFEST_LINKS");
+    assert!(
+        pkg_version_major == "0"
+            && manifest_links == *format!("prettyplease0{}", pkg_version_minor.to_str().unwrap())
+    );
+    */
 }
 
 fn cargo_env_var(key: &str) -> OsString {

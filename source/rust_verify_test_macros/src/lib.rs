@@ -37,3 +37,8 @@ pub fn verus_code_str(input: TokenStream) -> TokenStream {
 pub fn examples_in_dir(input: TokenStream) -> TokenStream {
     examples::examples_in_dir(input)
 }
+
+#[proc_macro]
+pub fn cargo_examples(input: TokenStream) -> TokenStream {
+    examples::cargo_examples(input)
+}
