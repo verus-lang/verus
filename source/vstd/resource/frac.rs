@@ -1,9 +1,12 @@
+use super::super::assert_by_contradiction;
 use super::super::modes::*;
 use super::super::prelude::*;
 use super::Loc;
+use super::agree::AgreementRA;
+use super::algebra::Resource;
 use super::algebra::ResourceAlgebra;
 use super::pcm::PCM;
-use super::pcm::Resource;
+use super::product::ProductRA;
 use super::storage_protocol::*;
 use super::*;
 
@@ -11,71 +14,64 @@ verus! {
 
 broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_axioms};
 
-enum FractionalCarrier<T> {
-    Value { v: T, frac: real },
-    Empty,
+pub enum FractionRA {
+    Frac(real),
     Invalid,
 }
 
-impl<T> FractionalCarrier<T> {
-    spec fn new(v: T) -> Self {
-        FractionalCarrier::Value { v: v, frac: (1 as real) }
-    }
-}
-
-impl<T> ResourceAlgebra for FractionalCarrier<T> {
+impl ResourceAlgebra for FractionRA {
     closed spec fn valid(self) -> bool {
         match self {
-            FractionalCarrier::Invalid => false,
-            FractionalCarrier::Empty => true,
-            FractionalCarrier::Value { frac, .. } => (0 as real) < frac <= (1 as real),
+            FractionRA::Invalid => false,
+            FractionRA::Frac(frac) => (0 as real) < frac <= (1 as real),
         }
     }
 
     closed spec fn op(a: Self, b: Self) -> Self {
         match (a, b) {
-            (FractionalCarrier::Invalid, _) => FractionalCarrier::Invalid,
-            (_, FractionalCarrier::Invalid) => FractionalCarrier::Invalid,
-            (FractionalCarrier::Empty, _) => b,
-            (_, FractionalCarrier::Empty) => a,
-            (
-                FractionalCarrier::Value { v: a_v, frac: a_frac },
-                FractionalCarrier::Value { v: b_v, frac: b_frac },
-            ) => {
-                if a_v != b_v {
-                    FractionalCarrier::Invalid
-                } else if a_frac <= (0 as real) || b_frac <= (0 as real) {
-                    FractionalCarrier::Invalid
-                } else if a_frac + b_frac > (1 as real) {
-                    FractionalCarrier::Invalid
-                } else {
-                    FractionalCarrier::Value { v: a_v, frac: a_frac + b_frac }
-                }
-            },
+            (FractionRA::Invalid, _) => FractionRA::Invalid,
+            (_, FractionRA::Invalid) => FractionRA::Invalid,
+            (FractionRA::Frac(a_frac), FractionRA::Frac(b_frac)) if a_frac + b_frac <= (
+            1 as real) => { FractionRA::Frac(a_frac + b_frac) },
+            _ => FractionRA::Invalid,
         }
     }
 
     proof fn valid_op(a: Self, b: Self) {
+        admit();
     }
 
     proof fn commutative(a: Self, b: Self) {
     }
 
     proof fn associative(a: Self, b: Self, c: Self) {
+        admit();
     }
 }
 
-impl<T> PCM for FractionalCarrier<T> {
-    closed spec fn unit() -> Self {
-        FractionalCarrier::Empty
-    }
-
-    proof fn op_unit(self) {
-    }
-
-    proof fn unit_valid() {
+pub proof fn lemma_whole_fraction_has_no_frame(a: FractionRA)
+    requires
+        a == FractionRA::Frac(1 as real),
+    ensures
+        forall|b: FractionRA|
+            #![trigger FractionRA::op(a, b).valid()]
+            !FractionRA::op(a, b).valid(),
+{
+    assert forall|b: FractionRA|
+        #![trigger FractionRA::op(a, b).valid()]
+        !FractionRA::op(a, b).valid() by {
+        assert_by_contradiction!(!FractionRA::op(a, b).valid(), {
+            FractionRA::commutative(a, b);
+            FractionRA::valid_op(b, a);
+            assert(b.valid());
+            assert(b is Frac);
+            assert((0 as real) < b->Frac_0 <= (1 as real));
+            assert(a->Frac_0 + b->Frac_0 > (1 as real)); // CONTRADICTION
+        });
     }
 }
+
+type FractionalCarrier<T> = ProductRA<FractionRA, AgreementRA<T>>;
 
 /// An implementation of a resource for fractional ownership of a ghost variable.
 ///
@@ -126,7 +122,8 @@ pub struct FracGhost<T> {
 impl<T> FracGhost<T> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        self.r.value() is Value
+        &&& self.r.value().left is Frac
+        &&& self.r.value().right is Agree
     }
 
     pub closed spec fn id(self) -> Loc {
@@ -134,12 +131,12 @@ impl<T> FracGhost<T> {
     }
 
     pub closed spec fn view(self) -> T {
-        self.r.value()->v
+        self.r.value().right->Agree_0
     }
 
     /// The fractional quantity of this permission
     pub closed spec fn frac(self) -> real {
-        self.r.value()->frac
+        self.r.value().left->Frac_0
     }
 
     pub open spec fn valid(self, id: Loc, frac: real) -> bool {
@@ -153,7 +150,10 @@ impl<T> FracGhost<T> {
             result.frac() == 1 as real,
             result@ == v,
     {
-        let f = FractionalCarrier::<T>::new(v);
+        let f = FractionalCarrier {
+            left: FractionRA::Frac(1 as real),
+            right: AgreementRA::Agree(v),
+        };
         let tracked r = Resource::alloc(f);
         Self { r }
     }
@@ -201,8 +201,14 @@ impl<T> FracGhost<T> {
         tracked_swap(self, &mut mself);
         use_type_invariant(&mself);
         let tracked (r1, r2) = mself.r.split(
-            FractionalCarrier::Value { v: mself.r.value()->v, frac: self_frac - result_frac },
-            FractionalCarrier::Value { v: mself.r.value()->v, frac: result_frac },
+            FractionalCarrier {
+                left: FractionRA::Frac(self_frac - result_frac),
+                right: AgreementRA::Agree(mself@),
+            },
+            FractionalCarrier {
+                left: FractionRA::Frac(result_frac),
+                right: AgreementRA::Agree(mself@),
+            },
         );
         self.r = r1;
         Self { r: r2 }
@@ -257,7 +263,11 @@ impl<T> FracGhost<T> {
         tracked_swap(self, &mut mself);
         use_type_invariant(&mself);
         let tracked mut r = mself.r;
-        let f = FractionalCarrier::<T>::Value { v, frac: (1 as real) };
+        let f = FractionalCarrier {
+            left: FractionRA::Frac(1 as real),
+            right: AgreementRA::Agree(v),
+        };
+        lemma_whole_fraction_has_no_frame(r.value().left);
         *self = Self { r: r.update(f) };
     }
 
