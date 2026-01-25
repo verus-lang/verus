@@ -5,7 +5,7 @@ use itertools::Itertools;
 use rustc_hir as hir;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::hir::place::{Place, Projection, ProjectionKind};
-use rustc_middle::middle::region::{self, TempLifetime};
+use rustc_middle::middle::region;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::thir;
 use rustc_middle::thir::{
