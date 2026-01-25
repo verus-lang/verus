@@ -10,9 +10,8 @@ use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::lang_items::LangItem;
 use rustc_hir::{self as hir, HirId, find_attr};
 use rustc_middle::bug;
-use rustc_middle::middle::region;
 use rustc_middle::thir::*;
-use rustc_middle::ty::{self, RvalueScopes, TyCtxt};
+use rustc_middle::ty::{self, TyCtxt};
 use tracing::instrument;
 
 use crate::thir::pattern::pat_from_hir;
@@ -73,9 +72,9 @@ pub(crate) struct ThirBuildCx<'tcx> {
 
     pub(crate) typing_env: ty::TypingEnv<'tcx>,
 
+    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
     pub(crate) region_scope_tree: &'tcx region::ScopeTree,
     pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,
@@ -122,9 +121,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             // FIXME(#132279): We're in a body, we should use a typing
             // mode which reveals the opaque types defined by that body.
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
-            region_scope_tree: tcx.region_scope_tree(def),
             typeck_results,
-            rvalue_scopes: &typeck_results.rvalue_scopes,
             body_owner: def.to_def_id(),
             // <<<<<<< HEAD
             //             apply_adjustments: tcx
