@@ -323,9 +323,6 @@ pub(crate) fn expr_id_from_kind<'tcx>(
     span: Span,
     ty: Ty<'tcx>,
 ) -> ExprId {
-    // TODO(1.93.0): remove if unneeded
-    // let temp_lifetime =
-    //     cx.tcx.region_scope_tree(cx.body_owner).temporary_scope(hir_id.local_id);
     let e = Expr {
         temp_scope_id: hir_id.local_id,
         ty,
@@ -346,9 +343,6 @@ pub(crate) fn erase_tree<'tcx>(
     let kind = erase_tree_kind(cx, hir_expr);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
-    // TODO(1.93.0): remove if unneeded
-    // let (temp_lifetime, backwards_incompatible) =
-    //     cx.tcx.region.temporary_scope(cx.region_scope_tree, hir_expr.hir_id.local_id);
     let expr = Expr {
         temp_scope_id: hir_expr.hir_id.local_id,
         ty,
