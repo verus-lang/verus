@@ -1263,19 +1263,19 @@ impl<'a, T> SharedReference<'a, [T]> {
 
 impl<'a> SharedReference<'a, str> {
     #[verifier::external_body]
-    pub const fn as_ptr(self) -> (ptr: *const u8)
-        ensures
-            ptr == self.ptr() as *const u8,
-    {
-        self.0.as_ptr()
-    }
-
-    #[verifier::external_body]
-    pub const fn as_str_ptr(self) -> (ptr: *const str)
+    pub const fn as_ptr(self) -> (ptr: *const str)
         ensures
             ptr == self.ptr()
     {
         self.0 as *const str
+    }
+
+    // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
+    pub const fn as_u8_ptr(self) -> (ptr: *const u8)
+        ensures
+            ptr == self.ptr() as *const u8,
+    {
+        self.as_ptr() as *const u8
     }
 
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
