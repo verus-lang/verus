@@ -6,6 +6,7 @@ mod lib;
 pub mod map;
 pub mod option;
 pub mod pcm;
+pub mod product;
 pub mod relations;
 pub mod seq;
 pub mod set;
