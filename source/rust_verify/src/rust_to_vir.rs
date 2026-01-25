@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use rustc_ast::IsAuto;
 use rustc_hir::{
-    ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
+    ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
     Mutability, OwnerNode,
 };
 
@@ -72,7 +72,7 @@ fn check_item<'tcx>(
         }
         if vattrs.item_broadcast_use {
             let err = || crate::util::err_span(item.span, "invalid module-level broadcast use");
-            let ItemKind::Const(_ident, generics, _ty, body_id) = item.kind else {
+            let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind else {
                 return err();
             };
             unsupported_err_unless!(
@@ -80,7 +80,7 @@ fn check_item<'tcx>(
                 item.span,
                 "const generics with broadcast"
             );
-            let _def_id = body_id.hir_id().owner.to_def_id();
+            let _def_id = body_id.hir_id.owner.to_def_id();
 
             let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
 
@@ -277,7 +277,7 @@ fn check_item<'tcx>(
                 attrs,
             )?;
         }
-        ItemKind::Const(_ident, generics, _ty, body_id) => {
+        ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) => {
             unsupported_err_unless!(
                 generics.params.len() == 0 && generics.predicates.len() == 0,
                 item.span,
