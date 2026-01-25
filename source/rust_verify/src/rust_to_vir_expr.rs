@@ -575,6 +575,9 @@ pub(crate) fn pattern_to_vir<'tcx>(
                 PatAdjust::OverloadedDeref => {
                     unsupported_err!(pat.span, "overloaded deref in pattern");
                 }
+                PatAdjust::PinDeref => {
+                    unsupported_err!(pat.span, "pin deref in pattern");
+                }
             }
         }
     }
