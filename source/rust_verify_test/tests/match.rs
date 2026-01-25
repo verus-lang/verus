@@ -1187,7 +1187,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
@@ -1198,7 +1198,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
