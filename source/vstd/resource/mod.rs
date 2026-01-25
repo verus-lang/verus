@@ -1,5 +1,6 @@
 use super::prelude::*;
 
+pub mod agree;
 pub mod algebra;
 pub mod frac;
 mod lib;
