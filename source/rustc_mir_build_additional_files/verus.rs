@@ -323,12 +323,7 @@ pub(crate) fn expr_id_from_kind<'tcx>(
     span: Span,
     ty: Ty<'tcx>,
 ) -> ExprId {
-    let e = Expr {
-        temp_scope_id: hir_id.local_id,
-        ty,
-        span: span,
-        kind,
-    };
+    let e = Expr { temp_scope_id: hir_id.local_id, ty, span: span, kind };
     cx.thir.exprs.push(e)
 }
 
@@ -343,12 +338,7 @@ pub(crate) fn erase_tree<'tcx>(
     let kind = erase_tree_kind(cx, hir_expr);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
-    let expr = Expr {
-        temp_scope_id: hir_expr.hir_id.local_id,
-        ty,
-        span: hir_expr.span,
-        kind,
-    };
+    let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
 
     let expr_scope =
         region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };

@@ -557,7 +557,8 @@ impl ExpandErrorsDriver {
 
         let (in_fancy_note, in_msg) = match error_format {
             Some(ErrorOutputType::HumanReadable {
-                kind: HumanReadableErrorType::Default { short: true }, ..
+                kind: HumanReadableErrorType::Default { short: true },
+                ..
             }) => (false, false),
             Some(ErrorOutputType::HumanReadable { .. }) => (true, false),
             Some(rustc_session::config::ErrorOutputType::Json { .. }) => (false, true),

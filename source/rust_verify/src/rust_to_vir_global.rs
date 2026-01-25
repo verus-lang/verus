@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rustc_hir::{Item, ItemKind, ConstItemRhs};
+use rustc_hir::{ConstItemRhs, Item, ItemKind};
 use vir::ast::{IntRange, Typ, TypX, VirErr};
 
 use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};

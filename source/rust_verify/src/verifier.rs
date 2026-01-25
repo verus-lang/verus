@@ -3101,9 +3101,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(Default::default()))
-                };
+                providers.mir_borrowck =
+                    |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {

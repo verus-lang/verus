@@ -21,8 +21,8 @@ use std::collections::HashSet;
 
 use rustc_ast::IsAuto;
 use rustc_hir::{
-    ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OwnerNode,
+    ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
+    ItemKind, MaybeOwner, Mutability, OwnerNode,
 };
 
 use std::collections::HashMap;
@@ -72,7 +72,8 @@ fn check_item<'tcx>(
         }
         if vattrs.item_broadcast_use {
             let err = || crate::util::err_span(item.span, "invalid module-level broadcast use");
-            let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind else {
+            let ItemKind::Const(_ident, generics, _ty, ConstItemRhs::Body(body_id)) = item.kind
+            else {
                 return err();
             };
             unsupported_err_unless!(
