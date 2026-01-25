@@ -306,11 +306,6 @@ impl<T> PointsTo<[T]> {
     /// The sequence of (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
 
-    // We would like to use align_of_val and size_of_val for the value that this permission corresponds to,
-    // but value() has type Seq<T>, which is not associated with an alignment or a size.
-    /// The physical value associated with this permission.
-    pub uninterp spec fn phy(&self) -> &[T];
-
     // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
@@ -361,7 +356,7 @@ impl<T> PointsTo<[T]> {
     // See https://doc.rust-lang.org/std/ptr/#safety
     pub axiom fn is_nonnull(tracked &self)
         requires
-            spec_size_of_val::<[T]>(self.phy()) != 0,
+            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
     ;
@@ -373,7 +368,7 @@ impl<T> PointsTo<[T]> {
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as nat % spec_align_of_val::<[T]>(self.phy()) == 0,
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -383,7 +378,7 @@ impl<T> PointsTo<[T]> {
     // TODO: do I need this requires?
 
         requires
-            spec_size_of_val::<[T]>(self.phy()) != 0,
+            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.value().len() * size_of::<T>()
@@ -406,10 +401,6 @@ impl<T> PointsTo<[T]> {
                 },
             ),
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
-                start_index as int,
-                start_index as int + len as int,
-            ),
-            sub_points_to.phy()@ == self.phy()@.subrange(
                 start_index as int,
                 start_index as int + len as int,
             ),
@@ -1267,7 +1258,6 @@ impl<'a, T> SharedReference<'a, [T]> {
             pt.is_init(),
             // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
-            pt.phy() == self.value(),
     ;
 }
 

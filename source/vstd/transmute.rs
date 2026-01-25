@@ -293,30 +293,19 @@ impl PointsTo<str> {
         ensures
             ret.is_init(),
             ret.value() == target@@,
-            ret.phy() == target,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
             ret.ptr()@.metadata == self.ptr()@.metadata
     ;
 }
 
-/* [u8] */
-
-pub broadcast axiom fn u8_slice_can_be_encoded()
-    ensures
-        #[trigger] can_be_encoded::<[u8]>(),
-;
-
 impl PointsTo<[u8]> {
-    pub axiom fn transmute_shared<'a>(tracked &'a self, target: &str) -> (tracked ret:
+    pub axiom fn transmute_shared<'a>(tracked &'a self, value: &[u8], target: Tracked<&str>) -> (tracked ret:
         &'a PointsTo<str>)
         requires
+            transmute_pre_unsized::<[u8], str>(value, target),
             self.is_init(),
-            can_be_encoded::<[u8]>(),
-            forall|bytes|
-                #![trigger encode(self.phy(), bytes)]
-                #![trigger decode(bytes, target)]
-                encode(self.phy(), bytes) ==> decode(bytes, target),
+            self.value() == value@ //require a separate argument for value since transmute_pre_unsized expects a &[u8] instead of a Seq<u8>
         ensures
             ret.is_init(),
             ret.value() == target,
@@ -325,37 +314,5 @@ impl PointsTo<[u8]> {
             ret.ptr()@.metadata == self.ptr()@.metadata
     ;
 }
-
-pub open spec fn u8_encode_eq(value: Seq<u8>, bytes: Seq<AbstractByte>) -> bool
-    decreases bytes.len(),
-    via u8_encode_decreases
-{
-    if bytes.len() == 0 {
-        value.len() == 0
-    } else {
-        match bytes.first() {
-            AbstractByte::Uninit => false,
-            AbstractByte::Init(b, _) => {
-                &&& value.len() > 0
-                &&& b == value.first()
-                &&& u8_encode_eq(value.drop_first(), bytes.drop_first())
-            },
-        }
-    }
-}
-
-#[verifier::decreases_by]
-proof fn u8_encode_decreases(value: Seq<u8>, bytes: Seq<AbstractByte>) {
-    broadcast use axiom_seq_subrange_len::<AbstractByte>;
-
-}
-
-pub broadcast axiom fn u8_encode(b: &[u8], bytes: Seq<AbstractByte>)
-    ensures
-        #![trigger encode::<[u8]>(b, bytes)]
-        #![trigger decode::<[u8]>(bytes, b)]
-        encode::<[u8]>(b, bytes) <==> decode::<[u8]>(bytes, b),
-        encode::<[u8]>(b, bytes) <==> u8_encode_eq(b@, bytes),
-;
 
 } // verus!
