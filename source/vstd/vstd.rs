@@ -38,6 +38,7 @@ pub mod function;
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
+pub mod intrinsics;
 pub mod invariant;
 #[cfg(verus_keep_ghost)]
 pub mod laws_cmp;
