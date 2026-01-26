@@ -9,7 +9,7 @@ use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
-use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
+use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
 use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -480,7 +480,7 @@ pub(crate) fn translate_impl<'tcx>(
                 if trait_path_typ_args.is_some() {
                     unsupported_err!(item.span, "not yet supported: const trait member")
                 }
-                if let ImplItemKind::Const(_ty, body_id) = &impl_item.kind {
+                if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
                     let def_id = body_id.hir_id.owner.to_def_id();
                     let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
                     let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false)?;

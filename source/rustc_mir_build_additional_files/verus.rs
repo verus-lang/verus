@@ -10,7 +10,7 @@ use rustc_middle::mir::FakeReadCause;
 use rustc_middle::thir;
 use rustc_middle::thir::{
     AdtExprBase, Arm, ArmId, Block, BlockId, BlockSafety, Expr, ExprId, ExprKind, LocalVarId, Pat,
-    PatKind, Stmt, StmtId, StmtKind, TempLifetime,
+    PatKind, Stmt, StmtId, StmtKind,
 };
 use rustc_middle::ty;
 use rustc_middle::ty::{
@@ -323,14 +323,7 @@ pub(crate) fn expr_id_from_kind<'tcx>(
     span: Span,
     ty: Ty<'tcx>,
 ) -> ExprId {
-    let (temp_lifetime, backwards_incompatible) =
-        cx.rvalue_scopes.temporary_scope(cx.region_scope_tree, hir_id.local_id);
-    let e = Expr {
-        temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
-        ty,
-        span: span,
-        kind,
-    };
+    let e = Expr { temp_scope_id: hir_id.local_id, ty, span: span, kind };
     cx.thir.exprs.push(e)
 }
 
@@ -345,19 +338,12 @@ pub(crate) fn erase_tree<'tcx>(
     let kind = erase_tree_kind(cx, hir_expr);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
-    let (temp_lifetime, backwards_incompatible) =
-        cx.rvalue_scopes.temporary_scope(cx.region_scope_tree, hir_expr.hir_id.local_id);
-    let expr = Expr {
-        temp_lifetime: TempLifetime { temp_lifetime, backwards_incompatible },
-        ty,
-        span: hir_expr.span,
-        kind,
-    };
+    let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
 
     let expr_scope =
         region::Scope { local_id: hir_expr.hir_id.local_id, data: region::ScopeData::Node };
     let expr = Expr {
-        temp_lifetime: expr.temp_lifetime,
+        temp_scope_id: expr.temp_scope_id,
         ty: expr.ty,
         span: hir_expr.span,
         kind: ExprKind::Scope {

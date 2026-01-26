@@ -575,6 +575,9 @@ pub(crate) fn pattern_to_vir<'tcx>(
                 PatAdjust::OverloadedDeref => {
                     unsupported_err!(pat.span, "overloaded deref in pattern");
                 }
+                PatAdjust::PinDeref => {
+                    unsupported_err!(pat.span, "pin deref in pattern");
+                }
             }
         }
     }
@@ -604,13 +607,13 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
 
             let vir_by_ref = match by_ref {
                 ByRef::No => vir::ast::ByRef::No,
-                ByRef::Yes(Mutability::Mut) => {
+                ByRef::Yes(_pinnedness, Mutability::Mut) => {
                     if !bctx.new_mut_ref {
                         unsupported_err!(pat.span, "'ref mut' binding in pattern");
                     }
                     vir::ast::ByRef::MutRef
                 }
-                ByRef::Yes(Mutability::Not) => vir::ast::ByRef::ImmutRef,
+                ByRef::Yes(_pinnedness, Mutability::Not) => vir::ast::ByRef::ImmutRef,
             };
 
             // For a PatKind::Binding node, the HIR node type is always the type of
@@ -620,11 +623,11 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             let var_typ = pat_typ.clone();
             let actual_pat_typ = match by_ref {
                 ByRef::No => var_typ.clone(),
-                ByRef::Yes(Mutability::Mut) => match &*var_typ {
+                ByRef::Yes(_pinnedness, Mutability::Mut) => match &*var_typ {
                     TypX::MutRef(t) => t.clone(),
                     _ => crate::internal_err!(pat.span, "expected &mut type"),
                 },
-                ByRef::Yes(Mutability::Not) => match &*var_typ {
+                ByRef::Yes(_pinnedness, Mutability::Not) => match &*var_typ {
                     TypX::Decorate(TypDecoration::Ref, None, t) => t.clone(),
                     _ => crate::internal_err!(pat.span, "expected & type"),
                 },
