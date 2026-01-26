@@ -2573,12 +2573,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let fun = vir::fun!("vstd" => "std_specs", "vec", "vec_index");
                     (fun, typ_args.clone())
                 }
-                // TypX::Datatype(Dt::Path(p), typ_args, _impl_paths)
-                //     if p == &vir::path!("vstd" => "raw_ptr", "SharedReference") =>
-                // {
-                //     let fun = vir::fun!("vstd" => "raw_ptr", "Index", "index");
-                //     (fun, typ_args.clone())
-                // }
                 TypX::Primitive(vir::ast::Primitive::Array, typ_args) => {
                     let fun = vir::fun!("vstd" => "array", "array_index_get");
                     (fun, typ_args.clone())
@@ -2588,8 +2582,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     (fun, typ_args.clone())
                 }
                 _ => {
-                    dbg!(&**t1);
-                    // dbg!(TypX::Datatype(Dt::Path(&vir::path!("" => "vstd", "raw_ptr", "SharedReference")), typ_args, _impl_paths));
                     return err_span(
                         expr.span,
                         "in exec code, Verus only supports the index operator for Vec, array, and slice types",
