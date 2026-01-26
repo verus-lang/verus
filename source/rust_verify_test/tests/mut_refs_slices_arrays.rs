@@ -1512,3 +1512,52 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file_with_options! {
+    #[test] new_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn consume<A>(a: A) { }
+
+        fn test(a: &mut [u64]) {
+            // TODO(new_mut_ref): export an axiom so this succeeds
+            // (note: this might be tricky to do in a sound way, since the AIR encoding
+            // lets you assign anything to current?)
+            assert(a@.len() == fin(a)@.len()); // FAILS
+            consume(a);
+        }
+
+        fn test2(a: &mut Box<[u64]>) {
+            // This one must fail, though:
+            assert(a@.len() == fin(a)@.len()); // FAILS
+            consume(a);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_unsizing_coercion ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut a: [u64; 3] = [0, 1, 2];
+            let a_ref: &mut [u64; 3] = &mut a;
+            let a_ref2: &mut [u64] = a_ref;
+
+            a_ref2[1] = 19;
+
+            assert(a@ === seq![0, 19, 2]);
+        }
+
+        fn fails() {
+            let mut a: [u64; 3] = [0, 1, 2];
+            let a_ref: &mut [u64; 3] = &mut a;
+            let a_ref2: &mut [u64] = a_ref;
+
+            a_ref2[1] = 19;
+
+            assert(a@ === seq![0, 19, 2]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -1416,6 +1416,26 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                         _ => None,
                     }
                 }
+                (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut)) => {
+                    match (t1.kind(), t2.kind()) {
+                        (TyKind::Array(el_ty1, _const_len), TyKind::Slice(el_ty2))
+                            if bctx.new_mut_ref && el_ty1 == el_ty2 =>
+                        {
+                            let fun =
+                                vir::fun!("vstd" => "array", "ref_mut_array_unsizing_coercion");
+                            let array_typ = match &**arg.typ() {
+                                TypX::MutRef(typ) => typ,
+                                _ => crate::internal_err!(expr.span, "expected TypX::MutRef"),
+                            };
+                            let typ_args = match &**array_typ {
+                                TypX::Primitive(Primitive::Array, typs) => typs.clone(),
+                                _ => crate::internal_err!(expr.span, "expected array"),
+                            };
+                            Some((fun, typ_args))
+                        }
+                        _ => None,
+                    }
+                }
                 _ => {
                     let (ty1, ty2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
                     match (ty1.kind(), ty2.kind()) {
@@ -3575,11 +3595,30 @@ fn is_ptr_cast<'tcx>(
                 let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
                 return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
+            } else {
+                match (ty1.kind(), ty2.kind()) {
+                    (TyKind::Slice(s1), TyKind::Slice(s2)) => {
+                        let arg1 = bctx.mid_ty_to_vir(span, s1, false)?;
+                        let arg2 = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let fun = vir::fun!("vstd" => "raw_ptr", "cast_slice_ptr_to_slice_ptr");
+                        let typs = Arc::new(vec![arg1, arg2]);
+                        return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
+                    }
+                    (TyKind::Slice(s1), TyKind::Str) => {
+                        let arg = bctx.mid_ty_to_vir(span, s1, false)?;
+                        let fun = vir::fun!("vstd" => "raw_ptr", "cast_slice_ptr_to_str_ptr");
+                        let typs = Arc::new(vec![arg]);
+                        return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
+                    }
+                    (TyKind::Str, TyKind::Slice(s2)) => {
+                        let arg = bctx.mid_ty_to_vir(span, s2, false)?;
+                        let fun = vir::fun!("vstd" => "raw_ptr", "cast_str_ptr_to_slice_ptr");
+                        let typs = Arc::new(vec![arg]);
+                        return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
+                    }
+                    _ => {}
+                }
             }
-
-            //match (ty1.kind(), ty2.kind()) {
-            //
-            //}
             return Ok(None);
         }
         (TyKind::RawPtr(ty1, _), _ty2)
