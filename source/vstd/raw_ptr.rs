@@ -85,7 +85,7 @@ impl Provenance {
 
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
-        #[trigger] p.start_addr() + #[trigger] p.alloc_len() <= usize::MAX + 1,
+        #[trigger] p.start_addr() + #[trigger] p.alloc_len() < usize::MAX + 1,
 ;
 
 // write a broadcast axiom on any Provenance object
@@ -384,6 +384,39 @@ impl<T> PointsTo<[T]> {
             self.ptr()@.addr + self.value().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     ;
+
+    /// Useful facts about the result of subrange()
+    pub proof fn subrange_ptr_helper(tracked &self, start_index: usize, len: nat)
+        requires
+            self.is_init(),
+            start_index + len <= self.mem_contents_seq().len(),
+            self.mem_contents_seq().len() * size_of::<T>() != 0
+        ensures
+            ({
+                let start_addr = (self.ptr()@.addr + start_index * size_of::<T>()) as usize;
+                &&& self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX
+                &&& self.ptr()@.provenance.start_addr() <= start_addr <= start_addr + len * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                &&& start_addr != 0
+            })
+    {
+        broadcast use alloc_bound, crate::vstd::group_vstd_default;
+        let start_addr = (self.ptr()@.addr + start_index * size_of::<T>()) as usize;
+        self.ptr_bounds();
+        self.is_nonnull();
+        assert(self.ptr()@.addr + start_index * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>()) by (nonlinear_arith)
+            requires
+                start_index <= self.value().len(),
+            ;
+        assert(self.ptr()@.addr + start_index * size_of::<T>() + len * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>()) by (nonlinear_arith)
+            requires
+                start_index + len <= self.value().len(),
+            ;
+        assert(self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len());
+        assert((self.ptr()@.addr + start_index * size_of::<T>()) as usize != 0) by (nonlinear_arith)
+            requires 
+                self.ptr()@.addr != 0,
+                self.ptr()@.addr + start_index * size_of::<T>() < usize::MAX + 1;
+    }
 
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
     // Probably skip unless I need it
