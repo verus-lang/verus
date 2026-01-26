@@ -319,10 +319,10 @@ impl<T> PointsTo<[T]> {
     }
 
     /// Returns `true` if all of the permission's associated memory in the given subrange is initialized.
-    pub open spec fn is_init_subrange(&self, start_index: nat, len: nat) -> bool
-    {
+    pub open spec fn is_init_subrange(&self, start_index: nat, len: nat) -> bool {
         &&& start_index + len <= self.mem_contents_seq().len()
-        &&& forall|i| start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
+        &&& forall|i|
+            start_index <= i < start_index + len ==> self.mem_contents_seq().index(i).is_init()
     }
 
     /// Returns `true` if any part of the permission's associated memory is uninitialized.
@@ -390,32 +390,39 @@ impl<T> PointsTo<[T]> {
         requires
             self.is_init(),
             start_index + len <= self.mem_contents_seq().len(),
-            self.mem_contents_seq().len() * size_of::<T>() != 0
+            self.mem_contents_seq().len() * size_of::<T>() != 0,
         ensures
             ({
                 let start_addr = (self.ptr()@.addr + start_index * size_of::<T>()) as usize;
                 &&& self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX
-                &&& self.ptr()@.provenance.start_addr() <= start_addr <= start_addr + len * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                &&& self.ptr()@.provenance.start_addr() <= start_addr <= start_addr + len
+                    * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>()
+                    <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
                 &&& start_addr != 0
-            })
+            }),
     {
         broadcast use alloc_bound, crate::vstd::group_vstd_default;
+
         let start_addr = (self.ptr()@.addr + start_index * size_of::<T>()) as usize;
         self.ptr_bounds();
         self.is_nonnull();
-        assert(self.ptr()@.addr + start_index * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>()) by (nonlinear_arith)
+        assert(self.ptr()@.addr + start_index * size_of::<T>() <= self.ptr()@.addr
+            + self.value().len() * size_of::<T>()) by (nonlinear_arith)
             requires
                 start_index <= self.value().len(),
-            ;
-        assert(self.ptr()@.addr + start_index * size_of::<T>() + len * size_of::<T>() <= self.ptr()@.addr + self.value().len() * size_of::<T>()) by (nonlinear_arith)
+        ;
+        assert(self.ptr()@.addr + start_index * size_of::<T>() + len * size_of::<T>()
+            <= self.ptr()@.addr + self.value().len() * size_of::<T>()) by (nonlinear_arith)
             requires
                 start_index + len <= self.value().len(),
-            ;
-        assert(self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len());
+        ;
+        assert(self.ptr()@.addr + self.value().len() * size_of::<T>()
+            <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len());
         assert((self.ptr()@.addr + start_index * size_of::<T>()) as usize != 0) by (nonlinear_arith)
-            requires 
+            requires
                 self.ptr()@.addr != 0,
-                self.ptr()@.addr + start_index * size_of::<T>() < usize::MAX + 1;
+                self.ptr()@.addr + start_index * size_of::<T>() < usize::MAX + 1,
+        ;
     }
 
     // TODO: Add invariant that self.ptr()@.metadata == self.mem_contents_seq().len()?
@@ -696,6 +703,78 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
 pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
     ensures
         result == spec_cast_array_ptr_to_slice_ptr(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [T]
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
+    ptr_mut_from_data(
+        PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_slice_ptr)]
+pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
+    ensures
+        result == spec_cast_slice_ptr_to_slice_ptr::<T, U>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [U]
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
+    ptr_mut_from_data(
+        PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_str_ptr)]
+pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
+    ensures
+        result == spec_cast_slice_ptr_to_str_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut str
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
+    ptr_mut_from_data(
+        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_str_ptr_to_slice_ptr)]
+pub fn cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> (result: *mut [T])
+    ensures
+        result == spec_cast_str_ptr_to_slice_ptr::<T>(ptr),
     opens_invariants none
     no_unwind
 {
@@ -1298,7 +1377,7 @@ impl<'a> SharedReference<'a, str> {
     #[verifier::external_body]
     pub const fn as_ptr(self) -> (ptr: *const str)
         ensures
-            ptr == self.ptr()
+            ptr == self.ptr(),
     {
         self.0 as *const str
     }
