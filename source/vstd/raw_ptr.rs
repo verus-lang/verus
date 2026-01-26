@@ -435,6 +435,78 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
     ptr as *mut [T]
 }
 
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
+    ptr_mut_from_data(
+        PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to another slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_slice_ptr)]
+pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
+    ensures
+        result == spec_cast_slice_ptr_to_slice_ptr::<T, U>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [U]
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
+    ptr_mut_from_data(
+        PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a slice pointer to a `str` pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr")]
+#[verifier::when_used_as_spec(spec_cast_slice_ptr_to_str_ptr)]
+pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
+    ensures
+        result == spec_cast_slice_ptr_to_str_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut str
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
+    ptr_mut_from_data(
+        PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
+    )
+}
+
+/// Cast a `str` pointer to a slice pointer.
+/// Length is preserved even if the size of the elements changes.
+///
+/// Don't call this directly; use an `as`-cast instead.
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr")]
+#[verifier::when_used_as_spec(spec_cast_str_ptr_to_slice_ptr)]
+pub fn cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> (result: *mut [T])
+    ensures
+        result == spec_cast_str_ptr_to_slice_ptr::<T>(ptr),
+    opens_invariants none
+    no_unwind
+{
+    ptr as *mut [T]
+}
+
 /// Cast a pointer to a `usize` by extracting just the address.
 pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
     ptr@.addr
