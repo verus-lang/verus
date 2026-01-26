@@ -2,6 +2,8 @@ use super::prelude::*;
 
 pub mod agree;
 pub mod algebra;
+pub mod auth;
+pub mod exclusive;
 pub mod frac;
 mod lib;
 pub mod map;

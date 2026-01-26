@@ -53,6 +53,20 @@ pub open spec fn set_op<RA: ResourceAlgebra>(s: Set<RA>, t: RA) -> Set<RA> {
     Set::new(|v| exists|q| s.contains(q) && v == RA::op(q, t))
 }
 
+pub proof fn lemma_incl_transitive<RA: ResourceAlgebra>(a: RA, b: RA, c: RA)
+    requires
+        incl(a, b),
+        incl(b, c),
+    ensures
+        incl(a, c),
+{
+    let ax = choose|ax| RA::op(a, ax) == b;
+    let bx = choose|bx| RA::op(b, bx) == c;
+    assert(RA::op(RA::op(a, ax), bx) == c);
+    RA::associative(a, ax, bx);
+    assert(RA::op(a, RA::op(ax, bx)) == c);
+}
+
 pub proof fn lemma_frame_preserving_opt<RA: ResourceAlgebra>(a: RA, b: RA)
     requires
         frame_preserving_update_opt::<RA>(a, b),
