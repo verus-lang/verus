@@ -316,6 +316,7 @@ pub(crate) enum VstdItem {
     CastSlicePtrToStrPtr,
     CastStrPtrToSlicePtr,
     CastPtrToUsize,
+    RefMutArrayUnsizingCoercion,
     VecIndex,
     VecIndexMut,
 }
@@ -576,6 +577,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
+        ("verus::vstd::array::ref_mut_array_unsizing_coercion", VerusItem::Vstd(VstdItem::RefMutArrayUnsizingCoercion, Some(Arc::new("array::ref_mut_array_unsizing_coercion".to_owned())))),
         ("verus::vstd::array::spec_array_update", VerusItem::Vstd(VstdItem::SpecArrayUpdate, Some(Arc::new("array::spec_array_update".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
         ("verus::vstd::slice::spec_slice_update", VerusItem::Vstd(VstdItem::SpecSliceUpdate, Some(Arc::new("slice::spec_slice_update".to_owned())))),
