@@ -1512,3 +1512,25 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file_with_options! {
+    #[test] new_mut_ref ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn consume<A>(a: A) { }
+
+        fn test(a: &mut [u64]) {
+            // TODO(new_mut_ref): export an axiom so this succeeds
+            // (note: this might be tricky to do in a sound way, since the AIR encoding
+            // lets you assign anything to current?)
+            assert(a@.len() == fin(a)@.len()); // FAILS
+            consume(a);
+        }
+
+        fn test2(a: &mut Box<[u64]>) {
+            // This one must fail, though:
+            assert(a@.len() == fin(a)@.len()); // FAILS
+            consume(a);
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
