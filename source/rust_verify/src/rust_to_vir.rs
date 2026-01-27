@@ -18,6 +18,7 @@ use crate::util::err_span;
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use rustc_ast::IsAuto;
 use rustc_hir::{
@@ -417,7 +418,15 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
 
     {
-        let ctxt = Arc::make_mut(ctxt);
+        // TODO(bsdinis): This code (and all code using either Rc::make_mut or Arc::make_mut) is suspicious,
+        // worth a second look at some point
+        //
+        // make_mut duplicates the data if the reference isn't unique, meaning the updates don't
+        // propagate to the original
+        // - Either this is a no-op for other references
+        // - Or there is a single reference, in which case it might make more sense to just use a
+        // reference without ref counting
+        let ctxt = Rc::make_mut(ctxt);
         let arch_word_bits = ctxt.arch_word_bits.unwrap_or(vir::ast::ArchWordBits::Either32Or64);
         ctxt.arch_word_bits = Some(arch_word_bits);
         vir.arch.word_bits = arch_word_bits;

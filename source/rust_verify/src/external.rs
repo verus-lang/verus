@@ -630,8 +630,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
     span: Span,
 ) -> Option<ExternalAttrs> {
     let warn_unknown = || {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+        ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(crate::util::err_span_bare(
             span,
             format!(
                 "Verus doesn't known how to handle this automatically derived item; ignoring it"

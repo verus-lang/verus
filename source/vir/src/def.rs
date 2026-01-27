@@ -5,7 +5,7 @@ use crate::util::vec_map;
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -851,13 +851,12 @@ impl CommandContext {
 }
 
 #[derive(Debug)]
-#[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: std::cell::RefCell<Option<crate::messages::Message>>,
+    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -874,8 +873,22 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: std::cell::RefCell::new(None),
+            hint_upon_failure: Mutex::new(None),
         })
+    }
+}
+
+impl Clone for CommandsWithContextX {
+    fn clone(&self) -> Self {
+        CommandsWithContextX {
+            context: self.context.clone(),
+            commands: self.commands.clone(),
+            prover_choice: self.prover_choice.clone(),
+            skip_recommends: self.skip_recommends.clone(),
+            hint_upon_failure: Mutex::new(
+                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
+            ),
+        }
     }
 }
 

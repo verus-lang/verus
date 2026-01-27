@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use rustc_hir::{ConstItemRhs, Item, ItemKind};
 use vir::ast::{IntRange, Typ, TypX, VirErr};
@@ -106,7 +106,7 @@ pub(crate) fn process_const_early<'tcx>(
         }
 
         if let TypX::Int(IntRange::USize | IntRange::ISize) = &*ty {
-            let arch_word_bits = &mut Arc::make_mut(ctxt).arch_word_bits;
+            let arch_word_bits = &mut Rc::make_mut(ctxt).arch_word_bits;
             if let Some(arch_word_bits) = arch_word_bits {
                 let vir::ast::ArchWordBits::Exactly(size_bits_set) = arch_word_bits else {
                     panic!("unexpected ArchWordBits");

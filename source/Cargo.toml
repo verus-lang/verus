@@ -72,10 +72,8 @@ useless_vec = "allow"
 vec_init_then_push = "allow"
 
 # suspicious
-arc_with_non_send_sync = "allow"
 # do not remove: see https://github.com/verus-lang/verus/pull/2091#discussion_r2710412679 for a discussion
 manual_unwrap_or_default = "allow"
-
 # style
 assign_op_pattern = "allow"
 chars_last_cmp = "allow"

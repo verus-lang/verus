@@ -257,7 +257,7 @@ fn prepend_crate_if_local<'tcx>(external_def_id: DefId, s: String) -> String {
 /// The RegionRenamer generates fresh lifetime names for anonymous early bound regions
 /// and implements TypeFoldable in order to make the mapping and apply it.
 fn build_region_renamer<'tcx>(
-    ctxt: &Arc<crate::context::ContextX<'tcx>>,
+    ctxt: &crate::context::Context<'tcx>,
     external_def_id: DefId,
     generics: &'tcx rustc_middle::ty::Generics,
 ) -> Result<RegionRenamer<'tcx>, Arc<vir::messages::MessageX>> {
@@ -281,7 +281,7 @@ fn build_region_renamer<'tcx>(
 }
 
 fn build_where_clauses<'tcx>(
-    ctxt: &Arc<crate::context::ContextX<'tcx>>,
+    ctxt: &crate::context::Context<'tcx>,
     inst_predicates: InstantiatedPredicates<'tcx>,
     mut unsized_type_params: BTreeSet<rustc_span::Symbol>,
 ) -> Result<Vec<String>, VirErr> {
@@ -431,7 +431,7 @@ fn build_where_clauses<'tcx>(
 }
 
 fn build_generics_declarations<'tcx>(
-    ctxt: &Arc<crate::context::ContextX<'tcx>>,
+    ctxt: &crate::context::Context<'tcx>,
     generics: &'tcx rustc_middle::ty::Generics,
     predicates: &InstantiatedPredicates,
     region_renamer: &RegionRenamer<'tcx>,
