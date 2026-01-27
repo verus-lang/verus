@@ -20,7 +20,10 @@ pub open spec fn frame_preserving_update<RA: ResourceAlgebra>(a: RA, b: RA) -> b
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
-pub open spec fn frame_preserving_update_nondeterministic<RA: ResourceAlgebra>(a: RA, bs: Set<RA>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<RA: ResourceAlgebra>(
+    a: RA,
+    bs: Set<RA>,
+) -> bool {
     forall|c|
         #![trigger RA::op(a, c)]
         RA::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && RA::op(b, c).valid()
@@ -28,7 +31,7 @@ pub open spec fn frame_preserving_update_nondeterministic<RA: ResourceAlgebra>(a
 
 /// The set of values such that can be created by composing an element of `s` with `t`.
 pub open spec fn set_op<RA: ResourceAlgebra>(s: Set<RA>, t: RA) -> Set<RA> {
-    Set::new(|v| exists|q| s.contains(q) && v == RA::op(q, t))
+    s.map(|q| RA::op(q, t))
 }
 
 } // verus!

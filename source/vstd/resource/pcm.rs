@@ -270,6 +270,8 @@ impl<P: PCM> Resource<P> {
     {
         let new_values = set![new_value];
         let so = set_op(new_values, other.value());
+        assert(new_values.contains(new_value));
+        assert(so == set![new_value].map(|n| P::op(new_value, other.value())));
         assert(so.contains(P::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
     }

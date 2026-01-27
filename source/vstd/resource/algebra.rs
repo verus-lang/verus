@@ -7,6 +7,12 @@ use super::pcm;
 use super::pcm::PCM;
 use super::relations::*;
 
+// TODO / Questions:
+//  - Not loving the ResourceRef business, is there a better way?
+//  - Preconditions on update_with_shared_* are not amazing, is there a better way?
+//  - Same with join_shared_to_target -- has to leak the Option reasoning
+//  - If ResourceRef is the way, should we move the functions to take &self to the impl ResourceRef?
+
 verus! {
 
 broadcast use super::super::set::group_set_axioms;
@@ -15,6 +21,22 @@ broadcast use super::super::set::group_set_axioms;
 #[verifier::accept_recursive_types(RA)]
 pub tracked struct Resource<RA: ResourceAlgebra> {
     pcm: pcm::Resource<Option<RA>>,
+}
+
+#[verifier::accept_recursive_types(RA)]
+pub tracked struct ResourceRef<'a, RA: ResourceAlgebra> {
+    pcm: &'a pcm::Resource<Option<RA>>,
+}
+
+impl<RA: ResourceAlgebra> Resource<RA> {
+    pub proof fn as_ref(tracked &self) -> (tracked r: ResourceRef<'_, RA>)
+        ensures
+            self.loc() == r.loc(),
+            self.value() == r.value(),
+    {
+        use_type_invariant(self);
+        ResourceRef { pcm: &self.pcm }
+    }
 }
 
 /// A Resource Algebra operating on a type T
@@ -140,6 +162,8 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     // GHOST-UPDATE rule
     pub proof fn update_nondeterministic(tracked self, new_values: Set<RA>) -> (tracked out: Self)
         requires
+            !new_values.is_empty(),
+            forall|v| #[trigger] new_values.contains(v) ==> v.valid(),
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
@@ -160,6 +184,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     // variant of the GHOST-UPDATE rule
     pub proof fn update(tracked self, new_value: RA) -> (tracked out: Self)
         requires
+            new_value.valid(),
             frame_preserving_update(self.value(), new_value),
         ensures
             out.loc() == self.loc(),
@@ -187,24 +212,27 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     /// This is useful when you have two (or more) shared resources and want to learn
     /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
     pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
-        &'a Self)
+        ResourceRef<'a, RA>)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
-            incl(self.value(), out.value()),
-            incl(other.value(), out.value()),
+            incl(self.value(), out.value()) || self.value() == out.value(),
+            incl(other.value(), out.value()) || other.value() == out.value(),
     {
         use_type_invariant(self);
         use_type_invariant(other);
         let tracked pcm = self.pcm.join_shared(&other.pcm);
-        // TODO: this is a reference to a PCM resource -- not a reference to a RA Resource
-        assume(false);
-        proof_from_false()
+        assert(pcm.value() is Some);
+        assert(incl(Some(self.value()), pcm.value()));
+        assert(incl(Some(other.value()), pcm.value()));
+        lemma_incl_opt_rev(self.value(), pcm.value()->Some_0);
+        lemma_incl_opt_rev(other.value(), pcm.value()->Some_0);
+        ResourceRef { pcm }
     }
 
     /// Extract a shared reference to a preceding element in the extension order from a shared reference.
-    pub proof fn weaken<'a>(tracked &'a self, target: RA) -> (tracked out: &'a Self)
+    pub proof fn weaken<'a>(tracked &'a self, target: RA) -> (tracked out: ResourceRef<'a, RA>)
         requires
             incl(target, self.value()),
         ensures
@@ -214,9 +242,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         use_type_invariant(self);
         lemma_incl_opt(target, self.value());
         let tracked pcm = self.pcm.weaken(Some(target));
-        // TODO: this is a reference to a PCM resource -- not a reference to a RA Resource
-        assume(false);
-        proof_from_false()
+        ResourceRef { pcm }
     }
 
     /// Validate two items at once. If we have two resources at the same location then its
@@ -241,6 +267,10 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
+            // Q: is this the weakest way to encode this?
+            // would it be enough to say this about new_values?
+            !set_op(new_values, other.value()).is_empty(),
+            forall|v| #[trigger] set_op(new_values, other.value()).contains(v) ==> v.valid(),
             frame_preserving_update_nondeterministic(
                 RA::op(self.value(), other.value()),
                 set_op(new_values, other.value()),
@@ -253,9 +283,13 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         use_type_invariant(other);
         let a = RA::op(self.value(), other.value());
         let bs = set_op(new_values, other.value());
-        let new_values_opt = new_values.map(|v| Some(v));
+
+        assert(forall|b| #[trigger] bs.contains(b) ==> b.valid());
+        assert(!bs.is_empty());
         lemma_frame_preserving_update_nondeterministic_opt(a, bs);
         lemma_set_op_opt(new_values, other.value());
+
+        let new_values_opt = new_values.map(|v| Some(v));
         let tracked pcm = self.pcm.update_nondeterministic_with_shared(&other.pcm, new_values_opt);
         Resource { pcm }
     }
@@ -265,17 +299,36 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         tracked &'a self,
         tracked other: &'a Self,
         target: RA,
-    ) -> (tracked out: &'a Self)
+    ) -> (tracked out: ResourceRef<'a, RA>)
         requires
             self.loc() == other.loc(),
-            conjunct_shared(self.value(), other.value(), target),
+            conjunct_shared(Some(self.value()), Some(other.value()), Some(target)),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
     {
-        let tracked j = self.join_shared(other);
-        j.validate();
-        j.weaken(target)
+        let tracked joined = self.join_shared(other);
+        joined.validate();
+        assert(Some(joined.value()).valid());
+        if self.value() == joined.value() {
+            Some(self.value()).op_unit();
+            assert(incl(Some(self.value()), Some(joined.value())));
+        } else {
+            lemma_incl_opt(self.value(), joined.value());
+        }
+        if other.value() == joined.value() {
+            Some(other.value()).op_unit();
+            assert(incl(Some(other.value()), Some(joined.value())));
+        } else {
+            lemma_incl_opt(other.value(), joined.value());
+        }
+        assert(incl(Some(target), Some(joined.value())));
+        lemma_incl_opt_rev(target, joined.value());
+        if joined.value() == target {
+            joined
+        } else {
+            joined.weaken(target)
+        }
     }
 
     /// If `x · y --> x · z` is a frame-perserving update, and we have a shared reference to `x`,
@@ -287,6 +340,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
+            RA::op(new_value, other.value()).valid(),
             frame_preserving_update(
                 RA::op(self.value(), other.value()),
                 RA::op(new_value, other.value()),
@@ -297,6 +351,8 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     {
         let new_values = set![new_value];
         let so = set_op(new_values, other.value());
+        assert(new_values.contains(new_value));
+        assert(so == set![new_value].map(|n| RA::op(new_value, other.value())));
         assert(so.contains(RA::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
     }
@@ -305,6 +361,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     /// we can create a resource to y
     pub proof fn duplicate_previous(tracked &self, value: RA) -> (tracked out: Self)
         requires
+            RA::op(value, self.value()).valid(),
             frame_preserving_update(self.value(), RA::op(value, self.value())),
         ensures
             out.loc() == self.loc(),
@@ -315,6 +372,50 @@ impl<RA: ResourceAlgebra> Resource<RA> {
         lemma_frame_preserving_opt(self.value(), b);
         let tracked pcm = self.pcm.duplicate_previous(Some(value));
         Resource { pcm }
+    }
+}
+
+impl<'a, RA: ResourceAlgebra> ResourceRef<'a, RA> {
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        self.pcm.value() is Some
+    }
+
+    pub closed spec fn loc(self) -> Loc {
+        self.pcm.loc()
+    }
+
+    pub closed spec fn value(self) -> RA {
+        self.pcm.value()->Some_0
+    }
+
+    /// Whenever we have a resource, that resource is valid. This intuitively (and inductively)
+    /// holds because:
+    ///     1. We only create valid resources (either via [`alloc`] or
+    ///        [`create_unit`](Self::create_unit)).
+    ///     2. We can only update the value of a resource via a [`frame_preserving_update`] (see
+    ///        [`update`](Self::update) for more details. Because of the requirement of that
+    ///        updates are frame preserving this means that `join`s remain valid.
+    pub proof fn validate(tracked &self)
+        ensures
+            self.value().valid(),
+    {
+        use_type_invariant(self);
+        self.pcm.validate();
+    }
+
+    /// Extract a shared reference to a preceding element in the extension order from a shared reference.
+    pub proof fn weaken(tracked &self, target: RA) -> (tracked out: ResourceRef<'a, RA>)
+        requires
+            incl(target, self.value()),
+        ensures
+            out.loc() == self.loc(),
+            out.value() == target,
+    {
+        use_type_invariant(self);
+        lemma_incl_opt(target, self.value());
+        let tracked pcm = self.pcm.weaken(Some(target));
+        ResourceRef { pcm }
     }
 }
 

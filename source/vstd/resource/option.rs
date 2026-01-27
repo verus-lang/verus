@@ -27,7 +27,7 @@ impl<RA: ResourceAlgebra> ResourceAlgebra for Option<RA> {
     proof fn associative(a: Self, b: Self, c: Self) {
         match (a, b, c) {
             (Some(a), Some(b), Some(c)) => RA::associative(a, b, c),
-            (_, _, _) => {}
+            (_, _, _) => {},
         }
     }
 
@@ -35,17 +35,16 @@ impl<RA: ResourceAlgebra> ResourceAlgebra for Option<RA> {
     proof fn commutative(a: Self, b: Self) {
         match (a, b) {
             (Some(a), Some(b)) => RA::commutative(a, b),
-            (_, _) => {}
+            (_, _) => {},
         }
     }
-
 
     /// The operation is closed under inclusion
     /// (i.e., if the result of the operation is valid then its parts are also valid)
     proof fn valid_op(a: Self, b: Self) {
         match (a, b) {
             (Some(a), Some(b)) => RA::valid_op(a, b),
-            (_, _) => {}
+            (_, _) => {},
         }
     }
 }
@@ -67,20 +66,47 @@ impl<RA: ResourceAlgebra> PCM for Option<RA> {
 
 pub proof fn lemma_frame_preserving_opt<RA: ResourceAlgebra>(a: RA, b: RA)
     requires
+        b.valid(),
         frame_preserving_update::<RA>(a, b),
     ensures
         frame_preserving_update::<Option<RA>>(Some(a), Some(b)),
 {
-    admit();
+    assert forall|c|
+        #![trigger Option::<RA>::op(Some(a), c), Option::<RA>::op(Some(b), c)]
+        Option::<RA>::op(Some(a), c).valid() implies Option::<RA>::op(Some(b), c).valid() by {
+        if c is None {
+            Some(b).op_unit();
+        }
+    }
 }
 
-pub proof fn lemma_frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebra>(a: RA, bs: Set<RA>)
+pub proof fn lemma_frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebra>(
+    a: RA,
+    bs: Set<RA>,
+)
     requires
+        !bs.is_empty(),
+        forall|b| #[trigger] bs.contains(b) ==> b.valid(),
         frame_preserving_update_nondeterministic::<RA>(a, bs),
     ensures
         frame_preserving_update_nondeterministic::<Option<RA>>(Some(a), bs.map(|b| Some(b))),
 {
-    admit();
+    broadcast use super::super::set::group_set_axioms;
+
+    let bs_mapped = bs.map(|b| Some(b));
+    assert forall|c|
+        #![trigger Option::<RA>::op(Some(a), c)]
+        Option::<RA>::op(Some(a), c).valid() implies exists|b| #[trigger]
+        bs_mapped.contains(b) && Option::<RA>::op(b, c).valid() by {
+        if c is None {
+            let b = choose|b| bs.contains(b);
+            Some(b).op_unit();
+            assert(bs_mapped.contains(Some(b)));
+        } else {
+            let b = choose|b| #[trigger] bs.contains(b) && RA::op(b, c->Some_0).valid();
+            assert(bs_mapped.contains(Some(b)));
+        }
+    }
 }
 
 pub proof fn lemma_incl_opt<RA: ResourceAlgebra>(a: RA, b: RA)
@@ -89,18 +115,42 @@ pub proof fn lemma_incl_opt<RA: ResourceAlgebra>(a: RA, b: RA)
     ensures
         incl::<Option<RA>>(Some(a), Some(b)),
 {
-    admit();
+    let c = choose|x| RA::op(a, x) == b;
+    assert(Option::<RA>::op(Some(a), Some(c)) == Some(b));
 }
 
-pub proof fn lemma_set_op_opt<RA: ResourceAlgebra>(
-    s: Set<RA>,
-    t: RA
-)
+pub proof fn lemma_incl_opt_rev<RA: ResourceAlgebra>(a: RA, b: RA)
+    requires
+        incl::<Option<RA>>(Some(a), Some(b)),
     ensures
-        set_op(s, t).map(|b| Some(b)) == set_op(s.map(|x| Some(x)), Some(t))
+        incl::<RA>(a, b) || a == b,
 {
-    admit();
+    let c = choose|x| Option::<RA>::op(Some(a), x) == Some(b);
+    if c is None {
+        Some(a).op_unit();
+    }
 }
 
+pub proof fn lemma_set_op_opt<RA: ResourceAlgebra>(s: Set<RA>, t: RA)
+    ensures
+        set_op(s, t).map(|b| Some(b)) == set_op(s.map(|x| Some(x)), Some(t)),
+{
+    broadcast use super::super::set::group_set_axioms;
 
+    let s_mapped = s.map(|x| Some(x));
+    let original = set_op(s, t);
+    let map_after = original.map(|b| Some(b));
+    let map_before = set_op(s_mapped, Some(t));
+
+    assert forall|v| map_after.contains(v) implies map_before.contains(v) by {
+        let q = choose|q| #[trigger] s.contains(q) && v->Some_0 == RA::op(q, t);
+        assert(s_mapped.contains(Some(q)));
+    }
+
+    assert forall|v| map_before.contains(v) implies map_after.contains(v) by {
+        let q = choose|q| #[trigger] s_mapped.contains(q) && v == Option::<RA>::op(q, Some(t));
+        assert(original.contains(v->Some_0));
+    }
 }
+
+} // verus!
