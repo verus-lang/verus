@@ -194,16 +194,8 @@ pub(crate) fn translate_trait<'tcx>(
                     .help(format!(
                         "external_trait_specification requires trait bounds to match exactly \
                     but the proxy's trait bounds are:\n{}\nthe external trait bounds are:\n{}",
-                        preds2
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        preds1
-                            .iter()
-                            .map(|x| format!("  - {}", x.to_string()))
-                            .collect::<Vec<_>>()
-                            .join("\n")
+                        preds2.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+                        preds1.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")
                     ));
             return Err(err);
         }

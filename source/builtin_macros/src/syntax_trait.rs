@@ -169,12 +169,10 @@ fn expand_extension_trait<'tcx>(
         quote_spanned!(span => non_camel_case_types),
     ));
     let blanket_bound: TypeParamBound = {
-        tr.supertraits.iter().filter(|tpb| is_sizedness_bound(tpb)).cloned().next().unwrap_or_else(
-            || {
-                let span = tr.generics.span();
-                parse_quote_spanned!(span => core::marker::MetaSized)
-            },
-        )
+        tr.supertraits.iter().find(|tpb| is_sizedness_bound(tpb)).cloned().unwrap_or_else(|| {
+            let span = tr.generics.span();
+            parse_quote_spanned!(span => core::marker::MetaSized)
+        })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
     blanket_impl.items = blanket_impl_items;

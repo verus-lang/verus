@@ -241,7 +241,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
 
     let type_alias_stream = match &field.stype {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-            let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_map", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -251,7 +251,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
-            let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_set", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -261,8 +261,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::Multiset(elem) => {
-            let name =
-                Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_multiset", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -454,7 +453,7 @@ impl Ctxt {
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
         let i = self.fresh_num_counter;
         self.fresh_num_counter += 1;
-        Ident::new(&format!("param_token_{}_{}", i, base_id.to_string()), base_id.span())
+        Ident::new(&format!("param_token_{i}_{base_id}"), base_id.span())
     }
 
     /// Determines if we need to add an explicit lifetime parameter
@@ -1788,8 +1787,7 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
                 match &mut arm.guard {
                     None => {}
                     Some((_, g)) => {
-                        let e = translate_expr(ctxt, g, false, errors);
-                        *g = Box::new(e);
+                        **g = translate_expr(ctxt, g, false, errors);
                     }
                 }
             }

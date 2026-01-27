@@ -33,7 +33,7 @@ use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 // TODO: eventually, this should just always be true
 thread_local! {
     pub(crate) static MULTI_CRATE: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+        const { std::sync::atomic::AtomicBool::new(false) };
 }
 
 fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
@@ -1833,15 +1833,9 @@ pub(crate) fn check_item_external_generics<'tcx>(
     generics_params.extend(generics.params.iter().cloned());
 
     if skip_implicit_lifetimes {
-        generics_params = generics_params
-            .into_iter()
-            .filter(|gp| {
-                !matches!(
-                    gp.kind,
-                    GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) }
-                )
-            })
-            .collect();
+        generics_params.retain(|gp| {
+            !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) })
+        });
     }
 
     use rustc_middle::ty::ScalarInt;

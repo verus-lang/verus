@@ -135,7 +135,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
         if let Some(fancy_note) = &msg.fancy_note {
             // The fancy_note might use terminal colors, which will get escaped if we use
             // the Rust emitter. Thus, we have to emit this note out-of-band.
-            eprintln!("{:}{:}", console::style("note: ").bright().blue().to_string(), fancy_note);
+            eprintln!("{:}{:}", console::style("note: ").bright().blue(), fancy_note);
         }
     }
 
@@ -651,7 +651,7 @@ impl Verifier {
             );
             let bnd_info = qid_map
                 .get(&cost.quant)
-                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+                .unwrap_or_else(|| panic!("Failed to find quantifier {}", cost.quant));
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
@@ -1392,8 +1392,8 @@ impl Verifier {
             &krate
                 .datatypes
                 .iter()
-                .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
+                .cloned()
                 .collect(),
         );
         self.run_commands(

@@ -678,7 +678,8 @@ pub(crate) fn redirect_calls_in_default_methods(
                             true
                         }
                     };
-                    let impl_paths = Arc::new(impl_paths.iter().cloned().filter(filter).collect());
+                    let impl_paths =
+                        Arc::new(impl_paths.iter().filter(|p| filter(*p)).cloned().collect());
 
                     return Ok((callee, impl_paths));
                 } else {

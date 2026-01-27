@@ -56,17 +56,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 #    fixing it would be overly complex, consider also `allow`ing it on that particular instance.
 
 # perf
-cloned_ref_to_slice_refs = "allow"
 cmp_owned = "allow"
-expect_fun_call = "allow"
-iter_overeager_cloned = "allow"
 large_enum_variant = "allow"
-manual_retain = "allow"
-map_entry = "allow"
-missing_const_for_thread_local = "allow"
-replace_box = "allow"
 result_large_err = "allow"
-to_string_in_format_args = "allow"
 unnecessary_to_owned = "allow"
 useless_vec = "allow"
 vec_init_then_push = "allow"

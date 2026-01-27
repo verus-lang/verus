@@ -696,8 +696,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             "assume_specification trait bound mismatch")
             .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
-          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
-          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+          proxy_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")));
         return Err(err);
     }
 

@@ -488,8 +488,8 @@ fn check_invdecl_params_match(
                     return Err(Error::new(
                         ty1.span(),
                         format!(
-                            "struct_with_invariants: this type is expected to be {:}",
-                            ty2.to_token_stream().to_string()
+                            "struct_with_invariants: this type is expected to be {}",
+                            ty2.to_token_stream()
                         ),
                     ));
                 }
@@ -834,10 +834,7 @@ fn output_field_type_alias(
 // Defs
 
 fn get_pred_typename(main_name: &str, field_name: &Ident) -> Ident {
-    Ident::new(
-        &format!("InvariantPredicate_auto_{:}_{:}", main_name, field_name.to_string()),
-        Span::call_site(),
-    )
+    Ident::new(&format!("InvariantPredicate_auto_{main_name}_{field_name}"), Span::call_site())
 }
 
 fn get_type_alias(
@@ -845,10 +842,7 @@ fn get_type_alias(
     field_ident: &Ident,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
 ) -> TokenStream {
-    let ident = Ident::new(
-        &format!("FieldType_{:}_{:}", main_name, field_ident.to_string()),
-        Span::call_site(),
-    );
+    let ident = Ident::new(&format!("FieldType_{main_name}_{field_ident}"), Span::call_site());
     let utp = used_type_params.get(&field_ident.to_string()).unwrap();
     if utp.len() == 0 {
         quote! { #ident }
