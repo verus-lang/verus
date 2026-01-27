@@ -24,8 +24,11 @@ pub trait ExIterator {
 
     type Item;
 
-    /// This iterator obeys the specifications below on `next`
-    spec fn obeys_iter_laws(&self) -> bool;
+    /// This iterator obeys the specifications below on `next`, 
+    /// expressed in terms of prophetic spec functions.
+    /// Only iterators that terminate (i.e., eventually return None
+    /// and then continue to return None) should use this interface.
+    spec fn obeys_prophetic_iter_laws(&self) -> bool;
 
     /// Sequence of items that will (eventually) be returned
     #[verifier::prophetic]
@@ -42,11 +45,11 @@ pub trait ExIterator {
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
-            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
-            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
+            self.obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            self.obeys_prophetic_iter_laws() ==> self.completes() == old(self).completes(),
+            self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
             // `next` pops the head of the prophesized seq(), or returns None
-            self.obeys_iter_laws() ==> 
+            self.obeys_prophetic_iter_laws() ==> 
             ({
                 if old(self).seq().len() > 0 {
                     &&& self.seq() == old(self).seq().drop_first()
@@ -56,7 +59,7 @@ pub trait ExIterator {
                 }
             }),
             // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
+            self.obeys_prophetic_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
                 decreases_to!(old(self).decrease()->0 => self.decrease()->0),
     ;
 
@@ -76,16 +79,16 @@ pub trait ExIterator {
     spec fn initial_value_inv(&self, init: Option<&Self>) -> bool;
 }
 
-/// REVIEW: Despite the name, VerusForLoopIterator doesn't implement Iterator.
+/// REVIEW: Despite the name, VerusForLoopWrapper doesn't implement Iterator.
 ///         What would be a better name?
-pub struct VerusForLoopIterator<'a, I: Iterator> {
+pub struct VerusForLoopWrapper<'a, I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
     pub init: Ghost<Option<&'a I>>,
     pub iter: I 
 }
 
-impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
+impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.seq()
@@ -119,7 +122,7 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
             s.iter == iter,
             s.wf(),
     {
-        VerusForLoopIterator {
+        VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
             init: init,
@@ -137,17 +140,17 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
             self.index@ == old(self).index@ + if ret is Some { 1int } else { 0 },
             self.snapshot == old(self).snapshot,
             self.init == old(self).init,
-            self.iter.obeys_iter_laws() ==> self.wf(),
-            self.iter.obeys_iter_laws() && ret is None ==>
+            self.iter.obeys_prophetic_iter_laws() ==> self.wf(),
+            self.iter.obeys_prophetic_iter_laws() && ret is None ==>
                 self.snapshot@.completes() && self.index@ == self.seq().len(),
-            self.iter.obeys_iter_laws() ==> (ret matches Some(r) ==>
+            self.iter.obeys_prophetic_iter_laws() ==> (ret matches Some(r) ==>
                 r == old(self).seq()[old(self).index@]),
             // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
             // call_ensures(I::next, (&mut old(self).iter,), ret),
-            self.iter.obeys_iter_laws() == old(self).iter.obeys_iter_laws(),
-            self.iter.obeys_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
-            self.iter.obeys_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
-            self.iter.obeys_iter_laws() ==> 
+            self.iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
+            self.iter.obeys_prophetic_iter_laws() ==> self.iter.completes() == old(self).iter.completes(),
+            self.iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> self.iter.decrease() is Some),
+            self.iter.obeys_prophetic_iter_laws() ==> 
             ({
                 if old(self).iter.seq().len() > 0 {
                     &&& self.iter.seq() == old(self).iter.seq().drop_first()
@@ -156,7 +159,7 @@ impl <'a, I: Iterator> VerusForLoopIterator<'a, I> {
                     self.iter.seq() === old(self).iter.seq() && ret === None && self.iter.completes()
                 }
             }),
-            self.iter.obeys_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
+            self.iter.obeys_prophetic_iter_laws() && old(self).iter.seq().len() > 0 && self.iter.decrease() is Some ==> 
                 decreases_to!(old(self).iter.decrease()->0 => self.iter.decrease()->0),
     {
         let ret = self.iter.next();

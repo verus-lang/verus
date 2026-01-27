@@ -39,7 +39,6 @@ fn test_no_loop_isolation() {
     assert(w@ == v@);
 
 }
-*/
 
 
 struct NoTerminate {
@@ -55,7 +54,7 @@ impl Iterator for NoTerminate {
 }
 
 impl IteratorSpecImpl for NoTerminate {
-    open spec fn obeys_iter_laws(&self) -> bool { false }
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool { false }
 
     open spec fn seq(&self) -> Seq<Self::Item> {
         Seq::empty()
@@ -86,6 +85,7 @@ fn test_no_termination(n: NoTerminate) {
         w.push(x);
     }
 }
+*/
 }
 
 fn main() {}

@@ -3549,7 +3549,7 @@ impl Visitor {
         //       #[allow(non_snake_case)]
         //       let VERUS_iter_init = e;
         //       #[allow(non_snake_case)]
-        //       let VERUS_iter = VerusForLoopIterator::new(
+        //       let VERUS_iter = VerusForLoopWrapper::new(
         //          // Real iterator
         //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init), 
         //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
@@ -3667,7 +3667,7 @@ impl Visitor {
             If you don't expect the iterator to provide such a metric, try adding #[verifier::exec_allows_no_decreases_clause].
             You might laos try using a `loop` instead of a `for`.";
         let exec_inv_msg = "For-loop iterator invariant failed. \
-            This may indicate a bug in the definition of the VerusForLoopIterator. \
+            This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
         let ghost_inv_msg = "Automatically generated loop invariant failed. \
             You can disable the automatic generation by adding \
@@ -3692,7 +3692,7 @@ impl Visitor {
         };
         // Name for the exec iterator we create from `e`
         let x_exec_iter = Ident::new("VERUS_iter", span);
-        // Name for the result of wrapping the original iterator in a VerusForLoopIterator
+        // Name for the result of wrapping the original iterator in a VerusForLoopWrapper
         let x_wrapped_iter = Ident::new("VERUS_iter", span);
         // Name that "remembers" the initial snapshot
         let x_snapshot = Ident::new("VERUS_old_snap", span);
@@ -3836,7 +3836,7 @@ impl Visitor {
             }
             #[allow(non_snake_case)]
             let mut VERUS_loop_next;
-            match #vstd::std_specs::iter::VerusForLoopIterator::next(&mut #x_iter_name) {
+            match #vstd::std_specs::iter::VerusForLoopWrapper::next(&mut #x_iter_name) {
                 ::core::option::Option::Some(VERUS_loop_val) => {
                     VERUS_loop_next = VERUS_loop_val;
                 }
@@ -3866,7 +3866,7 @@ impl Visitor {
             #[allow(non_snake_case)]
             let #x_exec_iter = ::core::iter::IntoIterator::into_iter(#x_verus_iter_init);
             #[allow(non_snake_case)]
-            let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopIterator::new(
+            let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopWrapper::new(
                 // Real iterator
                 #x_exec_iter,
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
