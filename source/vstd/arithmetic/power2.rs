@@ -43,7 +43,7 @@ pub open spec fn pow2(e: nat) -> nat
     pow(2, e) as nat
 }
 
-/// Determines recursively if the given integer `n` is a power of 2. 
+/// Determines recursively if the given integer `n` is a power of 2.
 // TODO add some means for Verus to calculate the size & alignment of types
 #[verifier::opaque]
 pub open spec fn is_power_2(n: int) -> bool
@@ -58,12 +58,12 @@ pub open spec fn is_power_2(n: int) -> bool
     }
 }
 
-/// Existential specification for if the given integer `m` is a power of 2. 
+/// Existential specification for if the given integer `m` is a power of 2.
 pub open spec fn is_power_2_exists(m: int) -> bool {
     exists|i: nat| pow(2, i) == m
 }
 
-/// Proof that the recursive and existential specifications for `is_power_2` are equivalent. 
+/// Proof that the recursive and existential specifications for `is_power_2` are equivalent.
 pub broadcast proof fn is_power_2_equiv(n: int)
     ensures
         #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),

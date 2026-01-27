@@ -251,7 +251,7 @@ pub broadcast axiom fn align_properties<T>()
         is_power_2_exists(align_of::<T>() as int),
 ;
 
-/// The alignment is at least 1 
+/// The alignment is at least 1
 /// ([reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size)).
 pub broadcast proof fn align_nonzero<T>()
     ensures
@@ -262,19 +262,20 @@ pub broadcast proof fn align_nonzero<T>()
 
 }
 
-/// The size of a usize will always be a power of 2. 
+/// The size of a usize will always be a power of 2.
 pub proof fn usize_size_pow2()
     ensures
         is_power_2(size_of::<usize>() as int),
 {
     broadcast use super::group_vstd_default;
+
     reveal(is_power_2);
 
     assert(is_power_2(4)) by (compute);
     assert(is_power_2(8)) by (compute);
 }
 
-/// Bounds on the unsigned integer types, with respect to their sizes and bits. 
+/// Bounds on the unsigned integer types, with respect to their sizes and bits.
 pub proof fn unsigned_int_max_bounds()
     ensures
         (usize::MAX as nat) < pow2(usize::BITS as nat),
@@ -306,7 +307,7 @@ pub proof fn unsigned_int_max_bounds()
     assert(pow(256, 16) == pow2(128)) by (compute);
 }
 
-/// Bounds on the signed integer types, with respect to their sizes and bits. 
+/// Bounds on the signed integer types, with respect to their sizes and bits.
 pub proof fn signed_int_min_max_bounds()
     ensures
         (isize::MAX as nat) < pow2((isize::BITS - 1) as nat),
