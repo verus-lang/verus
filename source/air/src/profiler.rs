@@ -57,13 +57,12 @@ impl Profiler {
         let mut names: HashMap<(u64, usize), String> = HashMap::new();
         let mut nodes: HashSet<(u64, usize)> = HashSet::new();
 
-        // Iterate through all instantiations
         for (inst_idx, inst) in parser.instantiations().iter_enumerated() {
             let inst_id = (usize::from(inst_idx) as u64, 0); // Convert InstIdx to (u64, usize) tuple
             nodes.insert(inst_id);
 
             // Get the quantifier name for this instantiation
-            // We need to provide a name for ALL instantiations, not just user quantifiers
+            // We need to provide a name for all instantiations, not just user quantifiers
             let match_data = &parser[inst.match_];
             let name = if let Some(quant_idx) = match_data.kind.quant_idx() {
                 let quant = &parser.quantifiers()[quant_idx];
@@ -136,6 +135,7 @@ impl Profiler {
         // Aggregate costs per quantifier
         let mut quant_data: HashMap<QuantIdx, (u64, f64)> = HashMap::new();
 
+        // iterate through all instantiations (`[instance]` in z3 trace files)
         for (inst_idx, inst) in parser.instantiations().iter_enumerated() {
             let match_data = &parser[inst.match_];
             if let Some(quant_idx) = match_data.kind.quant_idx() {
@@ -259,54 +259,5 @@ impl Profiler {
 
     pub fn iter(&self) -> impl Iterator<Item = &QuantCost> + '_ {
         self.quantifier_stats.iter()
-    }
-}
-
-pub mod internal {
-    use smt_scope::parsers::LogParser;
-    use smt_scope::parsers::z3::Z3Parser;
-    use std::collections::HashMap;
-
-    pub fn profile(path: &std::path::Path) -> Vec<(String, u64, Vec<(String, u64)>)> {
-        println!("Analyzing prover log...");
-
-        // Parse the Z3 log file using smt-scope
-        let (_, stream_parser) =
-            Z3Parser::from_file(path).expect("Failed to parse prover trace log");
-
-        // Process the entire log file
-        let parser = stream_parser.process_all().expect("Failed to process prover trace log");
-
-        println!("... analysis complete\n");
-
-        // Count instantiations per quantifier name
-        let mut quantifier_counts: HashMap<String, (u64, HashMap<String, u64>)> = HashMap::new();
-
-        for (inst_idx, inst) in parser.instantiations().iter_enumerated() {
-            let match_data = &parser[inst.match_];
-            if let Some(quant_idx) = match_data.kind.quant_idx() {
-                let quant = &parser.quantifiers()[quant_idx];
-                if let Some(name_istring) = quant.kind.user_name() {
-                    let name_str = parser[name_istring].to_string();
-                    let inst_id = format!("{:?}", inst_idx);
-                    let (ref mut count, ref mut ident_counts) =
-                        quantifier_counts.entry(name_str).or_insert((0, HashMap::new()));
-                    *count += 1;
-                    *ident_counts.entry(inst_id).or_insert(0) += 1;
-                }
-            }
-        }
-
-        let mut result: Vec<(String, u64, Vec<(String, u64)>)> = quantifier_counts
-            .into_iter()
-            .map(|(qid, (count, icounts))| {
-                let mut icounts: Vec<(String, u64)> = icounts.into_iter().collect();
-                icounts.sort_by_key(|(_, c)| u64::MAX - *c);
-                (qid, count, icounts)
-            })
-            .collect();
-        result.sort_by_key(|(_, c, _)| u64::MAX - *c);
-
-        result
     }
 }
