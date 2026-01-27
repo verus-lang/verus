@@ -19,6 +19,7 @@ verus! {
 #[cfg(verus_keep_ghost)]
 use super::power::{
     pow,
+    lemma_pow0,
     lemma_pow_positive,
     lemma_pow_adds,
     lemma_pow_strictly_increases,
@@ -40,6 +41,88 @@ pub open spec fn pow2(e: nat) -> nat
     // for the proof
     // reveal(pow);
     pow(2, e) as nat
+}
+
+/// Determines recursively if the given integer `n` is a power of 2. 
+// TODO add some means for Verus to calculate the size & alignment of types
+#[verifier::opaque]
+pub open spec fn is_power_2(n: int) -> bool
+    decreases n,
+{
+    if n <= 0 {
+        false
+    } else if n == 1 {
+        true
+    } else {
+        n % 2 == 0 && is_power_2(n / 2)
+    }
+}
+
+/// Existential specification for if the given integer `m` is a power of 2. 
+pub open spec fn is_power_2_exists(m: int) -> bool {
+    exists|i: nat| pow(2, i) == m
+}
+
+/// Proof that the recursive and existential specifications for `is_power_2` are equivalent. 
+pub broadcast proof fn is_power_2_equiv(n: int)
+    ensures
+        #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+{
+    if is_power_2(n) {
+        assert(is_power_2_exists(n)) by {
+            is_power_2_equiv_forward(n);
+        }
+    }
+    if is_power_2_exists(n) {
+        assert(is_power_2(n)) by {
+            broadcast use lemma_pow_positive;
+
+            is_power_2_equiv_reverse(n);
+        }
+    }
+}
+
+proof fn is_power_2_equiv_forward(n: int)
+    requires
+        is_power_2(n),
+    ensures
+        is_power_2_exists(n),
+    decreases n,
+{
+    reveal(is_power_2);
+    reveal(pow);
+
+    if n == 1 {
+        broadcast use lemma_pow0;
+
+        assert(pow(2, 0) == n);
+    } else {
+        is_power_2_equiv_forward(n / 2);
+        let exp = choose|i: nat| pow(2, i) == n / 2;
+        assert(pow(2, exp + 1) == 2 * pow(2, exp));
+    }
+}
+
+proof fn is_power_2_equiv_reverse(n: int)
+    requires
+        n > 0,
+        is_power_2_exists(n),
+    ensures
+        is_power_2(n),
+    decreases n,
+{
+    reveal(is_power_2);
+    reveal(pow);
+
+    let exp = choose|i: nat| pow(2, i) == n;
+
+    if exp == 0 {
+        broadcast use lemma_pow0;
+
+    } else {
+        assert(pow(2, (exp - 1) as nat) == n / 2);
+        is_power_2_equiv_reverse(n / 2);
+    }
 }
 
 /// Proof that 2 to the power of any natural number (specifically,
