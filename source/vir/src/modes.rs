@@ -1383,19 +1383,26 @@ fn check_expr_handle_mut_arg(
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
-            if *kind == ModeCoercion::BorrowMut {
-                check_expr_has_mode(ctxt, record, typing, param_mode, e1, *from_mode)?;
-                return Ok((*to_mode, Some(*to_mode)));
-            } else {
-                let mode = check_expr(
-                    ctxt,
-                    record,
-                    typing,
-                    param_mode,
-                    Expect(expect.join(*from_mode)),
-                    e1,
-                )?;
-                if !mode_le(mode, *from_mode) { Ok(mode) } else { Ok(*to_mode) }
+            match kind {
+                ModeCoercion::BorrowMut => {
+                    check_expr_has_mode(ctxt, record, typing, param_mode, e1, *from_mode)?;
+                    return Ok((*to_mode, Some(*to_mode)));
+                }
+                ModeCoercion::Constructor | ModeCoercion::Field => {
+                    let mode = check_expr(
+                        ctxt,
+                        record,
+                        typing,
+                        param_mode,
+                        Expect(expect.join(*from_mode)),
+                        e1,
+                    )?;
+                    if *kind == ModeCoercion::Constructor {
+                        if !mode_le(mode, *from_mode) { Ok(mode) } else { Ok(*to_mode) }
+                    } else {
+                        Ok(mode_join(mode, *to_mode))
+                    }
+                }
             }
         }
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {

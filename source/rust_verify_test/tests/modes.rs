@@ -1585,3 +1585,52 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
+
+test_verify_one_file! {
+    #[test] tracked_ctor_immediately_coerce_to_spec verus_code! {
+        proof fn test(x: int) {
+            let y = Tracked(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_immediately_coerce_to_spec_fail verus_code! {
+        fn test() {
+            let ghost x = true;
+            let y = Tracked(x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_tracked_get verus_code! {
+        proof fn test<T>(tracked t: Tracked<T>) {
+            let tracked r = t.get();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_get verus_code! {
+        proof fn test<T>(t: Tracked<T>) {
+            let tracked r = t.get();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] ghost_tracked_borrow verus_code! {
+        proof fn test<T>(t: Tracked<T>) {
+            let tracked r = t.borrow();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_ghost_get verus_code! {
+        proof fn test<T>(tracked t: Ghost<T>) {
+            let tracked r = t@;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
