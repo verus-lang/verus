@@ -5,7 +5,7 @@ verus! {
 
 // Location = CellId
 // Timestamp = nat
-// "Simple" view
+/// Represents "simple" view
 pub struct View(Map<CellId, nat>);
 
 pub struct History<T>(Map<nat, (T, Option<View>)>);
@@ -59,14 +59,132 @@ impl<T> Acquire<T> {
 }
 
 // Objective modality
+/// This trait should be implemented on types P such that objective(P) holds
+pub unsafe trait IsObjective {
+
+}
+
+/// Represents objective modality: <obj>(P)
 pub struct Objective<T> {
     v: T,
+}
+
+// GHOST-OBJ - todo: what ghost state can be marked IsObjective?
+// todo: for the rules below, I am not sure what their Verus equivalent is
+// i.e., how would you have a tracked "pure" thing? what about a tracked forall?
+// PURE-OBJ
+// TRUE-OBJ
+// FALSE-OBJ
+// OBJ-BOPS
+// OBJ-UOPS
+// OBJ-FORALL
+// OBJ-EXISTS
+// implement IsObjective on primitive types and their compositions (i.e. tuples)
+// todo: could we support automatically implementing IsObjective on structs and enums whose fields all satisfy IsObjective?
+macro_rules! declare_primitive_is_objective {
+    ($($a:ty),*) => {
+        verus! {
+            $(unsafe impl IsObjective for $a {})*
+        }
+    }
+}
+
+declare_primitive_is_objective!(bool, char, (), u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, int, nat, str);
+
+macro_rules! declare_generic_primitive_is_objective {
+    ($($t: ident $a:ty),*) => {
+        verus! {
+            $(unsafe impl<$t: IsObjective> IsObjective for $a {})*
+        }
+    }
+}
+
+// todo: verifier currently does not support &mut T
+declare_generic_primitive_is_objective!(T [T], T &T, T *mut T, T *const T);
+
+unsafe impl<T: IsObjective, const N: usize> IsObjective for [T; N] {
+
+}
+
+macro_rules! declare_tuple_is_objective {
+    ($($($a:ident)*),*) => {
+        verus! {
+            $(unsafe impl<$($a: IsObjective, )*> IsObjective for ($($a, )*) {})*
+        }
+    }
+}
+
+// could declare for longer tuples as well
+declare_tuple_is_objective!(T0, T0 T1, T0 T1 T2, T0 T1 T2 T3);
+
+// OBJ-OBJ
+unsafe impl<T> IsObjective for Objective<T> {
+
+}
+
+impl<T: IsObjective> Objective<T> {
+    // OBJMOD-INTRO
+    pub axiom fn new(tracked v: T) -> (tracked obj: Objective<T>)
+        ensures
+            obj.value() == v,
+    ;
 }
 
 impl<T> Objective<T> {
     pub closed spec fn value(&self) -> T {
         self.v
     }
+
+    // OBJMOD-ELIM
+    pub axiom fn to_inner(tracked self) -> (tracked v: T)
+        ensures
+            self.value() == v,
+    ;
+
+    // OBJMOD-MONO - how to represent P |- Q ?
+    // OBJMOD-AND - how would you have something of type Objective <P /\ Q> ?
+    // OBJMOD-OR -  how would you have something of type Objective<P \/ Q> ?
+    // OBJMOD-FORALL - how would you have something of type Objective<forall x ...> ?
+    // OBJMOD-EXIST - how would you have something of type Objective<exists x ...> ?
+    // OBJMOD-SEP -|
+    pub axiom fn join<U>(tracked self, tracked u: Objective<U>) -> (tracked out: Objective<(T, U)>)
+        ensures
+            self.value() == out.value().0,
+            u.value() == out.value().1,
+    ;
+
+    // OBJMOD-RELMOD-INTRO
+    pub axiom fn as_release(tracked self) -> (tracked out: Release<T>)
+        ensures
+            self.value() == out.value(),
+    ;
+
+    // RELMOD-OBJMOD-ELIM
+    pub axiom fn from_release(tracked r: Release<Objective<T>>) -> (tracked out: Self)
+        ensures
+            r.value() == out,
+    ;
+
+    // OBJMOD-ACQMOD-INTRO
+    pub axiom fn as_acquire(tracked self) -> (tracked out: Acquire<T>)
+        ensures
+            self.value() == out.value(),
+    ;
+
+    // ACQMOD-OBJMOD-ELIM
+    pub axiom fn from_acquire(tracked a: Acquire<Objective<T>>) -> (tracked out: Self)
+        ensures
+            a.value() == out,
+    ;
+}
+
+impl<T, U> Objective<(T, U)> {
+    // OBJMOD-SEP |-
+    pub axiom fn split(tracked self) -> (tracked out: (Objective<T>, Objective<U>))
+        ensures
+            self.value().0 == out.0.value(),
+            self.value().1 == out.1.value(),
+    ;
 }
 
 // Explicit views
