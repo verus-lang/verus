@@ -45,28 +45,6 @@ pub struct ContextX<'tcx> {
     pub(crate) next_read_kind_id: AtomicU64,
 }
 
-impl<'tcx> Clone for ContextX<'tcx> {
-    fn clone(&self) -> Self {
-        ContextX {
-            cmd_line_args: self.cmd_line_args.clone(),
-            tcx: self.tcx.clone(),
-            krate: self.krate,
-            erasure_info: self.erasure_info.clone(),
-            spans: self.spans.clone(),
-            verus_items: self.verus_items.clone(),
-            diagnostics: self.diagnostics.clone(),
-            no_vstd: self.no_vstd.clone(),
-            arch_word_bits: self.arch_word_bits.clone(),
-            crate_name: self.crate_name.clone(),
-            vstd_crate_name: self.vstd_crate_name.clone(),
-            name_def_id_map: self.name_def_id_map.clone(),
-            next_read_kind_id: AtomicU64::new(
-                self.next_read_kind_id.load(std::sync::atomic::Ordering::SeqCst),
-            ),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) ctxt: Context<'tcx>,
