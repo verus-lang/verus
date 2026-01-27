@@ -41,7 +41,6 @@ use verus_syn::{Expr, Lit, LitStr};
 /// Note that we require the user to prove that any asserts follow from the invariant.
 /// (In this case, that means showing that (Inv && A ==> B).
 /// Thus, subject to the invariant, the weak & strong versions will actually be equivalent.
-
 pub fn to_relation(sops: &Vec<SimplStmt>, weak: bool) -> TokenStream {
     let x = if weak {
         let sops = crate::simplify_asserts::simplify_asserts(sops);
@@ -66,7 +65,6 @@ pub fn to_is_enabled_condition_weak(sops: &Vec<SimplStmt>) -> TokenStream {
 
 /// Mark each scope-creating node with the assign-vars that need to be extracted
 /// Also, remove any 'assign' that isn't used.
-
 fn annotate_extractions(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
     let mut all_assign_vars = IndexSet::new();
     for sop in sops {
@@ -257,7 +255,6 @@ fn annotate_extractions_stmt(sop: &mut SimplStmt, used_ids: &mut IndexSet<String
 }
 
 /// Collect all conjuncts
-
 fn simpl_conjunct_vec(sops: &Vec<SimplStmt>, p: Option<TokenStream>) -> Option<TokenStream> {
     let let_skip_brace = sops.len() == 1;
 
@@ -357,7 +354,6 @@ fn simpl_conjunct_stmt(
 }
 
 /// Extract assignments that were done within scopes
-
 fn get_extraction_decl_stmt(sop: &SimplStmt) -> Option<TokenStream> {
     match sop {
         SimplStmt::Let(span, pat, ty, e, child, extractions) => {

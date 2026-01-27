@@ -828,3 +828,21 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_string_deref verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::*;
+
+        fn test_string_deref() {
+            let s: String = String::from_str("hello");
+            proof {
+                reveal_strlit("hello");
+            }
+
+            let slice: &str = &s;
+            assert(slice@ == s@);
+            assert(slice.is_ascii() == s.is_ascii());
+        }
+    } => Ok(())
+}

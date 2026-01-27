@@ -37,9 +37,9 @@ However, you still needs to satisfy the Rust type-checker, so you may need to in
 references (`&`) or dereferences (`*`) to satisfy the checker. Verus will ignore these
 operations however.
 
-### Box<T>
+### Box
 
-Verus special-cases `Box` along with box operations like `Box::new(x)` or `*box`
+Verus special-cases `Box<T>` along with box operations like `Box::new(x)` or `*box`
 so they may be used in spec mode. Like with references, these operations are ignored,
 however they are often useful. For example, to create a recursive type you need to satisfy
 Rust's sanity checks, which often involves using a `Box`.

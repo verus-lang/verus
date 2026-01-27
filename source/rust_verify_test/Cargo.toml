@@ -23,3 +23,6 @@ singular = ["vir/singular", "air/singular"]
 
 [package.metadata.rust-analyzer]
 rustc_private = true
+
+[lints]
+workspace = true

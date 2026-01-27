@@ -139,7 +139,6 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
 }
 
 /// Returns true if there are any 'assert' statements.
-
 pub fn has_any_assert_simpl_vec(sops: &Vec<SimplStmt>) -> bool {
     for sop in sops.iter() {
         if has_any_assert_simpl(sop) {

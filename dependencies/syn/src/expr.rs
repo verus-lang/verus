@@ -2165,8 +2165,10 @@ pub(crate) mod parsing {
                 return Ok(Expr::Struct(expr_struct));
             } else {
                 use crate::spanned::Spanned;
-                return Err(Error::new(expr_struct.span(),
-                    "struct literals are not allowed here; try surrounding the struct literal with parentheses"));
+                return Err(Error::new(
+                    expr_struct.span(),
+                    "struct literals are not allowed here; try surrounding the struct literal with parentheses",
+                ));
             }
         }
 

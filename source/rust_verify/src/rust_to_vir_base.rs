@@ -11,9 +11,9 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg, GenericArgKind,
-    GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
+    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
+    TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -322,7 +322,9 @@ where
 
     fn fold_ty(&mut self, t: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
         match *t.kind() {
-            rustc_middle::ty::Bound(debruijn, bound_ty) if debruijn == self.current_index => {
+            rustc_middle::ty::Bound(BoundVarIndexKind::Bound(debruijn), bound_ty)
+                if debruijn == self.current_index =>
+            {
                 let ty = self.delegate.replace_ty(bound_ty);
                 debug_assert!(!ty.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ty, self.current_index.as_u32())
@@ -335,9 +337,13 @@ where
     fn fold_region(&mut self, r: rustc_middle::ty::Region<'tcx>) -> rustc_middle::ty::Region<'tcx> {
         match r.kind() {
             // NOTE(verus): This is the one change, we replace == with >=
-            rustc_middle::ty::ReBound(debruijn, br) if debruijn >= self.current_index => {
+            rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn), br)
+                if debruijn >= self.current_index =>
+            {
                 let region = self.delegate.replace_region(br);
-                if let rustc_middle::ty::ReBound(debruijn1, br) = region.kind() {
+                if let rustc_middle::ty::ReBound(BoundVarIndexKind::Bound(debruijn1), br) =
+                    region.kind()
+                {
                     assert_eq!(debruijn1, rustc_middle::ty::INNERMOST);
                     rustc_middle::ty::Region::new_bound(self.tcx, debruijn, br)
                 } else {
@@ -350,7 +356,9 @@ where
 
     fn fold_const(&mut self, ct: rustc_middle::ty::Const<'tcx>) -> rustc_middle::ty::Const<'tcx> {
         match ct.kind() {
-            ConstKind::Bound(debruijn, bound_const) if debruijn == self.current_index => {
+            ConstKind::Bound(BoundVarIndexKind::Bound(debruijn), bound_const)
+                if debruijn == self.current_index =>
+            {
                 let ct = self.delegate.replace_const(bound_const);
                 debug_assert!(!ct.has_vars_bound_above(rustc_middle::ty::INNERMOST));
                 rustc_middle::ty::shift_vars(self.tcx, ct, self.current_index.as_u32())
@@ -1195,7 +1203,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
-        TyKind::Dynamic(preds, _, rustc_middle::ty::DynKind::Dyn) => {
+        TyKind::Dynamic(preds, _) => {
             use rustc_middle::ty::ExistentialPredicate;
             if preds.len() != 1 {
                 unsupported_err!(span, "dyn with more that one trait");
@@ -1354,7 +1362,27 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
     }
 }
 
-pub(crate) fn typ_of_node<'tcx>(
+pub(crate) fn typ_of_expr_adjusted<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    id: &HirId,
+    allow_mut_ref: bool,
+) -> Result<Typ, VirErr> {
+    let rustc_hir::Node::Expr(e) = bctx.ctxt.tcx.hir_node(*id) else {
+        panic!("typ_of_expr_adjusted expected Expr");
+    };
+    mid_ty_to_vir(
+        bctx.ctxt.tcx,
+        &bctx.ctxt.verus_items,
+        None,
+        bctx.fun_id,
+        span,
+        &bctx.types.expr_ty_adjusted(e),
+        allow_mut_ref,
+    )
+}
+
+pub(crate) fn typ_of_node_unadjusted<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id: &HirId,
@@ -1371,7 +1399,7 @@ pub(crate) fn typ_of_node<'tcx>(
     )
 }
 
-pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
+pub(crate) fn typ_of_node_unadjusted_expect_mut_ref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id: &HirId,
@@ -1417,7 +1445,10 @@ pub(crate) fn is_smt_equality<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span, id1, false)?, typ_of_node(bctx, span, id2, false)?);
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span, id1, false)?,
+        typ_of_expr_adjusted(bctx, span, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
@@ -1442,7 +1473,10 @@ pub(crate) fn is_smt_arith<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_node(bctx, span1, id1, false)?, typ_of_node(bctx, span2, id2, false)?);
+    let (t1, t2) = (
+        typ_of_expr_adjusted(bctx, span1, id1, false)?,
+        typ_of_expr_adjusted(bctx, span2, id2, false)?,
+    );
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
@@ -1578,17 +1612,17 @@ pub(crate) fn check_generic_bound<'tcx>(
 //  - For synthetic params, use impl%{index} for the name.
 //  - For other type params, just use the user-given type param name.
 
-fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
-    let is_synthetic = match gen.kind {
+fn generic_param_def_to_vir_name(r#gen: &rustc_middle::ty::GenericParamDef) -> String {
+    let is_synthetic = match r#gen.kind {
         GenericParamDefKind::Type { synthetic, .. } => synthetic,
         GenericParamDefKind::Const { .. } => false,
         _ => panic!("expected GenericParamDefKind::Type"),
     };
 
     if is_synthetic {
-        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &gen.index.to_string()
+        vir::def::PREFIX_IMPL_TYPE_PARAM.to_string() + &r#gen.index.to_string()
     } else {
-        gen.name.as_str().to_string()
+        r#gen.name.as_str().to_string()
     }
 }
 
@@ -1730,8 +1764,8 @@ pub(crate) fn check_item_external_generics<'tcx>(
     span: Span,
 ) -> Result<(), VirErr> {
     let mut generics_params: Vec<GenericParam> = vec![];
-    if let Some((gen, _)) = self_generics {
-        generics_params.extend(gen.params.iter().cloned());
+    if let Some((r#gen, _)) = self_generics {
+        generics_params.extend(r#gen.params.iter().cloned());
     }
     generics_params.extend(generics.params.iter().cloned());
 
@@ -2009,10 +2043,16 @@ fn check_generics_bounds_main<'tcx>(
             }
         }
     }
-    for x in accept_recs.keys() {
-        return err_span(span, format!("unused parameter attribute {x}"));
+    if accept_recs.is_empty() {
+        Ok((Arc::new(typ_params), Arc::new(bounds)))
+    } else {
+        let multiple = accept_recs.len() > 1;
+        let unused_attrs = accept_recs.keys().map(|x| x.as_str()).collect::<Vec<_>>().join(", ");
+        err_span(
+            span,
+            format!("unused parameter attribute{} {unused_attrs}", if multiple { "s" } else { "" }),
+        )
     }
-    Ok((Arc::new(typ_params), Arc::new(bounds)))
 }
 
 pub(crate) fn check_generics_bounds_no_polarity<'tcx>(
@@ -2086,6 +2126,16 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
                 TyKind::Adt(AdtDef(adt_def), _args) => is_supported_adt(tcx, adt_def),
                 _ => false,
             }
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn ty_is_vec<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    match ty.kind() {
+        TyKind::Adt(adt, _) => {
+            let rust_item = verus_items::get_rust_item(tcx, adt.did());
+            matches!(rust_item, Some(verus_items::RustItem::Vec))
         }
         _ => false,
     }

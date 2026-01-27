@@ -29,12 +29,14 @@
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use anyhow::Context;
 use filetime::FileTime;
 use std::fs;
 use std::path::Path;
 
-pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
-    let meta = fs::metadata(path).map_err(|_| format!("failed to stat `{}`", path.display()))?;
+pub fn mtime_recursive(path: &Path) -> anyhow::Result<FileTime> {
+    let meta =
+        fs::metadata(path).with_context(|| format!("failed to stat `{}`", path.display()))?;
     if !meta.is_dir() {
         return Ok(FileTime::from_last_modification_time(&meta));
     }
@@ -69,74 +71,71 @@ pub fn mtime_recursive(path: &Path) -> Result<FileTime, String> {
 
 // ============================================================================
 
+#[derive(Debug)]
 pub struct VersionInfo {
     pub version: String,
     pub sha: String,
 }
 
-pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
-    fn io_err_to_string(err: std::io::Error) -> String {
-        format!("cannot obtain version info from git ({})", err)
-    }
-
+pub fn version_info(root: &std::path::PathBuf) -> anyhow::Result<VersionInfo> {
     // assumes the verus executable gets the .git file for verus repo
-    fn rev_parse(root: &std::path::PathBuf, short: bool) -> Result<String, String> {
+    fn rev_parse(root: &std::path::PathBuf, short: bool) -> anyhow::Result<String> {
         let mut rev_parse_cmd = std::process::Command::new("git");
-        rev_parse_cmd.current_dir(root).args(&["rev-parse"]);
+        rev_parse_cmd.current_dir(root).args(["rev-parse"]);
         if short {
-            rev_parse_cmd.args(&["--short=7"]);
+            rev_parse_cmd.args(["--short=7"]);
         }
-        rev_parse_cmd.args(&["HEAD"]);
+        rev_parse_cmd.args(["HEAD"]);
         let rev_parse_output = rev_parse_cmd
             .stdout(std::process::Stdio::piped())
             .spawn()
-            .map_err(io_err_to_string)?
+            .context("cannot obtain version info from git")?
             .wait_with_output()
-            .map_err(io_err_to_string)?;
+            .context("cannot obtain version info from git")?;
         rev_parse_output
             .status
             .success()
-            .then(|| ())
-            .ok_or(format!("git returned error code"))?;
-        let sha = String::from_utf8(rev_parse_output.stdout)
-            .map_err(|x| format!("commit sha is invalid utf8, {}", x))?;
+            .then_some(())
+            .ok_or_else(|| anyhow::anyhow!("git returned error code"))?;
+        let sha =
+            String::from_utf8(rev_parse_output.stdout).context("commit sha is invalid utf8")?;
         Ok(sha.trim().to_owned())
     }
-    let sha_short = rev_parse(&root, true)?;
-    let sha_full = rev_parse(&root, false)?;
+    let sha_short = rev_parse(root, true)?;
+    let sha_full = rev_parse(root, false)?;
 
     let date_info_output = std::process::Command::new("git")
-        .current_dir(&root)
-        .args(&["show", "-s", "--format=%cs", "HEAD"])
+        .current_dir(root)
+        .args(["show", "-s", "--format=%cs", "HEAD"])
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .map_err(io_err_to_string)?
+        .context("cannot obtain date info from git")?
         .wait_with_output()
-        .map_err(io_err_to_string)?;
+        .context("cannot obtain date info from git")?;
 
     date_info_output
         .status
         .success()
-        .then(|| ())
-        .ok_or(format!("git returned error code"))?;
-    let date_str = String::from_utf8(date_info_output.stdout)
-        .map_err(|x| format!("commit date is invalid utf8, {}", x))?;
-    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").unwrap();
+        .then_some(())
+        .ok_or_else(|| anyhow::anyhow!("git returned error code"))?;
+    let date_str =
+        String::from_utf8(date_info_output.stdout).context("commit date is invalid utf8")?;
+    let date_re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").expect("regex is well formed");
     let date_captures = date_re
         .captures(date_str.trim())
-        .ok_or(format!("unexpected date string \"{}\"", date_str))?;
+        .ok_or_else(|| anyhow::anyhow!("unexpected date string \"{}\"", date_str))?;
     let year = &date_captures[1];
     let month = &date_captures[2];
     let day = &date_captures[3];
 
     let dirty_output = std::process::Command::new("git")
-        .current_dir(&root)
-        .args(&["diff", "--exit-code", "HEAD"])
+        .current_dir(root)
+        .args(["diff", "--exit-code", "HEAD"])
         .stdout(std::process::Stdio::null())
         .spawn()
-        .map_err(io_err_to_string)?
+        .context("cannot obtain version info from git")?
         .wait_with_output()
-        .map_err(io_err_to_string)?;
+        .context("cannot obtain version info from git")?;
 
     let dirty = if dirty_output.status.success() {
         ""
@@ -151,39 +150,53 @@ pub fn version_info(root: &std::path::PathBuf) -> Result<VersionInfo, String> {
 
 // ============================================================================
 
-pub fn vargo_file_contents(vargo_dir: &std::path::Path) -> Vec<(String, Box<[u8]>)> {
+pub fn vargo_file_contents(
+    vargo_dir: &std::path::Path,
+) -> anyhow::Result<Vec<(String, Box<[u8]>)>> {
     use std::io::Read;
 
-    fn add_file(files: &mut Vec<(String, Box<[u8]>)>, path: &Path, relative: &Path) {
+    fn add_file(
+        files: &mut Vec<(String, Box<[u8]>)>,
+        path: &Path,
+        relative: &Path,
+    ) -> anyhow::Result<()> {
         let mut file = std::fs::File::open(path.join(relative))
-            .expect(&format!("cannot read file {}", relative.display()));
+            .with_context(|| format!("cannot read file {}", relative.display()))?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)
-            .expect(&format!("cannot read file {}", relative.display()));
+            .with_context(|| format!("cannot read file {}", relative.display()))?;
         let path_str = relative
             .components()
             .map(|x| x.as_os_str().to_str().unwrap().to_owned())
             .collect::<Vec<_>>()
             .join("/");
         files.push((path_str, buffer.into_boxed_slice()));
+
+        Ok(())
     }
 
-    fn add_dir(files: &mut Vec<(String, Box<[u8]>)>, path: &Path, relative: &Path) {
+    fn add_dir(
+        files: &mut Vec<(String, Box<[u8]>)>,
+        path: &Path,
+        relative: &Path,
+    ) -> anyhow::Result<()> {
         for entry in fs::read_dir(path.join(relative))
-            .expect(&format!("cannot read dir {}", relative.display()))
+            .with_context(|| format!("cannot read dir {}", relative.display()))?
         {
-            let entry = entry.unwrap();
+            let entry = entry?;
             if entry.file_type().unwrap().is_dir() {
-                add_dir(files, path, &relative.join(entry.file_name()));
+                add_dir(files, path, &relative.join(entry.file_name()))?;
             } else if entry.path().extension() == Some(std::ffi::OsStr::new("rs")) {
-                add_file(files, path, &relative.join(entry.file_name()));
+                add_file(files, path, &relative.join(entry.file_name()))?;
             }
         }
+
+        Ok(())
     }
 
     let mut entries = Vec::new();
-    add_dir(&mut entries, &vargo_dir, Path::new("src"));
-    entries
+    add_dir(&mut entries, vargo_dir, Path::new("src"))?;
+    Ok(entries)
 }
 
 pub fn hash_file_contents<'a>(mut files: Vec<(&'a str, &'a [u8])>) -> u64 {

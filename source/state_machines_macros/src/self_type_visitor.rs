@@ -11,7 +11,6 @@ use verus_syn::{Expr, Ident, Pat, Path, PathSegment, Type};
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places
 /// outside the generated `State` impl.
-
 pub fn replace_self_sm(sm: &mut SM) {
     let path = get_self_ty_turbofish_path(&*sm);
     for trans in sm.transitions.iter_mut() {

@@ -692,18 +692,21 @@ fn output_invariant(
                 quote_spanned! { field_name.span() => self.#field_name }
             };
 
+            let publish_kind = match &sdi.wf_sig.publish {
+                verus_syn::Publish::Default => quote! { open },
+                other => quote! { #other },
+            };
+
             if partial_type.is_atomic_ghost {
                 let v_type = &partial_type.concrete_args[0];
                 let g_type = &partial_type.concrete_args[1];
                 let v_pat = &v_pats[0];
                 let g_pat = &v_pats[1];
 
-                // TODO make it possible to configure open-ness?
-
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
                     impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
-                        open spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
+                        #publish_kind spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             let #g_pat = #tmp_g;
@@ -718,10 +721,11 @@ fn output_invariant(
             } else {
                 let v_type = maybe_tuple(&partial_type.concrete_args);
                 let v_pat = maybe_tuple(&v_pats);
+
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
                     impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
-                        open spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
+                        #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             #predicate

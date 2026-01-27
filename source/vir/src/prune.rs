@@ -3,16 +3,18 @@
 /// 2) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
-    Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place,
-    RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOpr,
+    ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
+    Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode, Module,
+    ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX, Typ, TypX,
+    UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    Spanned, fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name,
-    fn_set_full_name, fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name,
+    Spanned, fn_array_update, fn_inv_name, fn_namespace_name, fn_set_contains_name,
+    fn_set_empty_name, fn_set_full_name, fn_set_insert_name, fn_set_remove_name,
+    fn_set_subset_of_name, fn_slice_index, fn_slice_len, fn_slice_update,
 };
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
@@ -504,10 +506,18 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::ArrayLiteral(..) if ctxt.assert_by_compute => {
                         reach_seq_funs(ctxt, state);
                     }
-                    ExprX::UnaryOpr(UnaryOpr::HasResolved(typ), _)
-                    | ExprX::AssumeResolved(_, typ) => {
+                    ExprX::UnaryOpr(UnaryOpr::HasResolved(typ), _) => {
                         if let Some(res) = &mut state.resolve_typs {
                             res.visit_type(typ);
+                        }
+                    }
+                    ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), _) => {
+                        reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                    }
+                    ExprX::Binary(BinaryOp::Index(ArrayKind::Slice, bounds_check), _, _) => {
+                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
+                        if *bounds_check != BoundsCheck::Allow {
+                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
                         }
                     }
                     _ => {}
@@ -515,7 +525,22 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 Ok(e.clone())
             };
             let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
-            let fp = |_: &mut State, _: &mut VisitorScopeMap, p: &Place| Ok(p.clone());
+            let fp = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
+                match &p.x {
+                    PlaceX::Index(_, _, ArrayKind::Array, _) => {
+                        reach_function(ctxt, state, &fn_array_update(&ctxt.vstd_crate_name));
+                    }
+                    PlaceX::Index(_, _, ArrayKind::Slice, bounds_check) => {
+                        reach_function(ctxt, state, &fn_slice_index(&ctxt.vstd_crate_name));
+                        reach_function(ctxt, state, &fn_slice_update(&ctxt.vstd_crate_name));
+                        if *bounds_check != BoundsCheck::Allow {
+                            reach_function(ctxt, state, &fn_slice_len(&ctxt.vstd_crate_name));
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(p.clone())
+            };
             let mut map: VisitorScopeMap = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(
                 &function, &mut map, state, &fe, &fs, &ft, &fp,

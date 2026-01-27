@@ -169,6 +169,55 @@ pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>
         }),
 ;
 
+pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0]
+;
+
+pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
+    ensures
+        slice.len() == 0 ==> res.is_none(),
+        slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last()
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        slice.len() == 0 ==> res.is_none() && fin(slice)@ === seq![],
+        slice.len() != 0 ==> res.is_some() && *res.unwrap() == slice[0]
+            && fin(slice)@ === slice@.update(0, *fin(res.unwrap()))
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
+    ensures
+        slice.len() == 0 ==> res.is_none() && fin(slice)@ === seq![],
+        slice.len() != 0 ==> res.is_some() && *res.unwrap() == slice@.last()
+            && fin(slice)@ === slice@.update(slice.len() - 1, *fin(res.unwrap()))
+;
+
+pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@.subrange(0, mid as int),
+        ret.1@ == slice@.subrange(mid as int, slice@.len() as int),
+;
+
+#[doc(hidden)]
+#[verifier::ignore_outside_new_mut_ref_experiment]
+pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
+    requires
+        0 <= mid <= slice.len(),
+    ensures
+        ret.0@ == slice@.subrange(0, mid as int),
+        ret.1@ == slice@.subrange(mid as int, slice@.len() as int),
+        fin(slice)@ == fin(ret.0)@ + fin(ret.1)@,
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_slice_iter,
 }

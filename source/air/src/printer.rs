@@ -157,6 +157,7 @@ impl Printer {
                     UnaryOp::BitZeroExtend(_) => "zero_extend",
                     UnaryOp::BitSignExtend(_) => "sign_extend",
                     UnaryOp::ToReal => "to_real",
+                    UnaryOp::RealToInt => "to_int",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {

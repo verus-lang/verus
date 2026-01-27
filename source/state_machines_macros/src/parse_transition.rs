@@ -24,7 +24,6 @@ use verus_syn::{
 /// Every statement should be one of:
 ///   let, if, match (similar to the same statements in Rust)
 ///   init, update, add, remove, have, deposit, withdraw, guard (statements specific to our DSL)
-
 pub fn parse_transition(mac: Macro) -> parse::Result<Transition> {
     // A transition definition looks like
     //    init!{ name(args) { ... } }
@@ -200,7 +199,6 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
 }
 
 /// Parse a block `{ transition stmts }`
-
 fn parse_transition_block(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let content;
     let brace_token = braced!(content in input);
@@ -260,7 +258,6 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
 /// Parse a statement that looks like `add field += ...;`
 /// Assumes the parsing cursor starts after the initial keyword.
 /// This handles add, remove, have, deposit, withdraw, guard.
-
 fn parse_monoid_stmt(
     kw: Ident,
     input: ParseStream,
@@ -651,7 +648,6 @@ fn parse_require(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt>
 /// This is based on syn's `impl Parse for ExprMatch`,
 /// but we have to modify it so that it parses a TransitionStmt instead of an Expr
 /// in each arm. However, we can re-use some of the code for parsing the patterns
-
 fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let match_token: Token![match] = input.parse()?;
     let expr = Expr::parse_without_eager_brace(input)?;
@@ -674,7 +670,6 @@ fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionS
 
 /// Parse an arm of a match statement. Based on `impl Parse for syn::Arm`
 /// (but note that we return our own ast::Arm, not the syn::Arm)
-
 fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<(Arm, TransitionStmt)> {
     let pat = multi_pat_with_leading_vert(input)?;
     let guard = {

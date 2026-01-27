@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-verus_syn = { version = "=0.0.0-2025-11-16-0050", path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_prettyplease = { version = "=0.0.0-2025-11-16-0050", path = "../../../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2026-01-25-0057", path = "../../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2026-01-25-0057", path = "../../../dependencies/prettyplease" }
 getopts = "*"
 toml = "0.8"
 serde = { version = "1.0", features = ["std", "derive", "rc"] }
@@ -15,3 +15,6 @@ proc-macro2 = { version = "1.0.39", default-features = false }
 tabled = "0.14.0"
 serde_json = { version = "1.0", features = ["preserve_order"] }
 regex = "1.10"
+
+[lints]
+workspace = true

@@ -10,7 +10,6 @@ use verus_syn::{Expr, Ident, Type};
 ///     require b;
 /// with:
 ///     require a ==> b;
-
 pub fn simplify_asserts(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
     let mut idx_of_first_assert = None;
     for i in 0..sops.len() {

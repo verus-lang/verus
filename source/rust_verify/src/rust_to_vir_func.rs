@@ -1,5 +1,6 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
+use crate::config::Vstd;
 use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
@@ -116,6 +117,7 @@ fn handle_autospec<'tcx>(
                     mode: Mode::Spec,
                     is_mut: false,
                     unwrapped_info: None,
+                    user_mut: false,
                 },
             ));
         }
@@ -128,6 +130,7 @@ fn handle_autospec<'tcx>(
                 mode: Mode::Spec,
                 is_mut: false,
                 unwrapped_info: None,
+                user_mut: false,
             },
         );
 
@@ -190,6 +193,7 @@ fn handle_autospec<'tcx>(
                     is_unsafe: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
+                    ignore_outside_new_mut_ref: functionx.attrs.ignore_outside_new_mut_ref,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
@@ -217,6 +221,7 @@ fn body_to_vir<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
+    new_mut_ref: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -228,6 +233,7 @@ fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
+        new_mut_ref,
     };
     let e = expr_to_vir_consume(&bctx, &body.value, ExprModifier::REGULAR)?;
 
@@ -989,6 +995,7 @@ fn make_attributes<'tcx>(
     safety: Safety,
     span: Span,
     is_trait_decl_no_default: bool,
+    ignore_outside_new_mut_ref: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1033,6 +1040,7 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
+        ignore_outside_new_mut_ref,
     };
     Ok(Arc::new(fattrs))
 }
@@ -1048,6 +1056,23 @@ pub(crate) fn fixup_unerased_proxy_path(
         Ok(p)
     } else {
         crate::internal_err!(span, "bad use of unerased_proxy attribute")
+    }
+}
+
+/// Yes this is extremely hackish, but it's only temporary for the new_mut_ref transition
+struct NewMutRefFixGlobal {
+    old: bool,
+}
+impl NewMutRefFixGlobal {
+    fn new(v: bool) -> Self {
+        let old = crate::config::new_mut_ref();
+        crate::config::NEW_MUT_REF.store(v, std::sync::atomic::Ordering::SeqCst);
+        Self { old }
+    }
+}
+impl Drop for NewMutRefFixGlobal {
+    fn drop(&mut self) {
+        crate::config::NEW_MUT_REF.store(self.old, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1078,6 +1103,13 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
+    let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
+    if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
+        return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
+    }
+    let new_mut_ref = new_mut_ref || ctxt.cmd_line_args.new_mut_ref;
+    let _new_mut_ref_fix_global = NewMutRefFixGlobal::new(new_mut_ref);
+
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
         if fn_sig.inputs().skip_binder().len() != 0 {
@@ -1105,6 +1137,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
+            new_mut_ref,
         )?;
         return Ok(Some(fun));
     }
@@ -1243,8 +1276,7 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
-        let is_ref_mut =
-            if ctxt.cmd_line_args.new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
+        let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
@@ -1270,12 +1302,13 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode: param_mode,
                 is_mut,
                 unwrapped_info: None,
+                user_mut: is_mut_var || is_mut,
             },
         );
 
         // TODO(new_mut_ref): be more precise here
         // TODO(new_mut_ref): should probably error for mutable references in the dual exec/spec cases
-        let is_mut_var = if ctxt.cmd_line_args.new_mut_ref {
+        let is_mut_var = if new_mut_ref {
             is_mut_var || (param_mode != Mode::Spec && mode != Mode::Spec)
         } else {
             is_mut_var
@@ -1303,7 +1336,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 &typ,
                 vir::ast::PatternX::Var(vir::ast::PatternBinding {
                     name: name.clone(),
-                    mutable: true,
+                    user_mut: Some(true),
                     by_ref: vir::ast::ByRef::No,
                     typ: typ.clone(),
                     copy: false,
@@ -1335,8 +1368,16 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let mut vir_body =
-                body_to_vir(ctxt, id, body_id, body, mode, external_body, &external_trait_from_to)?;
+            let mut vir_body = body_to_vir(
+                ctxt,
+                id,
+                body_id,
+                body,
+                mode,
+                external_body,
+                &external_trait_from_to,
+                new_mut_ref,
+            )?;
             let header =
                 vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
             (Some(vir_body), header, Some(body.value.hir_id))
@@ -1487,6 +1528,7 @@ pub(crate) fn check_item_fn<'tcx>(
             typ: ret_typ,
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -1570,6 +1612,7 @@ pub(crate) fn check_item_fn<'tcx>(
         safety,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
+        new_mut_ref,
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -2250,7 +2293,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
                 let mut types: Vec<Typ> = vec![];
 
-                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+                let trait_ref = tcx.impl_trait_ref(impl_def_id);
 
                 for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
                     types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false)?);
@@ -2281,6 +2324,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
+    new_mut_ref: bool,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2325,7 +2369,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
     let body = find_body(ctxt, body_id);
     let mut vir_body =
-        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None)?;
+        body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body, &None, new_mut_ref)?;
     let header = vir::headers::read_header(
         &mut vir_body,
         &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),
@@ -2345,6 +2389,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             typ: typ.clone(),
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2360,6 +2405,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         Safety::Safe,
         span,
         false,
+        new_mut_ref,
     )?;
 
     let (ensure, ens_has_return) =
@@ -2474,7 +2520,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
+            ParamX {
+                name,
+                typ,
+                mode,
+                is_mut: is_mut.is_some(),
+                unwrapped_info: None,
+                user_mut: false,
+            },
         );
         vir_params.push(vir_param);
     }
@@ -2488,6 +2541,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,
+        user_mut: false,
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);

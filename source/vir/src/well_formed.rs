@@ -1,8 +1,8 @@
 use crate::ast::{
-    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
-    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VirErr, VirErrAs, Visibility,
+    BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
+    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
@@ -685,6 +685,64 @@ fn check_one_expr<Emit: EmitError>(
                 ),
             ));
         }
+        ExprX::Unary(UnaryOp::MutRefFinal, _) => {
+            return Err(error(
+                &expr.span,
+                "The result of `fin` must be dereferenced (e.g., `*fin(x)`)",
+            ));
+        }
+        ExprX::Match(_place, arms) => {
+            for arm in arms.iter() {
+                // Error if the arm contains more than 1 of these 3 nontrivial features:
+                let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
+                let has_or = crate::patterns::pattern_has_or(&arm.x.pattern);
+                let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&arm.x.pattern);
+
+                if has_guard && has_or {
+                    // This is nontrivial because we might need to evaluate the guard condition more than once
+                    return Err(error(
+                        &arm.x.pattern.span,
+                        "Not supported: pattern containing both an or-pattern (|) and an if-guard",
+                    ));
+                }
+                if let Some(span) = has_ref_mut_binding {
+                    if has_or {
+                        // This probably isn't that bad
+                        return Err(error(
+                            &span,
+                            "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                        ));
+                    }
+                    if has_guard {
+                        // This is complicated because we need to create a mutable borrow to evaluate
+                        // the test condition, but the mutable borrow is immutable until it ends
+                        return Err(error(
+                            &span,
+                            "Not supported: pattern containing both an if-guard and a binding by mutable reference",
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
+    match &stmt.x {
+        StmtX::Decl { pattern, .. } => {
+            let has_ref_mut_binding = crate::patterns::pattern_find_mut_binding(&pattern);
+            if let Some(span) = has_ref_mut_binding {
+                let has_or = crate::patterns::pattern_has_or(&pattern);
+                if has_or {
+                    return Err(error(
+                        &span,
+                        "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference",
+                    ));
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -784,7 +842,7 @@ fn check_expr<Emit: EmitError>(
         &mut |emit, _scope_map, expr: &Arc<crate::ast::SpannedTyped<ExprX>>| {
             check_one_expr(ctxt, function, expr, disallow_private_access, area, emit)
         },
-        &mut |_emit, _scope_map, _stmt| Ok(()),
+        &mut |_emit, _scope_map, stmt| check_one_stmt(ctxt, stmt),
         &mut |emit, _scope_map, pattern: &Arc<crate::ast::SpannedTyped<PatternX>>| {
             check_one_pattern(ctxt, function, pattern, disallow_private_access, emit)
         },

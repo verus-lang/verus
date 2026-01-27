@@ -277,7 +277,9 @@ pub(crate) fn check_trait_conflicts<'tcx>(
         .spawn()
         .expect("could not execute trait-conflict rustc process");
     let mut child_stdin = child.stdin.take().expect("take stdin");
-    child_stdin.write(rust_code.as_bytes()).expect("failed to send code to trait-conflict rustc");
+    child_stdin
+        .write_all(rust_code.as_bytes())
+        .expect("failed to send code to trait-conflict rustc");
     std::mem::drop(child_stdin);
     let run = child.wait_with_output().expect("trait-conflict rustc wait failed");
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();

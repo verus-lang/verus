@@ -25,6 +25,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
@@ -255,16 +256,16 @@ impl Diagnostics for QueuedReporter {
 
 #[derive(Default)]
 pub struct BucketStats {
-    /// cummulative time in AIR to verify the bucket (this includes SMT solver time)
+    /// cumulative time in AIR to verify the bucket (this includes SMT solver time)
     pub time_air: Duration,
     /// time to initialize the SMT solver
     pub time_smt_init: Duration,
-    /// cummulative time of all SMT queries
+    /// cumulative time of all SMT queries
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
-    /// total rlimit count for the bucket
-    pub rlimit_count: Option<u64>,
+    /// rlimit used to initialize and run the SMT solver
+    pub rlimit_count: Option<(u64, u64)>,
 }
 
 pub struct FunctionSmtStats {
@@ -418,7 +419,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: Option<u64>,
+    rlimit_count: Option<(u64, u64)>,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -859,10 +860,13 @@ impl Verifier {
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
                         if !self.expand_flag {
-                            if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
-                                collected.as_mut().push((error.clone(), level));
-                            } else {
-                                reporter.report_as(&error.clone().to_any(), level);
+                            match &mut *diagnostics_to_report.borrow_mut() {
+                                Some(collected) => {
+                                    collected.as_mut().push((error.clone(), level));
+                                }
+                                _ => {
+                                    reporter.report_as(&error.clone().to_any(), level);
+                                }
                             }
                         }
                     }
@@ -1311,8 +1315,8 @@ impl Verifier {
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
-            SmtSolver::Z3 => Some(0),
+        let mut spunoff_rlimit_count: Option<(u64, u64)> = match self.args.solver {
+            SmtSolver::Z3 => Some((0, 0)),
             SmtSolver::Cvc5 => None,
         };
 
@@ -1575,7 +1579,8 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
-                            let iter_curr_smt_rlimit_count = query_air_context.get_rlimit_count();
+                            let iter_curr_smt_rlimit_count =
+                                query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
                                 Self::set_rlimit(&mut query_air_context, rlimit);
                             }
@@ -1607,6 +1612,7 @@ impl Verifier {
                                 *func_curr_smt_rlimit_count += query_air_context
                                     .get_rlimit_count()
                                     .expect("rlimit count in query context")
+                                    .1
                                     - iter_curr_smt_rlimit_count
                                         .expect("rlimit count in query context");
                             }
@@ -1615,9 +1621,11 @@ impl Verifier {
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
                                 if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
-                                    *spunoff_rlimit_count += query_air_context
+                                    let (init, run) = query_air_context
                                         .get_rlimit_count()
                                         .expect("rlimit count in query context");
+                                    (*spunoff_rlimit_count).0 += init;
+                                    (*spunoff_rlimit_count).1 += run;
                                 }
                             }
                             if function.x.attrs.rlimit.is_some() {
@@ -1860,7 +1868,9 @@ impl Verifier {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
             rlimit_count: rlimit_count.map(|rlimit_count| {
-                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+                let spunoff_rlimit_count =
+                    spunoff_rlimit_count.expect("spunoff rlimit count should be present");
+                (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
         })
     }
@@ -2166,10 +2176,9 @@ impl Verifier {
             let mut local_msgs: VecDeque<ReporterMessage> = VecDeque::new();
             let reporter = Reporter::new(spans, compiler);
             loop {
-                let msg = if let Some(msg) = local_msgs.pop_front() {
-                    msg
-                } else {
-                    receiver.recv().expect("receiving message failed")
+                let msg = match local_msgs.pop_front() {
+                    Some(msg) => msg,
+                    _ => receiver.recv().expect("receiving message failed"),
                 };
                 match msg {
                     ReporterMessage::Messages(id, mut msgs, now) => {
@@ -2687,6 +2696,9 @@ impl Verifier {
                 .collect()
         } else {
             other_vir_crates
+                .into_iter()
+                .map(|krate| vir::migrate_mut_refs::ignore_mut_ref_only_fns(krate))
+                .collect()
         };
 
         let vir_crate =
@@ -3010,21 +3022,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::ConcreteOpaqueTypes(
-                        rustc_data_structures::fx::FxIndexMap::default(),
-                    )))
-                };
+                providers.mir_borrowck =
+                    |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {
                 providers.hir_crate = hir_crate;
                 providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.lint_mod = |_, _| {};
-                providers.check_liveness = |_, _| {};
+                providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
                 rustc_mir_build_verus::verus_provide(providers);
