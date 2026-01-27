@@ -79,6 +79,7 @@ use super::super::modes::*;
 use super::super::prelude::*;
 use super::super::set_lib::*;
 use super::Loc;
+use super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]
 use super::incorporate;
 use super::pcm::PCM;
@@ -153,7 +154,7 @@ struct MapCarrier<K, V> {
     frac: FracCarrier<K, V>,
 }
 
-impl<K, V> PCM for MapCarrier<K, V> {
+impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
     closed spec fn valid(self) -> bool {
         match (self.auth, self.frac) {
             (AuthCarrier::Invalid, _) => false,
@@ -216,13 +217,6 @@ impl<K, V> PCM for MapCarrier<K, V> {
         MapCarrier { auth, frac }
     }
 
-    closed spec fn unit() -> Self {
-        MapCarrier {
-            auth: AuthCarrier::Frac,
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
-        }
-    }
-
     proof fn valid_op(a: Self, b: Self) {
         broadcast use lemma_submap_of_trans;
 
@@ -253,6 +247,15 @@ impl<K, V> PCM for MapCarrier<K, V> {
         let a_bc = Self::op(a, bc);
         let ab_c = Self::op(ab, c);
         assert(a_bc == ab_c);
+    }
+}
+
+impl<K, V> PCM for MapCarrier<K, V> {
+    closed spec fn unit() -> Self {
+        MapCarrier {
+            auth: AuthCarrier::Frac,
+            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+        }
     }
 
     proof fn op_unit(self) {
