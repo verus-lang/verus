@@ -41,7 +41,8 @@
 //! ```
 //! let ghost id = half1.id();
 //! proof { half1.perform_using_two_halves(&mut half2); }
-//! assert(half1.id() == half2.id() == id);
+//! assert(half1.id() == id);
+//! assert(half2.id() == id);
 //! assert(half1@ is Complete);
 //! assert(half2@ is Complete);
 //! ```
@@ -63,12 +64,17 @@
 //! assert(knowledge@ is Complete);
 //! ```
 #![allow(unused_imports)]
+use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use std::result::*;
-use vstd::pcm::*;
-use vstd::pcm_lib::*;
 use vstd::prelude::*;
+use vstd::resource;
+use vstd::resource::algebra::ResourceAlgebra;
+use vstd::resource::pcm::PCM;
+use vstd::resource::update_and_redistribute;
+use vstd::resource::update_mut;
+use vstd::resource::Loc;
+use vstd::resource::Resource;
 
 verus! {
 
@@ -93,15 +99,15 @@ pub enum OneShotResourceValue {
 
 // To use `OneShotResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for OneShotResourceValue {
+impl ResourceAlgebra for OneShotResourceValue {
     open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
 
-    open spec fn op(self, other: Self) -> Self {
-        match (self, other) {
-            (OneShotResourceValue::Empty, _) => other,
-            (_, OneShotResourceValue::Empty) => self,
+    open spec fn op(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (OneShotResourceValue::Empty, _) => b,
+            (_, OneShotResourceValue::Empty) => a,
             (
                 OneShotResourceValue::HalfRightToComplete,
                 OneShotResourceValue::HalfRightToComplete,
@@ -114,11 +120,7 @@ impl PCM for OneShotResourceValue {
         }
     }
 
-    open spec fn unit() -> Self {
-        OneShotResourceValue::Empty {  }
-    }
-
-    proof fn closed_under_incl(a: Self, b: Self) {
+    proof fn valid_op(a: Self, b: Self) {
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -126,8 +128,14 @@ impl PCM for OneShotResourceValue {
 
     proof fn associative(a: Self, b: Self, c: Self) {
     }
+}
 
-    proof fn op_unit(a: Self) {
+impl PCM for OneShotResourceValue {
+    open spec fn unit() -> Self {
+        OneShotResourceValue::Empty {  }
+    }
+
+    proof fn op_unit(self) {
     }
 
     proof fn unit_valid() {
@@ -169,7 +177,8 @@ impl OneShotResource {
                 let (half1, half2) = return_value;
                 &&& half1@ is HalfRightToComplete
                 &&& half2@ is HalfRightToComplete
-                &&& half2.id() == half1.id() == self.id()
+                &&& half1.id() == self.id()
+                &&& half2.id() == self.id()
             }),
     {
         let half = OneShotResourceValue::HalfRightToComplete {  };
@@ -215,7 +224,8 @@ impl OneShotResource {
             old(other)@ is HalfRightToComplete,
             self@ is Complete,
             other@ is Complete,
-            other.id() == self.id() == old(self).id(),
+            self.id() == old(self).id(),
+            other.id() == old(self).id(),
     {
         self.r.validate();
         other.r.validate();
@@ -239,7 +249,7 @@ impl OneShotResource {
             other.id() == self.id(),
             other@ is Complete,
     {
-        let tracked r = duplicate(&self.r);
+        let tracked r = resource::duplicate(&self.r);
         Self { r }
     }
 
@@ -273,11 +283,13 @@ fn main() {
     proof {
         half1.perform_using_two_halves(&mut half2);
     }
-    assert(half1.id() == half2.id() == id);
+    assert(half1.id() == id);
+    assert(half2.id() == id);
     assert(half1@ is Complete);
     assert(half2@ is Complete);
     let tracked knowledge = half1.duplicate();
-    assert(knowledge.id() == half1.id() == id);
+    assert(knowledge.id() == id);
+    assert(half1.id() == id);
     assert(knowledge@ is Complete);
 }
 
