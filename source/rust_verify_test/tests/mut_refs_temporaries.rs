@@ -688,7 +688,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporary_place_ctor_update_taile ["new-mut-ref"] => verus_code! {
+    #[test] temporary_place_ctor_update_tail ["new-mut-ref"] => verus_code! {
         broadcast proof fn stronger_resolver_axiom<A, B>(pair: TGPair<A, B>) // TODO(new_mut_ref)
             ensures #[trigger] has_resolved(pair) ==> has_resolved(pair.t)
         {
@@ -994,7 +994,7 @@ test_verify_one_file_with_options! {
 
             assert(a == 0); // FAILS
             assert(b == 0);
-            //assert(c == 0);  // TODO(new_mut_ref)
+            assert(c == 0);
         }
 
         fn test9() {

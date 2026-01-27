@@ -1055,7 +1055,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         op_mode: Mode::Exec,
                         from_mode: Mode::Spec,
                         to_mode: Mode::Exec,
-                        kind: ModeCoercion::Other,
+                        kind: ModeCoercion::Constructor,
                     };
                     mk_expr(ExprX::Unary(op, vir_arg))
                 } else {
@@ -1064,7 +1064,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         op_mode: Mode::Exec,
                         from_mode: Mode::Proof,
                         to_mode: Mode::Exec,
-                        kind: ModeCoercion::Other,
+                        kind: ModeCoercion::Constructor,
                     };
                     mk_expr(ExprX::Unary(op, vir_arg))
                 }
@@ -1468,7 +1468,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Spec,
                 from_mode: Mode::Spec,
                 to_mode: if is_ghost_new { Mode::Proof } else { Mode::Spec },
-                kind: ModeCoercion::Other,
+                kind: if is_ghost_new { ModeCoercion::Constructor } else { ModeCoercion::Field },
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1480,7 +1480,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Proof,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Constructor,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1492,7 +1492,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Exec,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Exec,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Field,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1515,7 +1515,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Proof,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Field,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
