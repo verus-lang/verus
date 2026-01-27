@@ -55,6 +55,7 @@ use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::copy_duplicable_part;
 use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
@@ -86,7 +87,7 @@ pub enum MonotonicCounterResourceValue {
 
 // To use `MonotonicCounterResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for MonotonicCounterResourceValue {
+impl ResourceAlgebra for MonotonicCounterResourceValue {
     open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
@@ -160,10 +161,6 @@ impl PCM for MonotonicCounterResourceValue {
         }
     }
 
-    open spec fn unit() -> Self {
-        MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
-    }
-
     proof fn valid_op(a: Self, b: Self) {
     }
 
@@ -171,6 +168,11 @@ impl PCM for MonotonicCounterResourceValue {
     }
 
     proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+impl PCM for MonotonicCounterResourceValue {
+    open spec fn unit() -> Self {
+        MonotonicCounterResourceValue::LowerBound { lower_bound: 0 }
     }
 
     proof fn op_unit(self) {

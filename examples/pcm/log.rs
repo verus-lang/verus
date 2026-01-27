@@ -48,6 +48,7 @@ use std::result::*;
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::copy_duplicable_part;
 use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
@@ -69,7 +70,7 @@ pub open spec fn is_prefix<T>(s1: Seq<T>, s2: Seq<T>) -> bool {
     &&& forall|i| 0 <= i < s1.len() ==> s1[i] == s2[i]
 }
 
-impl<T> PCM for LogResourceValue<T> {
+impl<T> ResourceAlgebra for LogResourceValue<T> {
     open spec fn valid(self) -> bool {
         &&& !(self is Invalid)
     }
@@ -130,10 +131,6 @@ impl<T> PCM for LogResourceValue<T> {
         }
     }
 
-    open spec fn unit() -> Self {
-        Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
-    }
-
     proof fn valid_op(a: Self, b: Self) {
     }
 
@@ -146,6 +143,11 @@ impl<T> PCM for LogResourceValue<T> {
         assert(forall|log1: Seq<T>, log2: Seq<T>|
             is_prefix(log1, log2) && is_prefix(log2, log1) <==> log1 =~= log2);
         assert(forall|log| is_prefix(log, Seq::<T>::empty()) ==> log =~= Seq::<T>::empty());
+    }
+}
+impl<T> PCM for LogResourceValue<T> {
+    open spec fn unit() -> Self {
+        Self::PrefixKnowledge { prefix: Seq::<T>::empty() }
     }
 
     proof fn op_unit(self) {

@@ -1,6 +1,7 @@
 use super::super::modes::*;
 use super::super::prelude::*;
 use super::Loc;
+use super::algebra::ResourceAlgebra;
 use super::pcm::PCM;
 use super::pcm::Resource;
 use super::storage_protocol::*;
@@ -23,7 +24,7 @@ impl<T, const TOTAL: u64> FractionalCarrier<T, TOTAL> {
     }
 }
 
-impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
+impl<T, const TOTAL: u64> ResourceAlgebra for FractionalCarrier<T, TOTAL> {
     closed spec fn valid(self) -> bool {
         match self {
             FractionalCarrier::Invalid => false,
@@ -52,10 +53,6 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
         }
     }
 
-    closed spec fn unit() -> Self {
-        FractionalCarrier::Empty
-    }
-
     proof fn valid_op(a: Self, b: Self) {
     }
 
@@ -63,6 +60,12 @@ impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
     }
 
     proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+
+impl<T, const TOTAL: u64> PCM for FractionalCarrier<T, TOTAL> {
+    closed spec fn unit() -> Self {
+        FractionalCarrier::Empty
     }
 
     proof fn op_unit(self) {

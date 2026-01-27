@@ -1,8 +1,10 @@
 use super::prelude::*;
 
+pub mod algebra;
 pub mod frac;
 mod lib;
 pub mod map;
+pub mod option;
 pub mod pcm;
 pub mod relations;
 pub mod seq;
