@@ -3,22 +3,22 @@ use std::path::Path;
 use anyhow::Context;
 use filetime::FileTime as FFileTime;
 
+use crate::VERUS_ROOT_FILE;
+use crate::VSTD_FILES;
 use crate::cli::VargoBuild;
 use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
+use crate::commands::AddOptions;
 use crate::commands::cargo_command;
 use crate::commands::cargo_run;
 use crate::commands::clean_vstd;
 use crate::commands::log_command;
-use crate::commands::AddOptions;
 use crate::context::VargoContext;
 use crate::lib_exe_names::EXE;
 use crate::lib_exe_names::LIB_DL;
 use crate::lib_exe_names::LIB_PRE;
 use crate::macros::info;
 use crate::util;
-use crate::VERUS_ROOT_FILE;
-use crate::VSTD_FILES;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -33,10 +33,7 @@ struct FileTime {
 
 impl From<FFileTime> for FileTime {
     fn from(value: FFileTime) -> Self {
-        FileTime {
-            seconds: value.seconds(),
-            nanos: value.nanoseconds(),
-        }
+        FileTime { seconds: value.seconds(), nanos: value.nanoseconds() }
     }
 }
 
@@ -104,12 +101,10 @@ impl VargoBuild {
     fn apply_feature_filter(&mut self) {
         match self.package.as_deref() {
             Some("rust_verify") => {
-                self.feature_options
-                    .filter_feature_list(&[VerusFeatures::Singular]);
+                self.feature_options.filter_feature_list(&[VerusFeatures::Singular]);
             }
             Some("verus") => {
-                self.feature_options
-                    .filter_feature_list(&[VerusFeatures::RecordHistory]);
+                self.feature_options.filter_feature_list(&[VerusFeatures::RecordHistory]);
             }
             _ => {
                 self.feature_options.features = Vec::new();
@@ -190,11 +185,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
     {
         let from_f = context
             .target_dir
-            .join(if vargo_cmd.build_options.release {
-                "release"
-            } else {
-                "debug"
-            })
+            .join(if vargo_cmd.build_options.release { "release" } else { "debug" })
             .join(&from_f_name);
         if from_f.exists() {
             let from_f_meta = from_f
@@ -205,9 +196,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                     .unwrap_or(FFileTime::zero())
                     .max(FFileTime::from_last_modification_time(&from_f_meta)),
             );
-            let to_f = context
-                .target_verus_artifact_dir_absolute
-                .join(&from_f_name);
+            let to_f = context.target_verus_artifact_dir_absolute.join(&from_f_name);
             // info!(
             //     "copying {} to {}",
             //     from_f.display(),
@@ -222,19 +211,11 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             }
 
             std::fs::copy(&from_f, &to_f).with_context(|| {
-                format!(
-                    "could not copy file {} to {}",
-                    from_f.display(),
-                    to_f.display()
-                )
+                format!("could not copy file {} to {}", from_f.display(), to_f.display())
             })?;
 
-            writeln!(
-                &mut macos_prepare_script,
-                "xattr -d com.apple.quarantine {}",
-                from_f_name
-            )
-            .context("could not write to macos prepare script")?;
+            writeln!(&mut macos_prepare_script, "xattr -d com.apple.quarantine {}", from_f_name)
+                .context("could not write to macos prepare script")?;
         } else {
             dependency_missing = true;
         }
@@ -251,15 +232,10 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
         )?;
     }
 
-    let fingerprint_path = context
-        .target_verus_artifact_dir_absolute
-        .join(".vstd-fingerprint");
+    let fingerprint_path = context.target_verus_artifact_dir_absolute.join(".vstd-fingerprint");
 
     for file in ["vstd.vir", "libvstd.rlib"] {
-        if !context
-            .target_verus_artifact_dir_absolute
-            .join(file)
-            .exists()
+        if !context.target_verus_artifact_dir_absolute.join(file).exists()
             && fingerprint_path.exists()
         {
             info!("removing {}", fingerprint_path.display());
@@ -276,11 +252,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
             std::fs::remove_dir_all(&to_d).unwrap();
         }
         copy_dir(from_d, &to_d, &[std::path::Path::new("target")]).with_context(|| {
-            format!(
-                "could not copy source directory {} to {}",
-                from_d.display(),
-                to_d.display()
-            )
+            format!("could not copy source directory {} to {}", from_d.display(), to_d.display())
         })?;
     }
 
@@ -304,9 +276,8 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
 
             clean_vstd(&context.target_verus_artifact_dir_absolute)?;
         } else {
-            let dependencies_mtime: FileTime = dependencies_mtime
-                .expect("dependencies_mtime should be Some here")
-                .into();
+            let dependencies_mtime: FileTime =
+                dependencies_mtime.expect("dependencies_mtime should be Some here").into();
 
             let vstd_path = std::path::Path::new("vstd");
             let vstd_mtime: FileTime = util::mtime_recursive(vstd_path)?.into();
@@ -329,13 +300,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 .unwrap_or(true)
             {
                 info!("vstd outdated, rebuilding");
-                rebuild_vstd(
-                    options,
-                    context,
-                    vargo_cmd,
-                    &fingerprint_path,
-                    &current_fingerprint,
-                )?
+                rebuild_vstd(options, context, vargo_cmd, &fingerprint_path, &current_fingerprint)?
             } else {
                 info!("vstd fresh");
             }
@@ -344,9 +309,8 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
 
     #[cfg(target_os = "macos")]
     {
-        let macos_prepare_script_path = context
-            .target_verus_artifact_dir_absolute
-            .join("macos_allow_gatekeeper.sh");
+        let macos_prepare_script_path =
+            context.target_verus_artifact_dir_absolute.join("macos_allow_gatekeeper.sh");
         std::fs::write(&macos_prepare_script_path, macos_prepare_script)
             .map_err(|x| anyhow::anyhow!("could not write to macos prepare script ({})", x))?;
         std::fs::set_permissions(
@@ -359,20 +323,13 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
     }
 
     if let Some(version_info) = &context.verus_version {
-        let version_info_path = context
-            .target_verus_artifact_dir_absolute
-            .join("version.txt");
+        let version_info_path = context.target_verus_artifact_dir_absolute.join("version.txt");
         std::fs::write(&version_info_path, version_info.version.as_str()).with_context(|| {
-            format!(
-                "could not write to version file {}",
-                version_info_path.display()
-            )
+            format!("could not write to version file {}", version_info_path.display())
         })?;
     }
 
-    let verus_root_path = context
-        .target_verus_artifact_dir_absolute
-        .join(VERUS_ROOT_FILE);
+    let verus_root_path = context.target_verus_artifact_dir_absolute.join(VERUS_ROOT_FILE);
     if dependency_missing
         || VSTD_FILES.iter().any(|f| {
             let f = context.target_verus_artifact_dir_absolute.join(f);
@@ -403,10 +360,7 @@ fn build_target(
     assert!(vargo_cmd.package.is_some());
     info!(
         "building {}",
-        vargo_cmd
-            .package
-            .as_deref()
-            .expect("when building a particular target, package is set")
+        vargo_cmd.package.as_deref().expect("when building a particular target, package is set")
     );
 
     cargo_run(options, context, vargo_cmd)
@@ -460,9 +414,7 @@ fn rebuild_vstd(
         vstd_build.arg("--release");
     }
 
-    vstd_build
-        .arg("--")
-        .arg(&context.target_verus_artifact_dir_absolute);
+    vstd_build.arg("--").arg(&context.target_verus_artifact_dir_absolute);
     // TODO(bsdinis): when vstd_build supports it, forward verus_args here
 
     // release is doubled because one is for cargo and the other for vstd_build
@@ -498,27 +450,19 @@ fn rebuild_vstd(
     }
     log_command(&vstd_build, options.vargo_verbose);
 
-    vstd_build
-        .status()
-        .context("could not execute cargo")
-        .and_then(|x| {
-            if x.success() {
-                Ok(())
-            } else if let Some(code) = x.code() {
-                Err(anyhow::anyhow!("vstd_build returned status code {code}"))
-            } else {
-                Err(anyhow::anyhow!("vstd_build was terminated by a signal"))
-            }
-        })?;
+    vstd_build.status().context("could not execute cargo").and_then(|x| {
+        if x.success() {
+            Ok(())
+        } else if let Some(code) = x.code() {
+            Err(anyhow::anyhow!("vstd_build returned status code {code}"))
+        } else {
+            Err(anyhow::anyhow!("vstd_build was terminated by a signal"))
+        }
+    })?;
 
     std::fs::write(
         fingerprint_path,
         toml::to_string(&current_fingerprint).expect("failed to serialize fingerprint"),
     )
-    .with_context(|| {
-        format!(
-            "cannot write fingerprint file {}",
-            fingerprint_path.display()
-        )
-    })
+    .with_context(|| format!("cannot write fingerprint file {}", fingerprint_path.display()))
 }

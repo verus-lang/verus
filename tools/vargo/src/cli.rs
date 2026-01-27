@@ -485,17 +485,14 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 build_options,
                 verus_args,
             }),
-            VargoParsedSubcommand::Check {
-                package,
-                exclude,
-                feature_options,
-                release,
-            } => VargoSubcommand::Check(VargoCheck {
-                package,
-                exclude: exclude.into_iter().collect(),
-                feature_options,
-                release,
-            }),
+            VargoParsedSubcommand::Check { package, exclude, feature_options, release } => {
+                VargoSubcommand::Check(VargoCheck {
+                    package,
+                    exclude: exclude.into_iter().collect(),
+                    feature_options,
+                    release,
+                })
+            }
             VargoParsedSubcommand::Clean { package, release } => {
                 VargoSubcommand::Clean(VargoClean { package, release })
             }
@@ -513,24 +510,17 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 clippy_args,
             }),
             VargoParsedSubcommand::Cmd { command } => VargoSubcommand::Cmd(VargoCmd { command }),
-            VargoParsedSubcommand::Fmt {
-                package,
-                exclude,
-                rustfmt_args,
-                vstd_no_verusfmt,
-            } => VargoSubcommand::Fmt(VargoFmt {
-                package,
-                exclude: exclude.into_iter().collect(),
-                vstd_no_verusfmt,
-                rustfmt_args,
-            }),
-            VargoParsedSubcommand::Metadata {
-                feature_options,
-                format_version,
-            } => VargoSubcommand::Metadata(VargoMetadata {
-                feature_options,
-                format_version,
-            }),
+            VargoParsedSubcommand::Fmt { package, exclude, rustfmt_args, vstd_no_verusfmt } => {
+                VargoSubcommand::Fmt(VargoFmt {
+                    package,
+                    exclude: exclude.into_iter().collect(),
+                    vstd_no_verusfmt,
+                    rustfmt_args,
+                })
+            }
+            VargoParsedSubcommand::Metadata { feature_options, format_version } => {
+                VargoSubcommand::Metadata(VargoMetadata { feature_options, format_version })
+            }
             VargoParsedSubcommand::Nextest {
                 command:
                     NexTestCommand::Run {
@@ -547,17 +537,14 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
                 build_options,
                 nextest_args,
             }),
-            VargoParsedSubcommand::Run {
-                package,
-                feature_options,
-                build_options,
-                verus_args,
-            } => VargoSubcommand::Run(VargoRun {
-                package,
-                feature_options,
-                build_options,
-                verus_args,
-            }),
+            VargoParsedSubcommand::Run { package, feature_options, build_options, verus_args } => {
+                VargoSubcommand::Run(VargoRun {
+                    package,
+                    feature_options,
+                    build_options,
+                    verus_args,
+                })
+            }
             VargoParsedSubcommand::Test {
                 package,
                 exclude,
