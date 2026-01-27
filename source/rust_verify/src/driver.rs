@@ -1,11 +1,8 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_attr_data_structures::AttributeKind;
-use rustc_hir::{Attribute, AttributeMap};
-use rustc_hir::{HirId, ItemKind, OwnerId, OwnerNode, ImplItemKind, MaybeOwner};
+use rustc_hir::{ImplItemKind, ItemKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
-use rustc_span::{Span, sym};
 use std::time::{Duration, Instant};
 
 struct DefaultCallbacks;
@@ -154,6 +151,7 @@ struct CompilerCallbacksEraseMacro {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
+    #[cfg(verus_verify_core)]
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if self.override_stability {
             config.override_queries = Some(|_session, providers| {
@@ -383,6 +381,7 @@ pub fn run(
     (verifier, stats, Ok(()))
 }
 
+#[cfg(verus_verify_core)]
 fn stable_attr(span: Span) -> Attribute {
     use rustc_attr_data_structures::*;
     Attribute::Parsed(AttributeKind::Stability {
@@ -399,6 +398,7 @@ fn stable_attr(span: Span) -> Attribute {
     })
 }
 
+#[cfg(verus_verify_core)]
 fn has_stable_attr(attrmap: &AttributeMap, owner_id: OwnerId) -> bool {
     let hir_id = HirId::from(owner_id);
     match attrmap.map.get(&hir_id.local_id) {
@@ -409,6 +409,7 @@ fn has_stable_attr(attrmap: &AttributeMap, owner_id: OwnerId) -> bool {
     }
 }
 
+#[cfg(verus_verify_core)]
 fn add_stable_attr<'tcx>(
     tcx: TyCtxt<'tcx>,
     owner_id: OwnerId,
@@ -445,6 +446,7 @@ fn add_stable_attr<'tcx>(
     */
 }
 
+#[cfg(verus_verify_core)]
 fn needs_stable_attr<'tcx>(tcx: TyCtxt<'tcx>, owner_id: OwnerId) -> bool {
     let owner = tcx.hir_owner_node(owner_id);
     match owner {
