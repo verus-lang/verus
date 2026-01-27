@@ -1,5 +1,7 @@
+use core::sync::atomic::{Ordering};
 use super::prelude::*;
 use crate::cell::CellId;
+use crate::pcm::*;
 
 verus! {
 
@@ -15,6 +17,7 @@ pub struct HistorySingleton<T> {
     value: T,
     view: Option<View>,
 }
+
 
 impl<T> HistorySingleton<T> {
     pub closed spec fn timestamp(&self) -> nat {
@@ -39,7 +42,7 @@ impl<T> HistorySingleton<T> {
 
 // Fence modalities
 pub struct Release<T> {
-    v: T,
+    pub v: T,
 }
 
 impl<T> Release<T> {
@@ -49,7 +52,7 @@ impl<T> Release<T> {
 }
 
 pub struct Acquire<T> {
-    v: T,
+    pub v: T,
 }
 
 impl<T> Acquire<T> {
@@ -57,6 +60,208 @@ impl<T> Acquire<T> {
         self.v
     }
 }
+
+#[verifier::external_body]
+pub fn rel_fence<T>(Tracked(rsrc): Tracked<T>) -> (out: Tracked<Release<T>>)
+    ensures
+        rsrc == out@.v,
+{
+    core::sync::atomic::fence(Ordering::Release);
+    Tracked(Release { v: rsrc })
+}
+
+
+#[verifier::external_body]
+pub fn acq_fence<T>(Tracked(rsrc): Tracked<Acquire<T>>) -> (out: Tracked<T>)
+    ensures
+        out@ == rsrc.v,
+{
+    core::sync::atomic::fence(Ordering::Acquire);
+    Tracked(rsrc.v)
+}
+
+pub axiom fn rel_fence_elim<T>(tracked rsrc: Release<T>) -> (tracked out: T)
+    ensures out == rsrc.v,
+    ;
+
+pub axiom fn acq_fence_intro<T>(tracked rsrc: T) -> (tracked out: Acquire<T>)
+    ensures out.v == rsrc,
+    ;
+
+// implied by rel_fence_elim
+pub proof fn relmod_ghost<P: PCM>(tracked rsrc: Release<Resource<P>>) -> (tracked out: Resource<P>)
+    ensures out == rsrc.v,
+{
+    rel_fence_elim(rsrc)
+}
+
+pub axiom fn acqmod_ghost<P: PCM>(tracked rsrc: Acquire<Resource<P>>) -> (tracked out: Resource<P>)
+    ensures out == rsrc.v,
+    ;
+
+pub axiom fn ghost_relmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Release<Resource<P>>)
+    ensures out.v == rsrc,
+    ;
+
+// implied by acq_fence_intro
+pub proof fn ghost_acqmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Acquire<Resource<P>>)
+    ensures out.v == rsrc,
+{
+    acq_fence_intro(rsrc)
+}
+
+// ATTEMPT 1: encode the fact that T1 |- T2 via a proof function that trnasform ownership of T1 into ownership of T2
+
+// pub proof fn relmod_mono<T1, T2>(tracked rsrc : Release<T1>, to : T2, tracked f : proof_fn(tracked t1 : T1) -> tracked T2) -> (tracked out : Release<T2>)
+//     requires
+//         f.requires((rsrc.v,)),
+//         forall|rsrc2: T2| f.ensures((rsrc.v,), rsrc2) ==>  rsrc2 == to,
+//     ensures
+//         out.v == to,
+// {
+//     let tracked v2 = f(rsrc.v);
+//     Release { v: v2 }
+// }
+
+// ATTEMPT 2: encode the fact that T1 |- T2 via a trait. Is this the correct trait definition?
+
+pub trait Entails<T1, T2> {
+    proof fn entails(tracked t1: T1, t2 : T2) -> (tracked out : T2)
+        ensures
+            out == t2,
+        ;
+}
+
+pub proof fn relmod_mono<T1, T2, E : Entails<T1, T2>>(tracked rsrc : Release<T1>, to : T2) -> (tracked out : Release<T2>)
+    ensures
+        out.v == to,
+{
+    let tracked v2 = E::entails(rsrc.v, to);
+    Release { v: v2 }
+}
+
+// NOTE skipping RELMOD-PURE (what does owning a pure proposition mean in Verus?)
+// pub proof fn relmod_pure<T>(tracked t : Release<T>) -> (out: T)
+//     ensures out == rsrc.v,
+// {
+//     rel_fence_elim(rsrc)
+// }
+
+// NOTE I'm not sure if it's very important to have relmod_and, but in any case, below are two attempts at encoding it.
+
+// ATTEMPT 1: Encoding P /\ Q with two separate shared references
+// I tried here to return references to P and Q to indicate that there could be sharing, but I'm not sure how to relate rsrc (which need to be P /\ Q) to the result.
+// pub axiom fn relmod_and<'a, T>(tracked rsrc: &'a Release<T>, P : T, Q : T) -> (tracked out: (&'a Release<P>, &'a Release<Q>))
+//     requires
+//         rsrc.v = ???
+//     ensures
+//         out.0.v == P,
+//         out.1.v == Q,
+//     ;
+
+// ATTEMPT 2: Encoding the /\ operator explicitly as a struct, where basically owning And<T, T1, T2> means owning resource T and having proofs to get T1 from T and to get T2 from T.
+
+// // For some reason the compiler rejects the below struct:
+// // error[E0106]: missing lifetime specifier
+// //    --> vstd/atomic_relaxed.rs:144:15
+// //     |
+// // 144 |     pub fst : proof_fn(tracked t : T) -> tracked T1,
+// //     |               ^ expected named lifetime parameter
+// //     |
+// // help: consider introducing a named lifetime parameter
+// //     |
+// // 142 ~ pub struct And<'a, T1, T2, T> {
+// // 143 |     pub v : Tracked<T>,
+// // 144 ~     pub fst : p'a, roof_fn(tracked t : T) -> tracked T1,
+// //     |
+// pub struct and<T1, T2, T> {
+//     pub v : tracked<T>,
+//     pub fst : proof_fn(tracked t : T) -> tracked T1,
+//     pub snd : proof_fn(tracked t : T) -> tracked T2,
+// }
+
+// pub axiom fn relmod_and<'a, T, P, Q>(tracked rsrc: Release<And<T,P,Q>>, p : P, q : Q) -> (tracked out: (Release<P>, &'a Release<Q>))
+//     requires
+//         rsrc.v.fst.requires((rsrc.v.v,)),
+//         forall|p2: P| rsrc.v.fst.ensures((rsrc.v.v,), p2) ==> p2 == p,
+//         rsrc.v.snd.requires((rsrc.v.v,)),
+//         forall|q2: Q| rsrc.v.snd.ensures((rsrc.v.v,), q2) ==> q2 == q,
+//     ensures
+//         out.0.v == p,
+//         out.1.v == q,
+//     ;
+
+// ATTEMPT 3: Encoding the /\ operator explicitly as a trait. Basically owning E where E implements And<T1, T2> means owning resource T and having proofs to get T1 from T and to get T2 from T.
+
+// pub trait And<T1, T2> {
+//     proof fn fst(tracked self, to: T1) -> (tracked out: T1)
+//         ensures
+//             out == to,
+//         ;
+
+//     proof fn snd(tracked self, to: T2) -> (tracked out: T2)
+//         ensures
+//             out == to,
+//         ;
+// }
+
+// pub axiom fn relmod_and<'a, P, Q, E : And<P, Q>>(tracked rsrc: Release<E>, p : P, q : Q) -> (tracked out: (&'a Release<P>, &'a Release<Q>))
+//     requires ???,
+//     ensures
+//         out.0.v == p,
+//         out.1.v == q,
+//     ;
+
+
+pub enum Or<T1, T2> {
+    Left(T1),
+    Right(T2),
+}
+
+pub proof fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: Or<Release<P>, Release<Q>>)
+    ensures
+        out == match rsrc.v {
+            Or::Left(p) => Or::Left(Release { v: p }),
+            Or::Right(q) => Or::Right(Release { v: q }),
+        },
+{
+    match rsrc.v {
+        Or::Left(p) => Or::Left(Release { v: p }),
+        Or::Right(q) => Or::Right(Release { v: q }),
+    }
+}
+
+// NOTE skipping RELMOD-FORALL and RELMOD-EXIST for now
+pub proof fn relmod_sep1<P, Q>(tracked rsrc: Release<(P, Q)>) -> (tracked out: (Release<P>, Release<Q>))
+    ensures
+        out == (Release { v: rsrc.v.0 }, Release { v: rsrc.v.1 }),
+{
+    (Release { v: rsrc.v.0 }, Release { v: rsrc.v.1 })
+}
+
+pub proof fn relmod_sep2<P, Q>(tracked rsrc: (Release<P>, Release<Q>)) -> (tracked out: Release<(P, Q)>)
+    ensures
+        out == (Release { v: (rsrc.0.v, rsrc.1.v) }),
+{
+    Release { v: (rsrc.0.v, rsrc.1.v) }
+}
+
+// NOTE The specs seem weak
+pub proof fn relmod_wand<P, Q>(tracked rsrc: Release<proof_fn[Once](tracked p : P) -> tracked Q>) -> (tracked out: proof_fn[Once](tracked p : Release<P>) -> tracked Release<Q>)
+{
+    let tracked f = rsrc.v;
+    let tracked f2 = proof_fn[Once]|tracked p : Release<P>| -> (tracked q: Release<Q>) 
+        requires f.requires((p.v,)),
+    {
+        let tracked v2 = f(p.v);
+        Release { v: v2 }
+    };
+    f2
+}
+
+// NOTE skipping RELMOD-LATER-INTRO and RELMOD-UNOPS
+
+// TODO acquire modality monotonicity, and, or, wand, sep1, sep2
 
 // Objective modality
 /// This trait should be implemented on types P such that objective(P) holds
