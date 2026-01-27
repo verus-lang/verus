@@ -69,6 +69,7 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
 use vstd::resource::update_and_redistribute;
@@ -98,7 +99,7 @@ pub enum OneShotResourceValue {
 
 // To use `OneShotResourceValue` as a resource, we have to implement
 // `PCM`, showing how to use it in a resource algebra.
-impl PCM for OneShotResourceValue {
+impl ResourceAlgebra for OneShotResourceValue {
     open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
@@ -119,10 +120,6 @@ impl PCM for OneShotResourceValue {
         }
     }
 
-    open spec fn unit() -> Self {
-        OneShotResourceValue::Empty {  }
-    }
-
     proof fn valid_op(a: Self, b: Self) {
     }
 
@@ -130,6 +127,11 @@ impl PCM for OneShotResourceValue {
     }
 
     proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+impl PCM for OneShotResourceValue {
+    open spec fn unit() -> Self {
+        OneShotResourceValue::Empty {  }
     }
 
     proof fn op_unit(self) {
