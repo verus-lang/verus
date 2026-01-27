@@ -82,7 +82,7 @@ pub(crate) struct BodyCtxt<'tcx> {
 }
 
 impl<'tcx> ContextX<'tcx> {
-    fn new(
+    pub(crate) fn new(
         cmd_line_args: crate::config::Args,
         tcx: TyCtxt<'tcx>,
         erasure_info: ErasureInfoRef,
@@ -107,28 +107,6 @@ impl<'tcx> ContextX<'tcx> {
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
         }
-    }
-
-    pub(crate) fn new_rc(
-        cmd_line_args: crate::config::Args,
-        tcx: TyCtxt<'tcx>,
-        erasure_info: ErasureInfoRef,
-        spans: crate::spans::SpanContext,
-        verus_items: Arc<VerusItems>,
-        no_vstd: bool,
-        crate_name: Ident,
-        vstd_crate_name: Ident,
-    ) -> Rc<Self> {
-        Rc::new(Self::new(
-            cmd_line_args,
-            tcx,
-            erasure_info,
-            spans,
-            verus_items,
-            no_vstd,
-            crate_name,
-            vstd_crate_name,
-        ))
     }
 
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {

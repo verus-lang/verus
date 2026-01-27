@@ -1,7 +1,7 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
-use crate::context::{Context, ContextX, ErasureInfo};
+use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
@@ -2729,7 +2729,7 @@ impl Verifier {
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
         let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
-        let mut ctxt = ContextX::new_rc(
+        let ctxtx = ContextX::new(
             self.args.clone(),
             tcx,
             erasure_info,
@@ -2740,13 +2740,13 @@ impl Verifier {
             vstd_crate_name,
         );
 
-        let ctxt_diagnostics = ctxt.diagnostics.clone();
+        let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
-        let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_err_diagnostics)?;
 
-        check_no_opaque_types_in_trait(&ctxt, &crate_items).map_err(map_err_diagnostics)?;
+        check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
         if !self.args.no_lifetime {
             crate::erase::setup_verus_aware_ids(&crate_items);
@@ -2779,8 +2779,8 @@ impl Verifier {
                 .collect()
         };
 
-        let vir_crate =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
+        let (ctxt, vir_crate) =
+            crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
@@ -3007,7 +3007,7 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
 /// will cause the thir_body to run before VerusErasureCtxt is initialized.
 /// We disallow opaque types in trait for now.
 fn check_no_opaque_types_in_trait<'tcx>(
-    ctxt: &Context<'tcx>,
+    tcx: TyCtxt<'tcx>,
     crate_items: &crate::external::CrateItems,
 ) -> Result<(), VirErr> {
     for item in crate_items.items.iter() {
@@ -3016,7 +3016,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
         }
         match item.id {
             crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
-                match ctxt.tcx.hir_trait_item(trait_item_id).kind {
+                match tcx.hir_trait_item(trait_item_id).kind {
                     rustc_hir::TraitItemKind::Fn(sig, _) => {
                         if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
                             if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {

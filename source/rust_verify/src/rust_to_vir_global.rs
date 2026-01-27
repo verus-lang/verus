@@ -1,9 +1,8 @@
-use std::rc::Rc;
-
 use rustc_hir::{ConstItemRhs, Item, ItemKind};
 use vir::ast::{IntRange, Typ, TypX, VirErr};
 
-use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};
+use crate::context::ContextX;
+use crate::{unsupported_err_unless, verus_items::VerusItem};
 
 #[derive(Debug)]
 pub(crate) struct TypIgnoreImplPaths(pub Typ);
@@ -29,7 +28,7 @@ impl std::hash::Hash for TypIgnoreImplPaths {
 impl Eq for TypIgnoreImplPaths {}
 
 pub(crate) fn process_const_early<'tcx>(
-    ctxt: &mut Context<'tcx>,
+    ctxt: &mut ContextX<'tcx>,
     typs_sizes_set: &mut std::collections::HashMap<TypIgnoreImplPaths, u128>,
     item: &Item<'tcx>,
 ) -> Result<(), VirErr> {
@@ -106,19 +105,18 @@ pub(crate) fn process_const_early<'tcx>(
         }
 
         if let TypX::Int(IntRange::USize | IntRange::ISize) = &*ty {
-            let arch_word_bits = &mut Rc::make_mut(ctxt).arch_word_bits;
-            if let Some(arch_word_bits) = arch_word_bits {
+            if let Some(arch_word_bits) = ctxt.arch_word_bits {
                 let vir::ast::ArchWordBits::Exactly(size_bits_set) = arch_word_bits else {
                     panic!("unexpected ArchWordBits");
                 };
-                if (size * 8) as u32 != *size_bits_set {
+                if (size * 8) as u32 != size_bits_set {
                     return crate::util::err_span(
                         item.span,
-                        format!("usize or isize have already been set to {} bits", *size_bits_set),
+                        format!("usize or isize have already been set to {} bits", size_bits_set),
                     );
                 }
             }
-            *arch_word_bits = Some(match size {
+            ctxt.arch_word_bits = Some(match size {
                 4 | 8 => vir::ast::ArchWordBits::Exactly((size * 8) as u32),
                 _ => {
                     return crate::util::err_span(
