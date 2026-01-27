@@ -736,8 +736,23 @@ pub fn func_def_to_sst(
     //  - Mask specs
     // Note: Requires only appear at the beginning
     // Note: Decreases are handled by a different mechanism
-    let exp_pre = |exp: &Exp| crate::sst_util::exp_with_vars_at_pre_state(exp, &params_to_use_pre);
-    let stm_pre = |stm: &Stm| crate::sst_util::stm_with_vars_at_pre_state(stm, &params_to_use_pre);
+    //
+    // We also skip for bitvector, since the bitvector code doesn't handle VarAt.
+    // This is ok since bitvector functions don't have bodies so they can't have assignments.
+    let exp_pre = |exp: &Exp| {
+        if function.x.attrs.bit_vector {
+            exp.clone()
+        } else {
+            crate::sst_util::exp_with_vars_at_pre_state(exp, &params_to_use_pre)
+        }
+    };
+    let stm_pre = |stm: &Stm| {
+        if function.x.attrs.bit_vector {
+            stm.clone()
+        } else {
+            crate::sst_util::stm_with_vars_at_pre_state(stm, &params_to_use_pre)
+        }
+    };
 
     // This is used for lowering expressions from the function
     let lo_current = Lowerer::current(&function, &ens_pars, diagnostics);
