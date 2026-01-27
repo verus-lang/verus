@@ -244,7 +244,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
         let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind);
 
-        Expr { temp_lifetime, ty: adjustment.target, span, kind }
+        Expr { temp_scope_id, ty: adjustment.target, span, kind }
     }
 
     /// Lowers a cast expression.
