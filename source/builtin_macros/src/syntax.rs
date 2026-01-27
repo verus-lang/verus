@@ -5043,15 +5043,8 @@ pub(crate) fn for_loop_spec_attr(
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
-#[cfg(verus_keep_ghost)]
 pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     verus_syn::rejoin_tokens(stream.into()).into()
-}
-
-#[cfg(not(verus_keep_ghost))]
-// REVIEW: how much do we actually rely on rejoin_tokens?
-fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    stream
 }
 
 pub(crate) fn proof_block(
