@@ -147,6 +147,7 @@ for all functions (it would only be needed for functions with tracked data in pr
 */
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
+    #[cfg(verus_verify_core)]
     pub override_stability: bool,
 }
 
@@ -201,6 +202,7 @@ pub(crate) fn run_with_erase_macro_compile(
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile: compile,
+        #[cfg(verus_verify_core)]
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
