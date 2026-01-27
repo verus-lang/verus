@@ -1,131 +1,125 @@
+use super::super::modes::*;
 use super::super::prelude::*;
+use super::super::set::*;
 use super::Loc;
-use super::algebra::ResourceAlgebra;
+use super::option::*;
+use super::pcm;
+use super::pcm::PCM;
 use super::relations::*;
-
-#[cfg(verus_keep_ghost)]
-use super::super::modes::tracked_swap;
 
 verus! {
 
 broadcast use super::super::set::group_set_axioms;
 
-/// Interface for PCM / Resource Algebra ghost state.
-///
-/// RA-based ghost state is a well-established theory that is especially
-/// useful for verifying concurrent code. An introduction to the concept
-/// can be found in
-/// [Iris: Monoids and Invariants as an Orthogonal Basis for Concurrent Reasoning](https://iris-project.org/pdfs/2015-popl-iris1-final.pdf)
-/// or
-/// [Iris from the ground up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf).
-///
-/// To embed the concept into Verus, we:
-///  * Use a trait, [`PCM`], to embed the well-formedness laws of a resource algebra
-///  * use a "tracked ghost" object, `Resource<P>` (this page) to represent ownership of a resource.
-///
-/// Most operations are fairly standard, just "translated" from the usual CSL presentation into Verus.
-///
-///  * [`alloc`](Self::alloc) to allocate a resource.
-///  * [`join`](Self::join) to combine two resources via `P::op`, and [`split`](Self::split), its inverse.
-///  * [`validate`](Self::validate) to assert the validity of any held resource.
-///  * [`update`](Self::update) or [`update_nondeterministic`](Self::update_nondeterministic) to perform a frame-preserving update.
-///
-/// The interface also includes a nontrivial extension for working with _shared references_ to resources.
-/// Shared resources do not compose in a "separating" way via `P::op`, but rather, in a "potentially overlapping" way ([`join_shared`](Self::join_shared)). Shared resources can also be used to "help" perform frame-preserving updates, as long as they themselves do not change ([`update_with_shared`](Self::update_with_shared)).
-///
-/// ### Examples
-///
-/// See:
-///  * Any of the examples in [this directory](https://github.com/verus-lang/verus/tree/main/examples/pcm)
-///  * The source code for the [fractional resource library](super::tokens::frac::FracGhost)
-///
-/// ### See also
-///
-/// The ["storage protocol"](super::storage_protocol::StorageResource) formalism
-/// is an even more significant
-/// extension with additional capabilities for interacting with shared resources.
-///
-/// [VerusSync](https://verus-lang.github.io/verus/state_machines/intro.html) provides a higher-level
-/// "swiss army knife" for building useful ghost resources.
-// Resource must be external_body, otherwise it could be constructed directly
-#[verifier::external_body]
-#[verifier::accept_recursive_types(P)]
-pub tracked struct Resource<P: PCM> {
-    p: core::marker::PhantomData<P>,
+/// Interface for Resource Algebra ghost state.
+#[verifier::accept_recursive_types(RA)]
+pub tracked struct Resource<RA: ResourceAlgebra> {
+    pcm: pcm::Resource<Option<RA>>,
 }
 
-/// A Partial Commutative Monoid is a special type of [`ResourceAlgebra`], where all elements have
-/// the same core (which belongs in the carrier), the unit. For this reason, they are also called
-/// unitary resource algebras[^note].
+/// A Resource Algebra operating on a type T
 ///
-/// [^note]: This is slightly misleading. PCMs are partial in the sense that the operation is not
-/// defined for certain inputs. Because Verus does not support partial functions, we model that
-/// partiality with the validity predicate, which does make it a unitary resource algebra.
-pub trait PCM: ResourceAlgebra {
-    /// The unit of the monoid, i.e., the carrier value that composed with any other carrier value
-    /// yields the identity function
-    spec fn unit() -> Self;
+/// This construction is based off the [Iris from the Ground Up](https://people.mpi-sws.org/~dreyer/papers/iris-ground-up/paper.pdf)
+/// report.
+///
+/// A striking difference is that we do not need a core for elements (the core is interesting in
+/// Iris because of the persistent modality, which Verus does not have).
+///
+/// See [`Resource`] for more information.
+// TODO(bsdinis): it should probably not be required that ghost things be sized, but that sounds
+// like a relatively complicated change -- needs to be done across the codebase
+pub trait ResourceAlgebra: Sized {
+    /// Whether an element is valid
+    spec fn valid(self) -> bool;
 
-    /// The core of an element `a` is, by definition, some other element `x`
-    /// such that `a · x = a`
-    proof fn op_unit(self)
+    /// Compose two elements
+    ///
+    /// Sometimes the notation `a · b` is used to represent `RA::op(a, b)`
+    spec fn op(a: Self, b: Self) -> Self;
+
+    /// The operation is associative
+    proof fn associative(a: Self, b: Self, c: Self)
         ensures
-            Self::op(self, Self::unit()) == self,
+            Self::op(a, Self::op(b, c)) == Self::op(Self::op(a, b), c),
     ;
 
-    /// The unit is always a valid element
-    proof fn unit_valid()
+    /// The operation is commutative
+    proof fn commutative(a: Self, b: Self)
         ensures
-            Self::unit().valid(),
+            Self::op(a, b) == Self::op(b, a),
+    ;
+
+    /// The operation is closed under inclusion
+    /// (i.e., if the result of the operation is valid then its parts are also valid)
+    proof fn valid_op(a: Self, b: Self)
+        requires
+            Self::op(a, b).valid(),
+        ensures
+            a.valid(),
     ;
 }
 
-impl<P: PCM> Resource<P> {
+/// Implementation of a [`Resource`] based on a [`ResourceAlgebra`]
+// This follows roughly the Iris from the Ground up construction
+impl<RA: ResourceAlgebra> Resource<RA> {
+    #[verifier::type_invariant]
+    spec fn inv(self) -> bool {
+        self.pcm.value() is Some
+    }
+
     /// The underlying value of the resource
-    pub uninterp spec fn value(self) -> P;
+    pub closed spec fn value(self) -> RA {
+        self.pcm.value()->Some_0
+    }
 
     /// The location of the resource
-    pub uninterp spec fn loc(self) -> Loc;
+    pub closed spec fn loc(self) -> Loc {
+        self.pcm.loc()
+    }
 
-    // AXIOMS
     /// Allocate a new resource at a fresh location
     // GHOST-ALLOC rule
-    pub axiom fn alloc(value: P) -> (tracked out: Self)
+    pub proof fn alloc(value: RA) -> (tracked out: Self)
         requires
             value.valid(),
         ensures
             out.value() == value,
-    ;
+    {
+        let tracked pcm = pcm::Resource::alloc(Some(value));
+        Resource { pcm }
+    }
 
     /// We can join together two resources at the same location, where we obtain the combination of
     /// the two
     // reverse implication in the GHOST-OP rule
-    pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
-            out.value() == P::op(self.value(), other.value()),
-    ;
+            out.value() == RA::op(self.value(), other.value()),
+    {
+        use_type_invariant(&self);
+        use_type_invariant(&other);
+        let tracked pcm = self.pcm.join(other.pcm);
+        Resource { pcm }
+    }
 
     /// If a resource holds the result of a composition, we can split it into the components
     // implication in the GHOST-OP rule
-    pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
+    pub proof fn split(tracked self, left: RA, right: RA) -> (tracked out: (Self, Self))
         requires
-            self.value() == P::op(left, right),
+            self.value() == RA::op(left, right),
         ensures
             out.0.loc() == self.loc(),
             out.1.loc() == self.loc(),
             out.0.value() == left,
             out.1.value() == right,
-    ;
-
-    /// Create a unit at a particular location
-    pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
-        ensures
-            out.value() == P::unit(),
-            out.loc() == loc,
-    ;
+    {
+        use_type_invariant(&self);
+        let tracked (left, right) = self.pcm.split(Some(left), Some(right));
+        (Resource { pcm: left }, Resource { pcm: right })
+    }
 
     /// Whenever we have a resource, that resource is valid. This intuitively (and inductively)
     /// holds because:
@@ -134,30 +128,37 @@ impl<P: PCM> Resource<P> {
     ///     2. We can only update the value of a resource via a [`frame_preserving_update`] (see
     ///        [`update`](Self::update) for more details. Because of the requirement of that
     ///        updates are frame preserving this means that `join`s remain valid.
-    // GHOST-VALID rule
-    pub axiom fn validate(tracked &self)
+    pub proof fn validate(tracked &self)
         ensures
             self.value().valid(),
-    ;
+    {
+        use_type_invariant(self);
+        self.pcm.validate();
+    }
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub proof fn update_nondeterministic(tracked self, new_values: Set<RA>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    ;
+    {
+        use_type_invariant(&self);
+        let opt_new_values = new_values.map(|v| Some(v));
+        lemma_frame_preserving_update_nondeterministic_opt(self.value(), new_values);
+        let tracked pcm = self.pcm.update_nondeterministic(opt_new_values);
+        Resource { pcm }
+    }
 
-    // VERIFIED
     /// Update a resource to a new value. This can only be done if the update is frame preserving
     /// (i.e., any value that could be composed with the original value can still be composed with
     /// the new value).
     ///
     /// See [`frame_preserving_update`] for more information.
     // variant of the GHOST-UPDATE rule
-    pub proof fn update(tracked self, new_value: P) -> (tracked out: Self)
+    pub proof fn update(tracked self, new_value: RA) -> (tracked out: Self)
         requires
             frame_preserving_update(self.value(), new_value),
         ensures
@@ -183,10 +184,9 @@ impl<P: PCM> Resource<P> {
     }
 
     // Operations with shared references
-    // AXIOMS on shared references
     /// This is useful when you have two (or more) shared resources and want to learn
     /// that they agree, as you can combine this validate, e.g., `x.join_shared(y).validate()`.
-    pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
         &'a Self)
         requires
             self.loc() == other.loc(),
@@ -194,50 +194,77 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
             incl(other.value(), out.value()),
-    ;
+    {
+        use_type_invariant(self);
+        use_type_invariant(other);
+        let tracked pcm = self.pcm.join_shared(&other.pcm);
+        // TODO: this is a reference to a PCM resource -- not a reference to a RA Resource
+        assume(false);
+        proof_from_false()
+    }
 
     /// Extract a shared reference to a preceding element in the extension order from a shared reference.
-    pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
+    pub proof fn weaken<'a>(tracked &'a self, target: RA) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
             out.value() == target,
-    ;
+    {
+        use_type_invariant(self);
+        lemma_incl_opt(target, self.value());
+        let tracked pcm = self.pcm.weaken(Some(target));
+        // TODO: this is a reference to a PCM resource -- not a reference to a RA Resource
+        assume(false);
+        proof_from_false()
+    }
 
     /// Validate two items at once. If we have two resources at the same location then its
     /// composition is valid.
-    pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
+    pub proof fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
             *self == *old(self),
-            P::op(self.value(), other.value()).valid(),
-    ;
+            RA::op(self.value(), other.value()).valid(),
+    {
+        use_type_invariant(&*self);
+        use_type_invariant(other);
+        self.pcm.validate_2(&other.pcm);
+    }
 
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
-    pub axiom fn update_nondeterministic_with_shared(
+    pub proof fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
-        new_values: Set<P>,
+        new_values: Set<RA>,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
             frame_preserving_update_nondeterministic(
-                P::op(self.value(), other.value()),
+                RA::op(self.value(), other.value()),
                 set_op(new_values, other.value()),
             ),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    ;
+    {
+        use_type_invariant(&self);
+        use_type_invariant(other);
+        let a = RA::op(self.value(), other.value());
+        let bs = set_op(new_values, other.value());
+        let new_values_opt = new_values.map(|v| Some(v));
+        lemma_frame_preserving_update_nondeterministic_opt(a, bs);
+        lemma_set_op_opt(new_values, other.value());
+        let tracked pcm = self.pcm.update_nondeterministic_with_shared(&other.pcm, new_values_opt);
+        Resource { pcm }
+    }
 
-    // VERIFIED facts about shared references
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
     pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
         tracked other: &'a Self,
-        target: P,
+        target: RA,
     ) -> (tracked out: &'a Self)
         requires
             self.loc() == other.loc(),
@@ -256,13 +283,13 @@ impl<P: PCM> Resource<P> {
     pub proof fn update_with_shared(
         tracked self,
         tracked other: &Self,
-        new_value: P,
+        new_value: RA,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
             frame_preserving_update(
-                P::op(self.value(), other.value()),
-                P::op(new_value, other.value()),
+                RA::op(self.value(), other.value()),
+                RA::op(new_value, other.value()),
             ),
         ensures
             out.loc() == self.loc(),
@@ -270,23 +297,24 @@ impl<P: PCM> Resource<P> {
     {
         let new_values = set![new_value];
         let so = set_op(new_values, other.value());
-        assert(so.contains(P::op(new_value, other.value())));
+        assert(so.contains(RA::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
     }
 
     /// If `x --> x · y` is a frame-perserving update, and we have a shared reference to `x`,
     /// we can create a resource to y
-    pub proof fn duplicate_previous(tracked &self, value: P) -> (tracked out: Self)
+    pub proof fn duplicate_previous(tracked &self, value: RA) -> (tracked out: Self)
         requires
-            frame_preserving_update(self.value(), P::op(value, self.value())),
+            frame_preserving_update(self.value(), RA::op(value, self.value())),
         ensures
             out.loc() == self.loc(),
             out.value() == value,
     {
-        let tracked mut unit = Self::create_unit(self.loc());
-        self.value().op_unit();
-        P::commutative(self.value(), unit.value());
-        unit.update_with_shared(self, value)
+        use_type_invariant(self);
+        let b = RA::op(value, self.value());
+        lemma_frame_preserving_opt(self.value(), b);
+        let tracked pcm = self.pcm.duplicate_previous(Some(value));
+        Resource { pcm }
     }
 }
 
