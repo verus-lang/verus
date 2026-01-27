@@ -1,4 +1,4 @@
-use crate::cli::VargoCheck;
+use crate::cli::VargoClippy;
 use crate::cli::VargoOptions;
 use crate::cli::VerusFeatures;
 use crate::commands::cargo_run;
@@ -6,9 +6,9 @@ use crate::commands::AddOptions;
 use crate::context::VargoContext;
 use crate::macros::info;
 
-impl AddOptions for VargoCheck {
+impl AddOptions for VargoClippy {
     fn add_options(&self, cargo: &mut std::process::Command) {
-        cargo.arg("check");
+        cargo.arg("clippy");
 
         if self.release {
             cargo.arg("--release");
@@ -26,14 +26,16 @@ impl AddOptions for VargoCheck {
         }
 
         self.feature_options.add_options(cargo);
+        cargo.arg("--");
+        cargo.args(&self.clippy_args);
     }
 
     fn cmd_name(&self) -> &str {
-        "check"
+        "clippy"
     }
 }
 
-impl VargoCheck {
+impl VargoClippy {
     fn apply_feature_filter(&mut self) {
         match self.package.as_deref() {
             Some("rust_verify") => {
@@ -51,10 +53,10 @@ impl VargoCheck {
     }
 }
 
-pub fn check(
+pub fn clippy(
     options: &VargoOptions,
     context: &VargoContext,
-    vargo_cmd: &VargoCheck,
+    vargo_cmd: &VargoClippy,
 ) -> anyhow::Result<()> {
     if context.in_nextest {
         return Ok(());
@@ -63,21 +65,21 @@ pub fn check(
     if vargo_cmd.package.is_some() {
         let mut vargo_cmd = vargo_cmd.clone();
         vargo_cmd.apply_feature_filter();
-        check_target(options, context, &vargo_cmd)
+        clippy_target(options, context, &vargo_cmd)
     } else {
-        info!("running cargo-check",);
+        info!("running cargo-clippy",);
         cargo_run(options, context, vargo_cmd)
     }
 }
 
-fn check_target(
+fn clippy_target(
     options: &VargoOptions,
     context: &VargoContext,
-    vargo_cmd: &VargoCheck,
+    vargo_cmd: &VargoClippy,
 ) -> anyhow::Result<()> {
     assert!(vargo_cmd.package.is_some());
     info!(
-        "running cargo-check on {}",
+        "running cargo-clippy on {}",
         vargo_cmd
             .package
             .as_deref()
