@@ -131,6 +131,13 @@ pub tracked struct PointsTo<T: ?Sized> {
     no_copy: NoCopy,
 }
 
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub tracked struct PointsToUnaligned<T: ?Sized> {
+    phantom: core::marker::PhantomData<T>,
+    no_copy: NoCopy,
+}
+
 //#[verifier::external_body]
 //#[verifier::accept_recursive_types(T)]
 //pub tracked struct PointsToBytes<T> {
@@ -216,6 +223,14 @@ impl<T> View for PointsTo<T> {
 
 }
 
+impl<T> View for PointsToUnaligned<T> {
+    type V = PointsToData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData { ptr: self.ptr(), opt_value: self.opt_value() }
+    }
+}
+
 impl<T> PointsTo<T> {
     /// The (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn opt_value(&self) -> MemContents<T>;
@@ -275,6 +290,16 @@ impl<T> PointsTo<T> {
             self.is_uninit(),
     ;
 
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    pub axiom fn ptr_bounds(tracked &self)
+        requires
+            size_of::<T>() != 0,
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
+            self.ptr()@.addr as int + size_of::<T>() as int <= self.ptr()@.provenance.start_addr()
+                + self.ptr()@.provenance.alloc_len(),
+    ;
+
     /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     ///
@@ -285,6 +310,137 @@ impl<T> PointsTo<T> {
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<S>() <= self.ptr() as int,
+    ;
+
+    /// Convert an aligned PointsTo to an unaligned PointsToUnaligned.
+    /// This is always safe since aligned is stricter than unaligned.
+    pub axiom fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
+        ensures
+    // pointer locations remain the same
+
+            perm.ptr() == self.ptr(),
+            // the status of memory initialization also remains the same
+            perm.opt_value() == self.opt_value(),
+    ;
+
+    /// Borrow as unaligned (non-consuming).
+    pub axiom fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
+        ensures
+    // pointer locations remain the same
+
+            perm.ptr() == self.ptr(),
+            // the status of memory initialization also remains the same
+            perm.opt_value() == self.opt_value(),
+    ;
+
+    /// Cast a `PointsTo<T>` to a `PointsTo<V>`, provided memory is initialized,
+    /// the pointer is aligned to `V`, and sizes match.
+    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
+        requires
+            self.is_init(),
+            self.ptr()@.addr as int % align_of::<V>() as int == 0,
+            size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            points_to.is_init(),
+    ;
+}
+
+impl<T> PointsToUnaligned<T> {
+    /// The pointer that this permission is associated with.
+    pub uninterp spec fn ptr(&self) -> *mut T;
+
+    /// The (possibly uninitialized) memory that this permission gives access to.
+    pub uninterp spec fn opt_value(&self) -> MemContents<T>;
+
+    /// Returns `true` if the permission's associated memory is initialized.
+    #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        self.opt_value().is_init()
+    }
+
+    /// Returns `true` if the permission's associated memory is uninitialized.
+    #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        self.opt_value().is_uninit()
+    }
+
+    /// If the permission's associated memory is initialized,
+    /// returns the value that the pointer points to.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_init(),
+    {
+        self.opt_value().value()
+    }
+
+    /// Guarantee that the `PointsToUnaligned` for any non-zero-sized type points to a non-null address.
+    pub axiom fn is_nonnull(tracked &self)
+        requires
+            size_of::<T>() != 0,
+        ensures
+            self.ptr()@.addr != 0,
+    ;
+
+    /// "Forgets" about the value stored behind the pointer.
+    pub axiom fn leak_contents(tracked &mut self)
+        ensures
+            self.ptr() == old(self).ptr(),
+            self.is_uninit(),
+    ;
+
+    /// Guarantees that the memory ranges associated with two permissions will not overlap.
+    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
+        ensures
+            *old(self) == *self,
+            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= self.ptr() as int,
+    ;
+
+    /// Convert PointsToUnaligned to an aligned PointsTo
+    pub axiom fn into_aligned(tracked self) -> (tracked perm: PointsTo<T>)
+        requires
+    // require alignment as a precondition for conversion
+
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+    // ensure the pointer values are the same
+
+            perm.ptr() == self.ptr(),
+            // and the memory initialization status
+            perm.opt_value() == self.opt_value(),
+    ;
+
+    pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            perm.ptr() == self.ptr(),
+            perm.opt_value() == self.opt_value(),
+    ;
+
+    /// Cast a `PointsToUnaligned<T>` to a `PointsToUnaligned<V>`, provided memory
+    /// is initialized and sizes match. No alignment requirement.
+    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsToUnaligned<V>)
+        requires
+            self.is_init(),
+            size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            points_to.is_init(),
     ;
 }
 
@@ -1162,12 +1318,16 @@ impl<'a, T> SharedReference<'a, T> {
         &*self.0
     }
 
+    // NOTE: there does not exist a points_to_unaligned function because SharedReference
+    // by definition gives you an _aligned_ PointsTo.
+    // https://doc.rust-lang.org/std/primitive.reference.html
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
             pt.value() == self.value(),
     ;
+
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
