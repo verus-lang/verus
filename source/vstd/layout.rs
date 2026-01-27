@@ -21,10 +21,10 @@ pub uninterp spec fn size_of<V>() -> nat;
 pub uninterp spec fn align_of<V>() -> nat;
 
 // compiler wants &V instead of V -- complains about V not being Sized
-/// Spec for (`size_of_val`)[https://doc.rust-lang.org/std/mem/fn.size_of_val.html].
+/// Spec for `size_of_val`: <https://doc.rust-lang.org/std/mem/fn.size_of_val.html>.
 pub uninterp spec fn spec_size_of_val<V: ?Sized>(val: &V) -> nat;
 
-/// Spec for (`align_of_val)[https://doc.rust-lang.org/std/mem/fn.align_of_val.html].
+/// Spec for `align_of_val`: <https://doc.rust-lang.org/std/mem/fn.align_of_val.html>.
 pub uninterp spec fn spec_align_of_val<V: ?Sized>(val: &V) -> nat;
 
 // Naturally, the size of any executable type is going to fit into a `usize`.
