@@ -404,7 +404,9 @@ impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -463,7 +465,9 @@ impl<A> Tracked<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -495,7 +499,9 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
+    #[allow(clippy::uninit_assumed_init)]
     pub const fn get(#[verifier::proof] self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 

@@ -55,13 +55,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 #  - If an already enforced lint is being pedantic for a particular instance, where
 #    fixing it would be overly complex, consider also `allow`ing it on that particular instance.
 
-# correctness
-absurd_extreme_comparisons = "allow"
-derived_hash_with_manual_eq = "allow"
-never_loop = "allow"
-uninit_assumed_init = "allow"
-unused_io_amount = "allow"
-
 # perf
 cloned_ref_to_slice_refs = "allow"
 cmp_owned = "allow"

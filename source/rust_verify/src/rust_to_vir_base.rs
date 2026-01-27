@@ -2043,10 +2043,16 @@ fn check_generics_bounds_main<'tcx>(
             }
         }
     }
-    for x in accept_recs.keys() {
-        return err_span(span, format!("unused parameter attribute {x}"));
+    if accept_recs.is_empty() {
+        Ok((Arc::new(typ_params), Arc::new(bounds)))
+    } else {
+        let multiple = accept_recs.len() > 1;
+        let unused_attrs = accept_recs.keys().map(|x| x.as_str()).collect::<Vec<_>>().join(", ");
+        err_span(
+            span,
+            format!("unused parameter attribute{} {unused_attrs}", if multiple { "s" } else { "" }),
+        )
     }
-    Ok((Arc::new(typ_params), Arc::new(bounds)))
 }
 
 pub(crate) fn check_generics_bounds_no_polarity<'tcx>(

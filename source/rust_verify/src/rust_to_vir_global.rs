@@ -5,12 +5,24 @@ use vir::ast::{IntRange, Typ, TypX, VirErr};
 
 use crate::{context::Context, unsupported_err_unless, verus_items::VerusItem};
 
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub(crate) struct TypIgnoreImplPaths(pub Typ);
 
 impl PartialEq for TypIgnoreImplPaths {
     fn eq(&self, other: &Self) -> bool {
         vir::ast_util::types_equal(&self.0, &other.0)
+    }
+}
+
+// Manual implementation of Hash is consistent with eq (i.e., a == b ==> a.hash() == b.hash())
+// Because `vir::ast_util::types_equal` is consistent with eq.
+// Note that if a: Typ, b: Type -- a == b ==> types_equal(a, b) ==> a.hash() == b.hash()
+//
+// If at some point we have `types_equal` folded into the normal Eq impl,
+// we can then make this the default derive impl.
+impl std::hash::Hash for TypIgnoreImplPaths {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
