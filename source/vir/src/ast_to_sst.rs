@@ -633,7 +633,6 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 /// Note: we originally used this to handle the case where the loop body returns
 /// the never type (!). However, that isn't actually important anymore since loops will
 /// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
-
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
         ExprX::Loop { label, cond: None, body, .. } => loop_body_has_break(label, body),
@@ -1058,7 +1057,6 @@ pub(crate) fn expr_to_exp_skip_checks(
 /// Errors if the given expression is one that never returns a value.
 /// (This should only be used in contexts where that should never happen, like spec
 /// contexts. Otherwise, call `expr_to_stm_opt` and handle the Never case).
-
 pub(crate) fn expr_to_stm_or_error(
     ctx: &Ctx,
     state: &mut State,
@@ -1344,7 +1342,6 @@ fn if_to_stm(
 ///  * Maybe::Some(Value::Exp(e)) - means the expression e was returned
 ///  * Maybe::Some(ImplicitUnit(_)) - for the implicit unit case
 ///  * Maybe::Never - the expression can never return (e.g., after a return value or break)
-
 pub(crate) fn expr_to_stm_opt(
     ctx: &Ctx,
     state: &mut State,
@@ -2916,7 +2913,6 @@ struct BorrowMutSst {
 /// The first phase would be the evaluation of `&mut a`, while the second phase (updating
 /// the value of local variable `a`) would take place *after* the evaluation of `a.x`.
 /// Thus, when `a.x` is executed, we correctly read the pre-borrow value of `a`.
-
 fn borrow_mut_to_sst(
     ctx: &Ctx,
     state: &mut State,
@@ -3108,7 +3104,6 @@ fn place_to_exp_pair_rec(
 /// expression or LocalDecls to construct an impure one.
 /// (Note: a declaration by itself being marked 'mutable' doesn't matter for determining
 /// purity; it only matters if there are assignments later.)
-
 fn stmt_to_stm(
     ctx: &Ctx,
     state: &mut State,
@@ -3227,7 +3222,6 @@ fn stmt_to_stm(
 }
 
 /// Handle the internal of a closure
-
 fn exec_closure_body_stms(
     ctx: &Ctx,
     state: &mut State,

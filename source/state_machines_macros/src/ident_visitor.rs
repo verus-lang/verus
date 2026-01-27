@@ -26,7 +26,6 @@ use verus_syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type}
 /// We also check if the user uses a field name as a variable so we can warn them
 /// that they need to use `pre.{field name}`. This isn't essential, but it's pretty
 /// helpful since otherwise the error message from type-checking is really awkward.
-
 pub fn validate_idents_transition(
     trans: &Transition,
     field_names: HashSet<String>,
@@ -301,7 +300,6 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
 }
 
 /// Get all identifiers bound by the pattern
-
 pub fn pattern_get_bound_idents(pat: &Pat) -> Vec<Ident> {
     let mut piv = PatIdentVisitor::new();
     piv.visit_pat(pat);
@@ -329,7 +327,6 @@ impl<'ast> Visit<'ast> for PatIdentVisitor {
 }
 
 /// Error if the type contains a `super::...` path.
-
 pub fn error_on_super_path(ty: &Type) -> parse::Result<()> {
     let mut sv = SuperVisitor { errors: Vec::new() };
     sv.visit_type(ty);

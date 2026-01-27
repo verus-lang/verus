@@ -2213,7 +2213,6 @@ fn extract_choose<'tcx>(
 ///
 /// This is needed because the syntax macro can often create expressions that look like:
 /// forall(closure_to_fn_spec(|x| { ... }))
-
 fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) -> &'tcx Expr<'tcx> {
     match &expr.kind {
         ExprKind::Call(fun, args_slice) => match &fun.kind {

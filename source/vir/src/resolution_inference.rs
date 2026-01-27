@@ -1658,7 +1658,6 @@ pub fn pattern_all_bound_vars_with_ownership(
 /// let (x, _) = y;   // moves y.0
 /// let (x, _) = y.1; // moves y.1.0
 /// ```
-
 fn moves_and_muts_for_place_being_matched(
     pattern: &Pattern,
     fpt: &FlattenedPlaceTyped,

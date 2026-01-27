@@ -1,4 +1,4 @@
-///! Helper proc-macro for the atomic_ghost lib
+//! Helper proc-macro for the atomic_ghost lib
 use crate::struct_decl_inv::keyword;
 use crate::struct_decl_inv::peek_keyword;
 use proc_macro2::TokenStream;

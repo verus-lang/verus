@@ -31,7 +31,6 @@ use verus_syn::parse::Error;
 ///
 /// See `docs/command-reference.md` for more explanation, or `simplification.rs`
 /// for the expansions.
-
 fn check_inherent_condition_for_special_op(
     span: Span,
     op: &SpecialOp,

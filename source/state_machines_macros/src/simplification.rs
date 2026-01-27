@@ -17,7 +17,6 @@ use verus_syn::{Expr, Ident, Pat, Type};
 /// Note: for 'readonly' stuff, there's less to do because we don't need to handle
 /// updates. However, we still need to handle 'guard' and 'have' statements, which will
 /// be translated into 'asserts'.
-
 // Implementation:
 //
 // The simplification process has 3 primary passes here:
@@ -85,7 +84,6 @@ use verus_syn::{Expr, Ident, Pat, Type};
 //
 // Thus the purpose of this phase is to find these ideal positions for the
 // PostCondition statements.
-
 pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<SimplStmt> {
     // Phase 1: translate the update, init, and special ops into SimplStmts
     let sops = simplify_ops_with_pre(&ts, &sm, kind);

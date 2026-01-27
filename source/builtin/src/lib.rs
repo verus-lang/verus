@@ -536,17 +536,16 @@ impl<A> Clone for Ghost<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Ghost { phantom: PhantomData }
+        *self
     }
 }
 
 impl<A> Copy for Ghost<A> {}
-
 impl<A: Copy> Clone for Tracked<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Tracked { phantom: PhantomData }
+        *self
     }
 }
 
@@ -637,6 +636,8 @@ impl PartialEq for int {
 
 impl Eq for int {}
 
+// int is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for int {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -697,6 +698,8 @@ impl PartialEq for nat {
 
 impl Eq for nat {}
 
+// nat is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for nat {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -801,7 +804,7 @@ unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
 
 impl<T> Clone for SyncSendIfSyncSend<T> {
     fn clone(&self) -> Self {
-        unimplemented!();
+        *self
     }
 }
 
@@ -1694,7 +1697,7 @@ impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Clone
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     fn clone(&self) -> Self {
-        unimplemented!()
+        *self
     }
 }
 
