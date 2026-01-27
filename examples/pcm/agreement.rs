@@ -35,6 +35,7 @@ use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::prelude::*;
 use vstd::resource;
+use vstd::resource::algebra::ResourceAlgebra;
 use vstd::resource::pcm::Resource;
 use vstd::resource::pcm::PCM;
 use vstd::resource::Loc;
@@ -53,7 +54,7 @@ impl<T> AgreementResourceValue<T> {
     }
 }
 
-impl<T> PCM for AgreementResourceValue<T> {
+impl<T> ResourceAlgebra for AgreementResourceValue<T> {
     open spec fn valid(self) -> bool {
         !(self is Invalid)
     }
@@ -75,10 +76,6 @@ impl<T> PCM for AgreementResourceValue<T> {
         }
     }
 
-    open spec fn unit() -> Self {
-        AgreementResourceValue::<T>::Empty {  }
-    }
-
     proof fn valid_op(a: Self, b: Self) {
     }
 
@@ -86,6 +83,13 @@ impl<T> PCM for AgreementResourceValue<T> {
     }
 
     proof fn associative(a: Self, b: Self, c: Self) {
+    }
+}
+
+
+impl<T> PCM for AgreementResourceValue<T> {
+    open spec fn unit() -> Self {
+        AgreementResourceValue::<T>::Empty {  }
     }
 
     proof fn op_unit(self) {
