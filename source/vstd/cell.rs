@@ -263,6 +263,7 @@ impl<V> PCell<V> {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
     }
+
     // TODO this should replace the external_body implementation of `new` above;
     // however it requires unstable features: const_mut_refs and const_refs_to_cell
     //#[inline(always)]
@@ -273,7 +274,24 @@ impl<V> PCell<V> {
     //    p.put(Tracked(&mut t), v);
     //    (p, Tracked(t))
     //}
-
+    #[doc(hidden)]
+    #[verifier::ignore_outside_new_mut_ref_experiment]
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            self.id() === perm@.pcell,
+            perm.is_init(),
+        ensures
+            *v === perm.value(),
+            fin(perm).id() == perm.id(),
+            fin(perm).is_init(),
+            fin(perm).value() === *fin(v),
+        opens_invariants none
+        no_unwind
+    {
+        unsafe { (*self.ucell.get()).assume_init_mut() }
+    }
 }
 
 impl<V: Copy> PCell<V> {
