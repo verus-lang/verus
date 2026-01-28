@@ -185,8 +185,7 @@ impl State {
     }
 
     fn log(&self, s: String) {
-        if self.log.is_some() {
-            let mut log = self.log.as_ref().unwrap();
+        if let Some(mut log) = self.log.as_ref() {
             writeln!(log, "{}", s).expect("I/O error writing to the interpreter's log");
         }
     }
@@ -588,7 +587,7 @@ fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
         16 => BigInt::from_u16(u as u16),
         32 => BigInt::from_u32(u as u32),
         64 => BigInt::from_u64(u as u64),
-        128 => BigInt::from_u128(u as u128),
+        128 => BigInt::from_u128(u),
         _ => panic!("Unexpected fixed-width integer type U({})", width),
     }
     .unwrap()
@@ -601,7 +600,7 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
         16 => BigInt::from_i16(i as i16),
         32 => BigInt::from_i32(i as i32),
         64 => BigInt::from_i64(i as i64),
-        128 => BigInt::from_i128(i as i128),
+        128 => BigInt::from_i128(i),
         _ => panic!("Unexpected fixed-width integer type U({})", width),
     }
     .unwrap()
@@ -883,7 +882,7 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
         typ
     };
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
-    let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
+    let exps = Arc::new(arr.iter().flat_map(|e| cleanup_exp(e)).collect());
     let exp = exp_new(ExpX::ArrayLiteral(exps));
     exp
 }
@@ -1173,6 +1172,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Clip { .. }
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
@@ -1295,6 +1295,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Trigger(_)
                         | FloatToBits
                         | IntToReal
+                        | RealToInt
                         | CoerceMode { .. }
                         | ToDyn
                         | StrLen
@@ -2005,8 +2006,8 @@ fn eval_expr_launch(
     };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
     display_perf_stats(&state);
-    if state.log.is_some() {
-        log.replace(state.log.unwrap());
+    if let Some(state_log) = state.log {
+        log.replace(state_log);
     }
 
     match result {

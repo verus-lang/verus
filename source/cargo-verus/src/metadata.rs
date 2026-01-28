@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet as Set, VecDeque};
 
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
@@ -78,8 +78,20 @@ impl<'a> MetadataIndex<'a> {
         self.entries.get(id).unwrap()
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = &MetadataIndexEntry<'a>> {
-        self.entries.values()
+    pub fn get_transitive_closure(&self, roots: Set<PackageId>) -> Set<PackageId> {
+        // Breadth-first traversal to collect transitive deps of `roots`
+        let mut visited = roots;
+        let mut queue = VecDeque::from_iter(visited.iter().cloned());
+        while let Some(id) = queue.pop_front() {
+            let entry = self.get(&id);
+            for dep in entry.deps.values() {
+                if !visited.contains(&dep.pkg) {
+                    visited.insert(dep.pkg.clone());
+                    queue.push_back(dep.pkg.clone());
+                }
+            }
+        }
+        visited
     }
 }
 

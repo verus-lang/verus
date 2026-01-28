@@ -113,7 +113,18 @@ test_verify_one_file_with_options! {
                 mut_ref1.borrow_mut().y = Y { };
             }
         }
-    } => Ok(()) // TODO(new_mut_ref): I'm not sure about this being ok
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+}
+
+test_verify_one_file_with_options! {
+    // TODO(new_mut_ref): fix
+    #[ignore] #[test] mut_borrow_in_ghost_decl ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x = 0;
+            let ghost mut_ref2 = &mut x;
+            assert(x == 0);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -487,7 +498,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = Tracked(X {});
             let mut_ref = &mut x;
-            let mr = Ghost(mut_ref);
+            let mut mr = Ghost(mut_ref);
 
             proof {
                 let z = *mr.borrow_mut().borrow_mut();
@@ -828,11 +839,25 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] modify_ghost_fields_doesnt_reinitialize ["new-mut-ref"] => verus_code! {
+    #[test] modify_ghost_fields_doesnt_reinitialize1 ["new-mut-ref"] => verus_code! {
         fn consume<A>(a: A) { }
 
         fn test<X>(x: X) {
             let y = (x, Ghost(0int));
+            consume(y.0);
+            proof { *y.1.borrow_mut() = 5int; }
+
+            assert(has_resolved(y.0)); // FAILS
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y.1` as mutable, as `y` is not declared as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] modify_ghost_fields_doesnt_reinitialize2 ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<X>(x: X) {
+            let mut y = (x, Ghost(0int));
             consume(y.0);
             proof { *y.1.borrow_mut() = 5int; }
 
@@ -933,4 +958,23 @@ test_verify_one_file_with_options! {
             assert(has_resolved(m)); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+// TODO(new_mut_ref): un-ignore this
+test_verify_one_file_with_options! {
+    #[ignore] #[test] read_from_borrowed_ghost_location_and_then_assign_to_mut_ref ["new-mut-ref"] => verus_code! {
+        fn test() {
+            let mut x: Ghost<bool> = Ghost(false);
+
+            let r = &mut x;
+
+            let ghost updated_value = x@;
+
+            proof {
+                r@ = !updated_value;
+            }
+
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot use `x` because it was mutably borrowed")
 }

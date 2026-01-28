@@ -1,13 +1,18 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
+use rustc_hir::Crate;
+use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
-use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::DerefMut;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use vir::ast::{Ident, Mode, Path, Pattern, VirErr};
 use vir::messages::AstId;
 
@@ -23,8 +28,7 @@ pub struct ErasureInfo {
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
 
-pub type Context<'tcx> = Arc<ContextX<'tcx>>;
-#[derive(Clone)]
+pub type Context<'tcx> = Rc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
@@ -32,14 +36,13 @@ pub struct ContextX<'tcx> {
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
-    pub(crate) diagnostics: std::rc::Rc<std::cell::RefCell<Vec<vir::ast::VirErrAs>>>,
+    pub(crate) diagnostics: Rc<RefCell<Vec<vir::ast::VirErrAs>>>,
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
-    pub(crate) name_def_id_map:
-        std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Path, DefId>>>,
-    pub(crate) next_read_kind_id: std::rc::Rc<std::cell::Cell<u64>>,
+    pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
+    pub(crate) next_read_kind_id: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -57,6 +60,33 @@ pub(crate) struct BodyCtxt<'tcx> {
 }
 
 impl<'tcx> ContextX<'tcx> {
+    pub(crate) fn new(
+        cmd_line_args: crate::config::Args,
+        tcx: TyCtxt<'tcx>,
+        erasure_info: ErasureInfoRef,
+        spans: crate::spans::SpanContext,
+        verus_items: Arc<VerusItems>,
+        no_vstd: bool,
+        crate_name: Ident,
+        vstd_crate_name: Ident,
+    ) -> Self {
+        ContextX {
+            cmd_line_args,
+            tcx,
+            krate: tcx.hir_crate(()),
+            erasure_info,
+            spans,
+            verus_items,
+            diagnostics: Rc::new(RefCell::new(Vec::new())),
+            no_vstd,
+            arch_word_bits: None,
+            crate_name,
+            vstd_crate_name,
+            name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
+            next_read_kind_id: AtomicU64::new(0),
+        }
+    }
+
     pub(crate) fn get_verus_item(&self, def_id: DefId) -> Option<&crate::verus_items::VerusItem> {
         self.verus_items.id_to_name.get(&def_id)
     }
@@ -90,7 +120,9 @@ impl<'tcx> ContextX<'tcx> {
         r.bodies.push((local_def_id, c));
     }
 
-    pub(crate) fn path_def_id_ref(&self) -> Option<std::cell::RefMut<'_, HashMap<Path, DefId>>> {
+    pub(crate) fn path_def_id_ref(
+        &self,
+    ) -> Option<impl DerefMut<Target = HashMap<Path, DefId>> + use<'_>> {
         self.name_def_id_map.try_borrow_mut().ok()
     }
 
@@ -122,9 +154,7 @@ impl<'tcx> ContextX<'tcx> {
     }
 
     pub(crate) fn unique_read_kind_id(&self) -> u64 {
-        let c = self.next_read_kind_id.get();
-        self.next_read_kind_id.set(c + 1);
-        c
+        self.next_read_kind_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
 }
 

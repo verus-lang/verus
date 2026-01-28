@@ -1,7 +1,7 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::config::Vstd;
-use crate::context::{BodyCtxt, Context};
+use crate::context::{BodyCtxt, Context, ContextX};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -117,6 +117,7 @@ fn handle_autospec<'tcx>(
                     mode: Mode::Spec,
                     is_mut: false,
                     unwrapped_info: None,
+                    user_mut: false,
                 },
             ));
         }
@@ -129,6 +130,7 @@ fn handle_autospec<'tcx>(
                 mode: Mode::Spec,
                 is_mut: false,
                 unwrapped_info: None,
+                user_mut: false,
             },
         );
 
@@ -288,7 +290,7 @@ pub(crate) fn find_body_krate<'tcx>(
     panic!("Body not found");
 }
 
-pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body<'tcx>(ctxt: &ContextX<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     find_body_krate(ctxt.krate, body_id)
 }
 
@@ -359,8 +361,18 @@ fn compare_external_ty_or_true<'tcx>(
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
-                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1, None);
-                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2, None);
+                    let mut trait_path1 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def1,
+                        None::<&mut HashMap<_, _>>,
+                    );
+                    let trait_path2 = def_id_to_vir_path(
+                        tcx,
+                        verus_items,
+                        trait_def2,
+                        None::<&mut HashMap<_, _>>,
+                    );
                     if trait_path1 == *from_path {
                         trait_path1 = to_path.clone();
                     }
@@ -684,8 +696,8 @@ pub(crate) fn handle_external_fn<'tcx>(
             "assume_specification trait bound mismatch")
             .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
-          proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
-          external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
+          proxy_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n"),
+          external_preds.iter().map(|x| format!("  - {x}")).collect::<Vec<_>>().join("\n")));
         return Err(err);
     }
 
@@ -1300,6 +1312,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode: param_mode,
                 is_mut,
                 unwrapped_info: None,
+                user_mut: is_mut_var || is_mut,
             },
         );
 
@@ -1323,17 +1336,15 @@ pub(crate) fn check_item_fn<'tcx>(
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
                 unsupported_err!(span, "mut parameters of &mut types")
             }
-            vir_mut_params.push((
-                vir_param.clone(),
-                is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
-            ));
+            vir_mut_params
+                .push((vir_param.clone(), is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
             // TODO(new_mut_ref): resolve_inference expects no shadowing
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
                 vir::ast::PatternX::Var(vir::ast::PatternBinding {
                     name: name.clone(),
-                    mutable: true,
+                    user_mut: Some(true),
                     by_ref: vir::ast::ByRef::No,
                     typ: typ.clone(),
                     copy: false,
@@ -1356,7 +1367,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
             mut_params_redecl.push(redecl);
         }
-        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
+        vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
     }
 
     let n_params = vir_params.len();
@@ -1525,6 +1536,7 @@ pub(crate) fn check_item_fn<'tcx>(
             typ: ret_typ,
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2385,6 +2397,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             typ: typ.clone(),
             mode: ret_mode,
             is_mut: false,
+            user_mut: false,
             unwrapped_info: None,
         },
     );
@@ -2515,7 +2528,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
+            ParamX {
+                name,
+                typ,
+                mode,
+                is_mut: is_mut.is_some(),
+                unwrapped_info: None,
+                user_mut: false,
+            },
         );
         vir_params.push(vir_param);
     }
@@ -2529,6 +2549,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ: ret_typ,
         mode: ret_mode,
         is_mut: false,
+        user_mut: false,
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);

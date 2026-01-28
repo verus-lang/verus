@@ -24,7 +24,7 @@ pub fn pattern_to_exprs(
             ));
         }
 
-        let ComputedPatternBinding { name, mutable, mut_ref, place } = pbd;
+        let ComputedPatternBinding { name, mut_ref, place } = pbd;
 
         let place = if mut_ref {
             PlaceX::temporary(SpannedTyped::new(
@@ -36,7 +36,7 @@ pub fn pattern_to_exprs(
             place
         };
 
-        let pattern = PatternX::simple_var(name, mutable, &place.span, &place.typ);
+        let pattern = PatternX::simple_var(name, &place.span, &place.typ);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
         let decl =
             StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(place.clone()), els: None };
@@ -48,7 +48,6 @@ pub fn pattern_to_exprs(
 
 struct ComputedPatternBinding {
     name: VarIdent,
-    mutable: bool,
     mut_ref: bool,
     place: Place,
 }
@@ -56,7 +55,6 @@ struct ComputedPatternBinding {
 fn computed(binding: &PatternBinding, place: &Place) -> Result<ComputedPatternBinding, VirErr> {
     Ok(ComputedPatternBinding {
         name: binding.name.clone(),
-        mutable: binding.mutable,
         place: place.clone(),
         mut_ref: matches!(binding.by_ref, ByRef::MutRef),
     })

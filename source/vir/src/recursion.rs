@@ -3,6 +3,7 @@ use crate::ast::{
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
     VarBinder, VirErr,
 };
+use crate::ast_to_sst::PreLocalDecl;
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
 use crate::ast_util::undecorate_typ;
@@ -253,6 +254,26 @@ pub(crate) fn mk_decreases_at_entry(
         stm_assigns.push(stm_assign);
     }
     Ok((decls, stm_assigns))
+}
+
+pub(crate) fn mk_decreases_at_entry_pre(
+    ctx: &Ctx,
+    loop_id: Option<u64>,
+    exps: &Vec<Exp>,
+) -> Result<Vec<PreLocalDecl>, VirErr> {
+    let mut decls: Vec<PreLocalDecl> = Vec::new();
+    for (i, exp) in exps.iter().enumerate() {
+        let typ = height_typ(ctx, exp);
+        let decl = PreLocalDecl {
+            ident: unique_local(&decrease_at_entry(loop_id, i)),
+            typ: typ.clone(),
+            kind: crate::ast_to_sst::PreLocalDeclKind::Immutable(crate::ast_to_sst::Immutable(
+                crate::sst::LocalDeclKind::Decreases,
+            )),
+        };
+        decls.push(decl);
+    }
+    Ok(decls)
 }
 
 pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(

@@ -95,6 +95,15 @@ pub struct VargoClean {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VargoClippy {
+    pub package: Option<String>,
+    pub exclude: HashSet<String>,
+    pub feature_options: FeaturesOptions,
+    pub release: bool,
+    pub clippy_args: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VargoCmd {
     pub command: Vec<String>,
 }
@@ -155,6 +164,9 @@ pub enum VargoSubcommand {
     /// Clean current build
     Clean(VargoClean),
 
+    /// Run clippy
+    Clippy(VargoClippy),
+
     /// Run an arbitrary command in vargo's environment
     Cmd(VargoCmd),
 
@@ -185,12 +197,31 @@ impl VargoSubcommand {
             VargoSubcommand::Build(c) => c.build_options.release,
             VargoSubcommand::Check(c) => c.release,
             VargoSubcommand::Clean(c) => c.release,
+            VargoSubcommand::Clippy(c) => c.release,
             VargoSubcommand::Cmd(_) => false,
             VargoSubcommand::Fmt(_) => false,
             VargoSubcommand::Metadata(_) => false,
             VargoSubcommand::NextestRun(c) => c.build_options.release,
             VargoSubcommand::Run(c) => c.build_options.release,
             VargoSubcommand::Test(c) => c.build_options.release,
+            VargoSubcommand::Update(_) => false,
+        }
+    }
+
+    // whether a command needs to check the solver version
+    // (if the command doesn't need to run the solver, the version check can be skipped)
+    pub fn needs_solver_version_check(&self) -> bool {
+        match self {
+            VargoSubcommand::Build(_) => true,
+            VargoSubcommand::Check(_) => false,
+            VargoSubcommand::Clean(_) => false,
+            VargoSubcommand::Clippy(_) => false,
+            VargoSubcommand::Cmd(_) => true,
+            VargoSubcommand::Fmt(_) => false,
+            VargoSubcommand::Metadata(_) => false,
+            VargoSubcommand::NextestRun(_) => true,
+            VargoSubcommand::Run(_) => true,
+            VargoSubcommand::Test(_) => true,
             VargoSubcommand::Update(_) => false,
         }
     }
@@ -283,6 +314,7 @@ pub enum VargoParsedSubcommand {
         feature_options: FeaturesOptions,
 
         /// Check artifacts in release mode
+        #[arg(short, long)]
         release: bool,
     },
 
@@ -295,6 +327,28 @@ pub enum VargoParsedSubcommand {
         /// Whether to clean debug or release artifacts
         #[arg(short, long)]
         release: bool,
+    },
+
+    /// Run cargo-clippy
+    Clippy {
+        /// Package to build
+        #[arg(short, long)]
+        package: Option<String>,
+
+        /// Exclude packages from building
+        #[arg(long, action = clap::ArgAction::Append)]
+        exclude: Vec<String>,
+
+        #[command(flatten)]
+        feature_options: FeaturesOptions,
+
+        /// Check artifacts in release mode
+        #[arg(short, long)]
+        release: bool,
+
+        /// Options passed to clippy
+        #[arg(last = true, allow_hyphen_values = true)]
+        clippy_args: Vec<String>,
     },
 
     /// Run an arbitrary command in vargo's environment
@@ -437,6 +491,19 @@ impl From<VargoParsedSubcommand> for VargoSubcommand {
             VargoParsedSubcommand::Clean { package, release } => {
                 VargoSubcommand::Clean(VargoClean { package, release })
             }
+            VargoParsedSubcommand::Clippy {
+                package,
+                exclude,
+                feature_options,
+                release,
+                clippy_args,
+            } => VargoSubcommand::Clippy(VargoClippy {
+                package,
+                exclude: exclude.into_iter().collect(),
+                feature_options,
+                release,
+                clippy_args,
+            }),
             VargoParsedSubcommand::Cmd { command } => VargoSubcommand::Cmd(VargoCmd { command }),
             VargoParsedSubcommand::Fmt {
                 package,

@@ -9,7 +9,7 @@ use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
-use rustc_hir::{ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
+use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
 use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -344,7 +344,7 @@ pub(crate) fn translate_impl<'tcx>(
             let impl_def_id = item.owner_id.to_def_id();
             external_info.internal_trait_impls.insert(impl_def_id);
             let path_span = path.span.to(impll.self_ty.span);
-            if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
+            match trait_impl_to_vir(
                 ctxt,
                 item.span,
                 path_span,
@@ -355,17 +355,20 @@ pub(crate) fn translate_impl<'tcx>(
                 false,
                 vattrs.external_trait_blanket,
             )? {
-                vir.trait_impls.push(trait_impl);
-                Some((trait_path, types))
-            } else {
-                None
+                Some((trait_path, types, trait_impl)) => {
+                    vir.trait_impls.push(trait_impl);
+                    Some((trait_path, types))
+                }
+                _ => None,
             }
         } else {
             None
         };
 
-    let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
-        let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
+    let autoderive_action = if let Some(of_trait) = impll.of_trait
+        && is_automatically_derived(attrs)
+    {
+        let trait_def_id = of_trait.trait_ref.path.res.def_id();
         let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
         let action = crate::automatic_derive::get_action(rust_item);
         Some(action)
@@ -479,7 +482,7 @@ pub(crate) fn translate_impl<'tcx>(
                 if trait_path_typ_args.is_some() {
                     unsupported_err!(item.span, "not yet supported: const trait member")
                 }
-                if let ImplItemKind::Const(_ty, body_id) = &impl_item.kind {
+                if let ImplItemKind::Const(_ty, ConstItemRhs::Body(body_id)) = &impl_item.kind {
                     let def_id = body_id.hir_id.owner.to_def_id();
                     let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
                     let vir_ty = ctxt.mid_ty_to_vir(def_id, impl_item.span, &mid_ty, false)?;
@@ -636,7 +639,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                         ) {
                             continue 'impls;
                         }
-                        if let Ok(assoc_type_impl) = translate_assoc_type(
+                        match translate_assoc_type(
                             ctxt,
                             name,
                             span,
@@ -647,9 +650,12 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                             trait_path.clone(),
                             trait_typ_args.clone(),
                         ) {
-                            assoc_type_impls.push(assoc_type_impl);
-                        } else {
-                            continue 'impls;
+                            Ok(assoc_type_impl) => {
+                                assoc_type_impls.push(assoc_type_impl);
+                            }
+                            _ => {
+                                continue 'impls;
+                            }
                         }
                     }
                     _ => {}

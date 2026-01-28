@@ -135,7 +135,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
         if let Some(fancy_note) = &msg.fancy_note {
             // The fancy_note might use terminal colors, which will get escaped if we use
             // the Rust emitter. Thus, we have to emit this note out-of-band.
-            eprintln!("{:}{:}", console::style("note: ").bright().blue().to_string(), fancy_note);
+            eprintln!("{:}{:}", console::style("note: ").bright().blue(), fancy_note);
         }
     }
 
@@ -256,16 +256,16 @@ impl Diagnostics for QueuedReporter {
 
 #[derive(Default)]
 pub struct BucketStats {
-    /// cummulative time in AIR to verify the bucket (this includes SMT solver time)
+    /// cumulative time in AIR to verify the bucket (this includes SMT solver time)
     pub time_air: Duration,
     /// time to initialize the SMT solver
     pub time_smt_init: Duration,
-    /// cummulative time of all SMT queries
+    /// cumulative time of all SMT queries
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
-    /// total rlimit count for the bucket
-    pub rlimit_count: Option<u64>,
+    /// rlimit used to initialize and run the SMT solver
+    pub rlimit_count: Option<(u64, u64)>,
 }
 
 pub struct FunctionSmtStats {
@@ -419,7 +419,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: Option<u64>,
+    rlimit_count: Option<(u64, u64)>,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -651,7 +651,7 @@ impl Verifier {
             );
             let bnd_info = qid_map
                 .get(&cost.quant)
-                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+                .unwrap_or_else(|| panic!("Failed to find quantifier {}", cost.quant));
             let mut msg = note_bare(note);
 
             // Summarize the triggers it used
@@ -725,7 +725,7 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &std::cell::RefCell<Option<Message>>,
+        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -885,7 +885,7 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.take() {
+                        if let Some(hint) = hint_upon_failure.clone() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
                         }
                     }
@@ -895,10 +895,13 @@ impl Verifier {
                     let error: Message = error.downcast().unwrap();
                     if let Some(level) = level {
                         if !self.expand_flag {
-                            if let Some(collected) = &mut *diagnostics_to_report.borrow_mut() {
-                                collected.as_mut().push((error.clone(), level));
-                            } else {
-                                reporter.report_as(&error.clone().to_any(), level);
+                            match &mut *diagnostics_to_report.borrow_mut() {
+                                Some(collected) => {
+                                    collected.as_mut().push((error.clone(), level));
+                                }
+                                _ => {
+                                    reporter.report_as(&error.clone().to_any(), level);
+                                }
                             }
                         }
                     }
@@ -1044,6 +1047,7 @@ impl Verifier {
             skip_recommends: _,
             hint_upon_failure,
         } = &*commands_with_context;
+        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1063,7 +1067,7 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    hint_upon_failure,
+                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -1250,35 +1254,35 @@ impl Verifier {
             diagnostics,
             &mut air_context,
             &trait_decl_commands,
-            &("Trait-Decls".to_string()),
+            "Trait-Decls",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &datatype_commands,
-            &("Datatypes".to_string()),
+            "Datatypes",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &trait_type_bounds_commands,
-            &("Trait-Bounds".to_string()),
+            "Trait-Bounds",
         );
         self.run_commands(
             bucket_id,
             diagnostics,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
         );
         for commands in &*function_decl_commands {
             self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
@@ -1347,8 +1351,8 @@ impl Verifier {
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
-            SmtSolver::Z3 => Some(0),
+        let mut spunoff_rlimit_count: Option<(u64, u64)> = match self.args.solver {
+            SmtSolver::Z3 => Some((0, 0)),
             SmtSolver::Cvc5 => None,
         };
 
@@ -1370,7 +1374,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &trait_decl_commands,
-            &("Trait-Decls".to_string()),
+            "Trait-Decls",
         );
 
         let assoc_type_decl_commands =
@@ -1380,7 +1384,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_decl_commands,
-            &("Associated-Type-Decls".to_string()),
+            "Associated-Type-Decls",
         );
 
         let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
@@ -1388,17 +1392,11 @@ impl Verifier {
             &krate
                 .datatypes
                 .iter()
-                .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
+                .cloned()
                 .collect(),
         );
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &datatype_commands,
-            &("Datatypes".to_string()),
-        );
+        self.run_commands(bucket_id, reporter, &mut air_context, &datatype_commands, "Datatypes");
 
         let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
         self.run_commands(
@@ -1406,7 +1404,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &trait_type_bounds_commands,
-            &("Trait-Bounds".to_string()),
+            "Trait-Bounds",
         );
 
         let assoc_type_impl_commands =
@@ -1416,7 +1414,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &assoc_type_impl_commands,
-            &("Associated-Type-Impls".to_string()),
+            "Associated-Type-Impls",
         );
 
         // Declare opaque type defs
@@ -1427,7 +1425,7 @@ impl Verifier {
             reporter,
             &mut air_context,
             &opaque_type_impl_commands,
-            &("Opaque-Type-Constructors".to_string()),
+            "Opaque-Type-Constructors",
         );
 
         let mut function_decl_commands = vec![];
@@ -1611,7 +1609,8 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
-                            let iter_curr_smt_rlimit_count = query_air_context.get_rlimit_count();
+                            let iter_curr_smt_rlimit_count =
+                                query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
                                 Self::set_rlimit(&mut query_air_context, rlimit);
                             }
@@ -1643,6 +1642,7 @@ impl Verifier {
                                 *func_curr_smt_rlimit_count += query_air_context
                                     .get_rlimit_count()
                                     .expect("rlimit count in query context")
+                                    .1
                                     - iter_curr_smt_rlimit_count
                                         .expect("rlimit count in query context");
                             }
@@ -1651,9 +1651,11 @@ impl Verifier {
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
                                 if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
-                                    *spunoff_rlimit_count += query_air_context
+                                    let (init, run) = query_air_context
                                         .get_rlimit_count()
                                         .expect("rlimit count in query context");
+                                    (*spunoff_rlimit_count).0 += init;
+                                    (*spunoff_rlimit_count).1 += run;
                                 }
                             }
                             if function.x.attrs.rlimit.is_some() {
@@ -1943,7 +1945,9 @@ impl Verifier {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
             rlimit_count: rlimit_count.map(|rlimit_count| {
-                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+                let spunoff_rlimit_count =
+                    spunoff_rlimit_count.expect("spunoff rlimit count should be present");
+                (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
         })
     }
@@ -2249,10 +2253,9 @@ impl Verifier {
             let mut local_msgs: VecDeque<ReporterMessage> = VecDeque::new();
             let reporter = Reporter::new(spans, compiler);
             loop {
-                let msg = if let Some(msg) = local_msgs.pop_front() {
-                    msg
-                } else {
-                    receiver.recv().expect("receiving message failed")
+                let msg = match local_msgs.pop_front() {
+                    Some(msg) => msg,
+                    _ => receiver.recv().expect("receiving message failed"),
                 };
                 match msg {
                     ReporterMessage::Messages(id, mut msgs, now) => {
@@ -2720,29 +2723,24 @@ impl Verifier {
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
         let vstd_crate_name = Arc::new(vir::def::VERUSLIB.to_string());
-        let mut ctxt = Arc::new(ContextX {
-            cmd_line_args: self.args.clone(),
+        let ctxtx = ContextX::new(
+            self.args.clone(),
             tcx,
-            krate: tcx.hir_crate(()),
             erasure_info,
-            spans: spans.clone(),
+            spans.clone(),
             verus_items,
-            diagnostics: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-            no_vstd: self.args.vstd == crate::config::Vstd::NoVstd,
-            arch_word_bits: None,
-            crate_name: Arc::new(crate_name.clone()),
+            self.args.vstd == crate::config::Vstd::NoVstd,
+            Arc::new(crate_name.clone()),
             vstd_crate_name,
-            name_def_id_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
-            next_read_kind_id: std::rc::Rc::new(std::cell::Cell::new(0)),
-        });
+        );
 
-        let ctxt_diagnostics = ctxt.diagnostics.clone();
+        let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
             |err: VirErr| (err, ctxt_diagnostics.borrow_mut().drain(..).collect());
 
-        let crate_items = crate::external::get_crate_items(&ctxt).map_err(map_err_diagnostics)?;
+        let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_err_diagnostics)?;
 
-        check_no_opaque_types_in_trait(&ctxt, &crate_items).map_err(map_err_diagnostics)?;
+        check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
         if !self.args.no_lifetime {
             crate::erase::setup_verus_aware_ids(&crate_items);
@@ -2775,8 +2773,8 @@ impl Verifier {
                 .collect()
         };
 
-        let vir_crate =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates, &crate_items)
+        let (ctxt, vir_crate) =
+            crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
@@ -2858,17 +2856,12 @@ impl Verifier {
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             &unpruned_crate,
-            &mut ctxt.diagnostics.borrow_mut(),
+            &mut *ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
-            Some(e)
-        } else if let Err(e) = check_crate_result {
-            Some(e)
-        } else {
-            None
-        };
+        let mut first_error: Option<VirErr> =
+            check_crate_result1.err().or(check_crate_result.err());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2981,16 +2974,11 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             let entries = std::fs::read_dir(dir).map_err(|err| {
                 io_vir_err(format!("could not read directory {}", dir.display()), err)
             })?;
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if entry.path().is_file() {
-                        std::fs::remove_file(entry.path()).map_err(|err| {
-                            io_vir_err(
-                                format!("could not remove file {}", entry.path().display()),
-                                err,
-                            )
-                        })?;
-                    }
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    std::fs::remove_file(entry.path()).map_err(|err| {
+                        io_vir_err(format!("could not remove file {}", entry.path().display()), err)
+                    })?;
                 }
             }
         } else {
@@ -3000,10 +2988,10 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
 }
 
 /// Currently performing an rustc_hir_analysis::check_crate() with trait methods with opaque return types
-/// will cause the thir_body to run before VerusErasureCtxt is initialized.  
+/// will cause the thir_body to run before VerusErasureCtxt is initialized.
 /// We disallow opaque types in trait for now.
 fn check_no_opaque_types_in_trait<'tcx>(
-    ctxt: &Arc<ContextX<'tcx>>,
+    tcx: TyCtxt<'tcx>,
     crate_items: &crate::external::CrateItems,
 ) -> Result<(), VirErr> {
     for item in crate_items.items.iter() {
@@ -3012,7 +3000,7 @@ fn check_no_opaque_types_in_trait<'tcx>(
         }
         match item.id {
             crate::external::GeneralItemId::TraitItemId(trait_item_id) => {
-                match ctxt.tcx.hir_trait_item(trait_item_id).kind {
+                match tcx.hir_trait_item(trait_item_id).kind {
                     rustc_hir::TraitItemKind::Fn(sig, _) => {
                         if let rustc_hir::FnRetTy::Return(ty) = sig.decl.output {
                             if matches!(ty.kind, rustc_hir::TyKind::OpaqueDef { .. }) {
@@ -3099,11 +3087,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.check_mod_deathness = |_, _| {};
 
-                providers.mir_borrowck = |tcx, _local_def_id| {
-                    Ok(tcx.arena.alloc(rustc_middle::mir::DefinitionSiteHiddenTypes(
-                        rustc_data_structures::fx::FxIndexMap::default(),
-                    )))
-                };
+                providers.mir_borrowck =
+                    |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
             });
         } else {
             config.override_queries = Some(|_session, providers| {
