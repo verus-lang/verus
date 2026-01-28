@@ -693,21 +693,7 @@ pub mod parsing {
     impl Parse for Specification {
         fn parse(input: ParseStream) -> Result<Self> {
             let mut exprs = Punctuated::new();
-            while !(input.is_empty()
-                || input.peek(token::Brace)
-                || input.peek(Token![;])
-                || input.peek(Token![invariant_except_break])
-                || input.peek(Token![invariant])
-                || input.peek(Token![invariant_ensures])
-                || input.peek(Token![ensures])
-                || input.peek(Token![default_ensures])
-                || input.peek(Token![returns])
-                || input.peek(Token![decreases])
-                || input.peek(Token![via])
-                || input.peek(Token![when])
-                || input.peek(Token![no_unwind])
-                || input.peek(Token![opens_invariants]))
-            {
+            while !input.is_empty() && is_next_clause_valid(input) {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
@@ -716,31 +702,33 @@ pub mod parsing {
                 let punct = input.parse()?;
                 exprs.push_punct(punct);
             }
-            if input.peek(token::Brace) {
-                if input.peek2(token::Brace) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by another block (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(token::Comma) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![ensures]) || input.peek2(Token![default_ensures]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![opens_invariants]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![invariant_except_break]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![invariant]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-                if input.peek2(Token![decreases]) {
-                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a 'decreases' (if you meant this block to be part of the specification, try parenthesizing it)"));
-                }
-            }
             Ok(Specification { exprs })
         }
+    }
+
+    fn is_next_clause_valid(input: ParseStream) -> bool {
+        is_next_clause_bare(input) || is_next_clause_in_braces(input)
+    }
+
+    fn is_next_clause_bare(input: ParseStream) -> bool {
+        !(input.peek(Token![,])
+            || input.peek(token::Brace)
+            || input.peek(Token![;])
+            || input.peek(Token![invariant_except_break])
+            || input.peek(Token![invariant])
+            || input.peek(Token![invariant_ensures])
+            || input.peek(Token![ensures])
+            || input.peek(Token![default_ensures])
+            || input.peek(Token![returns])
+            || input.peek(Token![decreases])
+            || input.peek(Token![via])
+            || input.peek(Token![when])
+            || input.peek(Token![no_unwind])
+            || input.peek(Token![opens_invariants]))
+    }
+
+    fn is_next_clause_in_braces(input: ParseStream) -> bool {
+        input.peek(token::Brace) && input.peek2(Token![,])
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
