@@ -542,7 +542,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let arms = self.visit_arms(arms)?;
                 R::ret(|| expr_new(ExprX::Match(R::get(place), R::get_vec_a(arms))))
             }
-            ExprX::Loop { loop_isolation, is_for_loop, label, cond, body, invs, decrease } => {
+            ExprX::Loop {
+                loop_isolation,
+                allow_complex_invariants,
+                is_for_loop,
+                label,
+                cond,
+                body,
+                invs,
+                decrease,
+            } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
                 let invs = self.visit_loop_invariants(invs)?;
@@ -550,6 +559,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     expr_new(ExprX::Loop {
                         loop_isolation: *loop_isolation,
+                        allow_complex_invariants: *allow_complex_invariants,
                         is_for_loop: *is_for_loop,
                         label: label.clone(),
                         cond: R::get_opt(cond),
