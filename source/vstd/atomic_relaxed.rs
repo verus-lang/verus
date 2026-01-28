@@ -89,6 +89,8 @@ pub fn acq_fence<T>(Tracked(rsrc): Tracked<Acquire<T>>) -> (out: Tracked<T>)
     Tracked(rsrc.v)
 }
 
+// HOARE-REL-FENCE-ELIM
+// This is only sound if the goal is a WP, where Release<T> is known to be interpreted under the release view, and T is known to be interpreted under the current view which includes the release view.
 pub axiom fn rel_fence_elim<T>(tracked rsrc: Release<T>) -> (tracked out: T)
     ensures
         out == rsrc.v,
