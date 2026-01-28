@@ -117,6 +117,7 @@
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
   - [Documentation with Rustdoc](./verusdoc.md)
+  - [Ghost Erasure](./erasure.md)
 
 # Reference
 

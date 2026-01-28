@@ -54,12 +54,26 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     } else {
         false
     };
+    // What cfg features are allowed
+    // For verifying vstd, we don't allow verus_in_verification
+    // For verifying client crates, we allow verus_in_verification
+    //
+    // NOTE: right now this code is unused while verifying verus because we verify via vargo,
+    // which calls rust_verify directly. If we support building verus with cargo-verus, then
+    // this would be "solved"
     if verus_crate {
+        const VERUS_CFGS: [&str; 4] =
+            ["verus_keep_ghost", "verus_keep_ghost_body", "verus_verify_core", "verus_no_vstd"];
+        // verus_crate ==> package_id is Some
+        // TODO: is there a better way of identifying vstd?
+        let cfgs: Vec<&str> = if package_id.as_ref().unwrap().starts_with("vstd-") {
+            VERUS_CFGS.iter().copied().collect()
+        } else {
+            VERUS_CFGS.iter().copied().chain(std::iter::once("verus_in_verification")).collect()
+        };
+
         rustc_args.push("--check-cfg".to_owned());
-        rustc_args.push(
-            "cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core, verus_no_vstd)"
-                .to_owned(),
-        );
+        rustc_args.push(format!("cfg({})", cfgs.join(", ")));
     }
     if !verus_crate {
         let mut is_span_crate = false;
@@ -169,7 +183,9 @@ fn unpack_verus_driver_args_for_env(val: &str) -> Vec<String> {
 }
 
 fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
-    args.extend(["--cfg", "verus_keep_ghost"].map(ToOwned::to_owned));
+    args.extend(
+        ["--cfg", "verus_in_verification", "--cfg", "verus_keep_ghost"].map(ToOwned::to_owned),
+    );
 }
 
 fn set_rustc_bootstrap() {
