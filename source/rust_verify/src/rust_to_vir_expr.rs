@@ -1816,12 +1816,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     let allow_complex_invariants = || {
         if expr_vattrs.allow_complex_invariants {
             true
-        } else if let Some(flag) =
-            crate::attributes::get_allow_complex_invariants_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
-        {
-            flag
         } else {
-            false
+            crate::attributes::get_allow_complex_invariants_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+                .unwrap_or(false)
         }
     };
 
