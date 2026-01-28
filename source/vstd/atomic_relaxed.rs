@@ -52,7 +52,7 @@ impl<T> HistorySingleton<T> {
 
 // Fence modalities
 pub struct Release<T> {
-    pub v: T,
+    v: T,
 }
 
 impl<T> Release<T> {
@@ -62,7 +62,7 @@ impl<T> Release<T> {
 }
 
 pub struct Acquire<T> {
-    pub v: T,
+    v: T,
 }
 
 impl<T> Acquire<T> {
@@ -71,65 +71,75 @@ impl<T> Acquire<T> {
     }
 }
 
+unsafe impl<T> IsObjective for Release<T> {}
+unsafe impl<T> IsObjective for Acquire<T> {}
+
 #[verifier::external_body]
+// HOARE-REL-FENCE
 pub fn rel_fence<T>(Tracked(rsrc): Tracked<T>) -> (out: Tracked<Release<T>>)
     ensures
-        rsrc == out@.v,
+        rsrc == out@.value(),
 {
     core::sync::atomic::fence(Ordering::Release);
     Tracked(Release { v: rsrc })
 }
 
 #[verifier::external_body]
+// HOARE-ACQ-FENCE
 pub fn acq_fence<T>(Tracked(rsrc): Tracked<Acquire<T>>) -> (out: Tracked<T>)
     ensures
-        out@ == rsrc.v,
+        out@ == rsrc.value(),
 {
     core::sync::atomic::fence(Ordering::Acquire);
     Tracked(rsrc.v)
 }
 
-// HOARE-REL-FENCE-ELIM
 // This is only sound if the goal is a WP, where Release<T> is known to be interpreted under the release view, and T is known to be interpreted under the current view which includes the release view.
+// HOARE-REL-FENCE-ELIM
 pub axiom fn rel_fence_elim<T>(tracked rsrc: Release<T>) -> (tracked out: T)
     ensures
-        out == rsrc.v,
+        out == rsrc.value(),
 ;
 
+// See note on rel_fence_elim
+// HOARE-ACQ-FENCE-INTRO
 pub axiom fn acq_fence_intro<T>(tracked rsrc: T) -> (tracked out: Acquire<T>)
     ensures
-        out.v == rsrc,
+        out.value() == rsrc,
 ;
 
-// implied by rel_fence_elim
+// RELMOD-GHOST
 pub proof fn relmod_ghost<P: PCM>(tracked rsrc: Release<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
-        out == rsrc.v,
+        out == rsrc.value(),
 {
     rel_fence_elim(rsrc)
 }
 
+// ACQMOD-GHOST
 pub axiom fn acqmod_ghost<P: PCM>(tracked rsrc: Acquire<Resource<P>>) -> (tracked out: Resource<P>)
     ensures
-        out == rsrc.v,
+        out == rsrc.value(),
 ;
 
+// GHOST-RELMOD
 pub axiom fn ghost_relmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Release<Resource<P>>)
     ensures
-        out.v == rsrc,
+        out.value() == rsrc,
 ;
 
 // implied by acq_fence_intro
+// GHOST-ACQMOD
 pub proof fn ghost_acqmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Acquire<Resource<P>>)
     ensures
-        out.v == rsrc,
+        out.value() == rsrc,
 {
     acq_fence_intro(rsrc)
 }
 
 // Here is an attempt to use Objective to encode the ghost + relmod/acqmod rules:
 
-// Hmm, this isn't quite the same as relmod_ghost -- there is an extra Objective in the input. 
+// Hmm, this isn't quite the same as relmod_ghost -- there is an extra Objective in the input.
 // This is required by the signature of Objective::from_release, which models RELMOD-OBJMOD-ELIM.
 // To remove this Objective, we could use a rule like: from_release<T: IsObjective>(tracked r: Release<T>) -> (tracked out: T)
 // But would this rule be sound???
@@ -161,6 +171,8 @@ pub proof fn ghost_acqmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Acqu
     Objective::new(r).as_acquire()
 }
 
+/// Release modality rules
+
 // ATTEMPT 1: encode the fact that T1 |- T2 via a proof function that trnasform ownership of T1 into ownership of T2
 // pub proof fn relmod_mono<T1, T2>(tracked rsrc : Release<T1>, to : T2, tracked f : proof_fn(tracked t1 : T1) -> tracked T2) -> (tracked out : Release<T2>)
 //     requires
@@ -180,14 +192,16 @@ pub trait Entails<T1, T2> {
     ;
 }
 
+// RELMOD-MONO
 pub proof fn relmod_mono<T1, T2, E: Entails<T1, T2>>(
     tracked rsrc: Release<T1>,
     to: T2,
 ) -> (tracked out: Release<T2>)
     ensures
-        out.v == to,
+        out.value() == to,
 {
-    let tracked v2 = E::entails(rsrc.v, to);
+    let tracked v = rel_fence_elim(rsrc);
+    let tracked v2 = E::entails(v, to);
     Release { v: v2 }
 }
 
@@ -258,21 +272,18 @@ pub enum Or<T1, T2> {
     Right(T2),
 }
 
-pub proof fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: Or<
+// RELMOD-OR
+pub axiom fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: Or<
     Release<P>,
     Release<Q>,
 >)
     ensures
-        out == match rsrc.v {
-            Or::Left(p) => Or::Left(Release { v: p }),
-            Or::Right(q) => Or::Right(Release { v: q }),
+        match (rsrc.value(), out) {
+            (Or::Left(p), Or::Left(p2)) => p == p2.value(),
+            (Or::Right(p), Or::Right(p2)) => p == p2.value(),
+            _ => false,
         },
-{
-    match rsrc.v {
-        Or::Left(p) => Or::Left(Release { v: p }),
-        Or::Right(q) => Or::Right(Release { v: q }),
-    }
-}
+    ;
 
 // Using IsObjective, I think the following approach could be used to derive relmod_and and relmod_or on any struct and enum, respectively.
 // - I'm assuming that structs encode /\ and enums encode \/
@@ -317,42 +328,120 @@ pub proof fn relmod_or2<T1: IsObjective, T2: IsObjective>(tracked r: Release<Obj
 }
 
 // NOTE skipping RELMOD-FORALL and RELMOD-EXIST for now
-pub proof fn relmod_sep1<P, Q>(tracked rsrc: Release<(P, Q)>) -> (tracked out: (
+// RELMOD-SEP |-
+pub axiom fn relmod_sep<P, Q>(tracked rsrc: Release<(P, Q)>) -> (tracked out: (
     Release<P>,
     Release<Q>,
 ))
     ensures
-        out == (Release { v: rsrc.v.0 }, Release { v: rsrc.v.1 }),
-{
-    (Release { v: rsrc.v.0 }, Release { v: rsrc.v.1 })
-}
+        out.0.value() == rsrc.value().0,
+        out.1.value() == rsrc.value().1,
+    ;
 
-pub proof fn relmod_sep2<P, Q>(tracked rsrc: (Release<P>, Release<Q>)) -> (tracked out: Release<
+// RELMOD-SEP -|
+pub axiom fn relmod_join<P, Q>(tracked rsrc: (Release<P>, Release<Q>)) -> (tracked out: Release<
     (P, Q),
 >)
     ensures
-        out == (Release { v: (rsrc.0.v, rsrc.1.v) }),
-{
-    Release { v: (rsrc.0.v, rsrc.1.v) }
-}
+        out.value() == (rsrc.0.value(), rsrc.1.value()),
+    ;
 
 // NOTE The specs seem weak
-pub proof fn relmod_wand<P, Q>(
+// RELMOD-WAND
+pub axiom fn relmod_wand<P, Q>(
     tracked rsrc: Release<proof_fn[Once](tracked p: P) -> tracked Q>,
-) -> (tracked out: proof_fn[Once](tracked p: Release<P>) -> tracked Release<Q>) {
-    let tracked f = rsrc.v;
-    let tracked f2 = proof_fn[Once] |tracked p: Release<P>| -> (tracked q: Release<Q>)
-        requires
-            f.requires((p.v,)),
-        {
-            let tracked v2 = f(p.v);
-            Release { v: v2 }
-        };
-    f2
-}
+) -> (tracked out: proof_fn[Once](tracked p: Release<P>) -> tracked Release<Q>)
+        ensures
+            forall|p: P| (#[trigger] rsrc.value().requires((p,))) ==>  exists |p2 : Release<P>| (#[trigger] out.requires((p2,))) && p == p2.value(),
+            forall|p: Release<P>| (#[trigger] out.requires((p,))) ==>  (#[trigger] rsrc.value().requires((p.value(),))),
+            forall|p : P, q : Q| (#[trigger] rsrc.value().ensures((p,), q)) ==>  exists |p2 : Release<P>, q2 : Release<Q>| (#[trigger] out.ensures((p2,), q2)) && p == p2.value() && q == q2.value(),
+    				forall|p : Release<P>, q : Release<Q>| (#[trigger] out.ensures((p,), q)) ==>  (#[trigger] rsrc.value().ensures((p.value(),), q.value())),
+        ;
+
+// XXX how does verus accept this definition? Shouldn't the field v be private?
+// pub axiom fn relmod_wand<P, Q>(
+//     tracked rsrc: Release<proof_fn[Once](tracked p: P) -> tracked Q>,
+// ) -> (tracked out: proof_fn[Once](tracked p: Release<P>) -> tracked Release<Q>)
+// {
+//     let tracked f = rsrc.v;
+//     let tracked f2 = proof_fn[Once] |tracked p: Release<P>| -> (tracked q: Release<Q>)
+//         requires
+//             f.requires((p.v,)),
+//         {
+//             let tracked v2 = f(p.v);
+//             Release { v: v2 }
+//         };
+//     f2
+// }
 
 // NOTE skipping RELMOD-LATER-INTRO and RELMOD-UNOPS
-// TODO acquire modality monotonicity, and, or, wand, sep1, sep2
+
+/// Acquire modality rules
+
+// ACQMOD-MONO
+pub axiom fn acqmod_mono<T1, T2, E: Entails<T1, T2>>(
+    tracked rsrc: Acquire<T1>,
+    to: T2,
+) -> (tracked out: Acquire<T2>)
+    ensures
+        out.value() == to,
+    ;
+
+// ACQMOD-OR
+pub axiom fn acqmod_or<P, Q>(tracked rsrc: Acquire<Or<P, Q>>) -> (tracked out: Or<
+    Acquire<P>,
+    Acquire<Q>,
+>)
+    ensures
+        match (rsrc.value(), out) {
+            (Or::Left(p), Or::Left(p2)) => p == p2.value(),
+            (Or::Right(p), Or::Right(p2)) => p == p2.value(),
+            _ => false,
+        },
+    ;
+
+// ACQMOD-OR (weaker version)
+pub proof fn acqmod_or2<T1: IsObjective, T2: IsObjective>(tracked r: Acquire<Objective<MyOr<T1, T2>>>) -> (tracked out: (Option<Acquire<T1>>, Option<Acquire<T2>>))
+    ensures
+        match r.value().value() {
+            MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Acquire<T2>>,
+            MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Acquire<T1>>
+        }
+{
+    match Objective::from_acquire(r).to_inner() {
+        MyOr::Left(t1) => (Some(Objective::new(t1).as_acquire()), None),
+        MyOr::Right(t2) => (None, Some(Objective::new(t2).as_acquire()))
+    }
+}
+
+// ACQMOD-SEP |-
+pub axiom fn acqmod_sep<P, Q>(tracked rsrc: Acquire<(P, Q)>) -> (tracked out: (
+    Acquire<P>,
+    Acquire<Q>,
+))
+    ensures
+        out.0.value() == rsrc.value().0,
+        out.1.value() == rsrc.value().1,
+    ;
+
+// ACQMOD-SEP -|
+pub axiom fn acqmod_join<P, Q>(tracked rsrc: (Acquire<P>, Acquire<Q>)) -> (tracked out: Acquire<
+    (P, Q),
+>)
+    ensures
+        out.value() == (rsrc.0.value(), rsrc.1.value()),
+    ;
+
+// ACQMOD-WAND
+pub axiom fn acqmod_wand<P, Q>(
+    tracked rsrc: Acquire<proof_fn[Once](tracked p: P) -> tracked Q>,
+) -> (tracked out: proof_fn[Once](tracked p: Acquire<P>) -> tracked Acquire<Q>)
+        ensures
+            forall|p: P| (#[trigger] rsrc.value().requires((p,))) ==>  exists |p2 : Acquire<P>| (#[trigger] out.requires((p2,))) && p == p2.value(),
+            forall|p: Acquire<P>| (#[trigger] out.requires((p,))) ==>  (#[trigger] rsrc.value().requires((p.value(),))),
+            forall|p : P, q : Q| (#[trigger] rsrc.value().ensures((p,), q)) ==>  exists |p2 : Acquire<P>, q2 : Acquire<Q>| (#[trigger] out.ensures((p2,), q2)) && p == p2.value() && q == q2.value(),
+    				forall|p : Acquire<P>, q : Acquire<Q>| (#[trigger] out.ensures((p,), q)) ==>  (#[trigger] rsrc.value().ensures((p.value(),), q.value())),
+        ;
 
 // Objective modality
 /// This trait should be implemented on types P such that objective(P) holds
