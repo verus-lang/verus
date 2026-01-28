@@ -379,8 +379,8 @@ pub(crate) fn translate_trait<'tcx>(
 
                     let mut preds1 = preds1.to_vec();
                     let mut preds2 = preds2.to_vec();
-                    preds1.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
-                    preds2.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                    preds1.sort_by_key(|x| x.to_string());
+                    preds2.sort_by_key(|x| x.to_string());
 
                     if preds1.len() != preds2.len() {
                         let mut t = format!(

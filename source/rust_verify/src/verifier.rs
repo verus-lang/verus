@@ -2860,13 +2860,8 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> = if let Err(e) = check_crate_result1 {
-            Some(e)
-        } else if let Err(e) = check_crate_result {
-            Some(e)
-        } else {
-            None
-        };
+        let mut first_error: Option<VirErr> =
+            check_crate_result1.err().or(check_crate_result.err());
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
@@ -2979,16 +2974,11 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
             let entries = std::fs::read_dir(dir).map_err(|err| {
                 io_vir_err(format!("could not read directory {}", dir.display()), err)
             })?;
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if entry.path().is_file() {
-                        std::fs::remove_file(entry.path()).map_err(|err| {
-                            io_vir_err(
-                                format!("could not remove file {}", entry.path().display()),
-                                err,
-                            )
-                        })?;
-                    }
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    std::fs::remove_file(entry.path()).map_err(|err| {
+                        io_vir_err(format!("could not remove file {}", entry.path().display()), err)
+                    })?;
                 }
             }
         } else {

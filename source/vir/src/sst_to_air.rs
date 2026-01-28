@@ -892,14 +892,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
-            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            let mut exprs: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             ident_apply(&name, &exprs)
         }
         ExpX::Call(CallFun::InternalFun(InternalFun::OpenInvariantMask(f, i)), typs, args) => {
-            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            let mut exprs: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
@@ -913,7 +913,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 _ => false,
             };
 
-            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            let mut exprs: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             if crate::context::DECORATE && skip_first_decoration {
                 exprs.remove(0);
             }
@@ -1187,7 +1187,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 };
                 let mut exprs: Vec<Expr> =
                     crate::datatype_to_air::field_typ_args(num_variants, || {
-                        ts.iter().map(typ_to_ids).flatten().collect()
+                        ts.iter().flat_map(typ_to_ids).collect()
                     });
                 exprs.push(expr);
                 Arc::new(ExprX::Apply(
@@ -1303,14 +1303,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     match &*undecorate_typ(container_typ) {
                         TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => {
                             assert!(*kind == ArrayKind::Array);
-                            let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                            let mut args: Vec<Expr> = ts.iter().flat_map(typ_to_ids).collect();
                             args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
                             args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
                             ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
                         }
                         TypX::Primitive(Primitive::Slice, ts) if ts.len() == 1 => {
                             assert!(*kind == ArrayKind::Slice);
-                            let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                            let mut args: Vec<Expr> = ts.iter().flat_map(typ_to_ids).collect();
                             let lhs_expr = exp_to_expr(ctx, lhs, expr_ctxt)?;
                             let lhs_expr = as_box(ctx, lhs_expr, &lhs.typ);
                             let rhs_expr = exp_to_expr(ctx, rhs, expr_ctxt)?;
@@ -1857,7 +1857,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
 
-            let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            let mut req_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             for arg in args.iter() {
                 req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
@@ -1953,7 +1953,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
-            let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
                 unimplemented!("&mut args are unsupported in debugger mode");
             }
@@ -2042,7 +2042,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
-                    let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
+                    let res_typ_args = res_typs.iter().flat_map(typ_to_ids).collect();
                     (true, true, res_fun, res_typ_args)
                 }
                 _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
@@ -2148,14 +2148,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .fun
                         .as_ref()
                         .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map_or(None, |fun| Some(fun.x.ret.x.typ.clone()));
-                    if ret_op.is_some() {
+                        .map(|fun| fun.x.ret.x.typ.clone());
+                    if let Some(ret) = ret_op {
                         stmts.extend(opaque_ty_additional_stmts(
                             ctx,
                             state,
                             &ret_exp.span,
                             &ret_exp.typ,
-                            &ret_op.unwrap(),
+                            &ret,
                         )?);
                     }
 
@@ -2357,8 +2357,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             }
                         };
                         let name = suffix_global_id(&fun_to_air_ident(&fun));
-                        let mut exprs: Vec<Expr> =
-                            typ_args.iter().map(typ_to_ids).flatten().collect();
+                        let mut exprs: Vec<Expr> = typ_args.iter().flat_map(typ_to_ids).collect();
                         // REVIEW: cleaner boxing and unboxing strategy here?
                         // spec_slice_update : Poly -> Poly
                         // spec_array_update : Poly -> native

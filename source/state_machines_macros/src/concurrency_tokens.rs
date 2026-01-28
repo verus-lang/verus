@@ -1584,13 +1584,7 @@ fn get_main_lemma_for_transition_opt<'a>(
     lemmas: &'a Vec<Lemma>,
     trans_name: &Ident,
 ) -> Option<&'a Lemma> {
-    for l in lemmas {
-        if l.purpose.transition == *trans_name {
-            return Some(l);
-        }
-    }
-
-    None
+    lemmas.iter().find(|l| l.purpose.transition == *trans_name)
 }
 
 // Find things that updated

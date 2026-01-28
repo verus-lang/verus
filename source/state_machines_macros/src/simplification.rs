@@ -251,11 +251,8 @@ fn get_cur_ident(field_name: &Ident) -> Ident {
 
 fn field_name_from_tmp(tmp_name: &Ident) -> Option<Ident> {
     let s = tmp_name.to_string();
-    if s.starts_with(UPDATE_TMP_PREFIX) {
-        Some(Ident::new(&s[UPDATE_TMP_PREFIX.len()..], tmp_name.span()))
-    } else {
-        None
-    }
+    let ident_str = s.strip_prefix(UPDATE_TMP_PREFIX)?;
+    Some(Ident::new(ident_str, tmp_name.span()))
 }
 
 // Phase 1. Give meaning to all the update, init, and special op statements.

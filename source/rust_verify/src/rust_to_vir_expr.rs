@@ -1804,15 +1804,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
     }
 
-    let loop_isolation = || {
-        if let Some(flag) = expr_vattrs.loop_isolation {
-            flag
-        } else if let Some(flag) =
-            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
-        {
-            flag
+    let loop_isolation = {
+        if let Some(b) = expr_vattrs.loop_isolation {
+            b
         } else {
-            true
+            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+                .unwrap_or(true)
         }
     };
 
@@ -2183,8 +2180,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     TyKind::Bool => UnaryOp::Not,
                     _ => {
                         let ret = operator_overload_to_vir(bctx, expr, modifier)?;
-                        if ret.is_some() {
-                            return Ok(ExprOrPlace::Expr(ret.unwrap()));
+                        if let Some(r) = ret {
+                            return Ok(ExprOrPlace::Expr(r));
                         }
                         unsupported_err!(
                             expr.span,
@@ -2234,8 +2231,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vlhs = expr_to_vir_consume(bctx, lhs, modifier)?;
             let vrhs = expr_to_vir_consume(bctx, rhs, modifier)?;
             let ret = operator_overload_to_vir(bctx, expr, modifier)?;
-            if ret.is_some() {
-                return Ok(ExprOrPlace::Expr(ret.unwrap()));
+            if let Some(r) = ret {
+                return Ok(ExprOrPlace::Expr(r));
             }
             let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
@@ -2496,7 +2493,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
-            let loop_isolation = loop_isolation();
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
@@ -2577,7 +2573,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 *header_span,
                 &expr_typ()?,
                 ExprX::Loop {
-                    loop_isolation: loop_isolation(),
+                    loop_isolation,
                     is_for_loop: false,
                     label,
                     cond,
@@ -3109,18 +3105,15 @@ fn expr_assign_to_vir_innermost<'tcx>(
 
         let mut rhs_vir = expr_to_vir_consume(bctx, rhs, modifier)?;
         let fun = vir::fun!["vstd" => "std_specs", "core", "index_set"];
-        let typ_args = Some(Arc::new(vec![
-            undecorate_typ(&tgt_vir.typ),
-            idx_vir.typ.clone(),
-            rhs_vir.typ.clone(),
-        ]));
+        let typ_args =
+            Arc::new(vec![undecorate_typ(&tgt_vir.typ), idx_vir.typ.clone(), rhs_vir.typ.clone()]);
         let tgt_vir = place_to_loc(&tgt_vir)?;
         let tgt_vir =
             bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
         let call_target = CallTarget::Fun(
             vir::ast::CallTargetKind::Static,
             fun,
-            typ_args.unwrap(),
+            typ_args,
             Arc::new(vec![]),
             AutospecUsage::Final,
         );

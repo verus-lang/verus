@@ -2452,16 +2452,16 @@ fn check_function(
                 &ctxt.datatypes,
             )?;
             if new_mut_ref {
-                if functionx.body.is_some() {
-                    functionx.body = Some(crate::resolution_inference::infer_resolution(
+                if let Some(body) = &mut functionx.body {
+                    *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
-                        functionx.body.as_ref().unwrap(),
+                        &body,
                         &record.read_kind_finals,
                         &ctxt.datatypes,
                         &ctxt.funs,
                         &record.var_modes,
                         &record.temporary_modes,
-                    ));
+                    );
                 }
             }
         }
