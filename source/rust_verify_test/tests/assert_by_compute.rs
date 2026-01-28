@@ -820,3 +820,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] implies verus_code! {
+        fn test_implies (u : i8) {
+            assert(u < 100 ==> true) by (compute);
+        }
+
+        fn main() {
+            test_implies(98);
+            return
+        }
+    } => Ok(())
+}
