@@ -54,7 +54,6 @@ pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
-pub mod primitive_int;
 pub mod proph;
 pub mod raw_ptr;
 pub mod relations;
