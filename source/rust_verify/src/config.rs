@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
-    pub use_internal_profiler: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -151,7 +150,6 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
-            use_internal_profiler: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -810,7 +808,6 @@ pub fn parse_args_with_imports(
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
         spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
-        use_internal_profiler: extended.contains_key(EXTENDED_USE_INTERNAL_PROFILER),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
         solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),
