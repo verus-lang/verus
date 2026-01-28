@@ -37,7 +37,7 @@ fn check_updates_refer_to_valid_fields(
             }
         }
         TransitionStmt::Split(span, kind, splits) => {
-            match kind {
+            match &**kind {
                 SplitKind::Special(f, _, _, _) => {
                     if !fields_contain(fields, f) {
                         errors.push(Error::new(span.span(), format!("field '{f}' not found")));
@@ -99,71 +99,73 @@ fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Resu
             }
             Ok(o)
         }
-        TransitionStmt::Split(_, SplitKind::Let(..), es) => {
-            assert!(es.len() == 1);
-            let child = &es[0];
-            check_exactly_one_init_rec(field, child)
-        }
-        TransitionStmt::Split(if_span, SplitKind::If(_), es) => {
-            assert!(es.len() == 2);
-            let o1 = check_exactly_one_init_rec(field, &es[0])?;
-            let o2 = check_exactly_one_init_rec(field, &es[1])?;
-            // The user is required to initialize the field in both branches if they update
-            // it in either. Therefore we need to produce an error if there was a mismatch
-            // between the two branches.
-            match (o1, o2) {
-                (Some(span1), Some(_span2)) => Ok(Some(span1)),
-                (None, None) => Ok(None),
-                (Some(_span1), None) => {
-                    return Err(Error::new(
-                        *if_span,
-                        format!(
-                            "for initialization, both branches of an if-statement must initialize the same fields; the else-branch does not initialize '{}'",
-                            field.name
-                        ),
-                    ));
-                }
-                (None, Some(_span1)) => {
-                    return Err(Error::new(
-                        *if_span,
-                        format!(
-                            "for initialization, both branches of an if-statement must initialize the same fields; the if-branch does not initialize '{}'",
-                            field.name
-                        ),
-                    ));
-                }
+        TransitionStmt::Split(if_span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(..) => {
+                assert!(es.len() == 1);
+                let child = &es[0];
+                check_exactly_one_init_rec(field, child)
             }
-        }
-        TransitionStmt::Split(_span, SplitKind::Match(..), es) => {
-            let o1 = check_exactly_one_init_rec(field, &es[0])?;
-            for i in 1..es.len() {
-                let oi = check_exactly_one_init_rec(field, &es[i])?;
-                match (o1, oi) {
-                    (Some(_span1), Some(_span2)) => {}
-                    (None, None) => {}
+            SplitKind::If(_) => {
+                assert!(es.len() == 2);
+                let o1 = check_exactly_one_init_rec(field, &es[0])?;
+                let o2 = check_exactly_one_init_rec(field, &es[1])?;
+                // The user is required to initialize the field in both branches if they update
+                // it in either. Therefore we need to produce an error if there was a mismatch
+                // between the two branches.
+                match (o1, o2) {
+                    (Some(span1), Some(_span2)) => Ok(Some(span1)),
+                    (None, None) => Ok(None),
                     (Some(_span1), None) => {
                         return Err(Error::new(
-                            *es[i].get_span(),
+                            *if_span,
                             format!(
-                                "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                "for initialization, both branches of an if-statement must initialize the same fields; the else-branch does not initialize '{}'",
                                 field.name
                             ),
                         ));
                     }
                     (None, Some(_span1)) => {
                         return Err(Error::new(
-                            *es[0].get_span(),
+                            *if_span,
                             format!(
-                                "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                "for initialization, both branches of an if-statement must initialize the same fields; the if-branch does not initialize '{}'",
                                 field.name
                             ),
                         ));
                     }
                 }
             }
-            Ok(o1)
-        }
-        TransitionStmt::Split(_, SplitKind::Special(..), _) => Ok(None),
+            SplitKind::Match(..) => {
+                let o1 = check_exactly_one_init_rec(field, &es[0])?;
+                for i in 1..es.len() {
+                    let oi = check_exactly_one_init_rec(field, &es[i])?;
+                    match (o1, oi) {
+                        (Some(_span1), Some(_span2)) => {}
+                        (None, None) => {}
+                        (Some(_span1), None) => {
+                            return Err(Error::new(
+                                *es[i].get_span(),
+                                format!(
+                                    "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                    field.name
+                                ),
+                            ));
+                        }
+                        (None, Some(_span1)) => {
+                            return Err(Error::new(
+                                *es[0].get_span(),
+                                format!(
+                                    "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                    field.name
+                                ),
+                            ));
+                        }
+                    }
+                }
+                Ok(o1)
+            }
+            SplitKind::Special(..) => Ok(None),
+        },
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(span, id, _) => {
@@ -445,42 +447,50 @@ fn check_valid_ops(
                 check_valid_ops(fields, t, is_readonly, is_property, errors);
             }
         }
-        TransitionStmt::Split(span, SplitKind::Special(f, op, _, _), es) => {
-            let field = get_field(fields, f);
-            match is_allowed_in_special_op(*span, &field.stype, op) {
-                Ok(()) => {}
-                Err(err) => {
-                    errors.push(err);
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
+            SplitKind::Special(f, op, _, _) => {
+                let field = get_field(fields, f);
+                match is_allowed_in_special_op(*span, &field.stype, op) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        errors.push(err);
+                    }
                 }
-            }
-            if is_readonly && op.is_modifier() {
-                errors.push(Error::new(
-                    *span,
-                    format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
-                ));
-            }
-            if is_property && op.is_modifier() {
-                errors.push(Error::new(
-                    *span,
-                    format!("'{:}' statement not allowed in 'property' definition", op.stmt.name()),
-                ));
-            }
-            if !is_readonly && !is_property && op.is_only_allowed_in_property_or_readonly() {
-                errors.push(Error::new(
+                if is_readonly && op.is_modifier() {
+                    errors.push(Error::new(
+                        *span,
+                        format!(
+                            "'{:}' statement not allowed in readonly transition",
+                            op.stmt.name()
+                        ),
+                    ));
+                }
+                if is_property && op.is_modifier() {
+                    errors.push(Error::new(
+                        *span,
+                        format!(
+                            "'{:}' statement not allowed in 'property' definition",
+                            op.stmt.name()
+                        ),
+                    ));
+                }
+                if !is_readonly && !is_property && op.is_only_allowed_in_property_or_readonly() {
+                    errors.push(Error::new(
                     *span,
                     format!("'{:}' statement only allowed in 'readonly' transition or 'property' definition", op.stmt.name()),
                 ));
-            }
+                }
 
-            for e in es {
-                check_valid_ops(fields, e, is_readonly, is_property, errors);
+                for e in es {
+                    check_valid_ops(fields, e, is_readonly, is_property, errors);
+                }
             }
-        }
-        TransitionStmt::Split(_, _, es) => {
-            for e in es {
-                check_valid_ops(fields, e, is_readonly, is_property, errors);
+            _ => {
+                for e in es {
+                    check_valid_ops(fields, e, is_readonly, is_property, errors);
+                }
             }
-        }
+        },
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(..) => {}
         TransitionStmt::Initialize(span, _, _) => {
@@ -530,7 +540,7 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
             }
         }
         TransitionStmt::Split(span, kind, es) => {
-            match kind {
+            match &**kind {
                 SplitKind::Special(..) => {
                     errors.push(Error::new(
                         *span,
@@ -610,21 +620,23 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
 fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
     match ts {
         TransitionStmt::Block(_, _) => {}
-        TransitionStmt::Split(_span, SplitKind::Let(pat, _, _, _), _) => {
-            return crate::ident_visitor::pattern_get_bound_idents(pat);
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(_, _, _, None), _) => {}
-        TransitionStmt::Split(_span, SplitKind::Special(_, _, _, Some(pat)), _) => {
-            return crate::ident_visitor::pattern_get_bound_idents(pat);
-        }
-        TransitionStmt::Split(_, SplitKind::If(_), _) => {}
-        TransitionStmt::Split(_, SplitKind::Match(_, arms), _) => {
-            let mut v = Vec::new();
-            for arm in arms {
-                v.append(&mut crate::ident_visitor::pattern_get_bound_idents(&arm.pat));
+        TransitionStmt::Split(_span, split_kind, _) => match &**split_kind {
+            SplitKind::Let(pat, _, _, _) => {
+                return crate::ident_visitor::pattern_get_bound_idents(pat);
             }
-            return v;
-        }
+            SplitKind::Special(_, _, _, None) => {}
+            SplitKind::Special(_, _, _, Some(pat)) => {
+                return crate::ident_visitor::pattern_get_bound_idents(pat);
+            }
+            SplitKind::If(_) => {}
+            SplitKind::Match(_, arms) => {
+                let mut v = Vec::new();
+                for arm in arms {
+                    v.append(&mut crate::ident_visitor::pattern_get_bound_idents(&arm.pat));
+                }
+                return v;
+            }
+        },
         TransitionStmt::Require(..) => {}
         TransitionStmt::Assert(..) => {}
         TransitionStmt::SubUpdate(..) => {}

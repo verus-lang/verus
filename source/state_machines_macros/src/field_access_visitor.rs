@@ -151,7 +151,7 @@ pub fn visit_field_accesses_all_exprs(
             }
         }
         TransitionStmt::Split(_span, split_kind, splits) => {
-            match split_kind {
+            match &mut **split_kind {
                 SplitKind::Let(_pat, _ty, lk, init_e) => {
                     let is_birds_eye = *lk == LetKind::BirdsEye;
                     visit_field_accesses(

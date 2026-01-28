@@ -55,12 +55,10 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 #  - If an already enforced lint is being pedantic for a particular instance, where
 #    fixing it would be overly complex, consider also `allow`ing it on that particular instance.
 
-# perf
-large_enum_variant = "allow"
-
 # suspicious
 # do not remove: see https://github.com/verus-lang/verus/pull/2091#discussion_r2710412679 for a discussion
 manual_unwrap_or_default = "allow"
+
 # style
 assign_op_pattern = "allow"
 chars_last_cmp = "allow"
