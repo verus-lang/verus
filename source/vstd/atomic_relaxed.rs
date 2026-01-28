@@ -19,6 +19,10 @@ impl View {
                 &&& self.0[l] <= other.0[l]
             }
     }
+
+    pub open spec fn empty() -> Self {
+        Self ( Map::<CellId, nat>::empty() )
+    }
 }
 
 pub struct History<T>(pub Map<nat, (T, Option<View>)>);
@@ -576,15 +580,49 @@ impl<T, U> Objective<(T, U)> {
     ;
 }
 
+/// This trait should be implemented on types P such that timeless(P) holds
+pub unsafe trait IsTimeless {
+
+}
+
+// Do we have a trait for this or just use Copy?
+/// This trait should be implemented on types P such that persistent(P) holds
+pub unsafe trait IsPersistent {
+
+}
+
 // Explicit views
 pub struct ViewSeen {
     view: View,
+}
+
+// How to implement a trait for a specific construction of a struct? 
+// unsafe impl IsObjective for ViewSeen { View::empty() } {
+
+// }
+
+unsafe impl IsTimeless for ViewSeen {
+
+}
+
+unsafe impl IsPersistent for ViewSeen {
+
 }
 
 impl ViewSeen {
     pub closed spec fn view(&self) -> View {
         self.view
     }
+
+    pub closed spec fn empty() -> ViewSeen {
+        Self { view: View::empty() }
+    }
+
+    // VS_BOT
+    pub axiom fn vs_bot() -> (tracked out: ViewSeen)
+        ensures
+            out.view() == View::empty(),
+    ;
 }
 
 pub struct ViewAt<T> {
