@@ -11,7 +11,7 @@ verus! {
 pub struct View(pub Map<CellId, nat>);
 
 impl View {
-    // todo: we could make this opaque if unfolding this definition is required very often
+    // todo: we could make this opaque if unfolding this definition is not required very often
     pub open spec fn contains(&self, other: Self) -> bool {
         forall|l| #[trigger]
             self.0.dom().contains(l) ==> {
