@@ -1026,3 +1026,20 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `x` because it was mutably borrowed")
 }
+
+// TODO(new_mut_ref): un-ignore this test; swap needs to be restricted to non-exec types
+test_verify_one_file_with_options! {
+    #[ignore] #[test] tracked_swap_requires_non_exec_type ["new-mut-ref"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::*;
+        fn test() {
+            let mut a: u64 = 0;
+            let mut b: u64 = 1;
+            let a_ref = &mut a;
+            let b_ref = &mut b;
+            proof {
+                tracked_swap(a_ref, b_ref);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot call tracked_swap with exec types")
+}
