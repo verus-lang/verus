@@ -292,6 +292,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_call_no_update
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically |update| {}
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "function must be called in `atomically` block")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_multiple_updates
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            atomic_function() atomically |update| {
+                let tracked _ = update(Token::new());
+                let tracked _ = update(Token::new());
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "function must be called exactly once in `atomically` block")
+}
+
+test_verify_one_file! {
     #[test] atomic_call_success
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
@@ -303,10 +326,7 @@ test_verify_one_file! {
                 let tracked res: Result<Token, Token> = update(token);
                 match res {
                     Ok(t) => break,
-                    Err(t) => {
-                        token = t;
-                        continue;
-                    }
+                    Err(t) => token = t,
                 }
             }
         }
@@ -343,6 +363,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_call_with_labels
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        #[verifier::loop_isolation(false)]
+        fn atomic_function_call() {
+            let tracked mut token = Token::new();
+            atomic_function() 'label: atomically |update| -> (au: FunAU)
+                invariant token.is_valid(),
+            {
+                let tracked res = update(token);
+                match res {
+                    Ok(t) => break 'label,
+                    Err(t) => {
+                        token = t;
+                        continue 'label;
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_call_fail_atomic_pre
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {
         #[verifier::loop_isolation(false)]
@@ -354,4 +396,110 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show atomic precondition holds before update function")
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_empty
+    verus_code! {
+        use vstd::atomic::*;
+        pub exec fn atomic_function()
+            atomically (au) {},
+        {
+            try_open_atomic_update!(au, _unit => {
+                Tracked(())
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_check_defaults
+    verus_code! {
+        use vstd::atomic::*;
+        pub exec fn atomic_function()
+            atomically (au) {
+                type PredType,
+            },
+        {
+            try_open_atomic_update!(au, _unit => {
+                Tracked(())
+            });
+        }
+
+        pub proof fn check_predicate_type(
+            tracked au: AtomicUpdate<(), (), PredType>,
+            tracked x: (),
+            tracked y: (),
+        )
+            ensures
+                au.req(x),
+                au.ens(x, y),
+                au.outer_mask().is_empty(),
+                au.inner_mask().is_empty(),
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_private_ensures_callee
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: I<u32>),
+                requires x == 2,
+                ensures y@ == 3,
+            },
+            ensures out == x + y@,
+        {
+            try_open_atomic_update!(au, value => {
+                Tracked(I((value + 1_u32) as u32))
+            });
+
+            assert(au.input() == 2);
+            assert(au.output()@ == 3);
+
+            return 5;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_spec_private_ensures_caller
+    verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub exec fn atomic_function() -> (out: u32)
+            atomically (au) {
+                type FunctionPred,
+                (x: u32) -> (y: I<u32>),
+                ensures x < y@,
+            },
+            ensures out == y@,
+        {
+            assume(false);
+            unreached()
+        }
+
+        #[verifier::loop_isolation(false)]
+        pub exec fn other_function() {
+            let tracked mut value: u32 = 5;
+
+            let out = atomic_function() atomically |update|
+                invariant value == 5,
+            {
+                let tracked I(next) = update(value);
+                value = next;
+                break;
+            };
+
+            assert(out > 5);
+        }
+    } => Ok(())
 }

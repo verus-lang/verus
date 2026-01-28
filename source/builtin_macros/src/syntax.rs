@@ -5063,24 +5063,7 @@ pub(crate) fn rewrite_items(
         visitor.inside_ghost = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
-
-        // if !visitor.additional_items.is_empty() {
-        //     let msg = "debug print";
-        //     dbg!(msg);
-
-        //     for item in visitor.additional_items.iter().chain(Some(&*item)) {
-        //         let s = item.to_token_stream().to_string();
-        //         eprintln!("\n{s}\n");
-        //     }
-        // }
-
         items.items.append(&mut visitor.additional_items);
-        //while !visitor.additional_items.is_empty() {
-        //    let mut additional = std::mem::take(&mut visitor.additional_items);
-        //    visitor.visit_items_prefilter(&mut additional);
-        //    items.items.extend(additional);
-        //}
-
         index += 1;
     }
     visitor.visit_items_post(&mut items.items);

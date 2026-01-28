@@ -1315,7 +1315,6 @@ fn open_au_block_to_vir<'tcx>(
     };
 
     if res_bind != res_use || guard_bind != guard_use {
-        dbg!(res_bind, res_use);
         return malformed_au_block_err(expr);
     }
 

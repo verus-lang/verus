@@ -569,8 +569,8 @@ test_verify_one_file! {
         pub exec fn atomic_function()
             atomically (au) {},
         {
-            try_open_atomic_update!(au, _void => {
-                Tracked(Ok(()))
+            try_open_atomic_update!(au, _unit => {
+                Tracked(())
             });
         }
     } => Ok(())
@@ -586,19 +586,19 @@ test_verify_one_file! {
         pub exec fn atomic_function() -> (out: u32)
             atomically (au) {
                 type FunctionPred,
-                (x: u32) -> (y: u32),
+                (x: u32) -> (y: I<u32>),
                 requires x == 2,
-                ensures y == 3,
+                ensures y@ == 3,
             },
             ensures
-                out == x + y,
+                out == x + y@,
         {
             try_open_atomic_update!(au, value => {
-                Tracked(Ok((value + 1_u32) as u32))
+                Tracked(I((value + 1_u32) as u32))
             });
 
             assert(au.input() == 2);
-            assert(au.output() == 3);
+            assert(au.output()@ == 3);
 
             return 5;
         }
@@ -615,22 +615,25 @@ test_verify_one_file! {
         pub exec fn atomic_function() -> (out: u32)
             atomically (au) {
                 type FunctionPred,
-                (x: u32) -> (y: u32),
-                requires true,
-                ensures x < y,
+                (x: u32) -> (y: I<u32>),
+                ensures x < y@,
             },
-            ensures
-                out == y,
+            ensures out == y@,
         {
             assume(false);
             unreached()
         }
 
+        #[verifier::loop_isolation(false)]
         pub exec fn other_function() {
             let tracked mut value: u32 = 5;
 
-            let out = atomic_function() atomically |update| {
-                value = update(value);
+            let out = atomic_function() atomically |update|
+                invariant value == 5,
+            {
+                let tracked I(next) = update(value);
+                value = next;
+                break;
             };
 
             assert(out > 5);

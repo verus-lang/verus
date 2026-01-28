@@ -132,6 +132,9 @@ fn call_increment_good() {
             },
         }
     };
+
+    let tracked perm = inv.into_inner();
+    assert(perm@.patomic == var.id());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

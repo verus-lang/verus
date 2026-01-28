@@ -326,7 +326,7 @@ use typing::Typing;
 impl State {
     fn get(&self, x: &VarIdent, span: &Span) -> Result<Mode, VirErr> {
         let Some(var_mode) = self.vars.get(x) else {
-            dbg!(x);
+            eprintln!("{x:#?}");
             panic!("internal error: missing mode")
         };
 
