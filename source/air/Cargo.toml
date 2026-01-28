@@ -19,3 +19,6 @@ win32job = "1"
 
 [features]
 singular = []
+
+[lints]
+workspace = true

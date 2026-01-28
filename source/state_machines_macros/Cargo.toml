@@ -1,6 +1,6 @@
 [package]
 name = "verus_state_machines_macros"
-version = "0.0.0-2025-11-23-0053"
+version = "0.0.0-2026-01-25-0057"
 edition = "2018"
 license = "MIT"
 description = "Verus State-Machine Macros: Various macros used by Verus to define and reason about atomic and sharded state machines"
@@ -14,7 +14,7 @@ categories = ["development-tools"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-verus_syn = { version= "=0.0.0-2025-11-16-0050", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_syn = { version= "=0.0.0-2026-01-25-0057", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 indexmap = { version = "1" }
@@ -22,5 +22,5 @@ indexmap = { version = "1" }
 [lib]
 proc-macro = true
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }
+[lints]
+workspace = true

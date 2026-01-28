@@ -38,7 +38,7 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 
 use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::context::Context;
+use crate::context::ContextX;
 use crate::rust_to_vir_base::def_id_to_vir_path_option;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
@@ -129,8 +129,7 @@ impl CrateItems {
 ///     individual items can be treated as external individually.
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
-
-pub(crate) fn get_crate_items<'a, 'b, 'tcx>(ctxt: &'a Context<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'tcx>(ctxt: &ContextX<'tcx>) -> Result<CrateItems, VirErr> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
@@ -186,7 +185,7 @@ struct InsideImpl {
 
 struct VisitMod<'a, 'tcx> {
     items: Vec<CrateItem>,
-    ctxt: &'a Context<'tcx>,
+    ctxt: &'a ContextX<'tcx>,
     errors: Vec<VirErr>,
 
     state: VerifState,
@@ -463,7 +462,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
 /// Emit warnings and errors from nonsense combinations.
 fn emit_errors_warnings_for_ignored_attrs<'tcx>(
-    ctxt: &Context<'tcx>,
+    ctxt: &ContextX<'tcx>,
     state: VerifState,
     eattrs: &ExternalAttrs,
     diagnostics: &mut Vec<VirErrAs>,
@@ -625,14 +624,13 @@ impl<'a> GeneralItem<'a> {
 ///
 /// Different traits are handled on a case-by-case basis; see automatic_derive.rs
 fn get_attributes_for_automatic_derive<'tcx>(
-    ctxt: &Context<'tcx>,
+    ctxt: &ContextX<'tcx>,
     general_item: &GeneralItem<'tcx>,
     attrs: &[rustc_hir::Attribute],
     span: Span,
 ) -> Option<ExternalAttrs> {
     let warn_unknown = || {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+        ctxt.diagnostics.borrow_mut().push(VirErrAs::Warning(crate::util::err_span_bare(
             span,
             format!(
                 "Verus doesn't known how to handle this automatically derived item; ignoring it"

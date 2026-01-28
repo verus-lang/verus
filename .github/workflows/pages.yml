@@ -15,6 +15,9 @@ concurrency:
   group: "pages"
   cancel-in-progress: true
 
+env:
+  MDBOOK_VERSION: 0.5.2
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -22,25 +25,24 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v4
+
+      - name: setup dir structure
+        run: |
+          mkdir -p ./_site/guide
+          mkdir -p ./_site/state_machines
+
       - name: setup mdbook
         run: |
-          curl -L https://github.com/rust-lang/mdBook/releases/download/v0.4.21/mdbook-v0.4.21-x86_64-unknown-linux-gnu.tar.gz > mdbook.tar.gz
+          curl -L https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz > mdbook.tar.gz
           tar -xvf mdbook.tar.gz
           rm mdbook.tar.gz
           chmod +x mdbook
-      - name: set-up dir structure
-        run: |
-          mkdir ./_site
 
       - name: build guide book
-        run: |
-          mkdir ./_site/guide
-          ./mdbook build -d ../../../_site/guide source/docs/guide
+        run: ./mdbook build -d ./_site/guide source/docs/guide
 
       - name: build state_machines book
-        run: |
-          mkdir ./_site/state_machines
-          ./mdbook build -d ../../../_site/state_machines source/docs/state_machines
+        run: ./mdbook build -d ./_site/state_machines source/docs/state_machines
 
       - name: download verusdoc artifact
         uses: dawidd6/action-download-artifact@v2
@@ -67,10 +69,10 @@ jobs:
         uses: actions/upload-pages-artifact@v3
 
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
     permissions:
       pages: write
       id-token: write

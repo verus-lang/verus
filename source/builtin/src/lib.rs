@@ -419,7 +419,9 @@ impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Ghost::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -478,7 +480,9 @@ impl<A> Tracked<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::view"]
     #[verifier::spec]
+    #[allow(clippy::uninit_assumed_init)]
     pub fn view(self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -510,7 +514,9 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
+    #[allow(clippy::uninit_assumed_init)]
     pub const fn get(#[verifier::proof] self) -> A {
+        // SAFETY: this is never called in an execution, so it's safe to do
         unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
@@ -545,17 +551,16 @@ impl<A> Clone for Ghost<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Ghost { phantom: PhantomData }
+        *self
     }
 }
 
 impl<A> Copy for Ghost<A> {}
-
 impl<A: Copy> Clone for Tracked<A> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     #[inline(always)]
     fn clone(&self) -> Self {
-        Tracked { phantom: PhantomData }
+        *self
     }
 }
 
@@ -646,6 +651,8 @@ impl PartialEq for int {
 
 impl Eq for int {}
 
+// int is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for int {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -706,6 +713,8 @@ impl PartialEq for nat {
 
 impl Eq for nat {}
 
+// nat is a ghost type, so this is never run in exec
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl core::cmp::PartialOrd for nat {
     fn partial_cmp(&self, _other: &Self) -> Option<core::cmp::Ordering> {
         unimplemented!()
@@ -722,6 +731,17 @@ impl core::cmp::Ord for nat {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy)]
 pub struct real;
+
+impl real {
+    /// Returns the largest integer less than or equal to `self` (i.e., floor function).
+    /// This is equivalent to `self as int` when casting from real to int.
+    #[cfg(verus_keep_ghost)]
+    #[rustc_diagnostic_item = "verus::verus_builtin::real::floor"]
+    #[verifier::spec]
+    pub fn floor(self) -> int {
+        int::CONST_DEFAULT
+    }
+}
 
 //
 // Structural
@@ -799,7 +819,7 @@ unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
 
 impl<T> Clone for SyncSendIfSyncSend<T> {
     fn clone(&self) -> Self {
-        unimplemented!();
+        *self
     }
 }
 
@@ -951,6 +971,12 @@ unsafe impl Decimal for f64 {
     #[cfg_attr(verus_keep_ghost, verifier::external)]
     const CONST_DEFAULT: Self = 0.0;
 }
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Chainable")]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub unsafe trait Chainable: Copy {}
+unsafe impl<T: Integer> Chainable for T {}
+unsafe impl Chainable for real {}
 
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
@@ -1163,6 +1189,7 @@ pub trait SpecShr<Rhs = Self> {
 }
 
 // Chained inequalities x <= y < z
+// Supports both integer types and real
 pub struct SpecChain {
     data: PhantomData<int>,
 }
@@ -1170,35 +1197,35 @@ pub struct SpecChain {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_value"]
 #[verifier::spec]
-pub fn spec_chained_value<IntegerType: Integer>(_a: IntegerType) -> SpecChain {
+pub fn spec_chained_value<T: Chainable>(_a: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_le"]
 #[verifier::spec]
-pub fn spec_chained_le<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_le<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_lt"]
 #[verifier::spec]
-pub fn spec_chained_lt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_lt<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_ge"]
 #[verifier::spec]
-pub fn spec_chained_ge<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_ge<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_gt"]
 #[verifier::spec]
-pub fn spec_chained_gt<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_gt<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
@@ -1212,7 +1239,7 @@ pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_chained_eq"]
 #[verifier::spec]
-pub fn spec_chained_eq<IntegerType: Integer>(_left: SpecChain, _right: IntegerType) -> SpecChain {
+pub fn spec_chained_eq<T: Chainable>(_left: SpecChain, _right: T) -> SpecChain {
     unimplemented!()
 }
 
@@ -1358,6 +1385,8 @@ impl_unary_op!(SpecNeg, spec_neg, int, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
+
+impl_unary_op!(SpecNeg, spec_neg, real, [real]);
 
 impl_binary_op!(SpecAdd, spec_add, int, [
     int
@@ -1683,7 +1712,7 @@ impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Clone
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     fn clone(&self) -> Self {
-        unimplemented!()
+        *self
     }
 }
 

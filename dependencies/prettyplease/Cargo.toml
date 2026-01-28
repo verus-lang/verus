@@ -1,6 +1,6 @@
 [package]
 name = "verus_prettyplease"
-version = "0.0.0-2025-11-16-0050"
+version = "0.0.0-2026-01-25-0057"
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 autoexamples = false
 categories = ["development-tools"]
@@ -19,13 +19,13 @@ verbatim = ["verus_syn/parsing"]
 
 [dependencies]
 proc-macro2 = { version = "1.0.80", default-features = false }
-verus_syn = { version = "=0.0.0-2025-11-16-0050", path = "../syn", default-features = false, features = ["full", "visit", "visit-mut", "extra-traits", "parsing", "printing", "clone-impls"] }
+verus_syn = { version = "=0.0.0-2026-01-25-0057", path = "../syn", default-features = false, features = ["full", "visit", "visit-mut", "extra-traits", "parsing", "printing", "clone-impls"] }
 
 [dev-dependencies]
 indoc = "2"
 proc-macro2 = { version = "1.0.80", default-features = false }
 quote = { version = "1.0.35", default-features = false }
-verus_syn = { version = "=0.0.0-2025-11-16-0050", path = "../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
+verus_syn = { version = "=0.0.0-2026-01-25-0057", path = "../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

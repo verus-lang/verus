@@ -521,7 +521,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                 assert!(trait_impl.x.trait_typ_args.len() == tr.x.typ_params.len() + 1);
                 let tr_params = tr.x.typ_params.iter().map(|(x, _)| x);
                 let n_outer = 1 + tr_params.len(); // Self + trait params
-                for (x, t) in vec![crate::def::trait_self_type_param()]
+                for (x, t) in [crate::def::trait_self_type_param()]
                     .iter()
                     .chain(tr_params)
                     .zip(trait_impl.x.trait_typ_args.iter())
@@ -679,7 +679,8 @@ pub(crate) fn redirect_calls_in_default_methods(
                             true
                         }
                     };
-                    let impl_paths = Arc::new(impl_paths.iter().cloned().filter(filter).collect());
+                    let impl_paths =
+                        Arc::new(impl_paths.iter().filter(|p| filter(*p)).cloned().collect());
 
                     return Ok((callee, impl_paths));
                 } else {

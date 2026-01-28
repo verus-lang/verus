@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
 }
 
 test_verify_one_file! {

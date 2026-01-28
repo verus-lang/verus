@@ -120,7 +120,7 @@ fn example_use() {
 ```
 */
 
-pub struct FracGhost<T, const TOTAL: u64 = 2> {
+pub tracked struct FracGhost<T, const TOTAL: u64 = 2> {
     r: Resource<FractionalCarrier<T, TOTAL>>,
 }
 

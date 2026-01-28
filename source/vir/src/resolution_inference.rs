@@ -1055,10 +1055,39 @@ impl<'a> Builder<'a> {
                 Ok(post_bb)
             }
 
-            ExprX::OpenInvariant(e1, _, e2, _) => {
+            ExprX::OpenInvariant(arg, binder, body, _) => {
                 // TODO(new_mut_ref): test cases
-                bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
+                bb = self.build(arg, bb)?;
+
+                let local = FlattenedPlaceTyped {
+                    local: LocalName::Named(binder.name.clone()),
+                    typ: binder.a.clone(),
+                    projections: vec![],
+                };
+                let fp = self.locals.add_place(&local);
+
+                self.push_scope();
+                self.scope_insert(&binder.name);
+
+                self.push_instruction_propagate(
+                    bb,
+                    AstPosition::Before(body.span.id),
+                    InstructionKind::Overwrite(fp.clone()),
+                );
+                bb = match self.build(body, bb) {
+                    Ok(bb) => bb,
+                    Err(()) => {
+                        self.pop_scope();
+                        return Err(());
+                    }
+                };
+                self.push_instruction_propagate(
+                    bb,
+                    AstPosition::After(body.span.id),
+                    InstructionKind::MoveFrom(fp),
+                );
+                self.pop_scope();
+
                 Ok(bb)
             }
             ExprX::TryOpenAtomicUpdate(e1, _x_bind, _x_mut, e2) => {
@@ -1675,7 +1704,6 @@ pub fn pattern_all_bound_vars_with_ownership(
 /// let (x, _) = y;   // moves y.0
 /// let (x, _) = y.1; // moves y.1.0
 /// ```
-
 fn moves_and_muts_for_place_being_matched(
     pattern: &Pattern,
     fpt: &FlattenedPlaceTyped,

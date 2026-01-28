@@ -1511,7 +1511,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
 }
 
 /// Walk the AST, visit every Expr, Stmt, Pattern, Typ
-
 pub(crate) fn ast_visitor_check_with_scope_map<ERR, E, FE, FS, FP, FT, FPL>(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
@@ -1676,7 +1675,6 @@ where
 }
 
 /// Walk the AST, visit every Expr
-
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,

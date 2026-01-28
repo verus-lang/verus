@@ -450,6 +450,9 @@ impl ExpX {
                 UnaryOp::IntToReal => {
                     (format!("int_to_real({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::RealToInt => {
+                    (format!("real_to_int({})", exp.x.to_user_string(global)), 99)
+                }
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
@@ -746,7 +749,6 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 /// type. For example:
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
-
 pub fn sst_bitwidth(span: &Span, w: &IntegerTypeBitwidth, arch: &crate::ast::ArchWordBits) -> Exp {
     match w.to_exact(arch) {
         Some(w) => sst_int_literal(span, w as i128),

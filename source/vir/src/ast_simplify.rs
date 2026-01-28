@@ -74,10 +74,7 @@ impl State {
     }
 
     fn closure_type_name(&mut self, id: usize) -> Path {
-        if !self.closure_typs.contains_key(&id) {
-            self.closure_typs.insert(id, crate::def::prefix_closure_type(id));
-        }
-        self.closure_typs[&id].clone()
+        self.closure_typs.entry(id).or_insert(crate::def::prefix_closure_type(id)).clone()
     }
 }
 

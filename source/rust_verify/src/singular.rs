@@ -501,9 +501,7 @@ fn encode_singular_queries(
     queries: &mut Vec<(String, vir::messages::Message)>,
     diagnostics: &impl Diagnostics,
 ) -> Result<(), ValidityResult> {
-    let CommandX::CheckSingular(ref query) = &**command else {
-        panic!("internal error: integer_ring")
-    };
+    let CommandX::CheckSingular(query) = &**command else { panic!("internal error: integer_ring") };
 
     let SingularQueryX { requires: reqs, ensures: enss, local: _local } = &**query;
 

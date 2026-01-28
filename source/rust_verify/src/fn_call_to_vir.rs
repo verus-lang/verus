@@ -1240,7 +1240,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         op_mode: Mode::Exec,
                         from_mode: Mode::Spec,
                         to_mode: Mode::Exec,
-                        kind: ModeCoercion::Other,
+                        kind: ModeCoercion::Constructor,
                     };
                     mk_expr(ExprX::Unary(op, vir_arg))
                 } else {
@@ -1249,7 +1249,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         op_mode: Mode::Exec,
                         from_mode: Mode::Proof,
                         to_mode: Mode::Exec,
-                        kind: ModeCoercion::Other,
+                        kind: ModeCoercion::Constructor,
                     };
                     mk_expr(ExprX::Unary(op, vir_arg))
                 }
@@ -1405,16 +1405,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             let triggers_tuples = expr_to_vir_consume(bctx, args[0], modifier)?;
             let body = expr_to_vir_consume(bctx, args[1], modifier)?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
-            if let Some(triggers) = unpack_tuple(&triggers_tuples) {
-                for trigger_tuple in triggers.iter() {
-                    if let Some(terms) = unpack_tuple(trigger_tuple) {
-                        trigs.push(Arc::new(terms));
-                    } else {
-                        return err_span(expr.span, "expected tuple arguments to with_triggers");
+            match unpack_tuple(&triggers_tuples) {
+                Some(triggers) => {
+                    for trigger_tuple in triggers.iter() {
+                        match unpack_tuple(trigger_tuple) {
+                            Some(terms) => {
+                                trigs.push(Arc::new(terms));
+                            }
+                            _ => {
+                                return err_span(
+                                    expr.span,
+                                    "expected tuple arguments to with_triggers",
+                                );
+                            }
+                        }
                     }
                 }
-            } else {
-                return err_span(expr.span, "expected tuple arguments to with_triggers");
+                _ => {
+                    return err_span(expr.span, "expected tuple arguments to with_triggers");
+                }
             }
             let triggers = Arc::new(trigs);
             mk_expr(ExprX::WithTriggers { triggers, body })
@@ -1429,6 +1438,15 @@ fn verus_item_to_vir<'tcx, 'a>(
                 TypX::Int(_) => mk_expr(ExprX::Unary(UnaryOp::IntToReal, source_vir)),
                 _ => err_span(expr.span, "Only integer types can be cast to real"),
             }
+        }
+        VerusItem::UnaryOp(UnaryOpItem::RealFloor) => {
+            record_spec_fn_allow_proof_args(bctx, expr);
+            unsupported_err_unless!(args.len() == 1, expr.span, "expected 1 argument", &args);
+            let source_vir0 = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+            let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
+            let source_ty = undecorate_typ(&source_vir.typ);
+            assert!(matches!(&*source_ty, TypX::Real));
+            mk_expr(ExprX::Unary(UnaryOp::RealToInt, source_vir))
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
@@ -1498,6 +1516,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
                 }
+                ((TypX::Real, _), TypX::Int(_)) => err_span(
+                    expr.span,
+                    "cannot cast real to int directly; use .floor() instead (e.g., x.floor() or x.floor() as u64)",
+                ),
                 _ => err_span(
                     expr.span,
                     "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
@@ -1507,26 +1529,33 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::UnaryOp(UnaryOpItem::SpecNeg) => {
             record_spec_fn_allow_proof_args(bctx, expr);
 
-            match *undecorate_typ(&typ_of_expr_adjusted(
-                bctx,
-                args[0].span,
-                &args[0].hir_id,
-                false,
-            )?) {
-                TypX::Int(_) => {}
-                _ => {
-                    return err_span(expr.span, "spec_neg expected int type");
-                }
-            }
+            let arg_typ =
+                undecorate_typ(&typ_of_expr_adjusted(bctx, args[0].span, &args[0].hir_id, false)?);
 
             let varg = mk_one_vir_arg(bctx, expr.span, &args)?;
-            let zero_const = vir::ast_util::const_int_from_u128(0);
-            let zero = mk_expr(ExprX::Const(zero_const))?;
-            mk_expr(ExprX::Binary(
-                BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
-                zero,
-                varg,
-            ))
+
+            match &*arg_typ {
+                TypX::Int(_) => {
+                    let zero_const = vir::ast_util::const_int_from_u128(0);
+                    let zero = mk_expr(ExprX::Const(zero_const))?;
+                    mk_expr(ExprX::Binary(
+                        BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
+                        zero,
+                        varg,
+                    ))
+                }
+                TypX::Real => {
+                    let zero = mk_expr(ExprX::Const(Constant::Real("0.0".to_string())))?;
+                    mk_expr(ExprX::Binary(
+                        BinaryOp::RealArith(vir::ast::RealArithOp::Sub),
+                        zero,
+                        varg,
+                    ))
+                }
+                _ => {
+                    return err_span(expr.span, "spec_neg expected int or real type");
+                }
+            }
         }
         VerusItem::Chained(chained_item) => {
             record_spec_fn_allow_proof_args(bctx, expr);
@@ -1535,9 +1564,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ChainedItem::Value => {
                     unsupported_err_unless!(args_len == 1, expr.span, "spec_chained_value", &args);
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_)),
+                        matches!(*undecorate_typ(&vir_args[0].typ), TypX::Int(_) | TypX::Real),
                         expr.span,
-                        "chained inequalities for non-integer types",
+                        "chained inequalities require integer or real types",
                         &args
                     );
                     let exprx = ExprX::Multi(
@@ -1563,11 +1592,27 @@ fn verus_item_to_vir<'tcx, 'a>(
                         &args
                     );
                     unsupported_err_unless!(
-                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_)),
+                        matches!(*undecorate_typ(&vir_args[1].typ), TypX::Int(_) | TypX::Real),
                         expr.span,
-                        "chained inequalities for non-integer types",
+                        "chained inequalities require integer or real types",
                         &args
                     );
+                    if let ExprX::Multi(MultiOp::Chained(_), es) = &vir_args[0].x {
+                        if es.len() > 0 {
+                            let first_typ = undecorate_typ(&es[0].typ);
+                            let new_typ = undecorate_typ(&vir_args[1].typ);
+                            let types_match = match (&*first_typ, &*new_typ) {
+                                (TypX::Int(_), TypX::Int(_)) => true,
+                                (TypX::Real, TypX::Real) => true,
+                                _ => false,
+                            };
+                            unsupported_err_unless!(
+                                types_match,
+                                expr.span,
+                                "chained inequalities require all elements to have the same type (all integers or all reals)"
+                            );
+                        }
+                    }
                     let op = match chained_item {
                         ChainedItem::Le => ChainedOp::Inequality(InequalityOp::Le),
                         ChainedItem::Lt => ChainedOp::Inequality(InequalityOp::Lt),
@@ -1608,7 +1653,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Spec,
                 from_mode: Mode::Spec,
                 to_mode: if is_ghost_new { Mode::Proof } else { Mode::Spec },
-                kind: ModeCoercion::Other,
+                kind: if is_ghost_new { ModeCoercion::Constructor } else { ModeCoercion::Field },
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1620,7 +1665,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Proof,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Constructor,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1632,7 +1677,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Exec,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Exec,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Field,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1655,7 +1700,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 op_mode: Mode::Proof,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
-                kind: ModeCoercion::Other,
+                kind: ModeCoercion::Field,
             };
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
@@ -1670,7 +1715,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             if tracked_mode {
                 record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
             } else {
-                record_spec_fn_no_proof_args(bctx, expr);
+                record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
             }
             let mwm = if tracked_mode { ModeWrapperMode::Proof } else { ModeWrapperMode::Spec };
 
@@ -1716,7 +1761,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
 
         VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut)) => {
-            record_spec_fn_no_proof_args(bctx, expr);
+            record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
 
             assert!(args.len() == 1);
             let modif = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&args[0]), outer_modifier)?;
@@ -1776,8 +1821,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             if !bctx.ctxt.cmd_line_args.new_mut_ref {
                 let check = &|ty: rustc_middle::ty::Ty, span| match ty.kind() {
                     TyKind::Ref(_, _, rustc_middle::ty::Mutability::Mut) => {
-                        let mut diagnostics = bctx.ctxt.diagnostics.borrow_mut();
-                        diagnostics.push(vir::ast::VirErrAs::Warning(crate::util::err_span_bare(
+                        bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(crate::util::err_span_bare(
                                 span,
                                 format!("Dereference this mutable reference to compare the value via Verus spec equality. In the future, this will be a hard error or not work as expected."),
                             )));
@@ -2350,7 +2394,6 @@ fn extract_choose<'tcx>(
 ///
 /// This is needed because the syntax macro can often create expressions that look like:
 /// forall(closure_to_fn_spec(|x| { ... }))
-
 fn skip_closure_coercion<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) -> &'tcx Expr<'tcx> {
     match &expr.kind {
         ExprKind::Call(fun, args_slice) => match &fun.kind {

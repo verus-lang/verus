@@ -340,10 +340,16 @@ pub enum TriggerAnnotation {
 pub enum ModeCoercion {
     /// Mutable borrows (Ghost::borrow_mut and Tracked::borrow_mut) are treated specially by
     /// the mode checker when checking assignments.
+    /// (Only used outside new-mut-ref)
     BorrowMut,
-    /// All other cases are treated uniformly by the mode checker based on their op/from/to-mode.
-    /// (This includes Ghost::borrow, Tracked::get, etc.)
-    Other,
+    /// This operation behaves like a datatype constructor with a mode annotation
+    /// `from_mode` on its field.
+    /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
+    /// Like with ordinary constructors, the input can be spec and if so, the whole thing is spec.
+    Constructor,
+    /// This behaves like a field-getter,
+    /// returning the contents of the Tracked or Ghost value.
+    Field,
 }
 
 /// Primitive 0-argument operations
@@ -392,6 +398,8 @@ pub enum UnaryOp {
     },
     /// Convert integer type to real type (SMT to_real operation)
     IntToReal,
+    /// Convert real type to integer type (SMT to_int operation, works like floor function)
+    RealToInt,
     /// Return raw bits of a float as an int
     FloatToBits,
     /// Operations that coerce from/to verus_builtin::Ghost or verus_builtin::Tracked

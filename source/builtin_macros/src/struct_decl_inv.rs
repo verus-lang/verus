@@ -97,8 +97,8 @@ enum InvariantDecl {
         field_name: Ident,
         depends_on: Vec<Ident>,
         quants: Vec<PatType>,
-        condition: Option<Expr>,
-        specifically: Option<Expr>,
+        condition: Option<Box<Expr>>,
+        specifically: Option<Box<Expr>>,
         params: Vec<FnArg>,
         params_span: Span,
         predicate: Block,
@@ -183,7 +183,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };
@@ -193,7 +193,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };
@@ -488,8 +488,8 @@ fn check_invdecl_params_match(
                     return Err(Error::new(
                         ty1.span(),
                         format!(
-                            "struct_with_invariants: this type is expected to be {:}",
-                            ty2.to_token_stream().to_string()
+                            "struct_with_invariants: this type is expected to be {}",
+                            ty2.to_token_stream()
                         ),
                     ));
                 }
@@ -834,10 +834,7 @@ fn output_field_type_alias(
 // Defs
 
 fn get_pred_typename(main_name: &str, field_name: &Ident) -> Ident {
-    Ident::new(
-        &format!("InvariantPredicate_auto_{:}_{:}", main_name, field_name.to_string()),
-        Span::call_site(),
-    )
+    Ident::new(&format!("InvariantPredicate_auto_{main_name}_{field_name}"), Span::call_site())
 }
 
 fn get_type_alias(
@@ -845,10 +842,7 @@ fn get_type_alias(
     field_ident: &Ident,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
 ) -> TokenStream {
-    let ident = Ident::new(
-        &format!("FieldType_{:}_{:}", main_name, field_ident.to_string()),
-        Span::call_site(),
-    );
+    let ident = Ident::new(&format!("FieldType_{main_name}_{field_ident}"), Span::call_site());
     let utp = used_type_params.get(&field_ident.to_string()).unwrap();
     if utp.len() == 0 {
         quote! { #ident }
@@ -1022,21 +1016,13 @@ fn get_partial_field_by_name<'a>(
     partial_fields: &'a Vec<PartialField>,
     name: &str,
 ) -> Option<&'a PartialField> {
-    for pf in partial_fields.iter() {
-        if pf.name.to_string() == name {
-            return Some(pf);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    partial_fields.iter().find(|pf| pf.name.to_string() == name)
 }
 
 fn get_field_by_name<'a>(fields: &'a Vec<Field>, name: &str) -> Option<&'a Field> {
-    for f in fields.iter() {
-        if f.ident.as_ref().unwrap().to_string() == name {
-            return Some(f);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().find(|f| f.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_invariant_decls_by_name<'a>(
@@ -1046,6 +1032,7 @@ fn get_invariant_decls_by_name<'a>(
     let mut res = Vec::new();
     for invdecl in invariant_decls.iter() {
         if let InvariantDecl::Invariant { field_name, .. } = invdecl {
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if field_name.to_string() == name {
                 res.push(invdecl);
             }
@@ -1109,12 +1096,8 @@ impl VisitMut for FillInferVisitor {
 }
 
 fn fields_contains(fields: &Vec<Field>, name: &str) -> bool {
-    for field in fields.iter() {
-        if field.ident.as_ref().unwrap().to_string() == name {
-            return true;
-        }
-    }
-    false
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().any(|field| field.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_self_type(item_struct: &ItemStruct) -> Type {
