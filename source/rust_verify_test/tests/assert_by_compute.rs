@@ -826,10 +826,5 @@ test_verify_one_file! {
         fn test_implies (u : i8) {
             assert(u < 100 ==> true) by (compute);
         }
-
-        fn main() {
-            test_implies(98);
-            return
-        }
     } => Ok(())
 }
