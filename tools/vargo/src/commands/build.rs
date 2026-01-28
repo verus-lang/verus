@@ -484,6 +484,12 @@ fn rebuild_vstd(
     if vargo_cmd.build_options.vstd_log_all {
         vstd_build.arg("--log-all");
     }
+    if vargo_cmd.build_options.vstd_no_lifetime {
+        vstd_build.arg("--no-lifetime");
+    }
+    if vargo_cmd.build_options.vstd_expand_errors {
+        vstd_build.arg("--expand-errors");
+    }
     if options.vargo_verbose {
         vstd_build.arg("--verbose");
     }
