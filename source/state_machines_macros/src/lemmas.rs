@@ -28,7 +28,7 @@ pub fn get_transition<'a>(
     name: &String,
 ) -> Option<&'a Transition> {
     for t in transitions.iter() {
-        if t.name.to_string() == *name {
+        if t.name == *name {
             return Some(t);
         }
     }
@@ -231,7 +231,7 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
             mutability: None,
             ident: id0,
             subpat: None,
-        }) if attrs.len() == 0 && id0.to_string() == ident.to_string() => true,
+        }) if attrs.len() == 0 && id0 == ident => true,
         _ => false,
     }
 }

@@ -211,17 +211,17 @@ impl IdentVisitor {
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
-        if node.to_string() == "post" {
+        if node == "post" {
             self.errors.push(Error::new(
                 node.span(),
                 "cannot refer directly to `post` in a transition definition",
             ));
-        } else if node.to_string() == "pre" {
+        } else if node == "pre" {
             if self.kind == TransitionKind::Init {
                 self.errors.push(Error::new(node.span(),
                     "cannot refer to `pre` in an 'init' routine; there is no previous state to refer to"));
             }
-        } else if node.to_string() == "self" {
+        } else if node == "self" {
             self.errors.push(Error::new(node.span(),
                   "identifier `self` is meaningless in transition definition; use `pre` to refer to the previous state (in non-init transitions)"));
         } else {
@@ -276,8 +276,8 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in vec!["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
-        if ident.to_string() == kw {
+    for kw in ["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
+        if ident == kw {
             return Err(Error::new(
                 ident.span(),
                 format!("'{kw:}' is a reserved identifier in state machine definitions"),
@@ -285,7 +285,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         }
     }
 
-    for prefix in vec!["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
+    for prefix in ["param_token_", "original_field_", UPDATE_TMP_PREFIX] {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),
@@ -344,7 +344,7 @@ impl<'ast> Visit<'ast> for SuperVisitor {
     }
 
     fn visit_path(&mut self, node: &'ast Path) {
-        if node.segments[0].ident.to_string() == "super" {
+        if node.segments[0].ident == "super" {
             self.errors.push(Error::new(
                 node.span(),
                 format!("state machine error: `super::` path not allowed here"),

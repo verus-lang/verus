@@ -137,6 +137,7 @@ pub fn check_ordering_remove_have_add_rec(
             match split_kind {
                 SplitKind::Special(id, op, _, _) => {
                     let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";
+                    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                     if id.to_string() == *field_name {
                         if op.is_remove() {
                             if seen_have || seen_add {

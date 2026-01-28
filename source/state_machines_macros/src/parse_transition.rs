@@ -157,11 +157,11 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
     //    require birds_eye let   (not allowed - see explanation in check_birds_eye.rs)
     //    assert birds_eye let
 
-    if ident.to_string() == "birds_eye" {
+    if ident == "birds_eye" {
         let _let_token: Token![let] = input.parse()?;
         return Ok(parse_let(ctxt, ident.span(), Refute::Exhaustive, LetKind::BirdsEye, input)?);
-    } else if ident.to_string() == "require" || ident.to_string() == "assert" {
-        let refute = if ident.to_string() == "require" { Refute::Require } else { Refute::Assert };
+    } else if ident == "require" || ident == "assert" {
+        let refute = if ident == "require" { Refute::Require } else { Refute::Assert };
         if input.peek(Token![let]) {
             let _let_token: Token![let] = input.parse()?;
             Ok(parse_let(ctxt, ident.span(), refute, LetKind::Normal, input)?)
@@ -171,27 +171,27 @@ fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<V
             Ok(parse_let(ctxt, ident.span(), refute, LetKind::BirdsEye, input)?)
         } else {
             // Normal require/assert
-            if ident.to_string() == "require" {
+            if ident == "require" {
                 Ok(vec![StmtOrLet::Stmt(parse_require(ident, input)?)])
             } else {
                 Ok(vec![StmtOrLet::Stmt(parse_assert(ident, input)?)])
             }
         }
-    } else if ident.to_string() == "update" {
+    } else if ident == "update" {
         Ok(vec![StmtOrLet::Stmt(parse_update(ident, input)?)])
-    } else if ident.to_string() == "init" {
+    } else if ident == "init" {
         Ok(vec![StmtOrLet::Stmt(parse_init(ident, input)?)])
-    } else if ident.to_string() == "have" {
+    } else if ident == "have" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Have)?])
-    } else if ident.to_string() == "add" {
+    } else if ident == "add" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Add(false))?])
-    } else if ident.to_string() == "remove" {
+    } else if ident == "remove" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?])
-    } else if ident.to_string() == "guard" {
+    } else if ident == "guard" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?])
-    } else if ident.to_string() == "deposit" {
+    } else if ident == "deposit" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?])
-    } else if ident.to_string() == "withdraw" {
+    } else if ident == "withdraw" {
         Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?])
     } else {
         Err(Error::new(ident.span(), "expected transition stmt"))
@@ -476,7 +476,7 @@ fn parse_let(
 
     match &pat {
         Pat::Ident(PatIdent { ident, .. }) => {
-            if ident.to_string() == "birds_eye" {
+            if ident == "birds_eye" {
                 return Err(Error::new(
                     pat.span(),
                     "keywords in the wrong order: use `birds_eye let` instead",

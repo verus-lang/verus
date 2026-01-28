@@ -234,12 +234,7 @@ fn postcondition_stmt(span: Span, f: Ident, pcrf: PostConditionReasonField) -> S
 }
 
 fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
-    for id0 in v {
-        if id0.to_string() == id.to_string() {
-            return true;
-        }
-    }
-    return false;
+    v.iter().any(|id0| id0 == id)
 }
 
 fn get_cur(field_name: &Ident) -> Expr {

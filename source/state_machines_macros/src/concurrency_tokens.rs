@@ -1585,7 +1585,7 @@ fn get_main_lemma_for_transition_opt<'a>(
     trans_name: &Ident,
 ) -> Option<&'a Lemma> {
     for l in lemmas {
-        if l.purpose.transition.to_string() == trans_name.to_string() {
+        if l.purpose.transition == *trans_name {
             return Some(l);
         }
     }
@@ -2611,7 +2611,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             panic!("sub-update not supported here");
         }
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }
+            if *id == *field.name.to_string() { Some(e.clone()) } else { None }
         }
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)

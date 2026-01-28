@@ -214,6 +214,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                 }
             }
             for attr in &tr.attrs {
+                #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                 let is_external_trait_extension = attr.path().segments.len() == 2
                     && attr.path().segments[0].ident.to_string() == "verifier"
                     && attr.path().segments[1].ident.to_string() == "external_trait_extension";
@@ -222,6 +223,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                         let tokens: Vec<_> = list.tokens.clone().into_iter().collect();
                         use proc_macro2::TokenTree;
                         match (&t, tokens.as_slice()) {
+                            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                             (
                                 Some(t),
                                 [TokenTree::Ident(s), TokenTree::Ident(via), TokenTree::Ident(i)],

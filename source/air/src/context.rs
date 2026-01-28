@@ -357,7 +357,7 @@ impl Context {
 
     pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
         if write_to_logs {
-            self.log_set_z3_param(option, &value.to_string());
+            self.log_set_z3_param(option, value);
         }
     }
 
