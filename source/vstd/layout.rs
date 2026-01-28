@@ -1,10 +1,10 @@
 #![allow(unused_imports)]
 
+use super::arithmetic::power::*;
+use super::arithmetic::power2::*;
+use super::bits::*;
 use super::math::*;
 use super::prelude::*;
-use super::vstd::arithmetic::power::*;
-use super::vstd::arithmetic::power2::*;
-use super::vstd::bits::*;
 
 verus! {
 
