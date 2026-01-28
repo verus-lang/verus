@@ -125,6 +125,40 @@ pub proof fn ghost_acqmod<P: PCM>(tracked rsrc: Resource<P>) -> (tracked out: Ac
     acq_fence_intro(rsrc)
 }
 
+// Here is an attempt to use Objective to encode the ghost + relmod/acqmod rules:
+
+// Hmm, this isn't quite the same as relmod_ghost -- there is an extra Objective in the input. 
+// This is required by the signature of Objective::from_release, which models RELMOD-OBJMOD-ELIM.
+// To remove this Objective, we could use a rule like: from_release<T: IsObjective>(tracked r: Release<T>) -> (tracked out: T)
+// But would this rule be sound???
+pub proof fn relmod_ghost2<P: PCM>(tracked r: Release<Objective<Resource<P>>>) -> (tracked out: Resource<P>)
+    ensures
+        r.value().value() == out
+{
+    Objective::from_release(r).to_inner()
+}
+
+pub proof fn acqmod_ghost2<P: PCM>(tracked r: Acquire<Objective<Resource<P>>>) -> (tracked out: Resource<P>)
+    ensures
+        r.value().value() == out
+{
+    Objective::from_acquire(r).to_inner()
+}
+
+pub proof fn ghost_relmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Release<Resource<P>>)
+    ensures
+        r == out.value()
+{
+    Objective::new(r).as_release()
+}
+
+pub proof fn ghost_acqmod2<P: PCM>(tracked r: Resource<P>) -> (tracked out: Acquire<Resource<P>>)
+    ensures
+        r == out.value()
+{
+    Objective::new(r).as_acquire()
+}
+
 // ATTEMPT 1: encode the fact that T1 |- T2 via a proof function that trnasform ownership of T1 into ownership of T2
 // pub proof fn relmod_mono<T1, T2>(tracked rsrc : Release<T1>, to : T2, tracked f : proof_fn(tracked t1 : T1) -> tracked T2) -> (tracked out : Release<T2>)
 //     requires
@@ -238,6 +272,48 @@ pub proof fn relmod_or<P, Q>(tracked rsrc: Release<Or<P, Q>>) -> (tracked out: O
     }
 }
 
+// Using IsObjective, I think the following approach could be used to derive relmod_and and relmod_or on any struct and enum, respectively.
+// - I'm assuming that structs encode /\ and enums encode \/
+// - relmod_or2 isn't an exact encoding, but I think that it would "get the job done" if you had an enum and essentially needed to destruct it
+// - The inputs have an extra Objective that is not present in the original rules. See note above on relmod_ghost2
+// - It's possible that we could write a proc macro that could automatically implement derived rules such as these ones on any user-defined types.
+//   This would be convenient if we find ourselves using these rules a lot.
+pub struct MyAnd<T1: IsObjective, T2: IsObjective> {
+    pub t1: T1,
+    pub t2: T2
+}
+
+// See note below -- it would be preferable to automatically derive IsObjective on a struct/enum where all of its fields impl IsObjective.
+unsafe impl<T1: IsObjective, T2: IsObjective> IsObjective for MyAnd<T1, T2> {}
+
+pub proof fn relmod_and2<T1: IsObjective, T2: IsObjective>(tracked r: Release<Objective<MyAnd<T1, T2>>>) -> (tracked out: (Release<T1>, Release<T2>))
+    ensures
+        out.0.value() == r.value().value().t1,
+        out.1.value() == r.value().value().t2
+{
+    let tracked and = Objective::from_release(r).to_inner();
+    (Objective::new(and.t1).as_release(), Objective::new(and.t2).as_release())
+}
+
+pub enum MyOr<T1: IsObjective, T2: IsObjective> {
+    Left(T1),
+    Right(T2)
+}
+unsafe impl<T1: IsObjective, T2: IsObjective> IsObjective for MyOr<T1, T2> {}
+
+pub proof fn relmod_or2<T1: IsObjective, T2: IsObjective>(tracked r: Release<Objective<MyOr<T1, T2>>>) -> (tracked out: (Option<Release<T1>>, Option<Release<T2>>))
+    ensures
+        match r.value().value() {
+            MyOr::Left(t1) => out.0.is_some() && out.0.unwrap().value() == t1 && out.1 == None::<Release<T2>>,
+            MyOr::Right(t2) => out.1.is_some() && out.1.unwrap().value() == t2 && out.0 == None::<Release<T1>>
+        }
+{
+    match Objective::from_release(r).to_inner() {
+        MyOr::Left(t1) => (Some(Objective::new(t1).as_release()), None),
+        MyOr::Right(t2) => (None, Some(Objective::new(t2).as_release()))
+    }
+}
+
 // NOTE skipping RELMOD-FORALL and RELMOD-EXIST for now
 pub proof fn relmod_sep1<P, Q>(tracked rsrc: Release<(P, Q)>) -> (tracked out: (
     Release<P>,
@@ -275,6 +351,7 @@ pub proof fn relmod_wand<P, Q>(
 
 // NOTE skipping RELMOD-LATER-INTRO and RELMOD-UNOPS
 // TODO acquire modality monotonicity, and, or, wand, sep1, sep2
+
 // Objective modality
 /// This trait should be implemented on types P such that objective(P) holds
 pub unsafe trait IsObjective {
@@ -286,17 +363,20 @@ pub struct Objective<T> {
     v: T,
 }
 
-// GHOST-OBJ - todo: what ghost state can be marked IsObjective?
+// GHOST-OBJ 
+// todo: what other ghost state can be marked IsObjective?
+unsafe impl<P: PCM> IsObjective for Resource<P> {}
+
 // todo: for the rules below, I am not sure what their Verus equivalent is
-// i.e., how would you have a tracked "pure" thing? what about a tracked forall?
-// PURE-OBJ
-// TRUE-OBJ
+// PURE-OBJ - does "pure" equate to types that don't represent permissions? E.g. all of the primitives
+// TRUE-OBJ 
 // FALSE-OBJ
-// OBJ-BOPS
-// OBJ-UOPS
-// OBJ-FORALL
+// OBJ-BOPS - would /\ and \/ be modeled as structs/tuples and enums, respectively? what about =>, * and -* ?
+// OBJ-UOPS - don't know about these
+// OBJ-FORALL - how would you have a tracked forall?
 // OBJ-EXISTS
-// implement IsObjective on primitive types and their compositions (i.e. tuples)
+
+// implement IsObjective on primitive types and tuples of IsObjective types
 // todo: could we support automatically implementing IsObjective on structs and enums whose fields all satisfy IsObjective?
 macro_rules! declare_primitive_is_objective {
     ($($a:ty),*) => {
@@ -359,10 +439,11 @@ impl<T> Objective<T> {
     ;
 
     // OBJMOD-MONO - how to represent P |- Q ?
-    // OBJMOD-AND - how would you have something of type Objective <P /\ Q> ?
-    // OBJMOD-OR -  how would you have something of type Objective<P \/ Q> ?
+    // OBJMOD-AND
+    // OBJMOD-OR
     // OBJMOD-FORALL - how would you have something of type Objective<forall x ...> ?
     // OBJMOD-EXIST - how would you have something of type Objective<exists x ...> ?
+
     // OBJMOD-SEP -|
     pub axiom fn join<U>(tracked self, tracked u: Objective<U>) -> (tracked out: Objective<(T, U)>)
         ensures
