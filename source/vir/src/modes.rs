@@ -2,9 +2,10 @@ use crate::ast::{
     AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail, Datatype, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind, Krate, Mode,
     ModeCoercion, MultiOp, OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place,
-    PlaceX, ReadKind, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    PlaceX, ReadKind, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnwindSpec,
+    VarIdent, VirErr,
 };
-use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
+use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
 use crate::messages::{Span, error};
 use crate::messages::{error_bare, error_with_label};
@@ -778,6 +779,8 @@ impl PlaceAccess {
     }
 }
 
+struct ProofModeMutRefNote(Place, Place);
+
 fn check_place(
     ctxt: &Ctxt,
     record: &mut Record,
@@ -787,7 +790,9 @@ fn check_place(
     access: PlaceAccess,
     expect: Expect,
 ) -> Result<Mode, VirErr> {
-    let place_mode = check_place_rec(ctxt, record, typing, outer_mode, place, access, expect)?;
+    let mut note = None;
+    let place_mode =
+        check_place_rec(ctxt, record, typing, &mut note, outer_mode, place, access, expect)?;
 
     let mut context_mode = typing.block_ghostness.join_mode(outer_mode);
     if typing.in_forall_stmt || typing.in_proof_in_spec {
@@ -809,20 +814,38 @@ fn check_place(
             // thus, if a coercion is needed, then we produce an error.
             //
             // Note that we only need to do this coercion at the top-level Place node,
-            // since for example, it's okay to do `x.foo = ...` if `x` is exec but foo is ghost.
+            // since for example, it's okay to do `x.foo = ...` in ghost code
+            // even if `x` is exec but x.foo is ghost.
             let coerced_mode = mode_join(place_mode, context_mode);
 
-            if coerced_mode != place_mode {
-                // TODO(new_mut_ref): we need a better diagnostic here to explain what's going on
-                // when the user tries to modify a mut ref
-                // (e.g., "note: x is a proof mode variable but points to an exec-mode place...")
-                return Err(error(
+            if coerced_mode == Mode::Proof && place_mode == Mode::Exec {
+                // There are some special cases to allow mutating an
+                // exec-place via a mutable reference in proof code.
+                if !ok_to_assign_exec_place_in_erased_code(ctxt, place) {
+                    let mut e = error_with_label(
+                        &place.span,
+                        format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
+                        if note.is_some() {
+                            format!("this place may have mode {place_mode}")
+                        } else {
+                            format!("this place has mode {place_mode}")
+                        },
+                    );
+                    if let Some(note) = note {
+                        e = e.secondary_label(&note.1.span, "this mutable reference has mode `tracked`, but may point to an exec-mode location");
+                        e = e.help(format!("Verus assumes any mutable reference may point to an exec-mode location unless it can determine otherwise based on the type. You can use the `Tracked` wrapper to force Verus to treat the location as tracked, e.g., try `&mut Tracked<{}>`", typ_to_diagnostic_str(&note.0.typ)));
+                    }
+                    return Err(e);
+                }
+            } else if coerced_mode != place_mode {
+                return Err(error_with_label(
                     &place.span,
-                    &format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
+                    format!("cannot mutate {place_mode}-mode place in {context_mode}-code"),
+                    "this place has mode {place_mode}",
                 ));
             }
 
-            place_mode
+            coerced_mode
         }
         PlaceAccess::MutBorrow => {
             // Don't coerce because we want to be able to take
@@ -852,12 +875,14 @@ fn check_place_rec(
     ctxt: &Ctxt,
     record: &mut Record,
     typing: &mut Typing,
+    note: &mut Option<ProofModeMutRefNote>,
     outer_mode: Mode,
     place: &Place,
     access: PlaceAccess,
     expect: Expect,
 ) -> Result<Mode, VirErr> {
-    let mode = check_place_rec_inner(ctxt, record, typing, outer_mode, place, access, expect)?;
+    let mode =
+        check_place_rec_inner(ctxt, record, typing, note, outer_mode, place, access, expect)?;
     if ctxt.check_ghost_blocks
         && matches!(typing.block_ghostness, Ghost::Exec)
         && mode != Mode::Exec
@@ -879,6 +904,7 @@ fn check_place_rec_inner(
     ctxt: &Ctxt,
     record: &mut Record,
     typing: &mut Typing,
+    note: &mut Option<ProofModeMutRefNote>,
     outer_mode: Mode,
     place: &Place,
     access: PlaceAccess,
@@ -886,7 +912,7 @@ fn check_place_rec_inner(
 ) -> Result<Mode, VirErr> {
     match &place.x {
         PlaceX::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }, p) => {
-            let mode = check_place_rec(ctxt, record, typing, outer_mode, p, access, expect)?;
+            let mode = check_place_rec(ctxt, record, typing, note, outer_mode, p, access, expect)?;
 
             let field_mode = match datatype {
                 Dt::Path(path) => {
@@ -900,7 +926,7 @@ fn check_place_rec_inner(
             Ok(mode_join(mode, field_mode))
         }
         PlaceX::DerefMut(p) => {
-            let mode = check_place_rec(ctxt, record, typing, outer_mode, p, access, expect)?;
+            let mode = check_place_rec(ctxt, record, typing, note, outer_mode, p, access, expect)?;
             if mode == Mode::Spec && access.is_mut() {
                 // In principle we could allow mutating the 'current' field a ghost mutable
                 // reference. However, this probably has unintuitive behavior (i.e., it wouldn't
@@ -913,6 +939,11 @@ fn check_place_rec_inner(
 
             // The 'dereference' of a mutable reference is always considered an exec place,
             // even if the reference itself is only tracked.
+            if mode == Mode::Proof {
+                // If this case occurs, make a note of it in case we need it for diagnostics
+                *note = Some(ProofModeMutRefNote(place.clone(), p.clone()));
+            }
+
             Ok(Mode::Exec)
         }
         PlaceX::Local(var) => {
@@ -941,7 +972,7 @@ fn check_place_rec_inner(
             Ok(mode)
         }
         PlaceX::ModeUnwrap(p, wrapper_mode) => {
-            let mode = check_place_rec(ctxt, record, typing, outer_mode, p, access, expect)?;
+            let mode = check_place_rec(ctxt, record, typing, note, outer_mode, p, access, expect)?;
             Ok(mode_join(mode, wrapper_mode.to_mode()))
         }
         PlaceX::WithExpr(..) => {
@@ -956,7 +987,8 @@ fn check_place_rec_inner(
                 Ghost::Ghost => Expect(Mode::Spec),
             };
 
-            let place_mode = check_place_rec(ctxt, record, typing, outer_mode, p, access, expect)?;
+            let place_mode =
+                check_place_rec(ctxt, record, typing, note, outer_mode, p, access, expect)?;
             let idx_mode = check_expr(ctxt, record, typing, outer_mode, idx_expect, idx)?;
 
             if ctxt.check_ghost_blocks
@@ -980,6 +1012,88 @@ fn check_place_rec_inner(
             // the above check.
             Ok(place_mode)
         }
+    }
+}
+
+/// Determine if it's okay to assign to the given place in tracked mode even if the
+/// place is determined to be Exec.
+///
+/// This should be sound if either of the following are true:
+///  1. The type is a ZST
+///  2. The type is tracked (and thus couldn't exist in an exec-mode place to begin with)
+///
+/// For (1), we're keeping our check a little weaker,
+fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place) -> bool {
+    // Always say no if this doesn't involve a mutable reference.
+    // This isn't really necessary as a restriction, but it's only for mutable references
+    // that we need this extra allowance in the first place.
+    if !crate::ast_util::place_has_deref_mut(place) {
+        return false;
+    }
+
+    // TODO(new_mut_ref): need to make sure type is correct up to decoration
+    // for this check to make sense
+    match &*place.typ {
+        TypX::Decorate(TypDecoration::Ghost | TypDecoration::Tracked, _, _) => {
+            return true;
+        }
+        _ => {}
+    }
+
+    let mut place = place;
+    loop {
+        if type_is_non_exec(ctxt, &place.typ) {
+            return true;
+        }
+        match &place.x {
+            PlaceX::Local(_) | PlaceX::Temporary(_) => {
+                break;
+            }
+            PlaceX::DerefMut(_) => {
+                break;
+            }
+            PlaceX::Field(_, p)
+            | PlaceX::ModeUnwrap(p, _)
+            | PlaceX::WithExpr(_, p)
+            | PlaceX::Index(p, ..) => {
+                place = p;
+            }
+        }
+    }
+
+    false
+}
+
+/// Is it impossible for this type to appear in exec mode?
+fn type_is_non_exec(ctxt: &Ctxt, typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Decorate(
+            TypDecoration::Ref
+            | TypDecoration::MutRef
+            | TypDecoration::Box
+            | TypDecoration::Rc
+            | TypDecoration::Arc,
+            _,
+            t,
+        ) => type_is_non_exec(ctxt, t),
+        TypX::Datatype(dt, typ_args, _) => {
+            match dt {
+                Dt::Tuple(_) => {
+                    for t in typ_args.iter() {
+                        if type_is_non_exec(ctxt, t) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                Dt::Path(path) => {
+                    // TODO(new_mut_ref): should allow, e.g., Option<T> where T is non-exec
+                    let datatype = &ctxt.datatypes[path];
+                    datatype.x.mode != Mode::Exec
+                }
+            }
+        }
+        _ => false,
     }
 }
 
@@ -2120,16 +2234,24 @@ fn check_expr_handle_mut_arg(
                 PlaceAccess::MutBorrow,
                 Expect::none(),
             )?;
-            if mode != Mode::Exec {
-                return Err(error(
-                    &place.span,
-                    format!(
-                        "can only take mutable borrow of an exec-mode place; found {:}-mode place",
-                        mode
-                    ),
-                ));
+            match mode {
+                Mode::Exec => {}
+                Mode::Proof => {
+                    if typing.block_ghostness == Ghost::Exec {
+                        return Err(error(
+                            &expr.span,
+                            "cannot take mutable borrow of tracked-mode place outside of a proof block",
+                        ));
+                    }
+                }
+                Mode::Spec => {
+                    return Err(error(
+                        &place.span,
+                        "cannot take mutable borrow of ghost-mode place",
+                    ));
+                }
             }
-            Ok(Mode::Exec)
+            Ok(typing.block_ghostness.join_mode(outer_mode))
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
