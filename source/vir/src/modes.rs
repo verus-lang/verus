@@ -2042,6 +2042,7 @@ fn check_expr_handle_mut_arg(
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "Cannot open invariant in Spec mode."));
             }
+            record.var_modes.insert(binder.name.clone(), Mode::Proof);
 
             let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
             let mode1 =
@@ -2445,13 +2446,14 @@ fn check_function(
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
-            crate::user_defined_type_invariants::annotate_user_defined_invariants(
-                functionx,
-                &record.type_inv_info,
-                &ctxt.funs,
-                &ctxt.datatypes,
-            )?;
-            if new_mut_ref {
+            if !new_mut_ref {
+                crate::user_defined_type_invariants::annotate_user_defined_invariants(
+                    functionx,
+                    &record.type_inv_info,
+                    &ctxt.funs,
+                    &ctxt.datatypes,
+                )?;
+            } else {
                 if let Some(body) = &mut functionx.body {
                     *body = crate::resolution_inference::infer_resolution(
                         &functionx.params,
