@@ -33,7 +33,6 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::primitive_int::*;
 use super::raw_ptr::*;
 use super::seq::*;
 use crate::vstd::group_vstd_default;
