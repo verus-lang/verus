@@ -10,8 +10,8 @@ use verus_syn::spanned::Spanned;
 use verus_syn::token::Comma;
 use verus_syn::{
     Arm, AttrStyle, Attribute, BinOp, Block, Error, Expr, ExprBinary, ExprClosure, ExprMatches,
-    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn,
-    ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
+    ExprPath, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemConst, ItemEnum,
+    ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Meta, Pat, PatType, Path,
     PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility, parse_macro_input,
 };
 
@@ -1782,12 +1782,49 @@ fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
     })
 }
 
+/// Compiles a const into an exec const.
+fn compile_const(item_const: &ItemConst) -> Result<TokenStream2, Error> {
+    let spec_name = &item_const.ident;
+    let exec_name = Ident::new(&format!("Exec{}", spec_name.to_string()), spec_name.span());
+
+    let exec_type = compile_type(&item_const.ty, TypeKind::Owned)?;
+
+    let ctx = LocalCtx::new(&item_const.ident);
+    let Some(expr) = &item_const.expr else {
+        return Err(Error::new_spanned(item_const, "const item must have an initializer"));
+    };
+    let exec_expr = compile_expr(&ctx, expr, VarMode::Owned)?;
+
+    let trigger_fns = ctx
+        .trigger_fns
+        .borrow()
+        .iter()
+        .map(|(name, typ)| {
+            Ok(quote! {
+                uninterp spec fn #name(x: #typ);
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let vis = &item_const.vis;
+    let span = item_const.span();
+
+    Ok(quote_spanned! { span =>
+        #item_const
+
+        #(#trigger_fns)*
+
+        #vis const #exec_name: #exec_type = #exec_expr;
+    })
+}
+
 /// Compiles a fn/struct/enum item.
 fn compile_item(item: Item) -> Result<TokenStream2, Error> {
     match item {
         Item::Fn(item_fn) => compile_spec_fn(&item_fn),
         Item::Struct(item_struct) => compile_struct(&item_struct),
         Item::Enum(item_enum) => compile_enum(&item_enum),
+        Item::Const(item_const) => compile_const(&item_const),
         _ => Err(Error::new_spanned(item, "unsupported item")),
     }
 }
