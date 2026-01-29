@@ -260,6 +260,23 @@ pub broadcast proof fn align_nonzero<T>()
 
 }
 
+/// The alignment of `u8` is 1, per [type layout rules](https://doc.rust-lang.org/reference/type-layout.html).
+/// Note: This is not part of the alignment broadcast group due to proof time-out,
+/// so it must be imported directly as needed.
+pub broadcast proof fn align_of_u8()
+    ensures
+        #![trigger size_of::<u8>()]
+        align_of::<u8>() == 1,
+{
+    broadcast use {
+        layout_of_primitives,
+        align_properties,
+        align_nonzero,
+        crate::vstd::arithmetic::div_mod::lemma_mod_is_zero,
+    };
+
+}
+
 /// The size of a usize will always be a power of 2,
 /// since Verus assumes 32 or 64-bit architecture.
 pub proof fn usize_size_pow2()
