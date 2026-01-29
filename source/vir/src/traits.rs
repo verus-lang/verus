@@ -658,12 +658,6 @@ pub(crate) fn redirect_calls_in_default_methods(
                         default_name
                     } else {
                         // turn T::f into impl::f
-                        dbg!(&default_name);
-                        dbg!(&(callee.clone(), caller_impl.clone()));
-                        dbg!(func_map.contains_key(&default_name));
-                        dbg!(trait_impl_map.contains_key(&(callee.clone(), caller_impl.clone())));
-                        dbg!(func_map.clone().into_keys().collect::<Vec<_>>());
-                        dbg!(trait_impl_map.clone().into_keys().collect::<Vec<_>>());
                         trait_impl_map[&(callee, caller_impl.clone())].clone()
                     };
 
