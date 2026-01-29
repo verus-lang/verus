@@ -26,14 +26,8 @@ use super::power::{
     lemma_pow_subtracts,
 };
 
-/// This function computes 2 to the power of the given natural number
-/// `e`. It's opaque so that the SMT solver doesn't waste time
-/// repeatedly recursively unfolding it.
-#[verifier::opaque]
+/// This function computes 2 to the power of the given natural number `e`. 
 pub open spec fn pow2(e: nat) -> nat {
-    // you cannot reveal in a spec function, which cause more reveals clauses
-    // for the proof
-    // reveal(pow);
     pow(2, e) as nat
 }
 
