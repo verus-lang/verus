@@ -274,31 +274,31 @@ pub proof fn usize_size_pow2()
     assert(is_pow2(8)) by (compute);
 }
 
-/// Bounds on the unsigned integer types, with respect to their sizes and bits.
-pub proof fn unsigned_int_max_bounds()
+/// Relates the unsigned integer max values to their sizes and bits.
+pub proof fn unsigned_int_max_values()
     ensures
-        (usize::MAX as nat) < pow2(usize::BITS as nat),
-        (usize::MAX as nat) < pow(256, size_of::<usize>()),
-        (u8::MAX as nat) < pow2(u8::BITS as nat),
-        (u8::MAX as nat) < pow(256, size_of::<u8>()),
-        (u16::MAX as nat) < pow2(u16::BITS as nat),
-        (u16::MAX as nat) < pow(256, size_of::<u16>()),
-        (u32::MAX as nat) < pow2(u32::BITS as nat),
-        (u32::MAX as nat) < pow(256, size_of::<u32>()),
-        (u64::MAX as nat) < pow2(u64::BITS as nat),
-        (u64::MAX as nat) < pow(256, size_of::<u64>()),
-        (u128::MAX as nat) < pow2(u128::BITS as nat),
-        (u128::MAX as nat) < pow(256, size_of::<u128>()),
+        (usize::MAX as nat) == pow2(usize::BITS as nat) - 1,
+        (usize::MAX as nat) == pow(256, size_of::<usize>()) - 1,
+        (u8::MAX as nat) == pow2(u8::BITS as nat) - 1,
+        (u8::MAX as nat) == pow(256, size_of::<u8>()) - 1,
+        (u16::MAX as nat) == pow2(u16::BITS as nat) - 1,
+        (u16::MAX as nat) == pow(256, size_of::<u16>()) - 1,
+        (u32::MAX as nat) == pow2(u32::BITS as nat) - 1,
+        (u32::MAX as nat) == pow(256, size_of::<u32>()) - 1,
+        (u64::MAX as nat) == pow2(u64::BITS as nat) - 1,
+        (u64::MAX as nat) == pow(256, size_of::<u64>()) - 1,
+        (u128::MAX as nat) == pow2(u128::BITS as nat) - 1,
+        (u128::MAX as nat) == pow(256, size_of::<u128>()) - 1,
 {
     broadcast use layout_of_primitives;
 
     reveal(pow);
     reveal(pow2);
-    assert(0x100 - 1 < pow2(8)) by (compute);
-    assert(0x1_0000 - 1 < pow2(16)) by (compute);
-    assert(0x1_0000_0000 - 1 < pow2(32)) by (compute);
-    assert(0x1_0000_0000_0000_0000 - 1 < pow2(64)) by (compute);
-    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 - 1 < pow2(128)) by (compute);
+    assert(0x100 == pow2(8)) by (compute);
+    assert(0x1_0000 == pow2(16)) by (compute);
+    assert(0x1_0000_0000 == pow2(32)) by (compute);
+    assert(0x1_0000_0000_0000_0000 == pow2(64)) by (compute);
+    assert(0x1_0000_0000_0000_0000_0000_0000_0000_0000 == pow2(128)) by (compute);
     assert(pow(256, 1) == pow2(8)) by (compute);
     assert(pow(256, 2) == pow2(16)) by (compute);
     assert(pow(256, 4) == pow2(32)) by (compute);
@@ -306,47 +306,42 @@ pub proof fn unsigned_int_max_bounds()
     assert(pow(256, 16) == pow2(128)) by (compute);
 }
 
-/// Bounds on the signed integer types, with respect to their sizes and bits.
-pub proof fn signed_int_min_max_bounds()
+/// Relates the signed integer min and max values to their sizes and bits.
+pub proof fn signed_int_min_max_values()
     ensures
-        (isize::MAX as nat) < pow2((isize::BITS - 1) as nat),
+        (isize::MAX as nat) == pow2((isize::BITS - 1) as nat) - 1,
         abs(isize::MIN as int) == pow2((isize::BITS - 1) as nat),
-        (isize::MAX as nat) * 2 < pow(256, size_of::<isize>()),
+        (isize::MAX as nat) * 2 == pow(256, size_of::<isize>()) - 2,
         abs(isize::MIN as int) * 2 == pow(256, size_of::<isize>()),
-        (i8::MAX as nat) < pow2((i8::BITS - 1) as nat),
+        (i8::MAX as nat) == pow2((i8::BITS - 1) as nat) - 1,
         abs(i8::MIN as int) == pow2((i8::BITS - 1) as nat),
-        (i8::MAX as nat) * 2 < pow(256, size_of::<i8>()),
+        (i8::MAX as nat) * 2 == pow(256, size_of::<i8>()) - 2,
         abs(i8::MIN as int) * 2 == pow(256, size_of::<i8>()),
-        (i16::MAX as nat) < pow2((i16::BITS - 1) as nat),
+        (i16::MAX as nat) == pow2((i16::BITS - 1) as nat) - 1,
         abs(i16::MIN as int) == pow2((i16::BITS - 1) as nat),
-        (i16::MAX as nat) * 2 < pow(256, size_of::<i16>()),
+        (i16::MAX as nat) * 2 == pow(256, size_of::<i16>()) - 2,
         abs(i16::MIN as int) * 2 == pow(256, size_of::<i16>()),
-        (i32::MAX as nat) < pow2((i32::BITS - 1) as nat),
+        (i32::MAX as nat) == pow2((i32::BITS - 1) as nat) - 1,
         abs(i32::MIN as int) == pow2((i32::BITS - 1) as nat),
-        (i32::MAX as nat) * 2 < pow(256, size_of::<i32>()),
+        (i32::MAX as nat) * 2 == pow(256, size_of::<i32>()) - 2,
         abs(i32::MIN as int) * 2 == pow(256, size_of::<i32>()),
-        (i64::MAX as nat) < pow2((i64::BITS - 1) as nat),
+        (i64::MAX as nat) == pow2((i64::BITS - 1) as nat) - 1,
         abs(i64::MIN as int) == pow2((i64::BITS - 1) as nat),
-        (i64::MAX as nat) * 2 < pow(256, size_of::<i64>()),
+        (i64::MAX as nat) * 2 == pow(256, size_of::<i64>()) - 2,
         abs(i64::MIN as int) * 2 == pow(256, size_of::<i64>()),
-        (i128::MAX as nat) < pow2((i128::BITS - 1) as nat),
+        (i128::MAX as nat) == pow2((i128::BITS - 1) as nat) - 1,
         abs(i128::MIN as int) == pow2((i128::BITS - 1) as nat),
-        (i128::MAX as nat) * 2 < pow(256, size_of::<i128>()),
+        (i128::MAX as nat) * 2 == pow(256, size_of::<i128>()) - 2,
         abs(i128::MIN as int) * 2 == pow(256, size_of::<i128>()),
 {
     broadcast use layout_of_primitives;
 
     reveal(pow);
     reveal(pow2);
-    assert(0x80 - 1 < pow2(7)) by (compute);
     assert(0x80 == pow2(7)) by (compute);
-    assert(0x8_000 - 1 < pow2(15)) by (compute);
     assert(0x8_000 == pow2(15)) by (compute);
-    assert(0x80_000_000 - 1 < pow2(31)) by (compute);
     assert(0x80_000_000 == pow2(31)) by (compute);
-    assert(0x8_000_000_000_000_000 - 1 < pow2(63)) by (compute);
     assert(0x8_000_000_000_000_000 == pow2(63)) by (compute);
-    assert(0x80_000_000_000_000_000_000_000_000_000_000 - 1 < pow2(127)) by (compute);
     assert(0x80_000_000_000_000_000_000_000_000_000_000 == pow2(127)) by (compute);
     assert(pow(256, 1) == pow2(7) * 2) by (compute);
     assert(pow(256, 2) == pow2(15) * 2) by (compute);
