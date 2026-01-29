@@ -231,13 +231,12 @@ pub broadcast axiom fn layout_of_slices<T>(x: &[T])
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
-#[verusfmt::skip]
 pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
         #![trigger spec_size_of_val::<str>(x)]
-        spec_align_of_val::<str>(x) == align_of::<u8>(),
         // todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
+        spec_align_of_val::<str>(x) == align_of::<u8>(),
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2
