@@ -293,7 +293,6 @@ pub proof fn unsigned_int_max_values()
     broadcast use layout_of_primitives;
 
     reveal(pow);
-    reveal(pow2);
     assert(0x100 == pow2(8)) by (compute);
     assert(0x1_0000 == pow2(16)) by (compute);
     assert(0x1_0000_0000 == pow2(32)) by (compute);
@@ -337,7 +336,6 @@ pub proof fn signed_int_min_max_values()
     broadcast use layout_of_primitives;
 
     reveal(pow);
-    reveal(pow2);
     assert(0x80 == pow2(7)) by (compute);
     assert(0x8_000 == pow2(15)) by (compute);
     assert(0x80_000_000 == pow2(31)) by (compute);

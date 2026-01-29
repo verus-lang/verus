@@ -26,7 +26,9 @@ use super::power::{
     lemma_pow_subtracts,
 };
 
-/// This function computes 2 to the power of the given natural number `e`. 
+/// This function computes 2 to the power of the given natural number `e`.
+/// Note that the called function `pow` is opaque so the SMT solver doesn't waste time
+/// repeatedly recursively unfolding it.
 pub open spec fn pow2(e: nat) -> nat {
     pow(2, e) as nat
 }
@@ -119,7 +121,6 @@ pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
         #[trigger] pow2(e) > 0,
 {
-    reveal(pow2);
     lemma_pow_positive(2, e);
 }
 
@@ -130,7 +131,6 @@ pub broadcast proof fn lemma_pow2(e: nat)
     decreases e,
 {
     reveal(pow);
-    reveal(pow2);
     if e != 0 {
         lemma_pow2((e - 1) as nat);
     }
@@ -222,7 +222,6 @@ pub proof fn lemma2_to64()
         pow2(32) == 0x100000000,
         pow2(64) == 0x10000000000000000,
 {
-    reveal(pow2);
     reveal(pow);
     #[verusfmt::skip]
     assert(
@@ -301,7 +300,6 @@ pub proof fn lemma2_to64_rest()
         pow2(63) == 0x8000000000000000,
         pow2(64) == 0x10000000000000000,
 {
-    reveal(pow2);
     reveal(pow);
     #[verusfmt::skip]
     assert(
