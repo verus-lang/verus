@@ -10,7 +10,7 @@ verus! {
 
 /// Matches the conditions here: <https://doc.rust-lang.org/stable/std/alloc/struct.Layout.html>
 pub open spec fn valid_layout(size: usize, align: usize) -> bool {
-    is_power_2(align as int) && size <= isize::MAX as int - (isize::MAX as int % align as int)
+    is_pow2(align as int) && size <= isize::MAX as int - (isize::MAX as int % align as int)
 }
 
 #[cfg_attr(not(verus_verify_core), deprecated = "is_sized is now defunct; lemmas that require V to be sized should now use the trait bound `V: Sized` instead of is_sized<V>")]
@@ -209,7 +209,7 @@ pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Size
         align_of::<*mut T>() == align_of::<usize>(),
 ;
 
-/// Pointers to unsized types have the at least the size and alignment as pointers to sized types
+/// Pointers to unsized types have at least the size and alignment as pointers to sized types
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.unsized)).
 pub broadcast axiom fn layout_of_references_and_pointers_for_unsized_types<T: ?Sized>()
     ensures
@@ -231,15 +231,13 @@ pub broadcast axiom fn layout_of_slices<T>(x: &[T])
 
 /// `str` has the same layout as `[u8]`, which has the same layout as `u8`.
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#str-layout)).
+#[verusfmt::skip]
 pub broadcast axiom fn layout_of_str(x: &str)
     ensures
         #![trigger spec_align_of_val::<str>(x)]
         #![trigger spec_size_of_val::<str>(x)]
-        spec_align_of_val::<str>(x) == align_of::<
-            u8,
-        >(),
-// todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
-
+        spec_align_of_val::<str>(x) == align_of::<u8>(),
+        // todo - how to specify spec_size_of_val::<str>(x) in terms of the byte representation of x?
 ;
 
 /// The size is a multiple of alignment and alignment is always a power of 2
@@ -248,7 +246,7 @@ pub broadcast axiom fn align_properties<T>()
     ensures
         #![trigger align_of::<T>()]
         size_of::<T>() % align_of::<T>() == 0,
-        is_power_2_exists(align_of::<T>() as int),
+        is_pow2_exists(align_of::<T>() as int),
 ;
 
 /// The alignment is at least 1
@@ -262,17 +260,18 @@ pub broadcast proof fn align_nonzero<T>()
 
 }
 
-/// The size of a usize will always be a power of 2.
+/// The size of a usize will always be a power of 2,
+/// since Verus assumes 32 or 64-bit architecture.
 pub proof fn usize_size_pow2()
     ensures
-        is_power_2(size_of::<usize>() as int),
+        is_pow2(size_of::<usize>() as int),
 {
     broadcast use super::group_vstd_default;
 
-    reveal(is_power_2);
+    reveal(is_pow2);
 
-    assert(is_power_2(4)) by (compute);
-    assert(is_power_2(8)) by (compute);
+    assert(is_pow2(4)) by (compute);
+    assert(is_pow2(8)) by (compute);
 }
 
 /// Bounds on the unsigned integer types, with respect to their sizes and bits.

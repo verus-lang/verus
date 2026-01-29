@@ -30,23 +30,16 @@ use super::power::{
 /// `e`. It's opaque so that the SMT solver doesn't waste time
 /// repeatedly recursively unfolding it.
 #[verifier::opaque]
-pub open spec fn pow2(e: nat) -> nat
-    decreases
-            e  // ensures pow2(e) > 0
-            // cannot have ensurs clause in spec functions
-            // a workaround is the lemma_pow2_pos below
-            ,
-{
+pub open spec fn pow2(e: nat) -> nat {
     // you cannot reveal in a spec function, which cause more reveals clauses
     // for the proof
     // reveal(pow);
     pow(2, e) as nat
 }
 
-/// Determines recursively if the given integer `n` is a power of 2.
-// TODO add some means for Verus to calculate the size & alignment of types
+/// Returns true if the given integer is a power of 2 (defined recursively).
 #[verifier::opaque]
-pub open spec fn is_power_2(n: int) -> bool
+pub open spec fn is_pow2(n: int) -> bool
     decreases n,
 {
     if n <= 0 {
@@ -54,42 +47,43 @@ pub open spec fn is_power_2(n: int) -> bool
     } else if n == 1 {
         true
     } else {
-        n % 2 == 0 && is_power_2(n / 2)
+        n % 2 == 0 && is_pow2(n / 2)
     }
 }
 
-/// Existential specification for if the given integer `m` is a power of 2.
-pub open spec fn is_power_2_exists(m: int) -> bool {
-    exists|i: nat| pow(2, i) == m
+/// Returns true if the given integer is a power of 2
+/// (defined by existential quantification in terms of `pow`).
+pub open spec fn is_pow2_exists(n: int) -> bool {
+    exists|i: nat| pow(2, i) == n
 }
 
-/// Proof that the recursive and existential specifications for `is_power_2` are equivalent.
-pub broadcast proof fn is_power_2_equiv(n: int)
+/// Proof that the recursive and existential specifications for `is_pow2` are equivalent.
+pub broadcast proof fn is_pow2_equiv(n: int)
     ensures
-        #[trigger] is_power_2(n) <==> #[trigger] is_power_2_exists(n),
+        #[trigger] is_pow2(n) <==> #[trigger] is_pow2_exists(n),
 {
-    if is_power_2(n) {
-        assert(is_power_2_exists(n)) by {
-            is_power_2_equiv_forward(n);
+    if is_pow2(n) {
+        assert(is_pow2_exists(n)) by {
+            is_pow2_equiv_forward(n);
         }
     }
-    if is_power_2_exists(n) {
-        assert(is_power_2(n)) by {
+    if is_pow2_exists(n) {
+        assert(is_pow2(n)) by {
             broadcast use lemma_pow_positive;
 
-            is_power_2_equiv_reverse(n);
+            is_pow2_equiv_reverse(n);
         }
     }
 }
 
-proof fn is_power_2_equiv_forward(n: int)
+proof fn is_pow2_equiv_forward(n: int)
     requires
-        is_power_2(n),
+        is_pow2(n),
     ensures
-        is_power_2_exists(n),
+        is_pow2_exists(n),
     decreases n,
 {
-    reveal(is_power_2);
+    reveal(is_pow2);
     reveal(pow);
 
     if n == 1 {
@@ -97,21 +91,21 @@ proof fn is_power_2_equiv_forward(n: int)
 
         assert(pow(2, 0) == n);
     } else {
-        is_power_2_equiv_forward(n / 2);
+        is_pow2_equiv_forward(n / 2);
         let exp = choose|i: nat| pow(2, i) == n / 2;
         assert(pow(2, exp + 1) == 2 * pow(2, exp));
     }
 }
 
-proof fn is_power_2_equiv_reverse(n: int)
+proof fn is_pow2_equiv_reverse(n: int)
     requires
         n > 0,
-        is_power_2_exists(n),
+        is_pow2_exists(n),
     ensures
-        is_power_2(n),
+        is_pow2(n),
     decreases n,
 {
-    reveal(is_power_2);
+    reveal(is_pow2);
     reveal(pow);
 
     let exp = choose|i: nat| pow(2, i) == n;
@@ -121,7 +115,7 @@ proof fn is_power_2_equiv_reverse(n: int)
 
     } else {
         assert(pow(2, (exp - 1) as nat) == n / 2);
-        is_power_2_equiv_reverse(n / 2);
+        is_pow2_equiv_reverse(n / 2);
     }
 }
 
