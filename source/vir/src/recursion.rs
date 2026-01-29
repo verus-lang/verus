@@ -164,14 +164,13 @@ fn check_decrease_call(
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
     args: &Exps,
-) -> Result<Exp, VirErr> {
+) -> Result<(Exp, Exp), VirErr> {
     let name = if let Some(callee) = get_callee(ctxt.ctx, target, resolved_method) {
         callee
     } else {
-        return Ok(SpannedTyped::new(
-            span,
-            &Arc::new(TypX::Bool),
-            ExpX::Const(Constant::Bool(true)),
+        return Ok((
+            SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(true))),
+            SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(true))),
         ));
     };
     let function = &ctxt.ctx.func_map[&name];
@@ -209,13 +208,30 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    check_decrease(
+    let check_decrease = check_decrease(
         ctxt.ctx,
         span,
         None,
         &decreases_exps,
         ctxt.num_decreases.expect("num_decreases"),
-    )
+    )?;
+    let check_decrease_when = if let Some(decrease_when) = &function.x.decrease_when {
+        let decrease_when_exp = expr_to_exp_skip_checks(
+            ctxt.ctx,
+            diagnostics,
+            &params_to_pars(&function.x.params, true),
+            decrease_when,
+        )?;
+        let dec_exp = exp_rename_vars(&decrease_when_exp, &renames);
+        let e_decx = ExpX::Bind(
+            Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
+            dec_exp.clone(),
+        );
+        SpannedTyped::new(&span, &dec_exp.typ, e_decx)
+    } else {
+        SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(true)))
+    };
+    Ok((check_decrease, check_decrease_when))
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
@@ -369,12 +385,25 @@ fn check_termination<'a>(
         StmX::Call { fun, resolved_method, args, dest, .. }
             if is_recursive_call(&ctxt, fun, resolved_method) =>
         {
-            let check =
+            let (check_decrease, check_decrease_when) =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
-            let error = error(&s.span, "could not prove termination");
-            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
-
-            let mut stms = vec![stm_assert, s.clone()];
+            let stm_dec = Spanned::new(
+                s.span.clone(),
+                StmX::Assert(
+                    None,
+                    Some(error(&s.span, "could not prove termination")),
+                    check_decrease,
+                ),
+            );
+            let stm_dec_when = Spanned::new(
+                s.span.clone(),
+                StmX::Assert(
+                    None,
+                    Some(error(&s.span, "could not prove termination")),
+                    check_decrease_when,
+                ),
+            );
+            let mut stms = vec![stm_dec, stm_dec_when, s.clone()];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
             // of the recursive call just after it was proven to terminate
             // This is instead an interim fix for incompleteness in recommends checking, due to
