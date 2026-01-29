@@ -230,8 +230,8 @@ Expr appropriately (by setting the `resolve` field on the assignment nodes).
 */
 
 use crate::ast::{
-    BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, Ident,
-    Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
+    Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
     ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
     VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck,
 };
@@ -361,6 +361,8 @@ enum AstPosition {
     AfterBool(AstId, bool),
     /// For a PlaceX::Temporary node, this is right after assignment to that temporary.
     AfterTempAssignment(AstId),
+    /// Extra place generated during Match that doesn't go anywhere nice
+    MatchIntermediate,
 }
 
 struct Instruction {
@@ -908,65 +910,7 @@ impl<'a> Builder<'a> {
                 }
                 Ok(bb)
             }
-            ExprX::Match(place, arms) => {
-                let (cpt, bb) = self.build_place_typed(place, bb)?;
-
-                let mut arm_bb_ends = vec![];
-                for arm in arms.iter() {
-                    // TODO(new_mut_ref) handle guards
-
-                    let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
-                    self.basic_blocks[bb].successors.push(arm_bb);
-
-                    self.append_instructions_for_pattern_moves_mutations(
-                        &arm.x.pattern,
-                        &cpt,
-                        arm_bb,
-                        AstPosition::Before(arm.x.body.span.id),
-                    );
-
-                    self.push_scope();
-                    self.scope_insert_pattern(&arm.x.pattern);
-
-                    for bound_var in pattern_all_bound_vars_with_ownership(
-                        &arm.x.pattern,
-                        &self.locals.var_modes,
-                    )
-                    .into_iter()
-                    {
-                        let fpt = FlattenedPlaceTyped {
-                            local: LocalName::Named(bound_var.name),
-                            typ: bound_var.typ,
-                            projections: vec![],
-                        };
-                        let fp = self.locals.add_place(&fpt);
-                        self.push_instruction_propagate(
-                            arm_bb,
-                            AstPosition::Before(arm.x.body.span.id),
-                            InstructionKind::Overwrite(fp),
-                        );
-                    }
-
-                    let arm_bb_end = self.build(&arm.x.body, arm_bb);
-
-                    self.pop_scope();
-
-                    if let Ok(arm_bb_end) = arm_bb_end {
-                        arm_bb_ends.push(arm_bb_end);
-                    }
-                }
-
-                if arm_bb_ends.len() > 0 {
-                    let join_position = AstPosition::After(expr.span.id);
-                    let join_block = self.new_bb(join_position, false);
-                    for arm_bb_end in arm_bb_ends {
-                        self.basic_blocks[arm_bb_end].successors.push(join_block);
-                    }
-                    Ok(join_block)
-                } else {
-                    Err(())
-                }
-            }
+            ExprX::Match(..) => self.build_match(expr, bb),
             ExprX::Loop {
                 loop_isolation: _,
                 allow_complex_invariants: _,
@@ -1429,14 +1373,9 @@ impl<'a> Builder<'a> {
     ) {
         match cpt {
             ComputedPlaceTyped::Exact(fpt) => {
-                let places = moves_and_muts_for_place_being_matched(
-                    pattern,
-                    &fpt,
-                    &self.locals.datatypes,
-                    &self.locals.var_modes,
-                );
-                for (fpt, by_ref) in places.into_iter() {
-                    let fp = self.locals.add_place(&fpt);
+                let places =
+                    self.moves_and_muts_for_place_being_matched_intern_and_sort(pattern, &fpt);
+                for (fp, by_ref) in places.into_iter() {
                     self.push_instruction_propagate(
                         bb,
                         position,
@@ -1462,6 +1401,248 @@ impl<'a> Builder<'a> {
             }
         }
     }
+
+    /// When a place is matched against a pattern, it induces some moves,
+    /// e.g.:
+    ///
+    /// ```
+    /// let (x, _) = y;   // moves y.0
+    /// let (x, _) = y.1; // moves y.1.0
+    /// ```
+    ///
+    /// It may also induce mutations due to variables with MutRef binding mode.
+    /// This function calculates all such moves and mutations.
+    ///
+    /// TODO(new_mut_ref): incompleteness: when or-patterns are involved,
+    /// moves may be over-approximated
+    ///
+    /// Note: We don't have to worry about or-patterns together with mutations, as we currently
+    /// don't support this combination (see check in well_formed.rs)
+    fn moves_and_muts_for_place_being_matched_intern_and_sort(
+        &mut self,
+        pattern: &Pattern,
+        fpt: &FlattenedPlaceTyped,
+    ) -> Vec<(FlattenedPlace, ByRef)> {
+        let places = self.moves_and_muts_for_place_being_matched(pattern, fpt);
+        let mut v = vec![];
+        for (fpt, by_ref) in places.into_iter() {
+            v.push((self.locals.add_place(&fpt), by_ref));
+        }
+
+        // If there was an or-pattern, we need to sort out any redundancies
+        let has_or = crate::patterns::pattern_has_or(pattern);
+        if has_or {
+            let v = v
+                .into_iter()
+                .map(|(fp, by_ref)| {
+                    assert!(by_ref == ByRef::No);
+                    fp
+                })
+                .collect::<Vec<_>>();
+            let v = sort_and_remove_redundant(v);
+            v.into_iter().map(|fp| (fp, ByRef::No)).collect::<Vec<_>>()
+        } else {
+            v
+        }
+    }
+
+    fn moves_and_muts_for_place_being_matched(
+        &mut self,
+        pattern: &Pattern,
+        fpt: &FlattenedPlaceTyped,
+    ) -> Vec<(FlattenedPlaceTyped, ByRef)> {
+        let projs =
+            moves_and_muts_for_pattern(pattern, &self.locals.datatypes, &self.locals.var_modes);
+        projs
+            .into_iter()
+            .map(|(mut projs, by_ref)| {
+                let mut f = fpt.clone();
+                f.projections.append(&mut projs);
+                (f, by_ref)
+            })
+            .collect()
+    }
+
+    //// Match
+
+    fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+        // TODO(new_mut_ref): need more tests for guards
+        // TODO(new_mut_ref): need more tests for or-patterns
+
+        let ExprX::Match(place, arms) = &expr.x else {
+            unreachable!();
+        };
+
+        let (cpt, bb) = self.build_place_typed(place, bb)?;
+
+        assert!(arms.len() != 0);
+
+        let mut cur_bb = bb;
+        let mut arm_bb_ends = vec![];
+
+        for (i, arm) in arms.iter().enumerate() {
+            // We treat the last arm as irrefutable. In principle, an irrefutable arm
+            // could come earlier, but this would be a warning from Rust so it's probably
+            // not worth optimizing that case.
+            //
+            // In the unlikely event that the final arm has a match guard,
+            // then it must be the case that a prior arm was irrefutable, so it doesn't
+            // really matter what we do.
+            let is_irrefut = i == arms.len() - 1;
+
+            if is_irrefut {
+                let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+                self.basic_blocks[cur_bb].successors.push(arm_bb);
+                let arm_bb_end = self.build_arm_after_checks(&cpt, arm, arm_bb);
+                if let Ok(arm_bb_end) = arm_bb_end {
+                    arm_bb_ends.push(arm_bb_end);
+                }
+                break;
+            } else {
+                let (continue_bb, arm_bb_end) = self.build_arm_before_checks(&cpt, arm, cur_bb);
+                if let Ok(arm_bb_end) = arm_bb_end {
+                    arm_bb_ends.push(arm_bb_end);
+                }
+                match continue_bb {
+                    Ok(continue_bb) => {
+                        let next_bb = self.new_bb(AstPosition::MatchIntermediate, false);
+                        self.basic_blocks[continue_bb].successors.push(next_bb);
+                        self.basic_blocks[cur_bb].successors.push(next_bb);
+                        cur_bb = next_bb;
+                    }
+                    Err(()) => { /* leave cur_bb as it is */ }
+                }
+            }
+        }
+
+        if arm_bb_ends.len() > 0 {
+            let join_position = AstPosition::After(expr.span.id);
+            let join_block = self.new_bb(join_position, false);
+            for arm_bb_end in arm_bb_ends {
+                self.basic_blocks[arm_bb_end].successors.push(join_block);
+            }
+            Ok(join_block)
+        } else {
+            Err(())
+        }
+    }
+
+    /// Build the arm, starting from before any checks occur.
+    /// Create a branch off of `cur_bb` to represent the pattern check passing;
+    /// caller will handle failure and moving onto the next branch.
+    ///
+    /// Returns two BB positions:
+    ///   - guard_fail_bb: After guard failure (when applicable)
+    ///   - arm_end_bb: After arm completes
+    fn build_arm_before_checks(
+        &mut self,
+        cpt: &ComputedPlaceTyped,
+        arm: &Arm,
+        cur_bb: BBIndex,
+    ) -> (Result<BBIndex, ()>, Result<BBIndex, ()>) {
+        if arm.x.has_guard() {
+            // Note that because we currently disallow match guards together with or-patterns,
+            // we don't have to worry about the match guard running more than once
+            //
+            //           pattern succeeds
+            // cur_bb           --->        guard_bb --> (guard body) --> guard_success_bb
+            //   |                                            |                   |
+            //   |                                            |                   |
+            //   |                                            |               (arm body)
+            //   |                                            |                   |
+            //   |                                            v                   v
+            //   |                                      guard_fail_bb          arm_end_bb
+            //   |                                            |
+            //   |                                            |
+            //   v                                            /
+            // next_bb  <-------------------------------------
+
+            let guard_bb = self.new_bb(AstPosition::Before(arm.x.guard.span.id), false);
+            self.basic_blocks[cur_bb].successors.push(guard_bb);
+
+            // Bound vars are immutable until the guard passes, so don't emit any instructions
+            // for the bound variables yet
+            self.push_scope();
+            self.scope_insert_pattern(&arm.x.pattern);
+            let guard_bb_end = self.build(&arm.x.guard, guard_bb);
+            self.pop_scope();
+
+            let guard_bb_end = match guard_bb_end {
+                Ok(guard_bb_end) => guard_bb_end,
+                Err(()) => {
+                    return (Err(()), Err(()));
+                }
+            };
+
+            let guard_fail_bb =
+                self.new_bb(AstPosition::AfterBool(arm.x.guard.span.id, false), false);
+            let guard_success_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+
+            self.basic_blocks[guard_bb_end].successors.push(guard_fail_bb);
+            self.basic_blocks[guard_bb_end].successors.push(guard_success_bb);
+
+            let arm_end_bb = self.build_arm_after_checks(cpt, arm, guard_success_bb);
+            (Ok(guard_fail_bb), arm_end_bb)
+        } else {
+            //           pattern succeeds
+            // cur_bb           --->        arm_bb --> (arm body) --> arm_end_bb
+            //   |
+            //   |
+            // (pattern fails)
+            //   |
+            //   v
+            // (next branch)
+
+            let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
+            self.basic_blocks[cur_bb].successors.push(arm_bb);
+            let arm_end_bb = self.build_arm_after_checks(cpt, arm, arm_bb);
+            (Err(()), arm_end_bb)
+        }
+    }
+
+    /// Build the arm, starting immediately after all checks pass (i.e., after the pattern
+    /// and pattern-guard pass). This performs moves, mutations, and initialization of bound vars
+    fn build_arm_after_checks(
+        &mut self,
+        cpt: &ComputedPlaceTyped,
+        arm: &Arm,
+        arm_bb: BBIndex,
+    ) -> Result<BBIndex, ()> {
+        self.append_instructions_for_pattern_moves_mutations(
+            &arm.x.pattern,
+            &cpt,
+            arm_bb,
+            AstPosition::Before(arm.x.body.span.id),
+        );
+
+        self.push_scope();
+        self.scope_insert_pattern(&arm.x.pattern);
+
+        for bound_var in
+            pattern_all_bound_vars_with_ownership(&arm.x.pattern, &self.locals.var_modes)
+                .into_iter()
+        {
+            let fpt = FlattenedPlaceTyped {
+                local: LocalName::Named(bound_var.name),
+                typ: bound_var.typ,
+                projections: vec![],
+            };
+            let fp = self.locals.add_place(&fpt);
+            self.push_instruction_propagate(
+                arm_bb,
+                AstPosition::Before(arm.x.body.span.id),
+                InstructionKind::Overwrite(fp),
+            );
+        }
+
+        let arm_bb_end = self.build(&arm.x.body, arm_bb);
+
+        self.pop_scope();
+
+        arm_bb_end
+    }
+
+    //// Closures
 
     fn build_closure(
         &mut self,
@@ -1681,30 +1862,6 @@ pub fn pattern_all_bound_vars_with_ownership(
     v
 }
 
-/// When a place is matched against a pattern, it induces some moves,
-/// e.g.:
-///
-/// ```
-/// let (x, _) = y;   // moves y.0
-/// let (x, _) = y.1; // moves y.1.0
-/// ```
-fn moves_and_muts_for_place_being_matched(
-    pattern: &Pattern,
-    fpt: &FlattenedPlaceTyped,
-    datatypes: &HashMap<Path, Datatype>,
-    modes: &HashMap<VarIdent, Mode>,
-) -> Vec<(FlattenedPlaceTyped, ByRef)> {
-    let projs = moves_and_muts_for_pattern(pattern, datatypes, modes);
-    projs
-        .into_iter()
-        .map(|(mut projs, by_ref)| {
-            let mut f = fpt.clone();
-            f.projections.append(&mut projs);
-            (f, by_ref)
-        })
-        .collect()
-}
-
 fn moves_and_muts_for_pattern(
     pattern: &Pattern,
     datatypes: &HashMap<Path, Datatype>,
@@ -1748,9 +1905,9 @@ fn moves_and_muts_for_pattern(
                     projs.pop();
                 }
             }
-            PatternX::Or(_, _) => {
-                // TODO(new_mut_ref): this might be complicated, need to see what rustc does
-                todo!()
+            PatternX::Or(pat1, pat2) => {
+                moves_and_muts_for_pattern_rec(&pat1, projs, out, datatypes, modes);
+                moves_and_muts_for_pattern_rec(&pat2, projs, out, datatypes, modes);
             }
             PatternX::Expr(..) | PatternX::Range(..) => {}
             PatternX::ImmutRef(_) => {
@@ -2871,6 +3028,9 @@ fn apply_resolutions(
                 // advanced unwind-related stuff?
                 continue;
             }
+            AstPosition::MatchIntermediate => {
+                continue;
+            }
             AstPosition::AfterBool(ast_id, _b) => ast_id,
             AstPosition::AfterTempAssignment(ast_id) => {
                 temp_map.entry(ast_id).or_insert_with_key(|_| (vec![], false)).0.push(r.place);
@@ -2894,6 +3054,7 @@ fn apply_resolutions(
             }
             AstPosition::OnUnwind(_) => unreachable!(),
             AstPosition::AfterTempAssignment(_) => unreachable!(),
+            AstPosition::MatchIntermediate => unreachable!(),
             AstPosition::AfterBool(_ast_id, false) => {
                 entry.3.push(r.place);
             }

@@ -105,7 +105,7 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
     let decl = StmtX::Decl {
         pattern,
         mode: Some(Mode::Exec),
-        init: Some(PlaceX::temporary(expr.clone())),
+        init: Some(PlaceX::spec_temporary(expr.clone())),
         els: None,
     };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
@@ -151,7 +151,7 @@ fn pattern_to_exprs(
         let decl = StmtX::Decl {
             pattern,
             mode: Some(Mode::Exec),
-            init: Some(PlaceX::temporary(expr.clone())),
+            init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
         decls.push(Spanned::new(expr.span.clone(), decl));
@@ -934,7 +934,7 @@ fn exec_closure_spec_requires(
         let decl = StmtX::Decl {
             pattern,
             mode: Some(Mode::Spec),
-            init: Some(PlaceX::temporary(tuple_field)),
+            init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };
         decls.push(Spanned::new(span.clone(), decl));
@@ -997,7 +997,7 @@ fn exec_closure_spec_ensures(
         let decl = StmtX::Decl {
             pattern,
             mode: Some(Mode::Spec),
-            init: Some(PlaceX::temporary(tuple_field)),
+            init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
         };
         decls.push(Spanned::new(span.clone(), decl));

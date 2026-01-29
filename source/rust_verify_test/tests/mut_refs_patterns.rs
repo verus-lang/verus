@@ -3323,7 +3323,7 @@ test_verify_one_file_with_options! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an if-guard and a binding by mutable reference")
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both a match-guard and a binding by mutable reference")
 }
 
 test_verify_one_file_with_options! {
@@ -3345,4 +3345,200 @@ test_verify_one_file_with_options! {
             let Some((ref mut i, true | false)) = x;
         }
     } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and a binding by mutable reference")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_match_guards ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) no_unwind { }
+
+        fn cond2<A>(b: &mut A) -> bool no_unwind { true }
+        fn cond() -> bool no_unwind { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn get_b<A>() -> A {
+            loop { }
+        }
+
+        fn test<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            assert(has_resolved(b)); // FAILS
+
+            match foo {
+                Foo::Bar(t) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+            }
+        }
+
+        fn test2<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if ({
+                    assert(has_resolved(b)); // FAILS
+                    cond()
+                }) => {
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    consume(t);
+                }
+                Foo::Bar(t) => { }
+            }
+        }
+
+        fn test3<A>(foo: Foo<A>, b: A) {
+            let mut b = b;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) if cond2(&mut b) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Qux(t) => {
+                    assert(has_resolved(b));
+                    consume(t);
+                }
+                Foo::Bar(t) => {
+                    // TODO(new_mut_ref): this should pass; the resolution goes to a "MatchIntermediate" position which gets dropped
+                    assert(has_resolved(b)); // FAILS
+                }
+            }
+        }
+
+        fn test4<A>(foo: Foo<A>, b: A) {
+            let mut b: A;
+            let mut entered_guard = false;
+
+            match foo {
+                Foo::Bar(t) if cond() => {
+                }
+                Foo::Qux(t) if ({ entered_guard = true; b = get_b(); cond() }) => {
+                    consume(b);
+                }
+                Foo::Qux(t) => {
+                    assert(entered_guard ==> has_resolved(b));
+                }
+                Foo::Bar(t) => {
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+            Duck(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+
+        fn test2<A>(foo: Foo<A>) {
+            match foo {
+                Foo::Bar(x) | Foo::Qux(x) => {
+                    consume(x);
+                }
+                Foo::Duck(_) => { }
+            }
+            assert(foo is Duck ==> has_resolved(foo->Duck_0));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] decl_test_or_patterns ["new-mut-ref"] => verus_code! {
+        enum Foo<A> {
+            Bar(A),
+            Qux(A),
+        }
+
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: Foo<A>) {
+            let (Foo::Bar(x) | Foo::Qux(x)) = foo;
+            consume(x);
+            assert(foo is Bar ==> has_resolved(foo->Bar_0)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    // TODO(new_mut_ref): these ought to pass
+                    assert(foo.0 ==> has_resolved(foo.2)); // FAILS
+                    assert(!foo.0 ==> has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_conditional_moves2 ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, _, x) => {
+                    consume(x);
+                    assert(has_resolved(foo.1)); // FAILS
+                    assert(has_resolved(foo.2)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] or_patterns_with_moves_in_same_place ["new-mut-ref"] => verus_code! {
+        fn consume<A>(a: A) { }
+
+        fn test<A>(foo: (bool, A, A)) {
+            match foo {
+                (true, x, _) | (false, x, _) => {
+                    consume(x);
+                    assert(has_resolved(foo.2));
+                    assert(has_resolved(foo.1)); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

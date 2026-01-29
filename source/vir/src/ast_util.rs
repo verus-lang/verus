@@ -1250,7 +1250,7 @@ pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, boo
                             PlaceX::Local(ident) if ident == &ret.x.name => {
                                 assert!(is_unit(&undecorate_typ(&place.typ)));
                                 let e = mk_tuple(&place.span, &Arc::new(vec![]));
-                                Ok(PlaceX::temporary(e))
+                                Ok(PlaceX::spec_temporary(e))
                             }
                             _ => Ok(place.clone()),
                         },
@@ -1363,7 +1363,11 @@ impl Opaqueness {
 }
 
 impl PlaceX {
-    pub fn temporary(e: Expr) -> Place {
+    /// Wraps the given expression in a Temporary node.
+    /// Be wary of types (the type of the place is determined by the type of the Expr,
+    /// which is only correct up to decoration) and only use this for simplifications
+    /// post-resolution-analysis.
+    pub(crate) fn spec_temporary(e: Expr) -> Place {
         SpannedTyped::new(&e.span, &e.typ, PlaceX::Temporary(e.clone()))
     }
 

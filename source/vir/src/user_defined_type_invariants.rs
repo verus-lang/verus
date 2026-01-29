@@ -151,7 +151,7 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
         let decl = StmtX::Decl {
             pattern: PatternX::simple_var(ident.clone(), &expr.span, &expr.typ),
             mode: None,
-            init: Some(PlaceX::temporary(expr.clone())),
+            init: Some(PlaceX::spec_temporary(expr.clone())),
             els: None,
         };
         stmts.insert(0, Spanned::new(expr.span.clone(), decl));
