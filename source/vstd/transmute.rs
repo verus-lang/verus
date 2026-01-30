@@ -16,22 +16,22 @@ verus! {
 broadcast use {group_layout_axioms, group_vstd_default};
 
 /// Generic precondition on transmute.
-pub open spec fn transmute_pre<T, U>(src: T, dst: Tracked<U>) -> bool {
+pub open spec fn transmute_pre<T, U>(src: T, dst: U) -> bool {
     &&& forall|bytes|
         #![trigger abs_encode::<T>(&src, bytes)]
-        #![trigger abs_decode::<U>(bytes, &(dst@))]
-        abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &(dst@))
+        #![trigger abs_decode::<U>(bytes, &dst)]
+        abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
     &&& abs_can_be_encoded::<T>()
 }
 
 /// Generic postcondition on transmute.
-pub open spec fn transmute_post<U>(dst_ghost: Tracked<U>, dst: U) -> bool {
-    dst_ghost@ == dst
+pub open spec fn transmute_post<U>(dst_ghost: U, dst: U) -> bool {
+    dst_ghost == dst
 }
 
 /// Generic precondition on transmute for `?Sized` types.
-pub open spec fn transmute_pre_unsized<T: ?Sized, U: ?Sized>(src: &T, dst: Tracked<&U>) -> bool {
-    &&& forall|bytes| #[trigger] abs_encode::<T>(src, bytes) ==> abs_decode::<U>(bytes, dst@)
+pub open spec fn transmute_pre_unsized<T: ?Sized, U: ?Sized>(src: &T, dst: &U) -> bool {
+    &&& forall|bytes| #[trigger] abs_encode::<T>(src, bytes) ==> abs_decode::<U>(bytes, dst)
     &&& abs_can_be_encoded::<T>()
 }
 
@@ -100,9 +100,9 @@ macro_rules! transmute_refl_unique_lemma {
     )+) => {$(
         verus! {
             /// A value `x: $typ` can be transmuted to itself.
-            pub proof fn $refl_lemma_name(tracked x: $typ, y: Tracked<$typ>)
+            pub proof fn $refl_lemma_name(tracked x: $typ, y: $typ)
                 requires
-                    x == y@
+                    x == y
                 ensures
                     transmute_pre(x, y),
             {
@@ -114,11 +114,11 @@ macro_rules! transmute_refl_unique_lemma {
             }
 
             /// When a `$typ` is transmuted to a `$typ`, the value can only be transmuted to itself.
-            pub proof fn $unique_lemma_name(tracked x: $typ, y: Tracked<$typ>)
+            pub proof fn $unique_lemma_name(tracked x: $typ, y: $typ)
                 requires
                     transmute_pre(x, y)
                 ensures
-                    x == y@
+                    x == y
             {
                 broadcast use group_transmute_axioms;
 
@@ -146,9 +146,9 @@ transmute_refl_unique_lemma! {
 }
 
 /// A value `x: *mut T` for `T: Sized` can be transmuted to itself.
-pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: *mut T)
     requires
-        x@ == y@@,
+        x@ == y@,
     ensures
         transmute_pre(x, y),
 {
@@ -156,18 +156,18 @@ pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: Tracke
 
     assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
         bytes,
-        &(y@),
+        &y,
     ) by {
         <*mut T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
 /// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
-pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: *mut T)
     requires
         transmute_pre(x, y),
     ensures
-        x@ == y@@,
+        x@ == y@,
 {
     broadcast use group_transmute_axioms;
 
@@ -175,9 +175,9 @@ pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: Trac
 }
 
 /// A value `x: *const T` for `T: Sized` can be transmuted to itself.
-pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: Tracked<*const T>)
+pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: *const T)
     requires
-        x@ == y@@,
+        x@ == y@,
     ensures
         transmute_pre(x, y),
 {
@@ -185,18 +185,18 @@ pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: Tr
 
     assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
         bytes,
-        &(y@),
+        &y,
     ) by {
         <*const T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
 /// When a `*const T` is transmuted to a `*const T` for `T: Sized`, a value can only be transmuted to itself.
-pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: Tracked<*const T>)
+pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: *const T)
     requires
         transmute_pre(x, y),
     ensures
-        x@ == y@@,
+        x@ == y@,
 {
     broadcast use group_transmute_axioms;
 
@@ -205,10 +205,10 @@ pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: 
 
 // we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
 /// When transmuting a `*mut T` to a `*mut T` for `T: ?Sized`, a value `x: *mut T` can be transmuted to itself.
-pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tracked<*mut T>)
+pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: *mut T)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
-        x == y@,
+        x == y,
     ensures
         transmute_pre(x, y),
 {
@@ -216,17 +216,17 @@ pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: Tra
 
     assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
         bytes,
-        &(y@),
+        &y,
     ) by {
         <*mut T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
 /// When transmuting a `*const T` to a `*const T` for `T: ?Sized`, a value `x: *const T` can be transmuted to itself.
-pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y: Tracked<*const T>)
+pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y: *const T)
     requires
         ptr_metadata_encoding_well_defined::<T>(),
-        x == y@,
+        x == y,
     ensures
         transmute_pre(x, y),
 {
@@ -234,18 +234,19 @@ pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y:
 
     assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
         bytes,
-        &(y@),
+        &y,
     ) by {
         <*const T as AbstractByteRepresentation>::encoding_invertible(x, bytes);
     }
 }
 
 /// A `usize` can be transmuted to a `*mut T` for `T: Sized`. The resulting pointer has an address corresponding to the source value and a null `Provenance`.
-pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (dst: Tracked<*mut T>)
+pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked dst: *mut T)
     ensures
         transmute_pre(src, dst),
-        dst@@.addr == src,
-        dst@@.provenance == Provenance::null(),
+        dst == ptr_mut_from_data(
+            PtrData::<T> { addr: src, provenance: Provenance::null(), metadata: () },
+        ),
 {
     broadcast use group_transmute_axioms;
 
@@ -262,14 +263,14 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (dst: Trac
             size_of::<*mut T>() as int,
         ));
     }
-    Tracked(dst)
+    dst
 }
 
 impl<T: AbstractByteRepresentation> PointsTo<T> {
     // TODO: version for nondeterministic targets
     pub axiom fn transmute_shared<'a, U: AbstractByteRepresentation>(
         tracked &'a self,
-        tracked target: Tracked<U>,
+        tracked target: U,
     ) -> (tracked ret: &'a PointsTo<U>)
         requires
             transmute_pre::<T, U>(self.value(), target),
@@ -284,15 +285,14 @@ impl<T: AbstractByteRepresentation> PointsTo<T> {
 }
 
 impl PointsTo<str> {
-    pub axiom fn transmute_shared<'a>(tracked &'a self, target: Tracked<&[u8]>) -> (tracked ret:
+    pub axiom fn transmute_shared<'a>(tracked &'a self, target: &[u8]) -> (tracked ret:
         &'a PointsTo<[u8]>)
         requires
             transmute_pre_unsized::<str, [u8]>(self.value(), target),
             self.is_init(),
         ensures
             ret.is_init(),
-            ret.value() == target@@,
-            ret.phy() == target,
+            ret.value() == target@,
             ret.ptr()@.addr == self.ptr()@.addr,
             ret.ptr()@.provenance == self.ptr()@.provenance,
             ret.ptr()@.metadata == self.ptr()@.metadata,
