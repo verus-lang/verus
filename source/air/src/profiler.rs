@@ -248,7 +248,7 @@ impl Profiler {
         for cost in &self.quantifier_stats {
             let count = cost.instantiations;
             let msg = format!(
-                "Instantiated heyhey{}heyhey {} times ({}% of the total)\n",
+                "Instantiated {} {} times ({}% of the total)\n",
                 cost.quant,
                 count,
                 100 * count / self.total_instantiations()
