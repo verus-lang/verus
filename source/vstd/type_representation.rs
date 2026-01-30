@@ -1013,9 +1013,7 @@ raw_ptr_encoding_from_type_representation! {
 /// This trait is used to define a `AbstractByteEncoding` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
 /// This representation uses `<Primitive as AbstractByteRepresentation>::encode` and `<Primitive as AbstractByteRepresentation>::decode` after invoking `Self::to_primitive`.
 /// `PrimitiveRepresentationEncoding<Primitive, Self>` can then be used to implement `AbstractByteRepresentation` on `Self`.
-pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation> where
-    Self: Sized,
- {
+pub trait PrimitiveRepresentation<Primitive: AbstractByteRepresentation> where Self: Sized {
     spec fn to_primitive(v: Self) -> Primitive;
 
     proof fn to_primitive_tracked(tracked v: &Self) -> (tracked p: &Primitive)
