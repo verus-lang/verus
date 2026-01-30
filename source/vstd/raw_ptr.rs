@@ -30,7 +30,6 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 use crate::vstd::endian::*;
-use crate::vstd::layout;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
