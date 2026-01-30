@@ -21,8 +21,6 @@ pub open spec fn transmute_pre<T, U>(src: T, dst: U) -> bool {
         #![trigger abs_encode::<T>(&src, bytes)]
         #![trigger abs_decode::<U>(bytes, &dst)]
         abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
-        #![trigger abs_decode::<U>(bytes, &dst)]
-        abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
     &&& abs_can_be_encoded::<T>()
 }
 
