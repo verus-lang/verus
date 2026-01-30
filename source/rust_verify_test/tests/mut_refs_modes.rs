@@ -1120,3 +1120,31 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file_with_options! {
+    #[test] wrapped_params_reborrow ["new-mut-ref"] => verus_code! {
+        fn f(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() < 20,
+            ensures fin(x).view() == x.view() + 1,
+        {
+            proof { *x = Ghost(x.view() + 1); }
+        }
+
+        fn f2(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() == 3,
+        {
+            f(Tracked(x));
+            f(Tracked(x));
+            assert(*x == 5);
+        }
+
+        fn f2_fails(Tracked(x): Tracked<&mut Ghost<int>>)
+            requires x.view() == 3,
+        {
+            f(Tracked(x));
+            f(Tracked(x));
+            assert(*x == 5);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -2,8 +2,8 @@ use crate::ast::{
     AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail, Datatype,
     DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity, ItemKind,
     Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, ReadKind, Stmt, StmtX, Typ, TypDecoration, TypX,
-    UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
@@ -271,6 +271,10 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Nondeterministic
             | ExprX::UseLeftWhereRightCanHaveNoAssignments(..)
             | ExprX::ReadPlace(..)
+            // all borrow types checked in the main function
+            | ExprX::ImplicitReborrowOrSpecRead(..)
+            | ExprX::BorrowMut(..)
+            | ExprX::TwoPhaseBorrowMut(..)
         => None,
         ExprX::NonSpecClosure { .. } => Some(OuterProphReason::NonSpecClosure),
         ExprX::Loop { .. } => Some(OuterProphReason::Loop),
@@ -278,8 +282,6 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
         ExprX::Return(..) => Some(OuterProphReason::Return),
         ExprX::BreakOrContinue { is_break: true, .. } => Some(OuterProphReason::Break),
         ExprX::BreakOrContinue { is_break: false, .. } => Some(OuterProphReason::Continue),
-        ExprX::BorrowMut(..) => Some(OuterProphReason::MutBorrow),
-        ExprX::TwoPhaseBorrowMut(..) => Some(OuterProphReason::MutBorrow),
     }
 }
 
@@ -495,6 +497,8 @@ struct Record {
     var_modes: HashMap<VarIdent, Mode>,
     /// Modes of all PlaceX::Temporary nodes
     temporary_modes: HashMap<crate::messages::AstId, Mode>,
+    /// Modes of the ImplicitReborrow nodes
+    infer_spec_for_implicit_reborrows: Option<HashMap<crate::messages::AstId, bool>>,
 }
 
 #[derive(Debug)]
@@ -3082,7 +3086,38 @@ fn check_expr_handle_mut_arg(
         ExprX::Nondeterministic => {
             panic!("Nondeterministic is not created by user code right now");
         }
-        ExprX::BorrowMut(place) | ExprX::TwoPhaseBorrowMut(place) => {
+        ExprX::ImplicitReborrowOrSpecRead(place, _, _)
+            if expect.0 == Mode::Spec || outer_mode == Mode::Spec =>
+        {
+            if let Some(m) = &mut record.infer_spec_for_implicit_reborrows {
+                let found = m.insert(expr.span.id, true);
+                assert!(found.is_none());
+            }
+
+            let (_mode, proph) = check_place(
+                ctxt,
+                record,
+                typing,
+                outer_mode,
+                place,
+                PlaceAccess::Read,
+                Expect(Mode::Spec),
+                outer_proph,
+            )?;
+            Ok((Mode::Spec, proph))
+        }
+        ExprX::BorrowMut(place)
+        | ExprX::TwoPhaseBorrowMut(place)
+        | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
+            if matches!(&expr.x, ExprX::ImplicitReborrowOrSpecRead(..)) {
+                if let Some(m) = &mut record.infer_spec_for_implicit_reborrows {
+                    let found = m.insert(expr.span.id, false);
+                    assert!(found.is_none());
+                } else {
+                    panic!("non-spec code expected infer_spec_for_implicit_reborrows");
+                }
+            }
+
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,
@@ -3092,6 +3127,8 @@ fn check_expr_handle_mut_arg(
             if typing.in_proof_in_spec || outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "mutable borrow is not allowed in spec context"));
             }
+
+            outer_proph.outer_check(&expr.span, OuterProphReason::MutBorrow)?;
 
             let (mode, proph) = check_place(
                 ctxt,
@@ -3105,14 +3142,7 @@ fn check_expr_handle_mut_arg(
             )?;
             match mode {
                 Mode::Exec => {}
-                Mode::Proof => {
-                    if typing.block_ghostness == Ghost::Exec {
-                        return Err(error(
-                            &expr.span,
-                            "cannot take mutable borrow of tracked-mode place outside of a proof block",
-                        ));
-                    }
-                }
+                Mode::Proof => {}
                 Mode::Spec => {
                     return Err(error(
                         &place.span,
@@ -3121,7 +3151,7 @@ fn check_expr_handle_mut_arg(
                 }
             }
             proph.check(&expr.span, NoProphReason::MutBorrow)?;
-            Ok((typing.block_ghostness.join_mode(outer_mode), Proph::No))
+            Ok((mode_join(mode, typing.block_ghostness.join_mode(outer_mode)), Proph::No))
         }
         ExprX::UnaryOpr(UnaryOpr::HasResolved(_t), e) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
@@ -3488,6 +3518,7 @@ fn check_function(
         let mut body_typing = body_typing.push_block_ghostness(Ghost::of_mode(function.x.mode));
         assert!(record.infer_spec_for_loop_iter_modes.is_none());
         record.infer_spec_for_loop_iter_modes = Some(Vec::new());
+        record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
 
         let proph = check_expr_has_mode(
             ctxt,
@@ -3512,13 +3543,14 @@ fn check_function(
 
         // Replace InferSpecForLoopIter None if it fails to have mode spec
         // (if it's mode spec, leave as is to be processed by sst_to_air and loop_inference)
-        let infer_spec = record.infer_spec_for_loop_iter_modes.as_ref().expect("infer_spec");
-        if infer_spec.len() > 0 {
+        let loop_spec = record.infer_spec_for_loop_iter_modes.as_ref().expect("infer_spec");
+        let borrow_spec = record.infer_spec_for_implicit_reborrows.as_ref().expect("borrow_spec");
+        if loop_spec.len() > 0 || borrow_spec.len() > 0 {
             let mut functionx = function.x.clone();
             functionx.body = Some(crate::ast_visitor::map_expr_visitor(body, &|expr: &Expr| {
                 match &expr.x {
                     ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, e) => {
-                        let mode_opt = infer_spec.iter().find(|(span, _)| span.id == expr.span.id);
+                        let mode_opt = loop_spec.iter().find(|(span, _)| span.id == expr.span.id);
                         if let Some((_, Mode::Spec)) = mode_opt {
                             // InferSpecForLoopIter must be spec mode
                             // to be usable for invariant inference
@@ -3531,12 +3563,49 @@ fn check_function(
                             Ok(expr.new_x(ExprX::Unary(*op, e)))
                         }
                     }
+                    ExprX::ImplicitReborrowOrSpecRead(place, two_phase, inner_span) => {
+                        let is_spec = *borrow_spec.get(&expr.span.id).unwrap();
+                        if is_spec {
+                            Ok(expr.new_x(ExprX::ReadPlace(
+                                place.clone(),
+                                UnfinalizedReadKind {
+                                    preliminary_kind: ReadKind::Spec,
+                                    id: u64::MAX,
+                                },
+                            )))
+                        } else {
+                            match &place.x {
+                                PlaceX::Temporary(e) => {
+                                    // &mut * Temporary(e) simplifies to e
+                                    Ok(e.clone())
+                                }
+                                _ => {
+                                    let dtyp = match &*place.typ {
+                                        TypX::MutRef(t) => t,
+                                        _ => panic!("expected MutRef type"),
+                                    };
+                                    let deref_e = SpannedTyped::new(
+                                        &inner_span,
+                                        dtyp,
+                                        PlaceX::DerefMut(place.clone()),
+                                    );
+                                    let borrowx = if *two_phase {
+                                        ExprX::TwoPhaseBorrowMut(deref_e)
+                                    } else {
+                                        ExprX::BorrowMut(deref_e)
+                                    };
+                                    Ok(expr.new_x(borrowx))
+                                }
+                            }
+                        }
+                    }
                     _ => Ok(expr.clone()),
                 }
             })?);
             *function = function.new_x(functionx);
         }
         record.infer_spec_for_loop_iter_modes = None;
+        record.infer_spec_for_implicit_reborrows = None;
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
@@ -3607,6 +3676,7 @@ pub fn check_crate(
         read_kind_finals: HashMap::new(),
         var_modes: HashMap::new(),
         temporary_modes: HashMap::new(),
+        infer_spec_for_implicit_reborrows: None,
     };
     let mut state = State {
         vars: ScopeMap::new(),

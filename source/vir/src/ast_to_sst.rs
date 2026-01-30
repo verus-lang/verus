@@ -2773,7 +2773,8 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::TwoPhaseBorrowMut(_place) => {
             panic!("TwoPhaseBorrowMut should have been handled by the parent node");
         }
-        ExprX::ReadPlace(place, _read_type) => {
+        ExprX::ReadPlace(place, _) | ExprX::ImplicitReborrowOrSpecRead(place, _, _) => {
+            // Any ImplicitReborrowOrSpecRead which are left are assumed to be SpecRead
             let expr = place_to_expr(place);
             expr_to_stm_opt(ctx, state, &expr)
         }
